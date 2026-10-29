@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { Footprints, Hammer, X } from "lucide-react";
-import { GEAR_BASES, ITEMS, slotsForItem } from "../game/content";
+import { Footprints, Hammer, Info, X } from "lucide-react";
+import { GEAR_BASES, ITEMS, canWear, gearStatReqLabel, slotsForItem, wearRequirementNote } from "../game/content";
 import { TORCH, computeVisibility, openDirs } from "../game/maze";
 import type { GearItem, Player, Run, Slot } from "../game/types";
 import { SLOT_META, SLOT_ORDER } from "../game/types";
@@ -45,7 +45,7 @@ export function Dungeon({
   const S = m.size;
   const W = S * CS;
   const [openSlot, setOpenSlot] = useState<Slot | null>(null);
-  const [hover, setHover] = useState<GearItem | null>(null);
+  const [detailUid, setDetailUid] = useState<string | null>(null);
 
   /* 0 — темнота, 1 — луч факела, 2 — уже пройденные клетки */
   const vis = useMemo(() => computeVisibility(m, run.pos, run.seen), [m, run.pos, run.seen]);
@@ -107,6 +107,11 @@ export function Dungeon({
   const candidates: GearItem[] = openSlot
     ? player.armory.filter((g) => slotsForItem(g).includes(openSlot))
     : [];
+  const detailItem = player.armory.find((item) => item.uid === detailUid);
+  const inspectGear = (uid: string) => {
+    onCancelPath();
+    setDetailUid(uid);
+  };
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -119,7 +124,7 @@ export function Dungeon({
             Лабиринт {S}×{S} · комнат {m.rooms.length} · сундуков {m.chests.length} · событий {m.events.length}
           </span>
         </div>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[0.72rem] text-mute">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[0.86rem] text-mute">
           <span className="tab">шагов: <span className="text-parch">{run.steps}</span></span>
           <span className="tab">добыча: <span className="text-flame">{run.gold}</span></span>
           <span className="tab text-verd">ключи: {run.keys}</span>
@@ -133,9 +138,9 @@ export function Dungeon({
         </div>
       </header>
 
-      <div className="flex flex-1 flex-col items-center gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:items-start lg:justify-center">
+      <div className="flex flex-1 flex-col items-center gap-6 px-4 py-6 sm:px-6 min-[1400px]:flex-row min-[1400px]:items-start min-[1400px]:justify-center">
         {/* КАРТА-ЧЕРТЁЖ */}
-        <div className="relative w-full max-w-[600px] shrink-0">
+        <div className="relative w-full min-w-0 max-w-[600px]">
           <div className="grain relative border border-line bg-ink p-2 shadow-[0_30px_80px_-40px_#000]">
             <svg viewBox={`-6 -6 ${W + 12} ${W + 12}`} className="block w-full" role="img" aria-label="План подземелья">
               <defs>
@@ -232,7 +237,7 @@ export function Dungeon({
                       fill="none" stroke="#e0a33c" strokeOpacity="0.5" strokeWidth="1.4" strokeDasharray="5 4"
                     />
                     <text
-                      x={rx + 6} y={ry + 12} fill={labelColor} fontSize="7.5"
+                      x={rx + 6} y={ry + 12} fill={labelColor} fontSize="9"
                       fontFamily="Forum, Georgia, serif" letterSpacing="1.8" opacity="0.95"
                     >
                       {room.name.toUpperCase()}
@@ -400,7 +405,7 @@ export function Dungeon({
           </div>
 
           {path.length > 0 && (
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border border-flamedim/70 bg-black/45 px-3 py-2 font-mono text-[0.74rem]">
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border border-flamedim/70 bg-black/45 px-3 py-2 font-mono text-[0.88rem]">
               <span className="flex items-center gap-2 text-flamehi">
                 <Footprints size={14} aria-hidden />
                 маршрут: {path.length} {path.length === 1 ? "шаг" : path.length < 5 ? "шага" : "шагов"}
@@ -412,7 +417,7 @@ export function Dungeon({
             </div>
           )}
 
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 font-mono text-[0.66rem] text-mute">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 font-mono text-[0.82rem] text-mute">
             <span className="flex flex-wrap items-center gap-3">
               <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 bg-[#c98b2e]" />сундук</span>
               <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 bg-[#2f4f43]" />дверь</span>
@@ -438,36 +443,38 @@ export function Dungeon({
           <section className="border border-line bg-slab/70">
             <div className="flex items-center justify-between border-b border-line px-3 py-2">
               <span className="sc">Снаряжение · смена в походе</span>
-              <span className="font-mono text-[0.66rem] text-mute">наведи — полный разбор</span>
+              <span className="font-mono text-[0.88rem] text-mute">Подробности — по кнопке ⓘ</span>
             </div>
-            <div className="grid grid-cols-3 gap-px bg-line/60">
+            <div className="grid grid-cols-1 gap-px bg-line/60 sm:grid-cols-2">
               {SLOT_ORDER.map((slot) => {
                 const item = player.armory.find((g) => g.uid === player.equip[slot]);
                 const open = openSlot === slot;
                 return (
-                  <button
-                    key={slot}
-                    onClick={() => setOpenSlot(open ? null : slot)}
-                    onMouseEnter={() => setHover(item ?? null)}
-                    onMouseLeave={() => setHover(null)}
-                    className={`flex min-w-0 items-center gap-2 bg-slab px-2 py-2 text-left transition-colors hover:bg-flame/10 ${
-                      open ? "ring-1 ring-inset ring-flame" : ""
-                    }`}
-                  >
-                    {item ? (
-                      <ItemArt id={item.baseId} name="Предмет" size={30} rarity={item.identified ? item.rarity : undefined} />
-                    ) : (
-                      <span className="flex h-[30px] w-[30px] items-center justify-center border border-dashed border-line text-mute">
-                        <Hammer size={13} aria-hidden />
+                  <div key={slot} className={`flex min-w-0 items-center bg-slab ${open ? "ring-1 ring-inset ring-flame" : ""}`}>
+                    <button
+                      onClick={() => setOpenSlot(open ? null : slot)}
+                      aria-expanded={open}
+                      className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2.5 text-left transition-colors hover:bg-flame/10"
+                    >
+                      {item ? (
+                        <ItemArt id={item.baseId} name={stName(item)} size={32} rarity={item.identified ? item.rarity : undefined} />
+                      ) : (
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center border border-dashed border-line text-mute"><Hammer size={14} aria-hidden /></span>
+                      )}
+                      <span className="min-w-0">
+                        <span className="block font-mono text-[0.84rem] uppercase text-flamedim">{SLOT_META[slot].short}</span>
+                        <span className="block truncate font-display text-[1rem] uppercase tracking-[0.03em] text-parch" title={item ? stName(item) : "Пусто"}>{item ? stName(item) : "Пусто"}</span>
                       </span>
+                    </button>
+                    {item && (
+                      <button
+                        onClick={() => inspectGear(item.uid)}
+                        className="mr-1 flex h-9 w-9 shrink-0 items-center justify-center text-mute transition-colors hover:text-flamehi"
+                        aria-label={`Подробнее: ${stName(item)}`}
+                        title="Подробнее о предмете"
+                      ><Info size={16} aria-hidden /></button>
                     )}
-                    <span className="min-w-0">
-                      <span className="block font-mono text-[0.6rem] uppercase text-flamedim">{SLOT_META[slot].short}</span>
-                      <span className="block truncate font-display text-[0.8rem] uppercase tracking-[0.04em] text-parch">
-                        {item ? stName(item) : "—"}
-                      </span>
-                    </span>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -480,45 +487,43 @@ export function Dungeon({
                     закрыть
                   </button>
                 </div>
-                <div className="grid max-h-52 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                <div className="grid max-h-72 gap-2 overflow-y-auto pr-1">
                   {equippedUid && (
                     <button
-                      onClick={() => { onUnequip(openSlot); setHover(null); }}
-                      onMouseEnter={() => setHover(player.armory.find((g) => g.uid === equippedUid) ?? null)}
-                      onMouseLeave={() => setHover(null)}
+                      onClick={() => onUnequip(openSlot)}
                       className="border border-rubric/60 bg-rubric/10 px-3 py-2 text-left transition-colors hover:bg-rubric/20"
                     >
-                      <span className="block font-display text-[0.85rem] uppercase tracking-[0.08em] text-rubric">Снять всё</span>
-                      <span className="block text-[0.7rem] text-mute">Ячейка останется пустой</span>
+                      <span className="block font-display text-[1rem] uppercase tracking-[0.06em] text-rubric">Снять предмет</span>
+                      <span className="block text-[0.92rem] text-mute">Ячейка останется пустой</span>
                     </button>
                   )}
-                  {candidates
-                    .filter((g) => g.uid !== equippedUid)
-                    .map((g) => {
-                      const done = player.equip[openSlot!] === g.uid;
-                      return (
+                  {candidates.filter((g) => g.uid !== equippedUid).map((g) => {
+                    const wearable = canWear(g, player);
+                    return (
+                      <div key={g.uid} className="flex min-w-0 items-center gap-2 border border-line bg-slab2 pr-1">
                         <button
-                          key={g.uid}
-                          onClick={() => { onEquip(g.uid, openSlot!); setHover(null); }}
-                          onMouseEnter={() => setHover(g)}
-                          onMouseLeave={() => setHover(null)}
-                          className="flex items-center gap-2 border border-line bg-slab2 px-3 py-2 text-left transition-colors enabled:hover:border-flame enabled:hover:bg-flame/10 disabled:opacity-50"
+                          onClick={() => onEquip(g.uid, openSlot!)}
+                          disabled={!wearable}
+                          title={wearable ? `Надеть: ${SLOT_META[openSlot!].name}` : wearRequirementNote(g, player)}
+                          className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-left transition-colors enabled:hover:bg-flame/10 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          <ItemArt id={g.baseId} name={stName(g)} size={32} rarity={g.identified ? g.rarity : undefined} />
+                          <ItemArt id={g.baseId} name={stName(g)} size={36} rarity={g.identified ? g.rarity : undefined} />
                           <span className="min-w-0">
-                            <span className="block truncate font-display text-[0.85rem] uppercase tracking-[0.06em] text-flamehi">
-                              {stName(g)}
-                            </span>
-                            <span className="block font-mono text-[0.62rem] text-mute">
-                              ур. {g.level ?? 1} · {g.identified ? "исследовано" : "редкость ???"}
-                              {GEAR_BASES[g.baseId]?.hands === 2 ? " · обе руки" : ""} {done && "· надето"}
+                            <span className="block truncate font-display text-[1rem] uppercase tracking-[0.04em] text-flamehi">{stName(g)}</span>
+                            <span className="block font-mono text-[0.86rem] leading-snug text-mute">
+                              ур. {g.level ?? 1} · {gearStatReqLabel(g)} · {g.identified ? "исследовано" : "редкость ???"}
+                              {GEAR_BASES[g.baseId]?.hands === 2 ? " · обе руки" : ""}
                             </span>
                           </span>
                         </button>
-                      );
-                    })}
+                        <button onClick={() => inspectGear(g.uid)} className="flex h-9 w-9 shrink-0 items-center justify-center text-mute hover:text-flamehi" aria-label={`Подробнее: ${stName(g)}`} title="Подробнее о предмете">
+                          <Info size={16} aria-hidden />
+                        </button>
+                      </div>
+                    );
+                  })}
                   {candidates.length <= (equippedUid ? 1 : 0) && (
-                    <p className="text-[0.78rem] italic text-mute">Подходящих вещей нет — загляни в магазин.</p>
+                    <p className="text-[0.96rem] italic text-mute">Подходящих вещей нет — загляни в магазин.</p>
                   )}
                 </div>
               </div>
@@ -537,7 +542,7 @@ export function Dungeon({
                 label === "" ? (
                   <span key={i} className="h-11 w-11" />
                 ) : label === "◈" ? (
-                  <span key={i} className="flex h-11 w-11 items-center justify-center border border-line bg-black/40 font-mono text-[0.65rem] text-flamedim" title="Ты здесь">·</span>
+                  <span key={i} className="flex h-11 w-11 items-center justify-center border border-line bg-black/40 font-mono text-[0.81rem] text-flamedim" title="Ты здесь">·</span>
                 ) : (
                   <button
                     key={i}
@@ -552,7 +557,7 @@ export function Dungeon({
             </div>
             <div className="flex-1">
               <div className="sc mb-1.5">Журнал этажа</div>
-              <div className="max-h-40 space-y-1 overflow-y-auto border border-line bg-black/40 px-3 py-2 text-[0.84rem] leading-snug">
+              <div className="max-h-40 space-y-1 overflow-y-auto border border-line bg-black/40 px-3 py-2 text-[0.96rem] leading-snug">
                 {run.log.length === 0 && <span className="italic text-mute">Тишина.</span>}
                 {run.log.slice(-40).reverse().map((l, i) => (
                   <div
@@ -572,13 +577,13 @@ export function Dungeon({
             </div>
           </div>
 
-          <div className="border border-line bg-slab/70 px-4 py-3 text-[0.84rem] leading-snug text-mute">
+          <div className="border border-line bg-slab/70 px-4 py-3 text-[0.96rem] leading-snug text-mute">
             <span className="sc mb-1 block">Разведка и опасности</span>
-            <p className="font-mono text-[0.74rem] text-parch/80">
+            <p className="font-mono text-[0.88rem] text-parch/80">
               Новый путь: <span className="text-flame">60%</span> тихо · <span className="text-rubric">10%</span> ловушка ·{" "}
               <span className="text-rubric">20%</span> бой · <span className="text-verd">10%</span> находка
             </p>
-            <p className="mt-1 font-mono text-[0.74rem] text-parch/80">
+            <p className="mt-1 font-mono text-[0.88rem] text-parch/80">
               Известный путь: <span className="text-flame">75%</span> тихо · <span className="text-rubric">5%</span> ловушка ·{" "}
               <span className="text-rubric">20%</span> бой
             </p>
@@ -605,10 +610,10 @@ export function Dungeon({
                   >
                     <ItemArt id={id} name={def.name} size={36} framed={false} />
                     <span>
-                      <span className="block font-display text-[0.82rem] uppercase tracking-[0.1em] text-verd">
-                        {def.name} <span className="font-mono text-[0.7rem]">×{n}</span>
+                      <span className="block font-display text-[0.94rem] uppercase tracking-[0.1em] text-verd">
+                        {def.name} <span className="font-mono text-[0.84rem]">×{n}</span>
                       </span>
-                      <span className="block font-mono text-[0.66rem] text-mute">
+                      <span className="block font-mono text-[0.82rem] text-mute">
                         {!intOk
                           ? `нужен ИНТ ${req}`
                           : def.use?.type === "heal"
@@ -636,7 +641,7 @@ export function Dungeon({
         </div>
       </div>
 
-      {hover && <GearNote item={hover} player={player} />}
+      {detailItem && <GearNote item={detailItem} player={player} onClose={() => setDetailUid(null)} />}
     </div>
   );
 }

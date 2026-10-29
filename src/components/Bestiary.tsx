@@ -87,7 +87,7 @@ export function Bestiary() {
                   type="button"
                   aria-pressed={threat === t}
                   onClick={() => setThreat(t)}
-                  className={`border px-2.5 py-2 font-mono text-[0.72rem] transition-colors ${
+                  className={`border px-2.5 py-2 font-mono text-[0.86rem] transition-colors ${
                     threat === t
                       ? t === "catastrophe"
                         ? "border-rubric bg-rubric/20 text-parch"
@@ -103,7 +103,7 @@ export function Bestiary() {
             </div>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 self-end font-mono text-[0.74rem] text-mute lg:justify-end">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 self-end font-mono text-[0.88rem] text-mute lg:justify-end">
           <span>карта <b className="text-parch">{size}×{size}</b></span>
           <span>уровень монстра <b className="text-flamehi">{level}</b></span>
           <span>этаж <b className="text-parch">{floor}</b></span>
@@ -116,7 +116,7 @@ export function Bestiary() {
           <p className="mt-1 text-xs leading-snug text-mute">{THREAT_META[threat].desc}</p>
           <div className="mt-4 space-y-2.5">
             {LOOT_LABELS.map(([key, label, Icon]) => (
-              <div key={key} className="grid grid-cols-[110px_1fr_44px] items-center gap-2 text-[0.78rem]">
+              <div key={key} className="grid grid-cols-[110px_1fr_44px] items-center gap-2 text-[0.92rem]">
                 <span className="flex items-center gap-1.5 text-parch/85"><Icon size={13} aria-hidden />{label}</span>
                 <span className="h-2.5 border border-line bg-black/50">
                   <span
@@ -128,7 +128,7 @@ export function Bestiary() {
               </div>
             ))}
           </div>
-          <p className="mt-3 text-[0.74rem] leading-snug text-mute">
+          <p className="mt-3 text-[0.88rem] leading-snug text-mute">
             Для обычного монстра база: 30% ничего, 30% золото, 20% реагенты, 15% припасы, 5% снаряжение.
             Каждый уровень выше этажа переносит по 1 п.п. из «ничего» в каждую полезную категорию.
           </p>
@@ -138,7 +138,7 @@ export function Bestiary() {
           <h4 className="font-display text-lg uppercase tracking-[0.12em] text-flamehi">Редкость снаряжения</h4>
           <div className="mt-4 space-y-2.5">
             {(["common", "rare", "epic", "legendary"] as const).map((tier) => (
-              <div key={tier} className="grid grid-cols-[110px_1fr_44px] items-center gap-2 text-[0.78rem]">
+              <div key={tier} className="grid grid-cols-[110px_1fr_44px] items-center gap-2 text-[0.92rem]">
                 <span className={RARITY_TEXT[tier]}>
                   {tier === "common" ? "Обычное" : tier === "rare" ? "Редкое" : tier === "epic" ? "Эпическое" : "Легендарное"}
                 </span>
@@ -155,7 +155,7 @@ export function Bestiary() {
               </div>
             ))}
           </div>
-          <p className="mt-3 text-[0.74rem] leading-snug text-mute">
+          <p className="mt-3 text-[0.88rem] leading-snug text-mute">
             База 60/30/8/2. Ужас, катастрофа и уровень выше этажа повышают шанс редкого, эпического и
             легендарного качества.
           </p>
@@ -175,16 +175,16 @@ export function Bestiary() {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <h5 className="font-display text-base uppercase tracking-[0.08em] text-flamehi">{enemy.name}</h5>
-                    <span className="font-mono text-[0.68rem] text-verd">{CREATURE_META[enemy.type].name}</span>
-                    <span className="font-mono text-[0.68rem] text-mute">с этажа {enemy.minFloor}</span>
+                    <span className="font-mono text-[0.84rem] text-verd">{CREATURE_META[enemy.type].name}</span>
+                    <span className="font-mono text-[0.84rem] text-mute">с этажа {enemy.minFloor}</span>
                   </div>
-                  <p className="mt-1 text-[0.78rem] italic leading-snug text-mute">{enemy.flavor}</p>
-                  <p className="mt-1 font-mono text-[0.68rem] text-parch/75">
+                  <p className="mt-1 text-[0.92rem] italic leading-snug text-mute">{enemy.flavor}</p>
+                  <p className="mt-1 font-mono text-[0.84rem] text-parch/75">
                     {[...new Set(enemy.moves)].map((mv) => MOVE_LABELS[mv] ?? mv).join(" · ")}
                   </p>
-                  <p className="mt-0.5 text-[0.7rem] text-mute">{CREATURE_META[enemy.type].note}</p>
+                  <p className="mt-0.5 text-[0.84rem] text-mute">{CREATURE_META[enemy.type].note}</p>
                 </div>
-                <div className="flex flex-row gap-3 font-mono text-[0.7rem] text-mute sm:flex-col sm:items-end sm:gap-1">
+                <div className="flex flex-row gap-3 font-mono text-[0.84rem] text-mute sm:flex-col sm:items-end sm:gap-1">
                   <span className="flex items-center gap-1"><Skull size={12} aria-hidden />{enemy.hp} ОЗ</span>
                   <span className="flex items-center gap-1"><Swords size={12} aria-hidden />{enemy.atk[0]}–{enemy.atk[1]}</span>
                   <span className="flex items-center gap-1"><Shield size={12} aria-hidden />{enemy.armor} брони</span>
@@ -208,8 +208,8 @@ export function Bestiary() {
               </span>
               <div>
                 <h5 className="font-display text-base uppercase tracking-[0.08em] text-flamehi">{boss.name}</h5>
-                <p className="font-mono text-[0.68rem] text-rubric">{boss.title} · {CREATURE_META[boss.type].name}</p>
-                <ul className="mt-1.5 space-y-0.5 text-[0.78rem] text-parch/85">
+                <p className="font-mono text-[0.84rem] text-rubric">{boss.title} · {CREATURE_META[boss.type].name}</p>
+                <ul className="mt-1.5 space-y-0.5 text-[0.92rem] text-parch/85">
                   {boss.abilitiesDesc?.map((a) => <li key={a}>• {a}</li>)}
                 </ul>
               </div>

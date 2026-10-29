@@ -1,5 +1,9 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useId, useRef, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { RarityTier } from "../game/types";
+
+const modalStack: HTMLElement[] = [];
+let bodyOverflowBeforeModal = "";
 
 /** Рамки карточек по редкости: обычное — обычная, редкое — сине-голубая, эпическое — фиолетовое, легендарное — золотое. */
 export const RARITY_STYLE: Record<RarityTier, CSSProperties> = {
@@ -36,7 +40,7 @@ export function RarityBadge({ tier, className = "" }: { tier: RarityTier; classN
   return (
     <span
       style={RARITY_STYLE[tier]}
-      className={`inline-block border px-1.5 py-[3px] font-mono text-[0.64rem] uppercase leading-none tracking-[0.08em] ${RARITY_TEXT[tier]} ${className}`}
+      className={`inline-block border px-1.5 py-[3px] font-mono text-[0.86rem] uppercase leading-none tracking-[0.08em] ${RARITY_TEXT[tier]} ${className}`}
     >
       {tier === "common" ? "обычное" : tier === "rare" ? "редкое" : tier === "epic" ? "эпическое" : "легендарное"}
     </span>
@@ -72,7 +76,7 @@ export function Btn({
       title={title}
       disabled={disabled}
       onClick={onClick}
-      className={`rounded-[2px] border px-4 py-2.5 font-display text-[0.78rem] uppercase leading-none tracking-[0.16em] transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flame/70 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-line disabled:hover:text-parch ${tones[tone]} ${className}`}
+      className={`inline-flex items-center justify-center rounded-[2px] border px-4 py-2.5 font-display text-[0.92rem] uppercase leading-none tracking-[0.12em] transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flame/70 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-line disabled:hover:text-parch ${tones[tone]} ${className}`}
     >
       {children}
     </button>
@@ -190,28 +194,95 @@ export function Modal({
   actions: ReactNode;
   onClose?: () => void;
 }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-[3px]">
-      <div className="rise w-full max-w-lg border border-line bg-slab shadow-[0_40px_90px_-30px_rgba(0,0,0,1)]">
-        <div className="border-b border-line bg-slab2/60 px-5 py-4">
-          <div className="mb-1 flex items-center justify-between gap-4">
-            <h2 className="font-display text-xl uppercase tracking-[0.14em] text-flamehi">{title}</h2>
+  const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (modalStack.length === 0) {
+      bodyOverflowBeforeModal = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+    }
+    modalStack.push(dialog);
+    dialog.focus();
+
+    const onKey = (event: KeyboardEvent) => {
+      if (modalStack[modalStack.length - 1] !== dialog) return;
+      if (event.key === "Escape" && closeRef.current) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]',
+      )).filter((element) => element.getClientRects().length > 0);
+      if (!focusable.length) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || active === dialog)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || active === dialog)) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("keydown", onKey, true);
+      const index = modalStack.indexOf(dialog);
+      if (index >= 0) modalStack.splice(index, 1);
+      if (modalStack.length === 0) document.body.style.overflow = bodyOverflowBeforeModal;
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, []);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-3 backdrop-blur-[3px] sm:p-5"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose?.();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="rise flex max-h-[92dvh] w-full max-w-xl flex-col border border-line bg-slab shadow-[0_40px_90px_-30px_rgba(0,0,0,1)] outline-none"
+      >
+        <div className="shrink-0 border-b border-line bg-slab2/60 px-5 py-4">
+          <div className="flex items-start justify-between gap-4">
+            <h2 id={titleId} className="font-display text-xl uppercase leading-snug tracking-[0.1em] text-flamehi">{title}</h2>
             {onClose && (
               <button
                 onClick={onClose}
-                className="text-mute transition-colors hover:text-rubric"
-                aria-label="Закрыть"
+                className="-mr-1 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center text-lg text-mute transition-colors hover:text-rubric focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flame"
+                aria-label="Закрыть окно"
               >
                 ✕
               </button>
             )}
           </div>
-          {sub && <p className="text-sm text-mute italic">{sub}</p>}
+          {sub && <p className="mt-1 text-sm italic leading-snug text-mute">{sub}</p>}
         </div>
-        {children && <div className="px-5 py-4 text-[0.95rem] leading-relaxed text-parch">{children}</div>}
-        <div className="flex flex-wrap justify-end gap-2 border-t border-line bg-black/30 px-5 py-3">{actions}</div>
+        {children && <div className="min-h-0 overflow-y-auto overscroll-contain px-5 py-4 text-[1.05rem] leading-relaxed text-parch">{children}</div>}
+        <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-line bg-black/30 px-5 py-3">{actions}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -231,7 +302,7 @@ export function Tag({
     rubric: "border-rubric/70 text-rubric",
   };
   return (
-    <span title={title} className={`inline-block border px-1.5 py-[3px] font-mono text-[0.66rem] leading-none ${t[tone]}`}>
+    <span title={title} className={`inline-block border px-1.5 py-[3px] font-mono text-[0.89rem] leading-none ${t[tone]}`}>
       {children}
     </span>
   );

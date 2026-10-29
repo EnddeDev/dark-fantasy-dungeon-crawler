@@ -50,12 +50,7 @@ export const WEAR_RANGE: Record<WearTier, { base: number; lo: number; hi: number
 };
 export type RarityTier = "common" | "rare" | "epic" | "legendary";
 
-/**
- * Класс снаряжения определяет, от какой характеристики зависит его использование:
- * лёгкое — в основном Интеллект (иногда Ловкость),
- * среднее — в основном Ловкость (иногда Сила),
- * тяжёлое — только Сила.
- */
+/** Вес/габарит снаряжения. Характеристика задаётся отдельно: лёгкий нож — ЛОВ, посох — ИНТ. */
 export type GearClass = "light" | "medium" | "heavy";
 
 import type { GearEffectId, GearPassiveId } from "./gearEffects";

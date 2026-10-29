@@ -10,6 +10,8 @@ import {
   WEAR_META,
   isImmuneTo,
   scaledGearStats,
+  consumableIntReq,
+  consumableScaleLabel,
 } from "../game/content";
 import { combatReadout, queuePreview, type BattleState, type PlayerAction } from "../game/battle";
 import { FoePortrait } from "./FoeArt";
@@ -189,20 +191,20 @@ export function BattleView({
                 title={mine ? "твой ход" : "ход противника"}
               >
                 <span className="font-mono text-3xl leading-none tab sm:text-4xl">{ap}</span>
-                <span className="mt-1 font-display text-[0.56rem] uppercase tracking-[0.18em]">
+                <span className="mt-1 font-display text-[0.72rem] uppercase tracking-[0.18em]">
                   {mine ? "ты" : "враг"}
                 </span>
               </span>
             );
           })}
-          <span className="ml-auto flex shrink-0 flex-col justify-center border border-line bg-black/40 px-3 py-1.5 text-right font-mono text-[0.7rem] leading-tight text-mute">
+          <span className="ml-auto flex shrink-0 flex-col justify-center border border-line bg-black/40 px-3 py-1.5 text-right font-mono text-[0.84rem] leading-tight text-mute">
             <span>
               ходов у тебя: <b className="text-flame">{b.p.ap}</b>
             </span>
             <span>
               у врага: <b className="text-rubric">{e.ap}</b>
             </span>
-            <span className="text-[0.62rem] text-flamedim">у кого больше — тот идёт первым</span>
+            <span className="text-[0.78rem] text-flamedim">у кого больше — тот идёт первым</span>
           </span>
         </div>
       </div>
@@ -214,11 +216,11 @@ export function BattleView({
             <div className="flex flex-wrap items-baseline justify-between gap-3">
               <div>
                 <h3 className="font-display text-lg uppercase tracking-[0.14em] text-flamehi">Покоритель</h3>
-                <span className="font-mono text-[0.68rem] text-mute">
+                <span className="font-mono text-[0.84rem] text-mute">
                   оружие: <b className="text-parch">{b.p.weaponName}</b>
                 </span>
               </div>
-              <span className="font-mono text-[0.7rem] text-mute">
+              <span className="font-mono text-[0.84rem] text-mute">
                 броня {effArmor} · уклон {Math.round(b.p.evade * 100)}%
               </span>
             </div>
@@ -243,7 +245,7 @@ export function BattleView({
                 </button>
               </div>
 
-              <dl className="mt-2 grid gap-x-5 gap-y-1.5 text-[0.82rem] sm:grid-cols-2">
+              <dl className="mt-2 grid gap-x-5 gap-y-1.5 text-[0.94rem] sm:grid-cols-2">
                 {rows.map((row) => {
                   const live = changed(row.base, row.now);
                   return (
@@ -252,7 +254,7 @@ export function BattleView({
                         <dt className="truncate text-mute">{row.label}</dt>
                         {row.badge && (
                           <span
-                            className={`border px-1 py-0.2 font-mono text-[0.62rem] font-bold ${
+                            className={`border px-1 py-0.2 font-mono text-[0.78rem] font-bold ${
                               row.badge.tone === "rubric"
                                 ? "border-rubric/60 bg-rubric/15 text-rubric"
                                 : row.badge.tone === "flame"
@@ -264,10 +266,10 @@ export function BattleView({
                           </span>
                         )}
                         <dd className="ml-auto flex shrink-0 items-baseline gap-1.5 font-mono tab">
-                          {live && <span className="text-[0.72rem] text-mute line-through decoration-rubric/70">{row.base}</span>}
+                          {live && <span className="text-[0.86rem] text-mute line-through decoration-rubric/70">{row.base}</span>}
                           <span
                             key={row.now}
-                            className={`value-pop text-[0.92rem] font-bold ${
+                            className={`value-pop text-[1.02rem] font-bold ${
                               live ? (row.badge?.tone === "rubric" ? "text-rubric" : "text-flame") : "text-flamehi"
                             }`}
                           >
@@ -275,7 +277,7 @@ export function BattleView({
                           </span>
                         </dd>
                       </div>
-                      <div className="truncate font-mono text-[0.6rem] text-mute/80">{row.hint}</div>
+                      <div className="truncate font-mono text-[0.76rem] text-mute/80">{row.hint}</div>
                     </div>
                   );
                 })}
@@ -284,22 +286,22 @@ export function BattleView({
               <div className="mt-2 grid grid-cols-3 gap-2 border border-flamedim/40 bg-black/35 p-2 text-center">
                 <div>
                   <div key={`mn${r.effMin}`} className="value-pop font-mono text-lg tab leading-none text-flame">{r.effMin}</div>
-                  <div className="sc mt-1 text-[0.52rem]">мин. по врагу</div>
+                  <div className="sc mt-1 text-[0.68rem]">мин. по врагу</div>
                 </div>
                 <div>
                   <div key={`av${r.dmgAvg}`} className="value-pop font-mono text-lg tab leading-none text-flamehi">
                     {Math.round((r.effMin + r.effMax) / 2)}
                   </div>
-                  <div className="sc mt-1 text-[0.52rem]">средн.</div>
+                  <div className="sc mt-1 text-[0.68rem]">средн.</div>
                 </div>
                 <div>
                   <div key={`mx${r.effMax}`} className="value-pop font-mono text-lg tab leading-none text-flame">{r.effMax}</div>
-                  <div className="sc mt-1 text-[0.52rem]">макс. по врагу</div>
+                  <div className="sc mt-1 text-[0.68rem]">макс. по врагу</div>
                 </div>
               </div>
 
               {full && (
-                <div className="mt-3 space-y-1.5 border-t border-line/70 pt-2.5 text-[0.78rem] leading-snug">
+                <div className="mt-3 space-y-1.5 border-t border-line/70 pt-2.5 text-[0.92rem] leading-snug">
                   <p className="text-mute">
                     Расчёт удара: <b className="text-parch">{b.p.hit[0]}–{b.p.hit[1]}</b> по оружию +{" "}
                     <b className="text-parch">{Math.floor(b.p.stats.str * 0.8)}</b> от СИЛ ({b.p.stats.str}×0.8)
@@ -335,7 +337,7 @@ export function BattleView({
                       ))}
                     </div>
                   )}
-                  <p className="font-mono text-[0.68rem] text-mute">
+                  <p className="font-mono text-[0.84rem] text-mute">
                     статусы:{" "}
                     {b.p.statuses.rage > 0 ? `ярость ${b.p.statuses.rage} · ` : ""}
                     {b.p.statuses.curse > 0 ? `проклятие ${b.p.statuses.curse} · ` : ""}
@@ -355,10 +357,10 @@ export function BattleView({
             <div className="mt-3 border-t-2 border-line/80 bg-black/40 p-3">
               <div className="flex items-baseline justify-between">
                 <span className="sc text-flamedim">Эффекты на персонаже в бою</span>
-                <span className="font-mono text-[0.62rem] text-mute">{activeEffects.length} активных</span>
+                <span className="font-mono text-[0.78rem] text-mute">{activeEffects.length} активных</span>
               </div>
               {activeEffects.length === 0 ? (
-                <p className="mt-1.5 text-[0.78rem] italic text-mute">
+                <p className="mt-1.5 text-[0.92rem] italic text-mute">
                   Все характеристики стандартные: нет действующих проклятий и усилений.
                 </p>
               ) : (
@@ -373,19 +375,19 @@ export function BattleView({
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-baseline gap-x-2">
                           <b
-                            className={`font-display text-[0.86rem] uppercase tracking-[0.08em] ${
+                            className={`font-display text-[0.98rem] uppercase tracking-[0.08em] ${
                               m.good ? "text-verd" : "text-rubric"
                             }`}
                           >
                             {m.label}
                           </b>
                           {typeof m.rounds === "number" && (
-                            <span className="ml-auto shrink-0 font-mono text-[0.66rem] tab text-flamehi">
+                            <span className="ml-auto shrink-0 font-mono text-[0.82rem] tab text-flamehi">
                               осталось: {m.rounds} {m.rounds === 1 ? "раунд" : m.rounds < 5 ? "раунда" : "раундов"}
                             </span>
                           )}
                         </span>
-                        <span className="mt-0.5 block text-[0.76rem] leading-snug text-parch/85">{m.detail}</span>
+                        <span className="mt-0.5 block text-[0.9rem] leading-snug text-parch/85">{m.detail}</span>
                       </span>
                     </li>
                   ))}
@@ -404,7 +406,7 @@ export function BattleView({
         <div className="order-3 border-t border-line p-4 sm:p-6 lg:order-none lg:col-start-1 lg:row-start-2">
           <div className="border border-line bg-black/45 p-4">
             <div className="sc mb-2">Хроника боя</div>
-            <div className="max-h-[34vh] space-y-1.5 overflow-y-auto pr-1 text-[0.88rem] leading-snug">
+            <div className="max-h-[34vh] space-y-1.5 overflow-y-auto pr-1 text-[1rem] leading-snug">
               {b.log.slice(-40).reverse().map((l) => (
                 <div
                   key={l.id}
@@ -443,7 +445,7 @@ export function BattleView({
             </div>
             <button
               onClick={() => setCodex(true)}
-              className="absolute right-3 top-3 flex items-center gap-1.5 border border-flamedim bg-black/70 px-2.5 py-1.5 font-display text-[0.66rem] uppercase tracking-[0.14em] text-flame transition-colors hover:bg-flame hover:text-ink"
+              className="absolute right-3 top-3 flex items-center gap-1.5 border border-flamedim bg-black/70 px-2.5 py-1.5 font-display text-[0.82rem] uppercase tracking-[0.14em] text-flame transition-colors hover:bg-flame hover:text-ink"
             >
               <BookOpen size={13} aria-hidden />
               Способности
@@ -459,7 +461,7 @@ export function BattleView({
           </div>
 
           <div className="space-y-2 border-b border-line bg-slab/80 px-4 py-3">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[0.7rem] text-mute">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[0.84rem] text-mute">
               <span className="flex items-center gap-1.5 text-verd">
                 <Skull size={13} aria-hidden />
                 {CREATURE_META[e.def.type].name}
@@ -487,7 +489,7 @@ export function BattleView({
               {e.statuses.stunAp > 0 && <Tag tone="flame">оглушён −{e.statuses.stunAp}</Tag>}
               {e.forceGuard > 0 && <Tag tone="verd">вынужден держать оборону</Tag>}
             </div>
-            <p className="text-[0.78rem] italic leading-snug text-mute">{e.def.flavor}</p>
+            <p className="text-[0.92rem] italic leading-snug text-mute">{e.def.flavor}</p>
           </div>
 
           {/* ДЕЙСТВИЯ */}
@@ -515,7 +517,7 @@ export function BattleView({
                 <Btn tone="danger" disabled={!myTurn} onClick={() => act({ type: "flee" })}>
                   Сбежать
                 </Btn>
-                <div className="hidden items-center justify-center border border-line/60 px-2 text-center font-mono text-[0.62rem] leading-tight text-mute sm:flex">
+                <div className="hidden items-center justify-center border border-line/60 px-2 text-center font-mono text-[0.78rem] leading-tight text-mute sm:flex">
                   очередь: {side === "p" ? "ты" : "враг"}
                 </div>
               </div>
@@ -537,12 +539,12 @@ export function BattleView({
                       className="flex items-center justify-between gap-3 border border-line bg-slab2 px-3 py-2 text-left transition-colors enabled:hover:border-flame enabled:hover:bg-flame/10 disabled:opacity-45"
                     >
                       <span>
-                        <span className="block font-display text-[0.92rem] uppercase tracking-[0.1em] text-flamehi">
-                          {ws.name} <span className="font-mono text-[0.66rem] text-mute">({b.p.weaponName})</span>
+                        <span className="block font-display text-[1.02rem] uppercase tracking-[0.1em] text-flamehi">
+                          {ws.name} <span className="font-mono text-[0.82rem] text-mute">({b.p.weaponName})</span>
                         </span>
-                        <span className="block text-[0.75rem] leading-snug text-mute">{ws.desc}</span>
+                        <span className="block text-[0.89rem] leading-snug text-mute">{ws.desc}</span>
                       </span>
-                      <span className={`shrink-0 font-mono text-[0.7rem] ${!wsIntOk ? "text-rubric" : b.p.weaponCd > 0 ? "text-mute" : "text-verd"}`}>
+                      <span className={`shrink-0 font-mono text-[0.84rem] ${!wsIntOk ? "text-rubric" : b.p.weaponCd > 0 ? "text-mute" : "text-verd"}`}>
                         {!wsIntOk ? `нужен ИНТ ${wsReq}` : b.p.weaponCd > 0 ? `перезар. ${b.p.weaponCd} р.` : "готово"}
                       </span>
                     </button>
@@ -562,12 +564,12 @@ export function BattleView({
                         className="flex items-center justify-between gap-3 border border-flamedim/70 bg-slab2 px-3 py-2 text-left transition-colors enabled:hover:border-flame enabled:hover:bg-flame/10 disabled:opacity-45"
                       >
                         <span>
-                          <span className="block font-display text-[0.92rem] uppercase tracking-[0.1em] text-flame">
+                          <span className="block font-display text-[1.02rem] uppercase tracking-[0.1em] text-flame">
                             [Эпич.] {sk.name}
                           </span>
-                          <span className="block text-[0.75rem] leading-snug text-mute">{sk.desc}</span>
+                          <span className="block text-[0.89rem] leading-snug text-mute">{sk.desc}</span>
                         </span>
-                        <span className={`shrink-0 font-mono text-[0.7rem] ${!intOk ? "text-rubric" : cd > 0 ? "text-mute" : "text-verd"}`}>
+                        <span className={`shrink-0 font-mono text-[0.84rem] ${!intOk ? "text-rubric" : cd > 0 ? "text-mute" : "text-verd"}`}>
                           {!intOk ? `нужен ИНТ ${req}` : cd > 0 ? `перезар. ${cd} р.` : "готово"}
                         </span>
                       </button>
@@ -592,7 +594,7 @@ export function BattleView({
                   {Object.entries(b.bag).filter(([id]) => ITEMS[id]?.use).map(([id, n]) => {
                     const def = ITEMS[id];
                     const u = def.use!;
-                    const req = Math.max(0, (u.intReq ?? 0) - b.p.intDiscount);
+                    const req = consumableIntReq(def, b.p.intDiscount);
                     const intOk = b.p.stats.int >= req;
                     const fearImmune = u.type === "fear" && isImmuneTo(e.def.type, "fear");
                     const poisonImmune = u.type === "poison" && isImmuneTo(e.def.type, "poison");
@@ -607,13 +609,13 @@ export function BattleView({
                         <span className="flex items-start gap-2">
                           <ItemArt id={id} name={def.name} size={34} framed={false} className="mt-0.5" />
                           <span>
-                            <span className="block font-display text-[0.92rem] uppercase tracking-[0.1em] text-flamehi">
-                              {def.name} <span className="font-mono text-[0.7rem] text-flame">×{n}</span>
+                            <span className="block font-display text-[1.02rem] uppercase tracking-[0.1em] text-flamehi">
+                              {def.name} <span className="font-mono text-[0.84rem] text-flame">×{n}</span>
                             </span>
-                            <span className="block text-[0.75rem] leading-snug text-mute">{def.desc}</span>
+                            <span className="block text-[0.89rem] leading-snug text-mute">{def.desc}</span>
                           </span>
                         </span>
-                        <span className={`shrink-0 font-mono text-[0.72rem] ${intOk && !fearImmune && !poisonImmune ? "text-verd" : "text-rubric"}`}>
+                        <span className={`shrink-0 font-mono text-[0.86rem] ${intOk && !fearImmune && !poisonImmune ? "text-verd" : "text-rubric"}`}>
                           {fearImmune
                             ? "иммунитет к страху"
                             : poisonImmune
@@ -621,7 +623,9 @@ export function BattleView({
                               : intOk
                                 ? req > 0
                                   ? `ИНТ ${req} · готово`
-                                  : "готово"
+                                  : consumableScaleLabel(def)
+                                    ? `${consumableScaleLabel(def).replace(" + ", "")} · готово`
+                                    : "готово"
                                 : `нужен ИНТ ${req}`}
                         </span>
                       </button>
@@ -643,7 +647,7 @@ export function BattleView({
               <div>
                 <span className="sc text-flamedim">Кодекс противника</span>
                 <h3 className="font-display text-xl uppercase tracking-[0.1em] text-flamehi">{e.def.name}</h3>
-                <p className="font-mono text-[0.7rem] text-mute">
+                <p className="font-mono text-[0.84rem] text-mute">
                   {CREATURE_META[e.def.type].name} · уровень {e.level} · {THREAT_META[e.threat].name} · этаж {b.floor}
                 </p>
               </div>
@@ -652,7 +656,7 @@ export function BattleView({
               </button>
             </header>
 
-            <div className="space-y-4 px-4 py-4 text-[0.86rem] leading-snug">
+            <div className="space-y-4 px-4 py-4 text-[0.98rem] leading-snug">
               <section>
                 <h4 className="sc mb-2 text-flame">Что он делает</h4>
                 <ul className="space-y-2">
@@ -672,7 +676,7 @@ export function BattleView({
               {e.def.abilitiesDesc && (
                 <section>
                   <h4 className="sc mb-2 text-rubric">Особый устав</h4>
-                  <ul className="space-y-1 text-[0.82rem] text-parch/85">
+                  <ul className="space-y-1 text-[0.94rem] text-parch/85">
                     {e.def.abilitiesDesc.map((a, i) => (
                       <li key={i}>• {a}</li>
                     ))}
@@ -690,7 +694,7 @@ export function BattleView({
 
               <section>
                 <h4 className="sc mb-2 text-verd">Что на него действует и что нет</h4>
-                <ul className="space-y-1 text-[0.82rem] text-parch/85">
+                <ul className="space-y-1 text-[0.94rem] text-parch/85">
                   <li>
                     Броня <b className="text-parch">{e.armor}</b> — вычитается из физических ударов;{" "}
                     <b>пробивающие</b> приёмы и свитки игнорируют.
@@ -708,13 +712,13 @@ export function BattleView({
 
               <section>
                 <h4 className="sc mb-2 text-flamedim">Что оставляет после себя</h4>
-                <p className="text-[0.82rem] text-parch/85">{THREAT_META[e.threat].desc}</p>
-                <p className="mt-1 font-mono text-[0.72rem] text-mute">
+                <p className="text-[0.94rem] text-parch/85">{THREAT_META[e.threat].desc}</p>
+                <p className="mt-1 font-mono text-[0.86rem] text-mute">
                   опыт: {e.xp} XP · золото: {e.gold[0]}–{e.gold[1]}
                 </p>
               </section>
 
-              <p className="border-t border-line/70 pt-3 text-[0.76rem] italic text-mute">
+              <p className="border-t border-line/70 pt-3 text-[0.9rem] italic text-mute">
                 {CREATURE_META[e.def.type].note}
               </p>
             </div>
@@ -741,7 +745,7 @@ export function BattleView({
                   {b.loot.items.map((id, i) => (
                     <span key={id + i} className="flex items-center gap-1.5 border border-line bg-black/40 px-2 py-1">
                       <ItemArt id={id} name={ITEMS[id]?.name} size={28} framed={false} />
-                      <span className="font-mono text-[0.68rem] text-parch">{ITEMS[id]?.name ?? id}</span>
+                      <span className="font-mono text-[0.84rem] text-parch">{ITEMS[id]?.name ?? id}</span>
                     </span>
                   ))}
                   {b.loot.gear.map((g) => {
@@ -749,7 +753,7 @@ export function BattleView({
                     return (
                       <span key={g.uid} className="flex items-center gap-1.5 border border-line bg-black/40 px-2 py-1">
                         <ItemArt id={g.baseId} name={st.base.name} size={30} />
-                        <span className="font-mono text-[0.68rem] text-parch">
+                        <span className="font-mono text-[0.84rem] text-parch">
                           {st.base.name} · {WEAR_META[g.wear].name} · не исследовано
                         </span>
                       </span>
@@ -761,7 +765,7 @@ export function BattleView({
             <Btn tone="flame" className="mt-5 w-full py-3" onClick={onContinue}>
               {b.isBoss ? "Путь к лестнице открыт" : "Вернуться в коридор"}
             </Btn>
-            <p className="mt-2 font-mono text-[0.68rem] text-mute">
+            <p className="mt-2 font-mono text-[0.84rem] text-mute">
               здоровье остаётся с тобой: {b.p.hp}/{b.p.maxHp}
             </p>
           </div>
