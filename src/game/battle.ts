@@ -7,6 +7,8 @@ import {
   ITEMS,
   REAGENTS,
   THREAT_META,
+  consumableIntReq,
+  consumablePower,
   createGearItem,
   isImmuneTo,
   pick,
@@ -892,16 +894,18 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
       if (!def?.use) return err("Этим нельзя воспользоваться.");
       if (!b.bag[a.id]) return err(`«${def.name}» закончился.`);
       const u = def.use;
-      const req = Math.max(0, (u.intReq ?? 0) - b.p.intDiscount);
+      const req = consumableIntReq(def, b.p.intDiscount);
       if (b.p.stats.int < req) return err(`Для «${def.name}» нужен Интеллект ${req}.`);
+      const itemPower = consumablePower(def, b.p.stats);
+      const scrollMult = def.kind === "scroll" ? spellPowerMult : 1;
       if (u.type === "fear" && isImmuneTo(b.enemy.def.type, "fear")) {
         return err(`${b.enemy.def.name} не знает страха: флакон здесь бесполезен.`);
       }
 
       switch (u.type) {
         case "heal": {
-          let amt = (u.power ?? 0) + (u.scale ?? 0) * b.p.stats.int;
-          if (def.kind === "scroll") amt = Math.round(amt * spellPowerMult);
+          let amt = itemPower;
+          if (def.kind === "scroll") amt = Math.round(amt * scrollMult);
           b.p.hp = Math.min(b.p.maxHp, b.p.hp + amt);
           if (def.kind === "scroll") b.p.statuses.wound = 0;
           flash(b, "p", "heal", amt);
@@ -909,7 +913,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
           break;
         }
         case "damage": {
-          let dmg = Math.round(((u.power ?? 0) + (u.scale ?? 0) * b.p.stats.int) * spellPowerMult);
+          let dmg = Math.round(itemPower * scrollMult);
           if (u.vs && b.enemy.def.type === u.vs) dmg = Math.round(dmg * 2);
           if (b.p.statuses.rage > 0) dmg = Math.round(dmg * 1.5);
           if (b.p.statuses.curse > 0) dmg = Math.round(dmg * 0.7);
@@ -917,14 +921,14 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
           break;
         }
         case "chill": {
-          let dmg = Math.round(((u.power ?? 0) + (u.scale ?? 0) * b.p.stats.int) * spellPowerMult);
+          let dmg = Math.round(itemPower * scrollMult);
           hitEnemy(b, dmg, "magic", ` [${def.name}]`);
           b.enemy.statuses.chill = Math.max(b.enemy.statuses.chill, u.rounds ?? 3);
           push(b, `${b.enemy.def.name} скован холодом: его урон −30%.`, "p");
           break;
         }
         case "sunder_damage": {
-          let dmg = Math.round(((u.power ?? 0) + (u.scale ?? 0) * b.p.stats.int) * spellPowerMult);
+          let dmg = Math.round(itemPower * scrollMult);
           hitEnemy(b, dmg, "true", ` [${def.name}]`);
           b.enemy.armor = Math.max(0, b.enemy.armor - 2);
           push(b, `Молния раскалывает броню врага (−2 брони).`, "p");
@@ -950,12 +954,12 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
           break;
         }
         case "throw": {
-          const dmg = Math.round((u.power ?? 0) + (u.scale ?? 0) * b.p.stats.agi);
+          const dmg = Math.round(itemPower);
           hitEnemy(b, dmg, "phys", ` [${def.name}]`);
           break;
         }
         case "poison": {
-          const dmg = Math.round((u.power ?? 0) + (u.scale ?? 0) * b.p.stats.agi);
+          const dmg = Math.round(itemPower);
           hitEnemy(b, dmg, "phys", ` [${def.name}]`);
           if (isImmuneTo(b.enemy.def.type, "poison")) {
             push(b, `${b.enemy.def.name} (${b.enemy.def.type === "undead" ? "нежить" : "конструкт"}) невосприимчив к яду!`, "sys");
@@ -972,7 +976,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
           break;
         }
         case "explosion": {
-          const dmg = Math.round((u.power ?? 0) + (u.scale ?? 0) * b.p.stats.str);
+          const dmg = Math.round(itemPower);
           hitEnemy(b, dmg, "true", ` [${def.name}, взрыв]`);
           break;
         }
@@ -1002,7 +1006,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
           break;
         }
         case "acid": {
-          const dmg = Math.round(((u.power ?? 0) + (u.scale ?? 0) * b.p.stats.str) * spellPowerMult);
+          const dmg = Math.round(itemPower);
           hitEnemy(b, dmg, "true", ` [${def.name}]`);
           b.enemy.armor = Math.max(0, b.enemy.armor - 3);
           push(b, `Кислота разъедает броню: −3 (осталось ${b.enemy.armor}).`, "p");

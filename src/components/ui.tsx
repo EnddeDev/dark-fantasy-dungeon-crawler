@@ -40,7 +40,7 @@ export function RarityBadge({ tier, className = "" }: { tier: RarityTier; classN
   return (
     <span
       style={RARITY_STYLE[tier]}
-      className={`inline-block border px-1.5 py-[3px] font-mono text-[0.72rem] uppercase leading-none tracking-[0.08em] ${RARITY_TEXT[tier]} ${className}`}
+      className={`inline-block border px-1.5 py-[3px] font-mono text-[0.86rem] uppercase leading-none tracking-[0.08em] ${RARITY_TEXT[tier]} ${className}`}
     >
       {tier === "common" ? "обычное" : tier === "rare" ? "редкое" : tier === "epic" ? "эпическое" : "легендарное"}
     </span>
@@ -76,7 +76,7 @@ export function Btn({
       title={title}
       disabled={disabled}
       onClick={onClick}
-      className={`inline-flex items-center justify-center rounded-[2px] border px-4 py-2.5 font-display text-[0.78rem] uppercase leading-none tracking-[0.12em] transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flame/70 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-line disabled:hover:text-parch ${tones[tone]} ${className}`}
+      className={`inline-flex items-center justify-center rounded-[2px] border px-4 py-2.5 font-display text-[0.92rem] uppercase leading-none tracking-[0.12em] transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flame/70 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-line disabled:hover:text-parch ${tones[tone]} ${className}`}
     >
       {children}
     </button>
@@ -278,7 +278,7 @@ export function Modal({
           </div>
           {sub && <p className="mt-1 text-sm italic leading-snug text-mute">{sub}</p>}
         </div>
-        {children && <div className="min-h-0 overflow-y-auto overscroll-contain px-5 py-4 text-[0.95rem] leading-relaxed text-parch">{children}</div>}
+        {children && <div className="min-h-0 overflow-y-auto overscroll-contain px-5 py-4 text-[1.05rem] leading-relaxed text-parch">{children}</div>}
         <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-line bg-black/30 px-5 py-3">{actions}</div>
       </div>
     </div>,
@@ -302,7 +302,7 @@ export function Tag({
     rubric: "border-rubric/70 text-rubric",
   };
   return (
-    <span title={title} className={`inline-block border px-1.5 py-[3px] font-mono text-[0.75rem] leading-none ${t[tone]}`}>
+    <span title={title} className={`inline-block border px-1.5 py-[3px] font-mono text-[0.89rem] leading-none ${t[tone]}`}>
       {children}
     </span>
   );

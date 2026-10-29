@@ -18,6 +18,8 @@ import {
 import {
   EPIC_SKILLS,
   BREW_FAILURE_CHANCE,
+  consumableIntReq,
+  consumableScaleLabel,
   equipItem,
   identifyReqs,
   slotsForItem,
@@ -80,11 +82,16 @@ function groupOfKind(kind: string): SupplyGroup {
   return kind === "scroll" ? "scroll" : kind === "throwable" ? "throwable" : "potion";
 }
 
+function intReqLabel(def: ItemDef, discount: number): string {
+  const req = consumableIntReq(def, discount);
+  return req > 0 ? ` · требуется ИНТ ${req}` : "";
+}
+
 /** Человекочитаемое описание действия предмета. */
 function effectSummary(def: ItemDef): { what: string; when: string } {
   const u = def.use;
   if (!u) return { what: def.desc, when: "не применяется" };
-  const intPart = u.scale ? ` + ${u.scale}×ИНТ` : "";
+  const intPart = consumableScaleLabel(def);
   switch (u.type) {
     case "heal":
       return {
@@ -143,6 +150,19 @@ function effectSummary(def: ItemDef): { what: string; when: string } {
         what: "Позволяет уйти из боя.",
         when: u.fleeRate === 0 ? "Без потери добычи." : `Потеря до ${Math.round((u.fleeRate ?? 0.5) * 100)}% добычи.`,
       };
+    case "acid":
+      return {
+        what: `Наносит ${u.power}${intPart} урона сквозь броню и разъедает её на −3.`,
+        when: "Мгновенно. Только в бою. Интеллект не нужен.",
+      };
+    case "haste":
+      return { what: "+1 ход в каждом раунде.", when: `Действует ${u.rounds} раунда.` };
+    case "stone":
+      return { what: "Входящий урон снижен на 30%.", when: `Действует ${u.rounds} раунда.` };
+    case "terror":
+      return { what: "Враг вынужден держать защиту и не атакует.", when: `Действует ${u.rounds} хода.` };
+    case "stun_enemy":
+      return { what: "Враг теряет ходы в следующем раунде.", when: `Отнимает ${u.rounds} хода. Интеллект не нужен.` };
     default:
       return { what: def.desc, when: "Мгновенно." };
   }
@@ -479,7 +499,7 @@ export function Lobby({
               type="button"
               aria-pressed={gearSlot === value}
               onClick={() => { setGearSlot(value); setChosenSlot(null); }}
-              className={`flex items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[0.78rem] transition-colors ${
+              className={`flex items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[0.92rem] transition-colors ${
                 gearSlot === value ? "border-flamedim bg-flame/15 text-flamehi" : "border-line text-mute hover:text-parch"
               }`}
             >
@@ -492,7 +512,7 @@ export function Lobby({
           value={gearRarity}
           onChange={(e) => setGearRarity(e.target.value as RarityFilter)}
           aria-label="Фильтр редкости"
-          className="border border-line bg-soot px-2 py-1.5 font-mono text-[0.78rem] text-parch outline-none focus:border-flamedim"
+          className="border border-line bg-soot px-2 py-1.5 font-mono text-[0.92rem] text-parch outline-none focus:border-flamedim"
         >
           <option value="all">Любая редкость</option>
           <option value="unknown">Не исследовано</option>
@@ -501,7 +521,7 @@ export function Lobby({
           <option value="epic">Эпическое</option>
           <option value="legendary">Легендарное</option>
         </select>
-        <label className="flex items-center gap-1.5 border border-line bg-soot px-2 py-1.5 font-mono text-[0.78rem] text-mute">
+        <label className="flex items-center gap-1.5 border border-line bg-soot px-2 py-1.5 font-mono text-[0.92rem] text-mute">
           <ArrowDownUp size={13} aria-hidden />
           <select
             value={gearSort}
@@ -515,7 +535,7 @@ export function Lobby({
             <option value="rarity">Редкость</option>
           </select>
         </label>
-        <label className="flex cursor-pointer items-center gap-1.5 font-mono text-[0.78rem] text-mute">
+        <label className="flex cursor-pointer items-center gap-1.5 font-mono text-[0.92rem] text-mute">
           <input type="checkbox" checked={onlyUnknown} onChange={(e) => setOnlyUnknown(e.target.checked)} className="accent-[#e0a33c]" />
           <EyeOff size={13} aria-hidden />
           Только неизвестные
@@ -580,7 +600,7 @@ export function Lobby({
         <header className="max-w-2xl">
           <span className="sc text-flamedim">Лобби · лагерь под сводами</span>
           <h2 className="font-title text-4xl leading-[0.95] text-flamehi sm:text-5xl">Сумрак</h2>
-          <p className="mt-2 max-w-xl text-[0.9rem] leading-relaxed text-parch/85">
+          <p className="mt-2 max-w-xl text-[1rem] leading-relaxed text-parch/85">
             Здесь распределяют очки, исследуют трофейные клинки и покупают забытые рецепты. Выбери знакомый
             ярус для следующей вылазки: коридоры внизу длиннее, а Стражи — сильнее.
           </p>
@@ -609,11 +629,11 @@ export function Lobby({
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <span className="sc text-flamedim">Выбор яруса</span>
-                <p className="mt-1 text-[0.83rem] text-mute">
+                <p className="mt-1 text-[0.95rem] text-mute">
                   Победи Стража, чтобы открыть следующий этаж навсегда. Можно начинать сразу с любого открытого.
                 </p>
               </div>
-              <span className="font-mono text-[0.76rem] text-flame">
+              <span className="font-mono text-[0.9rem] text-flame">
                 выбран {selectedFloor}-й · {mazeSizeForFloor(selectedFloor)}×{mazeSizeForFloor(selectedFloor)} · опыт без потолка этажа
               </span>
             </div>
@@ -624,7 +644,7 @@ export function Lobby({
                   type="button"
                   aria-pressed={selectedFloor === floor}
                   onClick={() => setSelectedFloor(floor)}
-                  className={`shrink-0 border px-3 py-2 font-mono text-[0.75rem] transition-colors ${
+                  className={`shrink-0 border px-3 py-2 font-mono text-[0.89rem] transition-colors ${
                     selectedFloor === floor
                       ? "border-flame bg-flame/20 text-flamehi"
                       : "border-line text-mute hover:border-flamedim hover:text-parch"
@@ -635,7 +655,7 @@ export function Lobby({
               ))}
             </div>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
-              <p className="text-[0.82rem] text-mute">
+              <p className="text-[0.94rem] text-mute">
                 {player.statPoints > 0
                   ? `Нераспределённые очки характеристик: ${player.statPoints}.`
                   : "В лобби здоровье восстановлено перед вылазкой."}
@@ -654,14 +674,14 @@ export function Lobby({
                   key={t.id}
                   onClick={() => setTab(t.id)}
                   aria-current={tab === t.id ? "page" : undefined}
-                  className={`relative flex items-center gap-2 px-4 py-3 font-display text-[0.8rem] uppercase tracking-[0.18em] transition-colors sm:px-6 ${
+                  className={`relative flex items-center gap-2 px-4 py-3 font-display text-[0.92rem] uppercase tracking-[0.18em] transition-colors sm:px-6 ${
                     tab === t.id ? "bg-slab2 text-flamehi" : "text-mute hover:text-parch"
                   }`}
                 >
                   <Icon size={15} strokeWidth={1.7} aria-hidden />
                   <span>{t.label}</span>
                   {count > 0 && (
-                    <span className="border border-flame bg-flame/20 px-1.5 py-0.5 font-mono text-[0.65rem] text-flamehi">
+                    <span className="border border-flame bg-flame/20 px-1.5 py-0.5 font-mono text-[0.81rem] text-flamehi">
                       {count}
                     </span>
                   )}
@@ -720,14 +740,14 @@ export function Lobby({
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div className="flex flex-wrap items-center gap-3">
                             <Pips value={v} tone={v >= 5 ? "#e0a33c" : "#ad7a2c"} />
-                            <span className="font-mono text-[0.7rem] text-mute">{STAT_META[k].gain}</span>
+                            <span className="font-mono text-[0.84rem] text-mute">{STAT_META[k].gain}</span>
                           </div>
                           <Btn tone={can ? "flame" : "ghost"} disabled={!can} onClick={() => upgradeStat(k)}>
                             {v >= 10 ? "предел (10)" : `+1 (${cost} ${cost === 1 ? "очко" : "очка"})`}
                           </Btn>
                         </div>
-                        <p className="mt-2 text-[0.88rem] leading-snug text-parch/80">{STAT_META[k].blurb}</p>
-                        <div className="mt-1 font-mono text-[0.68rem] text-mute">
+                        <p className="mt-2 text-[1rem] leading-snug text-parch/80">{STAT_META[k].blurb}</p>
+                        <div className="mt-1 font-mono text-[0.84rem] text-mute">
                           Стоимость повышения: до 5 — <b>1 очко</b>, после 5 (с 5 до 10) — <b>2 очка</b>.
                         </div>
 
@@ -752,23 +772,23 @@ export function Lobby({
                                 } disabled:cursor-default`}
                               >
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="sc text-[0.55rem]">рубеж {threshold}</span>
+                                  <span className="sc text-[0.71rem]">рубеж {threshold}</span>
                                   {unlocked ? (
-                                    <span className="font-mono text-[0.6rem] text-flame">
+                                    <span className="font-mono text-[0.76rem] text-flame">
                                       {def ? "выбрано" : "выбрать 1 из 2"}
                                     </span>
                                   ) : (
-                                    <span className="font-mono text-[0.6rem] text-mute">закрыто</span>
+                                    <span className="font-mono text-[0.76rem] text-mute">закрыто</span>
                                   )}
                                 </div>
                                 <div
-                                  className={`mt-1 font-display text-[0.9rem] uppercase tracking-[0.08em] ${
+                                  className={`mt-1 font-display text-[1rem] uppercase tracking-[0.08em] ${
                                     def ? "text-flamehi" : unlocked ? "text-parch" : "text-mute"
                                   }`}
                                 >
                                   {def ? def.name : unlocked ? "Нажмите для выбора" : "Заперто"}
                                 </div>
-                                <div className="text-[0.76rem] leading-snug text-mute">
+                                <div className="text-[0.9rem] leading-snug text-mute">
                                   {def
                                     ? def.desc
                                     : unlocked
@@ -786,7 +806,7 @@ export function Lobby({
 
                 <div className="space-y-4">
                   <Panel className="p-4" title="Правила развития">
-                    <ul className="space-y-2 text-[0.85rem] leading-snug text-parch/85">
+                    <ul className="space-y-2 text-[0.97rem] leading-snug text-parch/85">
                       <li>
                         <b className="text-flame">Старт:</b> все характеристики равны 1, даётся <b>4 очка</b> для
                         свободного распределения.
@@ -806,7 +826,7 @@ export function Lobby({
                       </li>
                     </ul>
                     <Rune className="my-3" />
-                    <p className="text-[0.8rem] leading-snug text-mute">
+                    <p className="text-[0.92rem] leading-snug text-mute">
                       На 5-м и 10-м значении открывается выбор одной из двух пассивных способностей.
                     </p>
                   </Panel>
@@ -832,17 +852,17 @@ export function Lobby({
                       return (
                         <div key={slot} className={`flex min-h-[76px] items-center justify-between gap-3 border border-dashed px-3 py-2.5 ${chosenSlot === slot ? "border-flame bg-flame/5" : "border-line"}`}>
                           <div className="min-w-0">
-                            <div className="sc text-[0.68rem] text-flamedim">{SLOT_META[slot].name}</div>
-                            <p className="mt-1 text-[0.82rem] leading-snug text-mute">{occupied ? "Занято двуручным оружием" : "Пустая ячейка"}</p>
+                            <div className="sc text-[0.84rem] text-flamedim">{SLOT_META[slot].name}</div>
+                            <p className="mt-1 text-[0.94rem] leading-snug text-mute">{occupied ? "Занято двуручным оружием" : "Пустая ячейка"}</p>
                           </div>
-                          <Btn className="shrink-0 px-2.5 py-2 text-[0.7rem]" onClick={() => chooseSlot(slot)}>
+                          <Btn className="shrink-0 px-2.5 py-2 text-[0.84rem]" onClick={() => chooseSlot(slot)}>
                             {occupied ? "Заменить" : "Выбрать"}
                           </Btn>
                         </div>
                       );
                     })}
                   </div>
-                  <p className="mt-3 text-[0.78rem] leading-relaxed text-mute">Снятая вещь появится в инвентаре справа. Её эффекты сразу перестанут учитываться в листе персонажа.</p>
+                  <p className="mt-3 text-[0.92rem] leading-relaxed text-mute">Снятая вещь появится в инвентаре справа. Её эффекты сразу перестанут учитываться в листе персонажа.</p>
                 </section>
 
                 <section id="armory-inventory" aria-label="Инвентарь снаряжения" className="min-w-0 scroll-mt-4 border border-line bg-black/20 p-3">
@@ -851,16 +871,16 @@ export function Lobby({
                       <span className="sc text-flamedim">Свободные вещи</span>
                       <h3 className="mt-1 font-display text-xl uppercase tracking-[0.08em] text-flamehi">Инвентарь</h3>
                     </div>
-                    <span className="font-mono text-[0.8rem] text-mute">{visibleInventory.length} из {inventoryItems.length} · неизвестно: {inventoryItems.filter((item) => !item.identified).length}</span>
+                    <span className="font-mono text-[0.92rem] text-mute">{visibleInventory.length} из {inventoryItems.length} · неизвестно: {inventoryItems.filter((item) => !item.identified).length}</span>
                   </div>
                   {chosenSlot && (
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border border-flamedim/60 bg-flame/5 px-3 py-2 text-[0.82rem]">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border border-flamedim/60 bg-flame/5 px-3 py-2 text-[0.94rem]">
                       <span className="text-flamehi">Выбрать предмет: {SLOT_META[chosenSlot].name}</span>
                       <button className="text-mute underline underline-offset-2 hover:text-parch" onClick={() => { setChosenSlot(null); setGearSlot("all"); }}>Показать все</button>
                     </div>
                   )}
                   {gearFilters}
-                  <p className="my-3 text-[0.8rem] leading-relaxed text-mute">Приёмы, свойства и исследование — в окне «Подробнее».</p>
+                  <p className="my-3 text-[0.92rem] leading-relaxed text-mute">Приёмы, свойства и исследование — в окне «Подробнее».</p>
                   {visibleInventory.length > 0 ? (
                     <div className="grid grid-cols-1 gap-3 min-[1600px]:grid-cols-2">
                       {visibleInventory.map((item) => renderGearCard(item, "inventory"))}
@@ -868,7 +888,7 @@ export function Lobby({
                   ) : (
                     <div className="flex flex-col items-center gap-3 border border-dashed border-line px-4 py-12 text-center">
                       <PackageSearch size={30} className="text-mute" aria-hidden />
-                      <p className="text-[0.9rem] leading-relaxed text-mute">{inventoryItems.length === 0 ? "Все вещи надеты или инвентарь пуст. Новое снаряжение можно найти в подземелье или купить в магазине." : "Подходящих вещей нет. Измените фильтры или загляните в магазин."}</p>
+                      <p className="text-[1rem] leading-relaxed text-mute">{inventoryItems.length === 0 ? "Все вещи надеты или инвентарь пуст. Новое снаряжение можно найти в подземелье или купить в магазине." : "Подходящих вещей нет. Измените фильтры или загляните в магазин."}</p>
                       {(gearQuery || gearSlot !== "all" || gearRarity !== "all" || onlyUnknown || chosenSlot) && <Btn onClick={resetGearFilters}>Сбросить фильтры</Btn>}
                     </div>
                   )}
@@ -894,7 +914,7 @@ export function Lobby({
                         <span className="font-title text-3xl leading-none text-flamehi">{player.shopLevel}</span>
                         <span className="font-mono text-sm text-mute">/ {SHOP_MAX_LEVEL}</span>
                       </div>
-                      <p className="mt-1 max-w-xl text-[0.78rem] leading-snug text-mute">
+                      <p className="mt-1 max-w-xl text-[0.92rem] leading-snug text-mute">
                         На прилавке появляется снаряжение <b className="text-parch">не выше уровня лавки</b>. Чем выше
                         уровень — тем меньше изношенной дряни и больше дорогих редкостей.
                       </p>
@@ -907,7 +927,7 @@ export function Lobby({
                       >
                         {upgradeCost === 0 ? "Предел · уровень 10" : `Вложиться в лавку · ${upgradeCost} зол.`}
                       </Btn>
-                      <span className="font-mono text-[0.7rem] text-mute">
+                      <span className="font-mono text-[0.84rem] text-mute">
                         следующий уровень открывает вещи ур. {player.shopLevel + 1}
                       </span>
                     </div>
@@ -931,7 +951,7 @@ export function Lobby({
                         <div className="sc mb-2">{title}</div>
                         <div className="space-y-1.5">
                           {rows.map(([label, value, tone]) => (
-                            <div key={label} className="grid grid-cols-[112px_1fr_40px] items-center gap-2 text-[0.76rem]">
+                            <div key={label} className="grid grid-cols-[112px_1fr_40px] items-center gap-2 text-[0.9rem]">
                               <span className={tone}>{label}</span>
                               <span className="h-2 border border-line bg-black/60">
                                 <span
@@ -1016,7 +1036,7 @@ export function Lobby({
                       {shopSupplies.map((def) => {
                         const have = player.bag[def.id] ?? 0;
                         const can = player.gold >= (def.price ?? 0);
-                        const intReq = def.use?.intReq ? Math.max(1, def.use.intReq - d.intDiscount) : 0;
+                        const intReq = consumableIntReq(def, d.intDiscount);
                         const info = effectSummary(def);
                         return (
                           <Panel key={def.id} className="flex flex-col p-4">
@@ -1024,7 +1044,7 @@ export function Lobby({
                               <ItemArt id={def.id} name={def.name} size={56} />
                               <div className="min-w-0 flex-1">
                                 <h4
-                                  className="cursor-help font-display text-[1rem] uppercase leading-tight tracking-[0.08em] text-flamehi underline decoration-dotted underline-offset-2"
+                                  className="cursor-help font-display text-[1.08rem] uppercase leading-tight tracking-[0.08em] text-flamehi underline decoration-dotted underline-offset-2"
                                   onMouseEnter={() => setInfoTip({ kind: "item", id: def.id })}
                                   onMouseLeave={() => setInfoTip(null)}
                                   onFocus={() => setInfoTip({ kind: "item", id: def.id })}
@@ -1043,9 +1063,9 @@ export function Lobby({
                                 </div>
                               </div>
                             </div>
-                            <div className="mt-2 flex-1 text-[0.82rem] leading-snug">
+                            <div className="mt-2 flex-1 text-[0.94rem] leading-snug">
                               <p className="text-parch/85">{info.what}</p>
-                              <p className="mt-1 font-mono text-[0.68rem] text-flamedim">{info.when}</p>
+                              <p className="mt-1 font-mono text-[0.84rem] text-flamedim">{info.when}</p>
                             </div>
                             <div className="mt-3 flex items-center justify-between gap-2">
                               <span className="font-mono text-sm tab text-flamehi">
@@ -1066,7 +1086,7 @@ export function Lobby({
                   <div>
                     <div className="mb-3 border-b border-line pb-2">
                       <span className="sc text-verd">Отдельный отдел лавки</span>
-                      <p className="text-[0.8rem] text-mute">
+                      <p className="text-[0.92rem] text-mute">
                         Реагенты покупаются отдельно от припасов и живут в рюкзаке меж зельями — варка тратит их по спискам.
                       </p>
                     </div>
@@ -1082,7 +1102,7 @@ export function Lobby({
                             <div className="flex items-start gap-3">
                               <ItemArt id={def.id} name={def.name} size={56} />
                               <div className="min-w-0 flex-1">
-                                <h4 className="font-display text-[1rem] uppercase leading-tight tracking-[0.08em] text-flamehi">
+                                <h4 className="font-display text-[1.08rem] uppercase leading-tight tracking-[0.08em] text-flamehi">
                                   {def.name}
                                 </h4>
                                 <div className="mt-1 flex flex-wrap justify-end gap-1">
@@ -1090,7 +1110,7 @@ export function Lobby({
                                 </div>
                               </div>
                             </div>
-                            <p className="mt-2 flex-1 text-[0.85rem] italic leading-snug text-mute">{def.desc}</p>
+                            <p className="mt-2 flex-1 text-[0.97rem] italic leading-snug text-mute">{def.desc}</p>
                             <div className="mt-3 flex items-center justify-between gap-2">
                               <span className="font-mono text-sm tab text-flamehi">
                                 {def.price} зол.{have > 0 && <span className="ml-2 text-mute">в сумке: {have}</span>}
@@ -1161,7 +1181,7 @@ export function Lobby({
 
             {tab === "brew" && (
               <div>
-                <p className="dropcap mb-4 max-w-2xl text-[0.92rem] leading-relaxed text-parch/85">
+                <p className="dropcap mb-4 max-w-2xl text-[1.02rem] leading-relaxed text-parch/85">
                   Рецепты нельзя угадать: сперва купи лист у торговца. Изученные рецепты остаются с тобой.
                   При варке есть {Math.round(BREW_FAILURE_CHANCE * 100)}% шанс неудачи — ингредиенты сгорят,
                   даже если ничего не выйдет.
@@ -1199,7 +1219,7 @@ export function Lobby({
                         title={out.name}
                         right={<span className="font-mono text-xs tab text-verd">×{amount}</span>}
                       >
-                        <p className="text-[0.85rem] italic leading-snug text-mute">{out.desc}</p>
+                        <p className="text-[0.97rem] italic leading-snug text-mute">{out.desc}</p>
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
                           {needed.map(({ id, count }) => {
                             const have = player.bag[id] ?? 0;
@@ -1210,11 +1230,11 @@ export function Lobby({
                             );
                           })}
                         </div>
-                        <p className="mt-2 font-mono text-[0.68rem] text-rubric">
+                        <p className="mt-2 font-mono text-[0.84rem] text-rubric">
                           Успех 80% · неудача 20% · реагенты тратятся всегда
                         </p>
                         <div className="mt-3 flex items-center justify-between gap-2">
-                          <span className={`font-mono text-[0.72rem] ${intOk ? "text-mute" : "text-rubric"}`}>
+                          <span className={`font-mono text-[0.86rem] ${intOk ? "text-mute" : "text-rubric"}`}>
                             требуется ИНТ {r.intReq}
                             {!intOk && " — не хватает"}
                           </span>
@@ -1258,18 +1278,18 @@ export function Lobby({
                   <div className="flex items-start gap-2">
                     <ItemArt id={def.id} name={def.name} size={44} />
                     <div>
-                      <div className="font-display text-[0.95rem] uppercase tracking-[0.08em] text-flamehi">
+                      <div className="font-display text-[1.05rem] uppercase tracking-[0.08em] text-flamehi">
                         {def.name}
                       </div>
-                      <div className="font-mono text-[0.62rem] text-mute">
+                      <div className="font-mono text-[0.78rem] text-mute">
                         {def.kind === "scroll" ? "свиток" : def.kind === "throwable" ? "расходник" : "зелье"}
-                        {def.use?.intReq ? ` · требуется ИНТ ${def.use.intReq}` : ""}
+                        {intReqLabel(def, d.intDiscount)}
                       </div>
                     </div>
                   </div>
-                  <p className="mt-2 text-[0.82rem] leading-snug text-parch/90">{info.what}</p>
-                  <p className="mt-1 text-[0.72rem] italic leading-snug text-flamedim">{info.when}</p>
-                  <p className="mt-1 text-[0.72rem] italic text-mute">{def.desc}</p>
+                  <p className="mt-2 text-[0.94rem] leading-snug text-parch/90">{info.what}</p>
+                  <p className="mt-1 text-[0.86rem] italic leading-snug text-flamedim">{info.when}</p>
+                  <p className="mt-1 text-[0.86rem] italic text-mute">{def.desc}</p>
                 </>
               );
             })()
@@ -1279,13 +1299,13 @@ export function Lobby({
               const out = ITEMS[r.out];
               return (
                 <>
-                  <div className="font-display text-[0.95rem] uppercase tracking-[0.08em] text-flamehi">
+                  <div className="font-display text-[1.05rem] uppercase tracking-[0.08em] text-flamehi">
                     Рецепт: {out.name}
                   </div>
-                  <p className="mt-1 text-[0.78rem] italic text-mute">{out.desc}</p>
+                  <p className="mt-1 text-[0.92rem] italic text-mute">{out.desc}</p>
                   <div className="mt-2 border-t border-line/70 pt-2">
                     <div className="sc text-flamedim">Нужные реагенты</div>
-                    <ul className="mt-1 space-y-1 text-[0.78rem]">
+                    <ul className="mt-1 space-y-1 text-[0.92rem]">
                       {(() => {
                         const counts: Record<string, number> = {};
                         r.need.forEach((id) => (counts[id] = (counts[id] ?? 0) + 1));
@@ -1299,7 +1319,7 @@ export function Lobby({
                         ));
                       })()}
                     </ul>
-                    <p className="mt-2 font-mono text-[0.7rem] text-mute">
+                    <p className="mt-2 font-mono text-[0.84rem] text-mute">
                       требуется ИНТ {r.intReq} · цена рецепта {recipePrice(r)} зол. · 20% неудачи при варке
                     </p>
                   </div>
@@ -1332,7 +1352,7 @@ export function Lobby({
         <Modal
           title="Выбор пассивной способности"
           sub={`${STAT_META[pick.stat].name} достигла ${pick.tier} — выберите 1 способность из 2`}
-          actions={<span className="font-mono text-[0.7rem] text-mute">Решение определяет ветку развития</span>}
+          actions={<span className="font-mono text-[0.84rem] text-mute">Решение определяет ветку развития</span>}
         >
           <div className="grid gap-3 sm:grid-cols-2">
             {PASSIVES[pick.stat][String(pick.tier) as "5" | "10"].map((o) => (
@@ -1341,13 +1361,13 @@ export function Lobby({
                 onClick={() => choosePassive(o.id)}
                 className="group border border-line bg-slab2 p-3 text-left transition-all hover:border-flame hover:bg-flame/5"
               >
-                <div className="font-display text-[1rem] uppercase tracking-[0.1em] text-flamehi group-hover:text-flame">
+                <div className="font-display text-[1.08rem] uppercase tracking-[0.1em] text-flamehi group-hover:text-flame">
                   {o.name}
                 </div>
-                <div className="mt-1 font-mono text-[0.62rem] text-flamedim">
+                <div className="mt-1 font-mono text-[0.78rem] text-flamedim">
                   {pick.stat.toUpperCase()} · рубеж {pick.tier}
                 </div>
-                <p className="mt-2 text-[0.86rem] leading-snug text-parch/85">{o.desc}</p>
+                <p className="mt-2 text-[0.98rem] leading-snug text-parch/85">{o.desc}</p>
               </button>
             ))}
           </div>

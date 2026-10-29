@@ -1,25 +1,25 @@
 /**
  * Эффекты качества снаряжения и легендарные пассивки.
- * Каждый эффект привязан к той характеристике, от которой зависит предмет:
- * лёгкое — ИНТ, среднее — ЛОВ, тяжёлое — СИЛ.
+ * Каждый эффект привязан к характеристике назначения предмета (СИЛ/ЛОВ/ИНТ),
+ * а не к его весовому классу.
  */
 import type { StatKey } from "./types";
 
 /** Уникальные эффекты предметов (редкое даёт 1, эпическое ещё 2 или боевой приём). */
 export type GearEffectId =
-  // ── тяжёлое (СИЛ) ──
+  // ── силовые (СИЛ) ──
   | "damage_resist"
   | "riposte"
   | "thorns"
   | "stun_chance"
   | "regen"
-  // ── среднее (ЛОВ) ──
+  // ── ловкие (ЛОВ) ──
   | "evade"
   | "counter"
   | "crit_chance"
   | "crit_mult"
   | "vamp"
-  // ── лёгкое (ИНТ) ──
+  // ── магические (ИНТ) ──
   | "spell_damage"
   | "status_duration"
   | "magic_vamp";
@@ -34,7 +34,7 @@ export interface GearEffectDef {
 }
 
 export const GEAR_EFFECTS: Record<GearEffectId, GearEffectDef> = {
-  /* ── ТЯЖЁЛОЕ (СИЛ) ── */
+  /* ── СИЛОВЫЕ (СИЛ) ── */
   damage_resist: {
     id: "damage_resist", stat: "str", name: "Сопротивление урону",
     desc: "Весь получаемый урон снижен.",
@@ -61,7 +61,7 @@ export const GEAR_EFFECTS: Record<GearEffectId, GearEffectDef> = {
     detail: "+3 здоровья в конце каждого раунда",
   },
 
-  /* ── СРЕДНЕЕ (ЛОВ) ── */
+  /* ── ЛОВКИЕ (ЛОВ) ── */
   evade: {
     id: "evade", stat: "agi", name: "Уклонение",
     desc: "Шанс полного промаха врага.",
@@ -88,7 +88,7 @@ export const GEAR_EFFECTS: Record<GearEffectId, GearEffectDef> = {
     detail: "+8% к лечению от нанесённого урона",
   },
 
-  /* ── ЛЁГКОЕ (ИНТ) ── */
+  /* ── МАГИЧЕСКИЕ (ИНТ) ── */
   spell_damage: {
     id: "spell_damage", stat: "int", name: "Урон от заклинаний",
     desc: "Свитки бьют сильнее.",

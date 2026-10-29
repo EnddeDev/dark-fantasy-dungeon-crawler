@@ -25,19 +25,19 @@ type EffectEntry = {
 };
 
 function EffectList({ entries, empty }: { entries: EffectEntry[]; empty: string }) {
-  if (!entries.length) return <p className="text-[0.86rem] leading-relaxed text-mute">{empty}</p>;
+  if (!entries.length) return <p className="text-[0.98rem] leading-relaxed text-mute">{empty}</p>;
   return (
     <div className="space-y-2.5">
       {entries.map((entry) => (
         <div key={entry.id} className={`border-l-2 bg-black/20 py-2 pl-3 pr-2 ${entry.negative ? "border-rubric/70" : "border-flamedim/70"}`}>
           <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
-            <h4 className={`font-display text-[0.95rem] uppercase leading-snug tracking-[0.05em] ${entry.negative ? "text-rubric" : "text-flamehi"}`}>
+            <h4 className={`font-display text-[1.05rem] uppercase leading-snug tracking-[0.05em] ${entry.negative ? "text-rubric" : "text-flamehi"}`}>
               {entry.title}
             </h4>
-            {entry.badge && <span className="font-mono text-[0.72rem] text-mute">{entry.badge}</span>}
+            {entry.badge && <span className="font-mono text-[0.86rem] text-mute">{entry.badge}</span>}
           </div>
-          <p className="mt-1 text-[0.85rem] leading-relaxed text-parch/85">{entry.detail}</p>
-          {entry.source && <p className="mt-1 text-[0.75rem] leading-snug text-mute">Источник: {entry.source}</p>}
+          <p className="mt-1 text-[0.97rem] leading-relaxed text-parch/85">{entry.detail}</p>
+          {entry.source && <p className="mt-1 text-[0.89rem] leading-snug text-mute">Источник: {entry.source}</p>}
         </div>
       ))}
     </div>
@@ -47,7 +47,7 @@ function EffectList({ entries, empty }: { entries: EffectEntry[]; empty: string 
 function SheetSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="border-b border-line px-4 py-4 last:border-b-0">
-      <h3 className="sc mb-3 text-[0.73rem] text-flamedim">{title}</h3>
+      <h3 className="sc mb-3 text-[0.87rem] text-flamedim">{title}</h3>
       {children}
     </section>
   );
@@ -56,9 +56,9 @@ function SheetSection({ title, children }: { title: string; children: ReactNode 
 function Metric({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
     <div className="border border-line/80 bg-black/20 px-3 py-2.5">
-      <div className="text-[0.78rem] text-mute">{label}</div>
-      <div className="mt-1 font-mono text-[1.05rem] leading-tight tab text-flamehi">{value}</div>
-      {note && <div className="mt-1 text-[0.73rem] leading-snug text-mute">{note}</div>}
+      <div className="text-[0.92rem] text-mute">{label}</div>
+      <div className="mt-1 font-mono text-[1.13rem] leading-tight tab text-flamehi">{value}</div>
+      {note && <div className="mt-1 text-[0.87rem] leading-snug text-mute">{note}</div>}
     </div>
   );
 }
@@ -195,7 +195,7 @@ export function Rail({
             <span className="font-mono text-2xl leading-none tab text-flamehi">{player.gold}<span className="ml-1.5 text-xs text-mute">зол.</span></span>
           </div>
           {run && (
-            <div className="mt-2 flex items-center justify-between gap-2 border-t border-line pt-2 text-[0.78rem]">
+            <div className="mt-2 flex items-center justify-between gap-2 border-t border-line pt-2 text-[0.92rem]">
               <span className="text-mute">Под риском в вылазке</span>
               <span className="font-mono tab text-flame">+{run.gold} зол.</span>
             </div>
@@ -206,27 +206,27 @@ export function Rail({
           type="button"
           aria-expanded={mobileOpen}
           onClick={() => setMobileOpen((open) => !open)}
-          className="flex w-full items-center justify-between border-b border-line px-4 py-2.5 text-left font-display text-[0.9rem] uppercase tracking-[0.08em] text-flamehi lg:hidden"
+          className="flex w-full items-center justify-between border-b border-line px-4 py-2.5 text-left font-display text-[1rem] uppercase tracking-[0.08em] text-flamehi lg:hidden"
         >
-          Лист персонажа <span className="font-mono text-[0.72rem] normal-case tracking-normal text-mute">{mobileOpen ? "Свернуть" : "Развернуть"}</span>
+          Лист персонажа <span className="font-mono text-[0.86rem] normal-case tracking-normal text-mute">{mobileOpen ? "Свернуть" : "Развернуть"}</span>
         </button>
 
         <div className={`${mobileOpen ? "block" : "hidden"} min-h-0 flex-1 lg:block lg:overflow-y-auto`}>
           <header className="border-b border-line px-4 py-4">
             <div className="flex items-baseline justify-between gap-2">
-              <span className="sc text-[0.7rem]">Лист персонажа</span>
-              <span className="font-mono text-[0.74rem] text-mute">Побед: {player.kills}</span>
+              <span className="sc text-[0.84rem]">Лист персонажа</span>
+              <span className="font-mono text-[0.88rem] text-mute">Побед: {player.kills}</span>
             </div>
             <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-title text-[1.8rem] leading-tight text-flamehi">{player.name}</h2>
+              <h2 className="font-title text-[1.85rem] leading-tight text-flamehi">{player.name}</h2>
               <span className="font-mono text-sm text-flame">Ур. {player.level}/{MAX_LEVEL}</span>
             </div>
             <div className="mt-3 grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1.5">
-              <span className="text-[0.82rem] text-mute">Здоровье</span>
+              <span className="text-[0.94rem] text-mute">Здоровье</span>
               <span className="font-mono text-sm tab text-parch">{hp}<span className="text-mute"> / {maxHp}</span></span>
               <Meter value={hp} max={maxHp} tone="rubric" className="col-span-2 h-2" />
-              <span className="mt-1 text-[0.82rem] text-mute">Опыт</span>
-              <span className="mt-1 font-mono text-[0.78rem] tab text-parch">
+              <span className="mt-1 text-[0.94rem] text-mute">Опыт</span>
+              <span className="mt-1 font-mono text-[0.92rem] tab text-parch">
                 {player.level >= MAX_LEVEL ? "МАКС" : `${player.xp} / ${xpNeed}`}
               </span>
               <Meter value={player.level >= MAX_LEVEL ? 1 : player.xp} max={player.level >= MAX_LEVEL ? 1 : xpNeed} tone="flame" className="col-span-2 h-1.5" ticks={8} />
@@ -236,7 +236,7 @@ export function Rail({
 
           {run && (
             <div className="border-b border-line bg-black/20 px-4 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-2 text-[0.8rem] text-mute">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[0.92rem] text-mute">
                 <span>Этаж <b className="font-mono text-parch">{run.floor}</b></span>
                 <span>Ключи <b className="font-mono text-parch">{run.keys}</b></span>
                 <span>Трофеи <b className="font-mono text-parch">{run.loot.length + run.gearLoot.length}</b></span>
@@ -246,7 +246,7 @@ export function Rail({
                   <LogOut size={14} aria-hidden /> Сохранить добычу и выйти
                 </Btn>
               )}
-              <p className="mt-2 text-[0.75rem] leading-snug text-mute">Добыча станет вашей только после выхода. При поражении она теряется.</p>
+              <p className="mt-2 text-[0.89rem] leading-snug text-mute">Добыча станет вашей только после выхода. При поражении она теряется.</p>
             </div>
           )}
 
@@ -260,11 +260,11 @@ export function Rail({
                 type="button"
                 aria-pressed={section === id}
                 onClick={() => setSection(id)}
-                className={`flex items-center justify-center gap-2 px-2 py-2.5 font-display text-[0.86rem] tracking-[0.03em] transition-colors ${section === id ? "bg-slab2 text-flamehi shadow-[inset_0_-1px_0_#e0a33c]" : "text-mute hover:text-parch"}`}
+                className={`flex items-center justify-center gap-2 px-2 py-2.5 font-display text-[0.98rem] tracking-[0.03em] transition-colors ${section === id ? "bg-slab2 text-flamehi shadow-[inset_0_-1px_0_#e0a33c]" : "text-mute hover:text-parch"}`}
               >
                 <Icon size={15} aria-hidden /> {label}
                 {id === "effects" && (activeCount > 0 || activeEffects > 0) && (
-                  <span className="font-mono text-[0.68rem] text-flame">{activeCount > 0 ? activeCount : activeEffects}</span>
+                  <span className="font-mono text-[0.84rem] text-flame">{activeCount > 0 ? activeCount : activeEffects}</span>
                 )}
               </button>
             ))}
@@ -277,11 +277,11 @@ export function Rail({
                   {STAT_ORDER.map((stat) => (
                     <div key={stat} className="border border-line/70 bg-black/15 px-3 py-2.5">
                       <div className="flex items-center justify-between gap-3">
-                        <span className="font-display text-[1rem] uppercase tracking-[0.08em] text-parch">{STAT_META[stat].name}</span>
+                        <span className="font-display text-[1.08rem] uppercase tracking-[0.08em] text-parch">{STAT_META[stat].name}</span>
                         <span className="font-mono text-base tab text-flame">{player.stats[stat]}<span className="text-xs text-mute"> / 10</span></span>
                       </div>
                       <div className="mt-2"><Pips value={player.stats[stat]} tone={player.stats[stat] >= 5 ? "#e0a33c" : "#ad7a2c"} /></div>
-                      <p className="mt-2 text-[0.78rem] leading-snug text-mute">{STAT_META[stat].gain}</p>
+                      <p className="mt-2 text-[0.92rem] leading-snug text-mute">{STAT_META[stat].gain}</p>
                     </div>
                   ))}
                 </div>
@@ -303,22 +303,22 @@ export function Rail({
               </SheetSection>
 
               <SheetSection title="Здоровье и снаряжение">
-                <dl className="space-y-2 text-[0.85rem]">
+                <dl className="space-y-2 text-[0.97rem]">
                   <div className="flex justify-between gap-3"><dt className="text-mute">Максимум здоровья</dt><dd className="font-mono tab text-parch">{d.maxHp}</dd></div>
                   <div className="flex justify-between gap-3"><dt className="text-mute">Бонус здоровья от вещей</dt><dd className="font-mono tab text-verd">+{d.hpBonus}</dd></div>
                   <div className="flex justify-between gap-3"><dt className="text-mute">Бонус уклонения от вещей</dt><dd className="font-mono tab text-verd">+{percent(d.evadeBonus)}</dd></div>
                   <div className="flex justify-between gap-3"><dt className="text-mute">Оружие правой руки</dt><dd className="text-right text-parch">{d.weaponName}</dd></div>
                 </dl>
-                <p className="mt-3 text-[0.76rem] leading-relaxed text-mute">Надетые вещи и их замена — в разделе «Арсенал».</p>
+                <p className="mt-3 text-[0.9rem] leading-relaxed text-mute">Надетые вещи и их замена — в разделе «Арсенал».</p>
               </SheetSection>
 
               <SheetSection title="Исследования и ловушки">
-                <dl className="space-y-2 text-[0.85rem]">
+                <dl className="space-y-2 text-[0.97rem]">
                   <div className="flex justify-between gap-3"><dt className="text-mute">Бонус к обезвреживанию</dt><dd className="font-mono tab text-verd">+{trapBonus} п.п.</dd></div>
                   <div className="flex justify-between gap-3"><dt className="text-mute">Снижение требований ИНТ</dt><dd className="font-mono tab text-parch">−{d.intDiscount}</dd></div>
                   <div className="flex justify-between gap-3"><dt className="text-mute">Изучено рецептов</dt><dd className="font-mono tab text-parch">{player.knownRecipes.length}</dd></div>
                 </dl>
-                <p className="mt-2 text-[0.76rem] leading-snug text-mute">Снижение ИНТ действует на приёмы и исследование, но не на требования к надеванию вещей.</p>
+                <p className="mt-2 text-[0.9rem] leading-snug text-mute">Снижение ИНТ действует на приёмы и исследование, но не на требования к надеванию вещей.</p>
               </SheetSection>
             </div>
           ) : (
@@ -331,7 +331,7 @@ export function Rail({
               </SheetSection>
               <SheetSection title="Свойства надетых вещей">
                 <EffectList entries={gearEntries} empty="У исследованных надетых вещей пока нет дополнительных свойств." />
-                {unknownCount > 0 && <p className="mt-3 border border-dashed border-flamedim/50 p-2.5 text-[0.8rem] leading-relaxed text-mute">Не исследовано вещей: {unknownCount}. Откройте «Арсенал» → «Подробнее», чтобы изучить их свойства.</p>}
+                {unknownCount > 0 && <p className="mt-3 border border-dashed border-flamedim/50 p-2.5 text-[0.92rem] leading-relaxed text-mute">Не исследовано вещей: {unknownCount}. Откройте «Арсенал» → «Подробнее», чтобы изучить их свойства.</p>}
               </SheetSection>
               <SheetSection title="Приёмы снаряжения">
                 <EffectList entries={skillEntries} empty="Надетое оружие не даёт особых приёмов." />

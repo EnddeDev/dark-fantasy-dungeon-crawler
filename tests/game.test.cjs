@@ -790,15 +790,16 @@ test("rarity gives effects by required stat: rare 1, epic more, legendary passiv
   }
 });
 
-test("weapon technique multiplier stays inside the class range", () => {
-  const ranges = { light: [2, 4.5], medium: [1.5, 2.5], heavy: [1.5, 3.5] };
-  const bases = { light: "staff", medium: "rapier", heavy: "axe" };
-  for (const cls of ["light", "medium", "heavy"]) {
+test("weapon technique multiplier stays inside the affinity range", () => {
+  const ranges = { int: [2, 4.5], agi: [1.5, 2.5], str: [1.5, 3.5] };
+  const bases = { int: "staff", agi: "rapier", str: "axe" };
+  for (const stat of ["int", "agi", "str"]) {
     for (let i = 0; i < 80; i++) {
-      const g = content.createGearItem({ baseId: bases[cls], wear: "worn", identified: true });
+      const g = content.createGearItem({ baseId: bases[stat], wear: "worn", identified: true });
       const ws = content.weaponSkillFor(g);
-      const [lo, hi] = ranges[cls];
-      assert.ok(ws.scaleMult >= lo && ws.scaleMult <= hi, `${cls}: ${ws.scaleMult} вне ${lo}..${hi}`);
+      const [lo, hi] = ranges[stat];
+      assert.equal(ws.scaleStat, stat);
+      assert.ok(ws.scaleMult >= lo && ws.scaleMult <= hi, `${stat}: ${ws.scaleMult} вне ${lo}..${hi}`);
     }
   }
 });
@@ -811,4 +812,152 @@ test("legendary passive scales the character as described", () => {
   const geared = battle.derived(p);
   assert.ok(geared.maxHp > plain.maxHp || geared.armor >= plain.armor, "легендарка должна что-то давать");
   assert.ok(sword.passive && gearEffects.GEAR_PASSIVES[sword.passive]);
+});
+
+/* ─────────────  АУДИТ КЛАССОВ, ХАРАКТЕРИСТИК И РАСХОДНИКОВ  ───────────── */
+
+test("every gear base has an explicit logical weight class and affinity", () => {
+  const expected = {
+    knife: ["light", "agi"], dagger: ["light", "agi"], rapier: ["light", "agi"],
+    staff: ["light", "int"], abyss: ["medium", "int"],
+    sword: ["medium", "str"], spear: ["medium", "agi"],
+    axe: ["heavy", "str"], hammer: ["heavy", "str"], greatsword: ["heavy", "str"], warhammer2: ["heavy", "str"],
+    rag: ["medium", "str"], mail: ["medium", "str"], coif: ["medium", "str"], helm: ["medium", "str"],
+    shroud: ["light", "int"], plate: ["heavy", "str"], greathelm: ["heavy", "str"], crown_husk: ["heavy", "str"],
+    shield_round: ["medium", "str"], shield_tower: ["heavy", "str"], buckler: ["light", "agi"],
+    boots: ["light", "agi"], shoes: ["light", "agi"], strider_boots: ["light", "agi"], greaves: ["heavy", "str"],
+    wraps: ["light", "agi"], vambraces: ["heavy", "str"], runed_bracers: ["light", "int"],
+    amulet: ["light", "int"], seal: ["light", "int"], soulstone: ["light", "int"], icon: ["light", "int"], tooth: ["light", "agi"],
+    ring_stone: ["light", "str"], ring_band: ["light", "agi"], ring_edge: ["light", "agi"], ring_ward: ["light", "int"], ring_venom: ["light", "agi"],
+  };
+  assert.deepEqual(Object.keys(content.GEAR_BASES).sort(), Object.keys(expected).sort(), "аудит должен покрывать все базы");
+  for (const [id, [cls, stat]] of Object.entries(expected)) {
+    const base = content.GEAR_BASES[id];
+    assert.equal(base.gearClass, cls, `${id}: вес`);
+    assert.equal(base.stat, stat, `${id}: характеристика`);
+    const item = content.createGearItem({ baseId: id, level: 1, wear: "worn", rarity: "common", identified: true });
+    assert.equal(item.gearClass, cls);
+    assert.equal(content.gearClassFor(item), cls);
+    assert.equal(content.gearAffinity(item), stat);
+    assert.equal(content.gearStatReq(item).stat, stat);
+  }
+});
+
+test("knives are always light and every knife/rapier technique scales from Agility", () => {
+  for (const baseId of ["knife", "dagger", "rapier"]) {
+    const skills = content.TECHNIQUE_POOL[baseId] ?? [content.GEAR_BASES[baseId].weaponSkill.id];
+    for (const skillId of skills) {
+      const item = content.createGearItem({ baseId, skillId, wear: "worn", rarity: "common", identified: true });
+      assert.equal(item.gearClass, "light");
+      const ws = content.weaponSkillFor(item);
+      assert.equal(ws.scaleStat, "agi", `${baseId}/${skillId}`);
+      assert.ok(ws.scaleMult >= 1.5 && ws.scaleMult <= 2.5);
+      assert.ok(ws.desc.includes("×ЛОВ"), ws.desc);
+      assert.ok(ws.passiveNote.includes("×ЛОВ"), ws.passiveNote);
+      assert.ok(!ws.desc.includes("×ИНТ") && !ws.desc.includes("×СИЛ"));
+    }
+  }
+});
+
+test("weapon technique descriptions and passive notes match the actual affinity and multiplier", () => {
+  for (const baseId of Object.keys(content.TECHNIQUE_POOL)) {
+    for (const skillId of content.TECHNIQUE_POOL[baseId]) {
+      const item = content.createGearItem({ baseId, skillId, wear: "worn", rarity: "common", identified: true });
+      const ws = content.weaponSkillFor(item);
+      const short = content.STAT_META[ws.scaleStat].short;
+      assert.equal(ws.scaleStat, content.gearAffinity(item));
+      assert.ok(ws.desc.includes(`${ws.scaleMult}×${short}`), `${baseId}/${skillId}: ${ws.desc}`);
+      assert.ok(ws.passiveNote.includes(`×${short}`), ws.passiveNote);
+      const range = ws.scaleStat === "int" ? [2, 4.5] : ws.scaleStat === "str" ? [1.5, 3.5] : [1.5, 2.5];
+      assert.ok(ws.scaleMult >= range[0] && ws.scaleMult <= range[1]);
+    }
+  }
+});
+
+test("only scrolls require Intelligence among consumables", () => {
+  const usable = Object.values(content.ITEMS).filter((it) => it.use);
+  assert.ok(usable.length > 10);
+  for (const def of usable) {
+    const req = content.consumableIntReq(def, 0);
+    if (def.kind === "scroll") {
+      assert.ok(req > 0, `${def.id}: свиток должен требовать ИНТ`);
+      assert.equal(content.consumableIntReq(def, 1), Math.max(0, req - 1));
+    } else {
+      assert.equal(req, 0, `${def.id}: не свиток не должен требовать ИНТ`);
+      assert.equal(def.use.intReq, undefined, `${def.id}: убрать intReq из данных`);
+    }
+  }
+});
+
+test("throwing knife, poison dart, acid, bomb and holy water scale from Agility, not Intelligence", () => {
+  const ids = ["throwing_knife", "poison_dart", "acid_vial", "blast_bomb", "holy_water"];
+  const low = { str: 1, agi: 2, int: 10 };
+  const high = { str: 1, agi: 8, int: 1 };
+  for (const id of ids) {
+    const def = content.ITEMS[id];
+    assert.equal(def.kind, "throwable");
+    assert.equal(content.consumableScaleStat(def), "agi", id);
+    assert.ok(content.consumablePower(def, high) > content.consumablePower(def, low), id);
+    assert.ok(content.consumableScaleLabel(def).includes("×ЛОВ"), id);
+  }
+  for (const id of ["scroll_spark", "scroll_fire", "scroll_heal", "scroll_frost", "scroll_bolt"]) {
+    const def = content.ITEMS[id];
+    assert.equal(content.consumableScaleStat(def), "int", id);
+    assert.ok(content.consumableScaleLabel(def).includes("×ИНТ"), id);
+  }
+  assert.equal(content.consumableScaleStat(content.ITEMS.potion_s), null);
+});
+
+test("battle consumable damage follows Agility and ignores Intelligence for non-scrolls", () => {
+  const mk = (stats, bag) => {
+    const pl = player({ hp: 500, stats, bag });
+    const b = battle.newBattle(pl, 1);
+    b.queue = ["p", "e", "e", "e"];
+    b.enemy.hp = 5000; b.enemy.maxHp = 5000; b.enemy.armor = 0;
+    b.enemy.def = { ...b.enemy.def, type: "beast", moves: ["attack"] };
+    b.enemy.moves = ["attack"]; b.enemy.passive = null;
+    b.p.hp = 500; b.p.maxHp = 500; b.p.evade = 0;
+    return b;
+  };
+  for (const id of ["throwing_knife", "poison_dart", "acid_vial", "blast_bomb", "holy_water"]) {
+    const agi = battle.playerAct(mk({ str: 1, agi: 8, int: 1 }, { [id]: 1 }), { type: "item", id });
+    const int = battle.playerAct(mk({ str: 1, agi: 2, int: 10 }, { [id]: 1 }), { type: "item", id });
+    assert.ok(5000 - agi.enemy.hp > 5000 - int.enemy.hp, `${id}: ЛОВ должна давать больше урона, чем ИНТ`);
+    assert.equal(agi.bag[id], undefined);
+  }
+  // Свиток по-прежнему требует ИНТ и усиливается им.
+  const lowInt = mk({ str: 1, agi: 8, int: 1 }, { scroll_spark: 1 });
+  const refused = battle.playerAct(lowInt, { type: "item", id: "scroll_spark" });
+  assert.equal(refused.bag.scroll_spark, 1);
+  const highInt = battle.playerAct(mk({ str: 1, agi: 1, int: 8 }, { scroll_spark: 1 }), { type: "item", id: "scroll_spark" });
+  assert.ok(5000 - highInt.enemy.hp >= 16 + 3 * 8);
+});
+
+test("magical scroll bonuses do not amplify non-scroll consumables", () => {
+  const mk = (passives) => {
+    const pl = player({ hp: 500, stats: { str: 1, agi: 5, int: 5 }, bag: { holy_water: 1, acid_vial: 1 }, passives });
+    const b = battle.newBattle(pl, 1);
+    b.queue = ["p", "e", "e", "e"];
+    b.enemy.hp = 5000; b.enemy.maxHp = 5000; b.enemy.armor = 6;
+    b.enemy.def = { ...b.enemy.def, type: "beast", moves: ["attack"] };
+    b.enemy.moves = ["attack"]; b.enemy.passive = null;
+    b.p.hp = 500; b.p.maxHp = 500; b.p.evade = 0;
+    return b;
+  };
+  for (const id of ["holy_water", "acid_vial"]) {
+    const plain = battle.playerAct(mk([]), { type: "item", id });
+    const boosted = battle.playerAct(mk(["resonance"]), { type: "item", id });
+    assert.equal(5000 - plain.enemy.hp, 5000 - boosted.enemy.hp, `${id}: резонанс не должен усиливать не-свиток`);
+  }
+});
+
+test("rarity effects and legendary passives follow gear affinity, not weight class", () => {
+  for (const baseId of ["knife", "rapier", "dagger", "staff", "sword", "plate", "ring_stone", "shroud"]) {
+    for (let i = 0; i < 40; i++) {
+      const g = content.createGearItem({ baseId, rarity: "legendary", wear: "worn", identified: true });
+      const stat = content.gearAffinity(g);
+      for (const e of g.effects) assert.equal(gearEffects.GEAR_EFFECTS[e].stat, stat, `${baseId}/${e}`);
+      if (g.passive) assert.equal(gearEffects.GEAR_PASSIVES[g.passive].stat, stat, baseId);
+    }
+  }
 });

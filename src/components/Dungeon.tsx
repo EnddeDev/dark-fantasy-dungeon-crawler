@@ -124,7 +124,7 @@ export function Dungeon({
             Лабиринт {S}×{S} · комнат {m.rooms.length} · сундуков {m.chests.length} · событий {m.events.length}
           </span>
         </div>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[0.72rem] text-mute">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[0.86rem] text-mute">
           <span className="tab">шагов: <span className="text-parch">{run.steps}</span></span>
           <span className="tab">добыча: <span className="text-flame">{run.gold}</span></span>
           <span className="tab text-verd">ключи: {run.keys}</span>
@@ -237,7 +237,7 @@ export function Dungeon({
                       fill="none" stroke="#e0a33c" strokeOpacity="0.5" strokeWidth="1.4" strokeDasharray="5 4"
                     />
                     <text
-                      x={rx + 6} y={ry + 12} fill={labelColor} fontSize="7.5"
+                      x={rx + 6} y={ry + 12} fill={labelColor} fontSize="9"
                       fontFamily="Forum, Georgia, serif" letterSpacing="1.8" opacity="0.95"
                     >
                       {room.name.toUpperCase()}
@@ -405,7 +405,7 @@ export function Dungeon({
           </div>
 
           {path.length > 0 && (
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border border-flamedim/70 bg-black/45 px-3 py-2 font-mono text-[0.74rem]">
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border border-flamedim/70 bg-black/45 px-3 py-2 font-mono text-[0.88rem]">
               <span className="flex items-center gap-2 text-flamehi">
                 <Footprints size={14} aria-hidden />
                 маршрут: {path.length} {path.length === 1 ? "шаг" : path.length < 5 ? "шага" : "шагов"}
@@ -417,7 +417,7 @@ export function Dungeon({
             </div>
           )}
 
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 font-mono text-[0.66rem] text-mute">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 font-mono text-[0.82rem] text-mute">
             <span className="flex flex-wrap items-center gap-3">
               <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 bg-[#c98b2e]" />сундук</span>
               <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 bg-[#2f4f43]" />дверь</span>
@@ -443,7 +443,7 @@ export function Dungeon({
           <section className="border border-line bg-slab/70">
             <div className="flex items-center justify-between border-b border-line px-3 py-2">
               <span className="sc">Снаряжение · смена в походе</span>
-              <span className="font-mono text-[0.74rem] text-mute">Подробности — по кнопке ⓘ</span>
+              <span className="font-mono text-[0.88rem] text-mute">Подробности — по кнопке ⓘ</span>
             </div>
             <div className="grid grid-cols-1 gap-px bg-line/60 sm:grid-cols-2">
               {SLOT_ORDER.map((slot) => {
@@ -462,8 +462,8 @@ export function Dungeon({
                         <span className="flex h-8 w-8 shrink-0 items-center justify-center border border-dashed border-line text-mute"><Hammer size={14} aria-hidden /></span>
                       )}
                       <span className="min-w-0">
-                        <span className="block font-mono text-[0.7rem] uppercase text-flamedim">{SLOT_META[slot].short}</span>
-                        <span className="block truncate font-display text-[0.9rem] uppercase tracking-[0.03em] text-parch" title={item ? stName(item) : "Пусто"}>{item ? stName(item) : "Пусто"}</span>
+                        <span className="block font-mono text-[0.84rem] uppercase text-flamedim">{SLOT_META[slot].short}</span>
+                        <span className="block truncate font-display text-[1rem] uppercase tracking-[0.03em] text-parch" title={item ? stName(item) : "Пусто"}>{item ? stName(item) : "Пусто"}</span>
                       </span>
                     </button>
                     {item && (
@@ -493,8 +493,8 @@ export function Dungeon({
                       onClick={() => onUnequip(openSlot)}
                       className="border border-rubric/60 bg-rubric/10 px-3 py-2 text-left transition-colors hover:bg-rubric/20"
                     >
-                      <span className="block font-display text-[0.9rem] uppercase tracking-[0.06em] text-rubric">Снять предмет</span>
-                      <span className="block text-[0.78rem] text-mute">Ячейка останется пустой</span>
+                      <span className="block font-display text-[1rem] uppercase tracking-[0.06em] text-rubric">Снять предмет</span>
+                      <span className="block text-[0.92rem] text-mute">Ячейка останется пустой</span>
                     </button>
                   )}
                   {candidates.filter((g) => g.uid !== equippedUid).map((g) => {
@@ -509,8 +509,8 @@ export function Dungeon({
                         >
                           <ItemArt id={g.baseId} name={stName(g)} size={36} rarity={g.identified ? g.rarity : undefined} />
                           <span className="min-w-0">
-                            <span className="block truncate font-display text-[0.9rem] uppercase tracking-[0.04em] text-flamehi">{stName(g)}</span>
-                            <span className="block font-mono text-[0.72rem] leading-snug text-mute">
+                            <span className="block truncate font-display text-[1rem] uppercase tracking-[0.04em] text-flamehi">{stName(g)}</span>
+                            <span className="block font-mono text-[0.86rem] leading-snug text-mute">
                               ур. {g.level ?? 1} · {gearStatReqLabel(g)} · {g.identified ? "исследовано" : "редкость ???"}
                               {GEAR_BASES[g.baseId]?.hands === 2 ? " · обе руки" : ""}
                             </span>
@@ -523,7 +523,7 @@ export function Dungeon({
                     );
                   })}
                   {candidates.length <= (equippedUid ? 1 : 0) && (
-                    <p className="text-[0.84rem] italic text-mute">Подходящих вещей нет — загляни в магазин.</p>
+                    <p className="text-[0.96rem] italic text-mute">Подходящих вещей нет — загляни в магазин.</p>
                   )}
                 </div>
               </div>
@@ -542,7 +542,7 @@ export function Dungeon({
                 label === "" ? (
                   <span key={i} className="h-11 w-11" />
                 ) : label === "◈" ? (
-                  <span key={i} className="flex h-11 w-11 items-center justify-center border border-line bg-black/40 font-mono text-[0.65rem] text-flamedim" title="Ты здесь">·</span>
+                  <span key={i} className="flex h-11 w-11 items-center justify-center border border-line bg-black/40 font-mono text-[0.81rem] text-flamedim" title="Ты здесь">·</span>
                 ) : (
                   <button
                     key={i}
@@ -557,7 +557,7 @@ export function Dungeon({
             </div>
             <div className="flex-1">
               <div className="sc mb-1.5">Журнал этажа</div>
-              <div className="max-h-40 space-y-1 overflow-y-auto border border-line bg-black/40 px-3 py-2 text-[0.84rem] leading-snug">
+              <div className="max-h-40 space-y-1 overflow-y-auto border border-line bg-black/40 px-3 py-2 text-[0.96rem] leading-snug">
                 {run.log.length === 0 && <span className="italic text-mute">Тишина.</span>}
                 {run.log.slice(-40).reverse().map((l, i) => (
                   <div
@@ -577,13 +577,13 @@ export function Dungeon({
             </div>
           </div>
 
-          <div className="border border-line bg-slab/70 px-4 py-3 text-[0.84rem] leading-snug text-mute">
+          <div className="border border-line bg-slab/70 px-4 py-3 text-[0.96rem] leading-snug text-mute">
             <span className="sc mb-1 block">Разведка и опасности</span>
-            <p className="font-mono text-[0.74rem] text-parch/80">
+            <p className="font-mono text-[0.88rem] text-parch/80">
               Новый путь: <span className="text-flame">60%</span> тихо · <span className="text-rubric">10%</span> ловушка ·{" "}
               <span className="text-rubric">20%</span> бой · <span className="text-verd">10%</span> находка
             </p>
-            <p className="mt-1 font-mono text-[0.74rem] text-parch/80">
+            <p className="mt-1 font-mono text-[0.88rem] text-parch/80">
               Известный путь: <span className="text-flame">75%</span> тихо · <span className="text-rubric">5%</span> ловушка ·{" "}
               <span className="text-rubric">20%</span> бой
             </p>
@@ -610,10 +610,10 @@ export function Dungeon({
                   >
                     <ItemArt id={id} name={def.name} size={36} framed={false} />
                     <span>
-                      <span className="block font-display text-[0.82rem] uppercase tracking-[0.1em] text-verd">
-                        {def.name} <span className="font-mono text-[0.7rem]">×{n}</span>
+                      <span className="block font-display text-[0.94rem] uppercase tracking-[0.1em] text-verd">
+                        {def.name} <span className="font-mono text-[0.84rem]">×{n}</span>
                       </span>
-                      <span className="block font-mono text-[0.66rem] text-mute">
+                      <span className="block font-mono text-[0.82rem] text-mute">
                         {!intOk
                           ? `нужен ИНТ ${req}`
                           : def.use?.type === "heal"

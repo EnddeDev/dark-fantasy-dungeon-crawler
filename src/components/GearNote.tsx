@@ -11,6 +11,7 @@ import {
   WEAR_RANGE,
   gearBuyPrice,
   gearSellPrice,
+  gearClassFor,
   gearStatReq,
   identifyReqs,
   scaledGearStats,
@@ -26,7 +27,7 @@ import { Btn, Modal, RARITY_TEXT, Tag } from "./ui";
 function DetailSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="border-t border-line pt-3">
-      <h3 className="sc mb-2 text-[0.72rem] text-flamedim">{title}</h3>
+      <h3 className="sc mb-2 text-[0.86rem] text-flamedim">{title}</h3>
       {children}
     </section>
   );
@@ -35,8 +36,8 @@ function DetailSection({ title, children }: { title: string; children: ReactNode
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-4 py-1">
-      <dt className="text-[0.86rem] text-mute">{label}</dt>
-      <dd className="text-right font-mono text-[0.86rem] tab text-parch">{value}</dd>
+      <dt className="text-[0.98rem] text-mute">{label}</dt>
+      <dd className="text-right font-mono text-[0.98rem] tab text-parch">{value}</dd>
     </div>
   );
 }
@@ -93,15 +94,15 @@ export function GearNote({
           <ItemArt id={item.baseId} name={st.base.name} size={76} rarity={item.identified ? item.rarity : undefined} />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap gap-1.5">
-              <Tag>{GEAR_CLASS_META[item.gearClass ?? "medium"].name}</Tag>
+              <Tag>{GEAR_CLASS_META[gearClassFor(item)].name}</Tag>
               <Tag>Уровень {level}</Tag>
               <Tag tone={item.wear === "new" ? "verd" : item.wear === "battered" ? "rubric" : "mute"}>{WEAR_META[item.wear].name}</Tag>
               {item.identified ? (
-                <span className={`border border-line px-1.5 py-[3px] font-mono text-[0.72rem] leading-none ${RARITY_TEXT[item.rarity]}`}>{RARITY_META[item.rarity].name}</span>
+                <span className={`border border-line px-1.5 py-[3px] font-mono text-[0.86rem] leading-none ${RARITY_TEXT[item.rarity]}`}>{RARITY_META[item.rarity].name}</span>
               ) : <Tag tone="flame">Редкость неизвестна</Tag>}
               {wornIn.length > 0 && <Tag tone="verd">Надето: {wornIn.map((slot) => SLOT_META[slot].short).join(", ")}</Tag>}
             </div>
-            <p className="mt-2 text-[0.88rem] italic leading-relaxed text-mute">{st.base.desc}</p>
+            <p className="mt-2 text-[1rem] italic leading-relaxed text-mute">{st.base.desc}</p>
           </div>
         </div>
 
@@ -110,7 +111,7 @@ export function GearNote({
             <Tag tone={statOk ? "verd" : "rubric"}>{STAT_META[req.stat].name}: {player.stats[req.stat]}/{req.value} {statOk ? "✓" : "✗"}</Tag>
             <Tag tone={levelOk ? "verd" : "rubric"}>Уровень персонажа: {player.level}/{level} {levelOk ? "✓" : "✗"}</Tag>
           </div>
-          <p className="mt-2 text-[0.84rem] leading-relaxed text-mute">
+          <p className="mt-2 text-[0.96rem] leading-relaxed text-mute">
             Ячейки: {allowed.map((slot) => SLOT_META[slot].name).join(" / ")}.
             {st.base.hands === 2 && " Двуручное оружие занимает обе руки."}
           </p>
@@ -134,13 +135,13 @@ export function GearNote({
           <DetailSection title={`Сравнение с надетым: ${other.base.name}`}>
             {deltas.length ? (
               <dl>{deltas.map((delta) => (
-                <div key={delta.label} className="flex justify-between gap-3 py-1 text-[0.86rem]">
+                <div key={delta.label} className="flex justify-between gap-3 py-1 text-[0.98rem]">
                   <dt className="text-mute">{delta.label}</dt>
                   <dd className={`font-mono tab ${delta.value > 0 ? "text-verd" : "text-rubric"}`}>{delta.value > 0 ? "+" : ""}{delta.value}</dd>
                 </div>
               ))}</dl>
-            ) : <p className="text-[0.85rem] text-mute">Базовые параметры совпадают.</p>}
-            <p className="mt-1 text-[0.76rem] leading-snug text-mute">Сравниваются базовые параметры вещей; итоговые значения также зависят от характеристик и эффектов персонажа.</p>
+            ) : <p className="text-[0.97rem] text-mute">Базовые параметры совпадают.</p>}
+            <p className="mt-1 text-[0.9rem] leading-snug text-mute">Сравниваются базовые параметры вещей; итоговые значения также зависят от характеристик и эффектов персонажа.</p>
           </DetailSection>
         )}
 
@@ -148,14 +149,14 @@ export function GearNote({
           <DetailSection title="Приём оружия">
             <div className="border-l-2 border-flamedim bg-black/25 px-3 py-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h4 className="flex items-center gap-2 font-display text-[1rem] uppercase tracking-[0.05em] text-flamehi"><Sword size={15} aria-hidden />{skill.name}</h4>
-                <span className={`flex items-center gap-1 font-mono text-[0.76rem] ${skillOpen ? "text-verd" : "text-rubric"}`}>
+                <h4 className="flex items-center gap-2 font-display text-[1.08rem] uppercase tracking-[0.05em] text-flamehi"><Sword size={15} aria-hidden />{skill.name}</h4>
+                <span className={`flex items-center gap-1 font-mono text-[0.9rem] ${skillOpen ? "text-verd" : "text-rubric"}`}>
                   {skillOpen ? <Check size={13} aria-hidden /> : <Lock size={13} aria-hidden />} ИНТ {skillInt} · {skillOpen ? "открыт" : "закрыт"}
                 </span>
               </div>
-              <p className="mt-2 text-[0.88rem] leading-relaxed text-parch/90">{skill.desc}</p>
-              <p className="mt-1.5 text-[0.82rem] leading-relaxed text-mute">{skill.passiveNote}</p>
-              <p className="mt-1.5 font-mono text-[0.76rem] text-mute">Откат: {skill.cooldown}. Масштабирование: {STAT_META[skill.scaleStat].short} ×{skill.scaleMult}.</p>
+              <p className="mt-2 text-[1rem] leading-relaxed text-parch/90">{skill.desc}</p>
+              <p className="mt-1.5 text-[0.94rem] leading-relaxed text-mute">{skill.passiveNote}</p>
+              <p className="mt-1.5 font-mono text-[0.9rem] text-mute">Откат: {skill.cooldown}. Масштабирование: {STAT_META[skill.scaleStat].short} ×{skill.scaleMult}.</p>
             </div>
           </DetailSection>
         )}
@@ -163,8 +164,8 @@ export function GearNote({
         <DetailSection title="Свойства и способности">
           {!item.identified ? (
             <div className="border border-dashed border-flamedim/60 bg-black/25 p-3">
-              <h4 className="flex items-center gap-2 font-display text-[1rem] uppercase tracking-[0.05em] text-flame"><Eye size={16} aria-hidden />Качество скрыто туманом</h4>
-              <p className="mt-2 text-[0.86rem] leading-relaxed text-mute">
+              <h4 className="flex items-center gap-2 font-display text-[1.08rem] uppercase tracking-[0.05em] text-flame"><Eye size={16} aria-hidden />Качество скрыто туманом</h4>
+              <p className="mt-2 text-[0.98rem] leading-relaxed text-mute">
                 {inShop
                   ? "Редкость, дополнительные свойства и способности станут известны после покупки и исследования в арсенале."
                   : "Исследуйте предмет, чтобы раскрыть редкость, дополнительные свойства и способности."}
@@ -179,45 +180,45 @@ export function GearNote({
                   </Btn>
                 </div>
               )}
-              <p className="mt-2 text-[0.76rem] text-mute">Исследование за Интеллект не тратит золото.</p>
+              <p className="mt-2 text-[0.9rem] text-mute">Исследование за Интеллект не тратит золото.</p>
             </div>
           ) : (
             <div className="space-y-3">
               {item.rarity === "common" && !item.effects.length && !item.epicSkill && !item.passive && !item.rareAffix && !item.legendaryPassive && (
-                <p className="text-[0.86rem] italic text-mute">Обычное качество: дополнительных свойств нет.</p>
+                <p className="text-[0.98rem] italic text-mute">Обычное качество: дополнительных свойств нет.</p>
               )}
               {item.effects.map((id, index) => {
                 const effect = GEAR_EFFECTS[id];
                 return effect ? (
                   <div key={`${id}-${index}`} className="border-l-2 border-verd/60 pl-3">
-                    <h4 className="font-display text-[0.98rem] uppercase tracking-[0.04em] text-verd">{effect.name}</h4>
-                    <p className="mt-1 text-[0.86rem] leading-relaxed text-parch/85">{effect.detail}</p>
+                    <h4 className="font-display text-[1.08rem] uppercase tracking-[0.04em] text-verd">{effect.name}</h4>
+                    <p className="mt-1 text-[0.98rem] leading-relaxed text-parch/85">{effect.detail}</p>
                   </div>
                 ) : null;
               })}
               {item.rareAffix && (
                 <div className="border-l-2 border-verd/60 pl-3">
-                  <h4 className="font-display text-[0.98rem] uppercase tracking-[0.04em] text-verd">{RARE_AFFIXES[item.rareAffix].name}</h4>
-                  <p className="mt-1 text-[0.86rem] leading-relaxed text-parch/85">{RARE_AFFIXES[item.rareAffix].desc}</p>
+                  <h4 className="font-display text-[1.08rem] uppercase tracking-[0.04em] text-verd">{RARE_AFFIXES[item.rareAffix].name}</h4>
+                  <p className="mt-1 text-[0.98rem] leading-relaxed text-parch/85">{RARE_AFFIXES[item.rareAffix].desc}</p>
                 </div>
               )}
               {item.epicSkill && (
                 <div className="border-l-2 border-flamedim pl-3">
-                  <h4 className="flex items-center gap-2 font-display text-[0.98rem] uppercase tracking-[0.04em] text-flamehi"><Sparkles size={14} aria-hidden />{EPIC_SKILLS[item.epicSkill].name}</h4>
-                  <p className="mt-1 text-[0.86rem] leading-relaxed text-parch/85">{EPIC_SKILLS[item.epicSkill].desc}</p>
-                  <p className="mt-1 font-mono text-[0.76rem] text-mute">Эпический приём · ИНТ {Math.max(1, EPIC_SKILLS[item.epicSkill].intReq - d.intDiscount)} · откат {EPIC_SKILLS[item.epicSkill].cooldown}</p>
+                  <h4 className="flex items-center gap-2 font-display text-[1.08rem] uppercase tracking-[0.04em] text-flamehi"><Sparkles size={14} aria-hidden />{EPIC_SKILLS[item.epicSkill].name}</h4>
+                  <p className="mt-1 text-[0.98rem] leading-relaxed text-parch/85">{EPIC_SKILLS[item.epicSkill].desc}</p>
+                  <p className="mt-1 font-mono text-[0.9rem] text-mute">Эпический приём · ИНТ {Math.max(1, EPIC_SKILLS[item.epicSkill].intReq - d.intDiscount)} · откат {EPIC_SKILLS[item.epicSkill].cooldown}</p>
                 </div>
               )}
               {item.passive && (
                 <div className="border-l-2 border-flamedim pl-3">
-                  <h4 className="font-display text-[0.98rem] uppercase tracking-[0.04em] text-flamehi">{GEAR_PASSIVES[item.passive].name}</h4>
-                  <p className="mt-1 text-[0.86rem] leading-relaxed text-parch/85">{GEAR_PASSIVES[item.passive].detail}</p>
+                  <h4 className="font-display text-[1.08rem] uppercase tracking-[0.04em] text-flamehi">{GEAR_PASSIVES[item.passive].name}</h4>
+                  <p className="mt-1 text-[0.98rem] leading-relaxed text-parch/85">{GEAR_PASSIVES[item.passive].detail}</p>
                 </div>
               )}
               {item.legendaryPassive && (
                 <div className="border-l-2 border-flamedim pl-3">
-                  <h4 className="font-display text-[0.98rem] uppercase tracking-[0.04em] text-flamehi">{LEGENDARY_PASSIVES[item.legendaryPassive].name}</h4>
-                  <p className="mt-1 text-[0.86rem] leading-relaxed text-parch/85">{LEGENDARY_PASSIVES[item.legendaryPassive].desc}</p>
+                  <h4 className="font-display text-[1.08rem] uppercase tracking-[0.04em] text-flamehi">{LEGENDARY_PASSIVES[item.legendaryPassive].name}</h4>
+                  <p className="mt-1 text-[0.98rem] leading-relaxed text-parch/85">{LEGENDARY_PASSIVES[item.legendaryPassive].desc}</p>
                 </div>
               )}
             </div>

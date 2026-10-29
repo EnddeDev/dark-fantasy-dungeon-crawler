@@ -28,6 +28,8 @@ import {
   REAGENTS,
   rollShopStock,
   scaledGearStats,
+  consumableIntReq,
+  consumablePower,
 } from "./game/content";
 import { MAP_EVENTS, mapEventById, SHOP_MAX_LEVEL, shopUpgradeCost, type MapEffect } from "./game/world";
 import { rollStepEvent } from "./game/events";
@@ -165,6 +167,7 @@ function readSavedPlayer(): Player {
               statMult: g.statMult ?? 1,
               level: g.level ?? Math.max(1, Math.min(SHOP_MAX_LEVEL, base?.level ?? base?.minFloor ?? 1)),
               slot: (base?.slot ?? g.slot) as Slot,
+              gearClass: base?.gearClass ?? g.gearClass,
             };
           });
         const owned = new Set(armory.map((g) => g.uid));
@@ -833,7 +836,7 @@ export default function App() {
     if ((player.bag[id] ?? 0) <= 0) return;
     const u = def.use;
     const d = derived(player);
-    const req = Math.max(0, (u.intReq ?? 0) - d.intDiscount);
+    const req = consumableIntReq(def, d.intDiscount);
     if (player.stats.int < req) {
       setModal({
         kind: "note",
@@ -846,7 +849,7 @@ export default function App() {
     const statuses = { ...player.statuses };
     let msg = "";
     if (u.type === "heal") {
-      const amt = (u.power ?? 0) + (u.scale ?? 0) * player.stats.int;
+      const amt = consumablePower(def, player.stats);
       hp = Math.min(d.maxHp, hp + amt);
       if (def.kind === "scroll") statuses.wound = 0;
       msg = `${def.name}: +${amt} здоровья.`;

@@ -7,6 +7,7 @@ import {
   canWear,
   gearBuyPrice,
   gearSellPrice,
+  gearClassFor,
   gearStatReq,
   gearStatReqLabel,
   scaledGearStats,
@@ -76,14 +77,14 @@ export function GearCard({
           rarity={item.identified ? item.rarity : undefined}
         />
         <div className="min-w-0 flex-1">
-          <div className="sc mb-1 text-[0.68rem] text-flamedim">
+          <div className="sc mb-1 text-[0.84rem] text-flamedim">
             {slot ? SLOT_META[slot].name : allowed.map((s) => SLOT_META[s].short).join(" / ")}
           </div>
-          <h4 className="font-display text-[1rem] uppercase leading-snug tracking-[0.05em] text-flamehi">
+          <h4 className="font-display text-[1.08rem] uppercase leading-snug tracking-[0.05em] text-flamehi">
             {st.base.name}
           </h4>
-          <p className="mt-1 text-[0.76rem] leading-snug text-mute">
-            {GEAR_CLASS_META[item.gearClass ?? "medium"].name} · ур. {item.level ?? 1}
+          <p className="mt-1 text-[0.9rem] leading-snug text-mute">
+            {GEAR_CLASS_META[gearClassFor(item)].name} · ур. {item.level ?? 1}
             {st.base.hands === 2 ? " · обе руки" : ""}
           </p>
         </div>
@@ -96,7 +97,7 @@ export function GearCard({
         </Tag>
         {item.identified ? (
           <span
-            className={`border px-1.5 py-[3px] font-mono text-[0.72rem] leading-none ${RARITY_TEXT[item.rarity]}`}
+            className={`border px-1.5 py-[3px] font-mono text-[0.86rem] leading-none ${RARITY_TEXT[item.rarity]}`}
             style={RARITY_STYLE[item.rarity]}
           >
             {rarity.name}
@@ -104,12 +105,12 @@ export function GearCard({
         ) : (
           <Tag tone="flame">Не исследовано</Tag>
         )}
-        <span className={`ml-auto font-mono text-[0.74rem] ${wearable ? "text-mute" : "text-rubric"}`}>
+        <span className={`ml-auto font-mono text-[0.88rem] ${wearable ? "text-mute" : "text-rubric"}`}>
           {gearStatReqLabel(item)}
         </span>
       </div>
 
-      <div className={`${compact ? "mt-2" : "mt-2.5"} flex flex-wrap gap-x-3 gap-y-1 text-[0.84rem] leading-snug text-parch/90`}>
+      <div className={`${compact ? "mt-2" : "mt-2.5"} flex flex-wrap gap-x-3 gap-y-1 text-[0.96rem] leading-snug text-parch/90`}>
         {st.dmg && <span>Урон <b className="font-mono text-flamehi">{st.dmg[0]}–{st.dmg[1]}</b></span>}
         {st.armor > 0 && <span>Броня <b className="font-mono text-verd">+{st.armor}</b></span>}
         {st.hp > 0 && <span>ОЗ <b className="font-mono text-parch">+{st.hp}</b></span>}
@@ -118,18 +119,18 @@ export function GearCard({
       </div>
 
       {!wearable && mode === "inventory" && (
-        <p className="mt-2 text-[0.76rem] leading-snug text-rubric">
+        <p className="mt-2 text-[0.9rem] leading-snug text-rubric">
           Нужно: {STAT_META[req.stat].short} {req.value} и уровень {item.level ?? 1}.
         </p>
       )}
 
       <div className={`${compact ? "mt-2 pt-2" : "mt-3 pt-2.5"} flex flex-wrap items-center gap-2 border-t border-line/70`}>
-        <Btn className="gap-1.5 px-2.5 py-2 text-[0.72rem]" onClick={onInspect} title={`Подробнее: ${st.base.name}`}>
+        <Btn className="gap-1.5 px-2.5 py-2 text-[0.86rem]" onClick={onInspect} title={`Подробнее: ${st.base.name}`}>
           <Info size={14} aria-hidden /> Подробнее
         </Btn>
         {mode === "shop" ? (
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-            <span className="flex items-center gap-1 font-mono text-[0.82rem] text-flamehi">
+            <span className="flex items-center gap-1 font-mono text-[0.94rem] text-flamehi">
               <Coins size={14} aria-hidden /> {buyPrice}
             </span>
             {purchased ? (
@@ -155,7 +156,7 @@ export function GearCard({
               <Btn
                 key={target}
                 tone="verd"
-                className="px-2.5 py-2 text-[0.72rem]"
+                className="px-2.5 py-2 text-[0.86rem]"
                 disabled={!wearable}
                 title={wearable ? `Надеть: ${SLOT_META[target].name}` : wearRequirementNote(item, player)}
                 onClick={() => onEquip?.(target)}
@@ -163,14 +164,14 @@ export function GearCard({
                 <Plus size={12} aria-hidden /> {allowed.length > 1 ? SLOT_META[target].short : "Надеть"}
               </Btn>
             ))}
-            <Btn tone="danger" className="px-2.5 py-2 text-[0.72rem]" onClick={onSell} title={`Продать за ${gearSellPrice(item)} зол.`}>
+            <Btn tone="danger" className="px-2.5 py-2 text-[0.86rem]" onClick={onSell} title={`Продать за ${gearSellPrice(item)} зол.`}>
               Продать
             </Btn>
           </div>
         )}
       </div>
       {mode === "inventory" && (
-        <span className="mt-1.5 text-right font-mono text-[0.7rem] text-mute">Продажа: {gearSellPrice(item)} зол.</span>
+        <span className="mt-1.5 text-right font-mono text-[0.84rem] text-mute">Продажа: {gearSellPrice(item)} зол.</span>
       )}
     </article>
   );
