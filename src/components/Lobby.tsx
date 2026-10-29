@@ -3,9 +3,6 @@ import {
   ArrowDownUp,
   BookOpen,
   Brain,
-  Check,
-  Coins,
-  Eye,
   EyeOff,
   FlaskConical,
   Gem,
@@ -30,10 +27,10 @@ import {
   MAX_LEVEL,
   PASSIVES,
   RARITY_META,
+  RARE_AFFIXES,
   RECIPES,
   STAT_META,
   STAT_ORDER,
-  WEAR_META,
   attemptBrew,
   gearBuyPrice,
   gearSellPrice,
@@ -44,11 +41,11 @@ import {
   type ItemDef,
   type Recipe,
 } from "../game/content";
-import { SLOT_META } from "../game/types";
+import { SLOT_META, SLOT_ORDER } from "../game/types";
 import type { RarityTier, Slot } from "../game/types";
 import { derived } from "../game/battle";
 import { mazeSizeForFloor } from "../game/maze";
-import { GEAR_CLASS_META, gearStatReqLabel } from "../game/content";
+import { GEAR_BASES } from "../game/content";
 import { GEAR_EFFECTS, GEAR_PASSIVES } from "../game/gearEffects";
 import type { GearItem, Player, StatKey } from "../game/types";
 import { SHOP_MAX_LEVEL, shopRarityTable, shopWearTable } from "../game/world";
@@ -56,7 +53,8 @@ import { Guide } from "./Guide";
 import { Bestiary } from "./Bestiary";
 import { ItemArt } from "./ItemArt";
 import { GearNote } from "./GearNote";
-import { Btn, Meter, Modal, Panel, Pips, RARITY_STYLE, RARITY_TEXT, Rune, Tag } from "./ui";
+import { GearCard } from "./GearCard";
+import { Btn, Meter, Modal, Panel, Pips, Rune, Tag } from "./ui";
 
 
 type Tab = "train" | "armory" | "shop" | "brew" | "bestiary" | "guide";
@@ -223,8 +221,9 @@ export function Lobby({
   const [gearRarity, setGearRarity] = useState<RarityFilter>("all");
   const [gearSort, setGearSort] = useState<GearSort>("recent");
   const [onlyUnknown, setOnlyUnknown] = useState(false);
-  /** Карточка снаряжения, над которой наведена мышь: показывает полный разбор. */
-  const [gearHover, setGearHover] = useState<GearItem | null>(null);
+  /** Подробности открываются кнопкой; храним UID, чтобы видеть результат исследования. */
+  const [gearDetail, setGearDetail] = useState<{ uid: string; inShop: boolean } | null>(null);
+  const [chosenSlot, setChosenSlot] = useState<Slot | null>(null);
 
   const d = derived(player);
   const say = (t: string) => {
@@ -335,14 +334,15 @@ export function Lobby({
   };
 
   const equipGear = (item: GearItem, slot: Slot) => {
-    setPlayer((p) => {
-      const before = derived(p).maxHp;
-      const { player: next, note } = equipItem(p, item.uid, slot);
-      const after = derived(next).maxHp;
-      if (note) say(note);
-      return { ...next, hp: Math.min(after, next.hp + Math.max(0, after - before)) };
-    });
-    say(`Надето: ${scaledGearStats(item).base.name} · ${SLOT_META[slot].name}`);
+    const before = derived(player).maxHp;
+    const { player: next, note } = equipItem(player, item.uid, slot);
+    if (next === player) {
+      say(note ?? "Не удалось надеть предмет.");
+      return;
+    }
+    const after = derived(next).maxHp;
+    setPlayer(() => ({ ...next, hp: Math.min(after, next.hp + Math.max(0, after - before)) }));
+    say(note ?? `Надето: ${scaledGearStats(item).base.name} · ${SLOT_META[slot].name}`);
   };
 
   const takeOff = (slot: Slot) => {
@@ -354,7 +354,7 @@ export function Lobby({
   };
 
   const sellGear = (item: GearItem) => {
-    const isEquipped = player.equip[item.slot] === item.uid;
+    const isEquipped = Object.values(player.equip).includes(item.uid);
     if (isEquipped) return;
     const price = gearSellPrice(item);
     setPlayer((p) => ({
@@ -415,6 +415,8 @@ export function Lobby({
         g.identified ? (g.effects ?? []).map((e) => GEAR_EFFECTS[e]?.name ?? "").join(" ") : "",
         g.identified && g.epicSkill ? EPIC_SKILLS[g.epicSkill].name : "",
         g.identified && g.legendaryPassive ? LEGENDARY_PASSIVES[g.legendaryPassive].name : "",
+        g.identified && g.passive ? GEAR_PASSIVES[g.passive].name : "",
+        g.identified && g.rareAffix ? RARE_AFFIXES[g.rareAffix].name : "",
       ].join(" ").toLowerCase();
       return haystack.includes(q);
     });
@@ -443,10 +445,11 @@ export function Lobby({
     setGearRarity("all");
     setGearSort("recent");
     setOnlyUnknown(false);
+    setChosenSlot(null);
   };
 
   const gearFilters = (
-    <div className="space-y-3 border border-line bg-black/30 p-3">
+    <div className="space-y-2.5 border border-line bg-black/30 p-2.5">
       <label className="flex items-center gap-2 border border-line bg-soot px-3 py-2 focus-within:border-flamedim">
         <Search size={16} className="shrink-0 text-mute" aria-hidden />
         <input
@@ -475,8 +478,8 @@ export function Lobby({
               key={value}
               type="button"
               aria-pressed={gearSlot === value}
-              onClick={() => setGearSlot(value)}
-              className={`flex items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[0.7rem] transition-colors ${
+              onClick={() => { setGearSlot(value); setChosenSlot(null); }}
+              className={`flex items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[0.78rem] transition-colors ${
                 gearSlot === value ? "border-flamedim bg-flame/15 text-flamehi" : "border-line text-mute hover:text-parch"
               }`}
             >
@@ -489,7 +492,7 @@ export function Lobby({
           value={gearRarity}
           onChange={(e) => setGearRarity(e.target.value as RarityFilter)}
           aria-label="Фильтр редкости"
-          className="border border-line bg-soot px-2 py-1.5 font-mono text-[0.7rem] text-parch outline-none focus:border-flamedim"
+          className="border border-line bg-soot px-2 py-1.5 font-mono text-[0.78rem] text-parch outline-none focus:border-flamedim"
         >
           <option value="all">Любая редкость</option>
           <option value="unknown">Не исследовано</option>
@@ -498,7 +501,7 @@ export function Lobby({
           <option value="epic">Эпическое</option>
           <option value="legendary">Легендарное</option>
         </select>
-        <label className="flex items-center gap-1.5 border border-line bg-soot px-2 py-1.5 font-mono text-[0.7rem] text-mute">
+        <label className="flex items-center gap-1.5 border border-line bg-soot px-2 py-1.5 font-mono text-[0.78rem] text-mute">
           <ArrowDownUp size={13} aria-hidden />
           <select
             value={gearSort}
@@ -512,7 +515,7 @@ export function Lobby({
             <option value="rarity">Редкость</option>
           </select>
         </label>
-        <label className="flex cursor-pointer items-center gap-1.5 font-mono text-[0.7rem] text-mute">
+        <label className="flex cursor-pointer items-center gap-1.5 font-mono text-[0.78rem] text-mute">
           <input type="checkbox" checked={onlyUnknown} onChange={(e) => setOnlyUnknown(e.target.checked)} className="accent-[#e0a33c]" />
           <EyeOff size={13} aria-hidden />
           Только неизвестные
@@ -521,252 +524,42 @@ export function Lobby({
     </div>
   );
 
-  const renderGearCard = (item: GearItem, inShop: boolean) => {
-    const st = scaledGearStats(item);
-    const wMeta = WEAR_META[item.wear];
-    const rMeta = RARITY_META[item.rarity];
-    const allowedSlots = slotsForItem(item);
-    const wornIn = allowedSlots.filter((slot) => player.equip[slot] === item.uid);
-    const equipped = !inShop && wornIn.length > 0;
-    const compareSlot = wornIn[0] ?? allowedSlots[0];
-    const equippedItem = player.armory.find((g) => g.uid === player.equip[compareSlot]);
-    const eqStats = equippedItem && equippedItem.uid !== item.uid ? scaledGearStats(equippedItem) : null;
-    const avg = (r?: [number, number]) => (r ? (r[0] + r[1]) / 2 : 0);
-    const deltas = eqStats ? {
-      dmg: Math.round((avg(st.dmg) - avg(eqStats.dmg)) * 10) / 10,
-      armor: st.armor - eqStats.armor,
-      hp: st.hp - eqStats.hp,
-    } : null;
-    const reqs = identifyReqs(item);
-    const reqIntId = Math.max(1, reqs.int - d.intDiscount);
-    const canIdInt = player.stats.int >= reqIntId;
-    const canIdGold = player.gold >= reqs.gold;
-    const twoHanded = st.base.hands === 2;
-    const ws = st.skill;
-    const wsReq = ws ? Math.max(1, ws.intReq - d.intDiscount) : 0;
-    const wsUnlocked = ws ? player.stats.int >= wsReq : false;
+  const wornUids = new Set(SLOT_ORDER.map((slot) => player.equip[slot]).filter((uid): uid is string => !!uid));
+  const inventoryItems = player.armory.filter((item) => !wornUids.has(item.uid));
+  const slotCandidates = chosenSlot ? inventoryItems.filter((item) => slotsForItem(item).includes(chosenSlot)) : inventoryItems;
+  const visibleInventory = filterGear(slotCandidates);
+  const twoHanded = player.armory.find((item) => item.uid === player.equip.mainHand && GEAR_BASES[item.baseId]?.hands === 2);
+  const detailItem = gearDetail
+    ? (gearDetail.inShop ? shopStock : player.armory).find((item) => item.uid === gearDetail.uid)
+    : null;
 
-    const buyPrice = gearBuyPrice(item);
-    const sellPrice = gearSellPrice(item);
-    const alreadyBought = inShop && purchasedUids[item.uid];
-    const spread = Math.round((item.statMult - 1) * 100);
-
-    return (
-      <Panel
-        key={item.uid}
-        style={item.identified ? RARITY_STYLE[item.rarity] : RARITY_STYLE.common}
-        className={`group relative flex flex-col p-4 transition-colors ${equipped ? "bg-flame/5" : "hover:bg-slab2/70"}`}
-        onMouseEnter={() => setGearHover(item)}
-        onMouseLeave={() => setGearHover((cur) => (cur?.uid === item.uid ? null : cur))}
-      >
-        <div className="flex items-start gap-3">
-          <ItemArt
-            id={item.baseId}
-            name={st.base.name}
-            size={76}
-            rarity={item.identified ? item.rarity : undefined}
-            className="transition-transform duration-200 group-hover:scale-[1.03]"
-          />
-          <div className="min-w-0 flex-1">
-            <h4 className="font-display text-[1.02rem] uppercase leading-tight tracking-[0.08em] text-flamehi">
-              {st.base.name}
-            </h4>
-            <span className="sc text-[0.55rem]">
-              {GEAR_CLASS_META[item.gearClass ?? "medium"].name} ·{" "}
-              {allowedSlots.map((slot) => SLOT_META[slot].short).join(" / ")} · ур. {item.level ?? 1} · требует {gearStatReqLabel(item)}
-              {twoHanded ? " · обе руки" : ""}
-            </span>
-            <div className="mt-1 flex flex-wrap gap-1">
-              <Tag tone={item.wear === "new" ? "verd" : item.wear === "worn" ? "mute" : "rubric"}>
-                {wMeta.name} ×{wMeta.mult}
-              </Tag>
-              {item.identified ? (
-                <span
-                  style={RARITY_STYLE[item.rarity]}
-                  className={`inline-flex items-center gap-1 border px-1.5 py-[3px] font-mono text-[0.64rem] uppercase leading-none tracking-[0.08em] ${RARITY_TEXT[item.rarity]}`}
-                >
-                  <Eye size={10} aria-hidden />
-                  {rMeta.name}
-                </span>
-              ) : (
-                <Tag tone="flame">Редкость: ???</Tag>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <p className="mt-2 text-[0.82rem] italic leading-snug text-mute">{st.base.desc}</p>
-
-        {/* Параметры конкретного экземпляра: разброс урона и ±10% к статам */}
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
-          {st.dmg && <Tag tone="flame">урон {st.dmg[0]}–{st.dmg[1]}</Tag>}
-          {st.armor > 0 && <Tag tone="verd">защита +{st.armor}</Tag>}
-          {st.hp > 0 && <Tag tone="mute">здоровье +{st.hp}</Tag>}
-          {st.evade > 0 && <Tag tone="verd">уклонение +{Math.round(st.evade * 100)}%</Tag>}
-          {spread !== 0 && (
-            <Tag tone={spread > 0 ? "flame" : "rubric"}>
-              параметры {spread > 0 ? "+" : ""}
-              {spread}%
-            </Tag>
-          )}
-        </div>
-        {item.dmgRoll && (
-          <div className="mt-1 font-mono text-[0.66rem] text-mute">
-            разброс клинка: базовый {st.base.dmg?.[0]}–{st.base.dmg?.[1]} → этот {item.dmgRoll[0]}–{item.dmgRoll[1]}
-          </div>
-        )}
-        {deltas && (deltas.dmg !== 0 || deltas.armor !== 0 || deltas.hp !== 0) && (
-          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 border-l-2 border-line pl-2 font-mono text-[0.66rem] text-mute">
-            <span>к надетому:</span>
-            {deltas.dmg !== 0 && <span className={deltas.dmg > 0 ? "text-verd" : "text-rubric"}>урон {deltas.dmg > 0 ? "+" : ""}{deltas.dmg}</span>}
-            {deltas.armor !== 0 && <span className={deltas.armor > 0 ? "text-verd" : "text-rubric"}>броня {deltas.armor > 0 ? "+" : ""}{deltas.armor}</span>}
-            {deltas.hp !== 0 && <span className={deltas.hp > 0 ? "text-verd" : "text-rubric"}>ОЗ {deltas.hp > 0 ? "+" : ""}{deltas.hp}</span>}
-          </div>
-        )}
-
-        {/* Оружейный приём (открывается от Интеллекта) */}
-        {ws && (
-          <div className="mt-2.5 border-l-2 border-flamedim bg-black/35 px-2.5 py-1.5 text-[0.78rem]">
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-display uppercase tracking-[0.08em] text-flamehi">
-                Приём: {ws.name}
-              </span>
-              <span className={`font-mono text-[0.68rem] ${wsUnlocked ? "text-verd" : "text-rubric"}`}>
-                ИНТ {wsReq} {wsUnlocked ? "✓ открыт" : "🔒"}
-              </span>
-            </div>
-            <div className="mt-0.5 text-parch/85">{ws.desc}</div>
-            <div className="mt-0.5 font-mono text-[0.66rem] text-mute">{ws.passiveNote}</div>
-          </div>
-        )}
-
-        {/* Свойства качества (Редкое -> Эпическое -> Легендарное) */}
-        <div className="mt-2.5 flex-1">
-          {!item.identified ? (
-            <div className="border border-dashed border-flamedim/60 bg-black/40 p-2.5 text-[0.78rem]">
-              <div className="font-display uppercase tracking-[0.1em] text-flame">
-                Качество скрыто туманом
-              </div>
-              <p className="mt-0.5 text-mute">
-                {inShop
-                  ? "Надень в арсенале — исследование произойдёт само, если хватит Интеллекта."
-                  : "Проведите исследование, чтобы узнать редкость и пробудить скрытые свойства предмета."}
-              </p>
-              <p className="mt-1 font-mono text-[0.66rem] text-flamedim">
-                уровень предмета {item.level ?? 1} · исследование: ИНТ {reqIntId} или {reqs.gold} зол.
-              </p>
-              {!inShop && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  <Btn
-                    tone={canIdInt ? "verd" : "ghost"}
-                    disabled={!canIdInt}
-                    onClick={() => identifyGear(item.uid, "int")}
-                    className="px-2.5 py-1.5 text-[0.68rem]"
-                  >
-                    Исследовать (ИНТ {reqIntId}) · 0 зол.
-                  </Btn>
-                  <Btn
-                    tone={canIdGold ? "flame" : "ghost"}
-                    disabled={!canIdGold}
-                    onClick={() => identifyGear(item.uid, "gold")}
-                    className="px-2.5 py-1.5 text-[0.68rem]"
-                  >
-                    Оплатить ({reqs.gold} зол.)
-                  </Btn>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-1.5 border border-line/80 bg-black/30 p-2.5 text-[0.78rem]">
-              {item.rarity === "common" && (
-                <div className="text-mute italic">
-                  Обычное качество: без дополнительных чар, полагается на чистую сталь.
-                </div>
-              )}
-              {(item.effects ?? []).map((e, i) => {
-                const meta = GEAR_EFFECTS[e];
-                return (
-                  <div key={e + i}>
-                    <span className="font-mono text-[0.66rem] uppercase text-verd">[Эффект] </span>
-                    <b className="text-parch">{meta?.name}:</b>{" "}
-                    <span className="text-mute">{meta?.detail}</span>
-                  </div>
-                );
-              })}
-              {item.epicSkill && (
-                <div>
-                  <span className="font-mono text-[0.66rem] uppercase text-flame">
-                    [Эпическая способность · ИНТ {Math.max(1, EPIC_SKILLS[item.epicSkill].intReq - d.intDiscount)}]{" "}
-                  </span>
-                  <b className="text-flamehi">{EPIC_SKILLS[item.epicSkill].name}:</b>{" "}
-                  <span className="text-mute">{EPIC_SKILLS[item.epicSkill].desc}</span>
-                </div>
-              )}
-              {item.passive && GEAR_PASSIVES[item.passive] && (
-                <div>
-                  <span className="font-mono text-[0.66rem] uppercase text-rubric">[Легендарная пассивка] </span>
-                  <b className="text-flamehi">{GEAR_PASSIVES[item.passive].name}:</b>{" "}
-                  <span className="text-mute">{GEAR_PASSIVES[item.passive].detail}</span>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Кнопки управления */}
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line/60 pt-2.5">
-          {inShop ? (
-            <>
-              <span className="flex items-center gap-1.5 font-mono text-sm tab text-flamehi"><Coins size={14} aria-hidden />{buyPrice} зол.</span>
-              {alreadyBought ? (
-                <Tag tone="verd">куплено</Tag>
-              ) : (
-                <Btn
-                  tone={player.gold >= buyPrice ? "flame" : "ghost"}
-                  disabled={player.gold < buyPrice}
-                  onClick={() => buyGear(item)}
-                >
-                  Купить
-                </Btn>
-              )}
-            </>
-          ) : (
-            <>
-              <span className="font-mono text-xs text-mute">
-                цена скупщика: <span className="text-parch">{sellPrice} зол.</span>
-              </span>
-              <div className="flex items-center gap-1.5">
-                {equipped ? (
-                  <span className="flex flex-wrap items-center gap-1.5">
-                    {wornIn.map((slot) => (
-                      <span key={slot} className="flex items-center gap-1.5 border border-verd/70 px-2 py-1 font-mono text-[0.68rem] text-verd">
-                        <Check size={13} aria-hidden />
-                        {SLOT_META[slot].short}
-                      </span>
-                    ))}
-                    <Btn tone="danger" className="px-2.5 py-1.5" onClick={() => takeOff(wornIn[0])}>
-                      Снять
-                    </Btn>
-                  </span>
-                ) : (
-                  <>
-                    {allowedSlots.map((slot) => (
-                      <Btn key={slot} tone="verd" className="px-3 py-1.5" onClick={() => equipGear(item, slot)}>
-                        {allowedSlots.length > 1 ? SLOT_META[slot].short : "Надеть"}
-                      </Btn>
-                    ))}
-                    <Btn tone="danger" className="px-2.5 py-1.5" onClick={() => sellGear(item)}>
-                      Продать
-                    </Btn>
-                  </>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      </Panel>
-    );
+  const chooseSlot = (slot: Slot) => {
+    setChosenSlot(slot);
+    setGearQuery("");
+    setGearRarity("all");
+    setOnlyUnknown(false);
+    setGearSlot(slot === "mainHand" || slot === "offHand" ? "hands" : slot === "amulet" ? "amulet" : slot === "ring1" || slot === "ring2" ? "rings" : "armor");
+    if (window.matchMedia("(max-width: 1199px)").matches) {
+      window.requestAnimationFrame(() => document.getElementById("armory-inventory")?.scrollIntoView({ block: "start" }));
+    }
   };
+
+  const renderGearCard = (item: GearItem, mode: "equipped" | "inventory" | "shop", slot?: Slot) => (
+    <GearCard
+      key={`${mode}-${item.uid}-${slot ?? ""}`}
+      item={item}
+      player={player}
+      mode={mode}
+      slot={slot}
+      preferredSlot={mode === "inventory" ? chosenSlot ?? undefined : undefined}
+      purchased={!!purchasedUids[item.uid]}
+      onInspect={() => setGearDetail({ uid: item.uid, inShop: mode === "shop" })}
+      onEquip={(target) => equipGear(item, chosenSlot && slotsForItem(item).includes(chosenSlot) ? chosenSlot : target)}
+      onUnequip={takeOff}
+      onSell={() => sellGear(item)}
+      onBuy={() => buyGear(item)}
+    />
+  );
 
   return (
     <div className="relative min-h-screen w-full overflow-x-hidden">
@@ -783,11 +576,11 @@ export function Lobby({
         <div className="absolute inset-0 bg-gradient-to-t from-soot via-transparent to-soot/70" />
       </div>
 
-      <div className="relative mx-auto max-w-6xl px-5 pb-24 pt-10 lg:px-8">
+      <div className="relative mx-auto max-w-7xl px-4 pb-16 pt-6 sm:px-6 lg:px-7">
         <header className="max-w-2xl">
           <span className="sc text-flamedim">Лобби · лагерь под сводами</span>
-          <h2 className="font-title text-5xl leading-[0.95] text-flamehi sm:text-6xl">Сумрак</h2>
-          <p className="dropcap mt-3 max-w-xl text-[0.95rem] leading-relaxed text-parch/90">
+          <h2 className="font-title text-4xl leading-[0.95] text-flamehi sm:text-5xl">Сумрак</h2>
+          <p className="mt-2 max-w-xl text-[0.9rem] leading-relaxed text-parch/85">
             Здесь распределяют очки, исследуют трофейные клинки и покупают забытые рецепты. Выбери знакомый
             ярус для следующей вылазки: коридоры внизу длиннее, а Стражи — сильнее.
           </p>
@@ -800,9 +593,6 @@ export function Lobby({
             </span>
             <span className="tab">
               очки характеристик: <span className="text-flame">{player.statPoints}</span>
-            </span>
-            <span className="tab">
-              кошель: <span className="text-flamehi">{player.gold}</span> зол.
             </span>
             <span className="tab">
               рекорд глубины: <span className="text-verd">{best}</span> этаж
@@ -1025,56 +815,64 @@ export function Lobby({
             )}
 
             {tab === "armory" && (
-              <div className="space-y-5">
-                <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line pb-3">
-                  <div>
-                    <span className="sc text-flamedim">Только твоё имущество</span>
-                    <h3 className="font-display text-xl uppercase tracking-[0.12em] text-flamehi">
-                      Арсенал · {player.armory.length} предметов
-                    </h3>
+              <div className="grid items-start gap-5 min-[1200px]:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.35fr)]">
+                <section aria-label="Надето на персонаже" className="min-w-0 border border-line bg-black/20 p-3 min-[1200px]:sticky min-[1200px]:top-4 min-[1200px]:max-h-[calc(100dvh-2rem)] min-[1200px]:overflow-y-auto">
+                  <div className="mb-3 flex items-end justify-between gap-3 border-b border-line pb-3">
+                    <div>
+                      <span className="sc text-flamedim">Экипировка</span>
+                      <h3 className="mt-1 font-display text-xl uppercase tracking-[0.08em] text-flamehi">Надето на персонаже</h3>
+                    </div>
+                    <span className="shrink-0 font-mono text-sm tab text-verd">{wornUids.size}/{SLOT_ORDER.length}</span>
                   </div>
-                  <span className="font-mono text-xs text-mute">
-                    Не исследовано: {player.armory.filter((g) => !g.identified).length}
-                  </span>
-                </div>
-                <p className="max-w-2xl text-sm leading-relaxed text-mute">
-                  Здесь можно надевать, продавать и исследовать только уже купленное или найденное снаряжение.
-                  До исследования качество неизвестно. За Интеллект исследование бесплатно, иначе придётся заплатить.
-                </p>
-                {player.armory.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-2 border-b border-line pb-3">
-                    <span className="sc mr-1">Недавние поступления</span>
-                    {player.armory.slice(0, 4).map((g) => (
-                      <button
-                        key={g.uid}
-                        type="button"
-                        onClick={() => {
-                          setGearQuery(scaledGearStats(g).base.name);
-                          setGearSlot("all");
-                          setGearRarity("all");
-                          setOnlyUnknown(false);
-                        }}
-                        className="flex items-center gap-2 border border-line bg-black/30 px-2 py-1 text-left transition-colors hover:border-flamedim"
-                        title={`Показать: ${scaledGearStats(g).base.name}`}
-                      >
-                        <ItemArt id={g.baseId} size={30} rarity={g.identified ? g.rarity : undefined} />
-                        <span className="max-w-32 truncate font-mono text-[0.68rem] text-parch">{scaledGearStats(g).base.name}</span>
-                      </button>
-                    ))}
+                  <div className="grid grid-cols-1 gap-2">
+                    {SLOT_ORDER.map((slot) => {
+                      const item = player.armory.find((entry) => entry.uid === player.equip[slot]);
+                      if (item) return renderGearCard(item, "equipped", slot);
+                      const occupied = slot === "offHand" && twoHanded;
+                      return (
+                        <div key={slot} className={`flex min-h-[76px] items-center justify-between gap-3 border border-dashed px-3 py-2.5 ${chosenSlot === slot ? "border-flame bg-flame/5" : "border-line"}`}>
+                          <div className="min-w-0">
+                            <div className="sc text-[0.68rem] text-flamedim">{SLOT_META[slot].name}</div>
+                            <p className="mt-1 text-[0.82rem] leading-snug text-mute">{occupied ? "Занято двуручным оружием" : "Пустая ячейка"}</p>
+                          </div>
+                          <Btn className="shrink-0 px-2.5 py-2 text-[0.7rem]" onClick={() => chooseSlot(slot)}>
+                            {occupied ? "Заменить" : "Выбрать"}
+                          </Btn>
+                        </div>
+                      );
+                    })}
                   </div>
-                )}
-                {gearFilters}
-                {filterGear(player.armory).length > 0 ? (
-                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    {filterGear(player.armory).map((g) => renderGearCard(g, false))}
+                  <p className="mt-3 text-[0.78rem] leading-relaxed text-mute">Снятая вещь появится в инвентаре справа. Её эффекты сразу перестанут учитываться в листе персонажа.</p>
+                </section>
+
+                <section id="armory-inventory" aria-label="Инвентарь снаряжения" className="min-w-0 scroll-mt-4 border border-line bg-black/20 p-3">
+                  <div className="mb-3 flex flex-wrap items-end justify-between gap-3 border-b border-line pb-3">
+                    <div>
+                      <span className="sc text-flamedim">Свободные вещи</span>
+                      <h3 className="mt-1 font-display text-xl uppercase tracking-[0.08em] text-flamehi">Инвентарь</h3>
+                    </div>
+                    <span className="font-mono text-[0.8rem] text-mute">{visibleInventory.length} из {inventoryItems.length} · неизвестно: {inventoryItems.filter((item) => !item.identified).length}</span>
                   </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-3 border border-dashed border-line py-12 text-center">
-                    <PackageSearch size={30} className="text-mute" aria-hidden />
-                    <p className="text-sm text-mute">Ничего не найдено. Измените фильтры или загляните в магазин.</p>
-                    <Btn onClick={resetGearFilters}>Сбросить фильтры</Btn>
-                  </div>
-                )}
+                  {chosenSlot && (
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border border-flamedim/60 bg-flame/5 px-3 py-2 text-[0.82rem]">
+                      <span className="text-flamehi">Выбрать предмет: {SLOT_META[chosenSlot].name}</span>
+                      <button className="text-mute underline underline-offset-2 hover:text-parch" onClick={() => { setChosenSlot(null); setGearSlot("all"); }}>Показать все</button>
+                    </div>
+                  )}
+                  {gearFilters}
+                  <p className="my-3 text-[0.8rem] leading-relaxed text-mute">Приёмы, свойства и исследование — в окне «Подробнее».</p>
+                  {visibleInventory.length > 0 ? (
+                    <div className="grid grid-cols-1 gap-3 min-[1600px]:grid-cols-2">
+                      {visibleInventory.map((item) => renderGearCard(item, "inventory"))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-3 border border-dashed border-line px-4 py-12 text-center">
+                      <PackageSearch size={30} className="text-mute" aria-hidden />
+                      <p className="text-[0.9rem] leading-relaxed text-mute">{inventoryItems.length === 0 ? "Все вещи надеты или инвентарь пуст. Новое снаряжение можно найти в подземелье или купить в магазине." : "Подходящих вещей нет. Измените фильтры или загляните в магазин."}</p>
+                      {(gearQuery || gearSlot !== "all" || gearRarity !== "all" || onlyUnknown || chosenSlot) && <Btn onClick={resetGearFilters}>Сбросить фильтры</Btn>}
+                    </div>
+                  )}
+                </section>
               </div>
             )}
 
@@ -1185,8 +983,8 @@ export function Lobby({
                     </div>
                     {gearFilters}
                     {filterGear(shopStock).length > 0 ? (
-                      <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                        {filterGear(shopStock).map((g) => renderGearCard(g, true))}
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+                        {filterGear(shopStock).map((g) => renderGearCard(g, "shop"))}
                       </div>
                     ) : (
                       <div className="mt-3 flex flex-col items-center gap-3 border border-dashed border-line py-12 text-center">
@@ -1512,8 +1310,15 @@ export function Lobby({
         </div>
       )}
 
-      {/* Полный разбор снаряжения при наведении */}
-      {gearHover && <GearNote item={gearHover} player={player} />}
+      {gearDetail && detailItem && (
+        <GearNote
+          item={detailItem}
+          player={player}
+          inShop={gearDetail.inShop}
+          onClose={() => setGearDetail(null)}
+          onIdentify={gearDetail.inShop ? undefined : identifyGear}
+        />
+      )}
 
       {toast && (
         <div className="fixed bottom-5 left-1/2 z-40 -translate-x-1/2">

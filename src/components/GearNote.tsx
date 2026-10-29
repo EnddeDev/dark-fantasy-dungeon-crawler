@@ -1,173 +1,229 @@
+import type { ReactNode } from "react";
+import { Check, Eye, Lock, Sparkles, Sword } from "lucide-react";
 import {
   EPIC_SKILLS,
-  GEAR_BASES,
+  GEAR_CLASS_META,
+  LEGENDARY_PASSIVES,
   RARITY_META,
+  RARE_AFFIXES,
+  STAT_META,
+  WEAR_META,
+  WEAR_RANGE,
+  gearBuyPrice,
+  gearSellPrice,
+  gearStatReq,
   identifyReqs,
   scaledGearStats,
-  STAT_META,
-  WEAR_RANGE,
-  weaponSkillFor,
+  slotsForItem,
 } from "../game/content";
+import { derived } from "../game/battle";
 import { GEAR_EFFECTS, GEAR_PASSIVES } from "../game/gearEffects";
 import { SLOT_META } from "../game/types";
-import type { GearItem, Player, StatKey } from "../game/types";
+import type { GearItem, Player } from "../game/types";
 import { ItemArt } from "./ItemArt";
+import { Btn, Modal, RARITY_TEXT, Tag } from "./ui";
 
-const RARITY_COLOR: Record<string, string> = {
-  common: "#9a8672",
-  rare: "#5aa9e6",
-  epic: "#a78bfa",
-  legendary: "#f6d48a",
-};
+function DetailSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="border-t border-line pt-3">
+      <h3 className="sc mb-2 text-[0.72rem] text-flamedim">{title}</h3>
+      {children}
+    </section>
+  );
+}
 
-/**
- * Сноска с полным разбором предмета: что даёт, чего требует,
- * какая изношенность досталась этому конкретному экземпляру.
- */
-export function GearNote({ item, player }: { item: GearItem; player: Player }) {
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 py-1">
+      <dt className="text-[0.86rem] text-mute">{label}</dt>
+      <dd className="text-right font-mono text-[0.86rem] tab text-parch">{value}</dd>
+    </div>
+  );
+}
+
+/** Полный разбор открывается кнопкой карточки, а не наведением мыши. */
+export function GearNote({
+  item,
+  player,
+  onClose,
+  inShop = false,
+  onIdentify,
+}: {
+  item: GearItem;
+  player: Player;
+  onClose: () => void;
+  inShop?: boolean;
+  onIdentify?: (uid: string, mode: "int" | "gold") => void;
+}) {
   const st = scaledGearStats(item);
-  const base = GEAR_BASES[item.baseId] ?? { name: "Предмет", desc: "" };
+  const d = derived(player);
   const level = item.level ?? 1;
-  const identified = item.identified;
-  const skill = weaponSkillFor(item);
-  const req = identifyReqs(item);
-  const skillIntReq = skill
-    ? Math.max(1, skill.intReq - (player.passives.includes("scribe") ? 1 : 0))
-    : 1;
+  const req = gearStatReq(item);
+  const research = identifyReqs(item);
+  const researchInt = Math.max(1, research.int - d.intDiscount);
   const range = WEAR_RANGE[item.wear];
-  const color = RARITY_COLOR[item.rarity] ?? RARITY_COLOR.common;
-  const equipped = Object.values(player.equip).includes(item.uid);
-
-  const statReq = (item.gearClass === "light" ? "int" : item.gearClass === "heavy" ? "str" : "agi") as StatKey;
-  const needValue = Math.max(1, Math.min(10, 1 + level));
-  const haveValue = player.stats[statReq];
-  const statOk = haveValue >= needValue;
+  const allowed = slotsForItem(item);
+  const wornIn = allowed.filter((slot) => player.equip[slot] === item.uid);
+  const compareSlot = allowed.find((slot) => player.equip[slot] && player.equip[slot] !== item.uid) ?? allowed[0];
+  const compared = player.armory.find((entry) => entry.uid === player.equip[compareSlot]);
+  const other = !wornIn.length && compared && compared.uid !== item.uid ? scaledGearStats(compared) : null;
+  const skill = st.skill;
+  const skillInt = skill ? Math.max(1, skill.intReq - d.intDiscount) : 0;
+  const skillOpen = !!skill && player.stats.int >= skillInt;
+  const statOk = player.stats[req.stat] >= req.value;
   const levelOk = player.level >= level;
-
-  const rows: [string, string][] = [];
-  if (st.dmg) rows.push(["Урон оружия", `${st.dmg[0]}–${st.dmg[1]}`]);
-  if (st.armor) rows.push(["Защита", `+${st.armor}`]);
-  if (st.hp) rows.push(["Здоровье", `+${st.hp}`]);
-  if (st.evade) rows.push(["Уклонение", `${st.evade > 0 ? "+" : ""}${Math.round(st.evade * 100)}%`]);
-  rows.push(["Состояние", `${range.label} ×${item.wearMult.toFixed(3)}`]);
-  rows.push(["Базовый множитель", `×${range.base} (диапазон ${range.lo}–${range.hi})`]);
-
-  const effects = (item.effects ?? []).map((e) => GEAR_EFFECTS[e]).filter(Boolean);
-  const passive = item.passive ? GEAR_PASSIVES[item.passive] : null;
+  const spread = Math.round((item.statMult - 1) * 100);
+  const avg = (range?: [number, number]) => range ? (range[0] + range[1]) / 2 : 0;
+  const deltas = other ? [
+    { label: "Средний урон", value: Math.round((avg(st.dmg) - avg(other.dmg)) * 10) / 10 },
+    { label: "Броня", value: st.armor - other.armor },
+    { label: "Здоровье", value: st.hp - other.hp },
+    { label: "Уклонение, п.п.", value: Math.round((st.evade - other.evade) * 100) },
+  ].filter((entry) => entry.value !== 0) : [];
 
   return (
-    <div
-      className="pointer-events-none fixed bottom-4 right-4 z-40 w-[min(25rem,calc(100vw-2rem))] border bg-slab/98 p-4 shadow-[0_30px_70px_-25px_#000]"
-      style={{ borderColor: identified ? color : "#322720" }}
-      role="tooltip"
-      aria-live="polite"
+    <Modal
+      title={st.base.name}
+      sub="Полная информация о предмете"
+      onClose={onClose}
+      actions={<Btn onClick={onClose}>Закрыть</Btn>}
     >
-      <div className="flex gap-3">
-        <ItemArt id={item.baseId} name={st.base.name} size={64} framed={identified} />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="sc text-[0.58rem]">{SLOT_META[item.slot]?.name ?? "Слот"}</div>
-              <h4 className="font-display text-[1.05rem] uppercase leading-tight tracking-[0.06em] text-flamehi">
-                {st.base.name}
-              </h4>
+      <div className="space-y-4">
+        <div className="flex items-start gap-4">
+          <ItemArt id={item.baseId} name={st.base.name} size={76} rarity={item.identified ? item.rarity : undefined} />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap gap-1.5">
+              <Tag>{GEAR_CLASS_META[item.gearClass ?? "medium"].name}</Tag>
+              <Tag>Уровень {level}</Tag>
+              <Tag tone={item.wear === "new" ? "verd" : item.wear === "battered" ? "rubric" : "mute"}>{WEAR_META[item.wear].name}</Tag>
+              {item.identified ? (
+                <span className={`border border-line px-1.5 py-[3px] font-mono text-[0.72rem] leading-none ${RARITY_TEXT[item.rarity]}`}>{RARITY_META[item.rarity].name}</span>
+              ) : <Tag tone="flame">Редкость неизвестна</Tag>}
+              {wornIn.length > 0 && <Tag tone="verd">Надето: {wornIn.map((slot) => SLOT_META[slot].short).join(", ")}</Tag>}
             </div>
-            <span className="shrink-0 font-mono text-[0.7rem] tab text-flame">ур. {level}</span>
-          </div>
-          <div className="mt-1 flex flex-wrap gap-1 font-mono text-[0.62rem]">
-            <span className="border border-flamedim/70 px-1.5 py-0.5 text-flamedim">
-              {base.gearClass === "light" ? "лёгкое" : base.gearClass === "heavy" ? "тяжёлое" : "среднее"}
-            </span>
-            {identified ? (
-              <span className="border px-1.5 py-0.5 uppercase" style={{ borderColor: color, color }}>
-                {RARITY_META[item.rarity]?.name ?? "Обычное"}
-              </span>
-            ) : (
-              <span className="border border-line px-1.5 py-0.5 text-mute">редкость ???</span>
-            )}
-            {equipped && <span className="border border-verd px-1.5 py-0.5 text-verd">надето</span>}
+            <p className="mt-2 text-[0.88rem] italic leading-relaxed text-mute">{st.base.desc}</p>
           </div>
         </div>
+
+        <DetailSection title="Требования и ячейки">
+          <div className="flex flex-wrap gap-2">
+            <Tag tone={statOk ? "verd" : "rubric"}>{STAT_META[req.stat].name}: {player.stats[req.stat]}/{req.value} {statOk ? "✓" : "✗"}</Tag>
+            <Tag tone={levelOk ? "verd" : "rubric"}>Уровень персонажа: {player.level}/{level} {levelOk ? "✓" : "✗"}</Tag>
+          </div>
+          <p className="mt-2 text-[0.84rem] leading-relaxed text-mute">
+            Ячейки: {allowed.map((slot) => SLOT_META[slot].name).join(" / ")}.
+            {st.base.hands === 2 && " Двуручное оружие занимает обе руки."}
+          </p>
+        </DetailSection>
+
+        <DetailSection title="Характеристики этого экземпляра">
+          <dl>
+            {st.dmg && <Row label="Урон оружия" value={`${st.dmg[0]}–${st.dmg[1]}`} />}
+            {st.armor > 0 && <Row label="Броня" value={`+${st.armor}`} />}
+            {st.hp > 0 && <Row label="Здоровье" value={`+${st.hp}`} />}
+            {st.evade > 0 && <Row label="Уклонение" value={`+${Math.round(st.evade * 100)}%`} />}
+            <Row label="Состояние" value={`${WEAR_META[item.wear].name} · ×${st.wearMult.toFixed(3)}`} />
+            <Row label="Диапазон состояния" value={`×${range.lo}–${range.hi}, базовый ×${range.base}`} />
+            <Row label="Разброс параметров" value={`${spread > 0 ? "+" : ""}${spread}%`} />
+            {item.dmgRoll && <Row label="Разброс клинка" value={`${st.base.dmg?.[0]}–${st.base.dmg?.[1]} → ${item.dmgRoll[0]}–${item.dmgRoll[1]}`} />}
+            <Row label={inShop ? "Цена покупки" : "Цена продажи"} value={`${inShop ? gearBuyPrice(item) : gearSellPrice(item)} зол.`} />
+          </dl>
+        </DetailSection>
+
+        {other && (
+          <DetailSection title={`Сравнение с надетым: ${other.base.name}`}>
+            {deltas.length ? (
+              <dl>{deltas.map((delta) => (
+                <div key={delta.label} className="flex justify-between gap-3 py-1 text-[0.86rem]">
+                  <dt className="text-mute">{delta.label}</dt>
+                  <dd className={`font-mono tab ${delta.value > 0 ? "text-verd" : "text-rubric"}`}>{delta.value > 0 ? "+" : ""}{delta.value}</dd>
+                </div>
+              ))}</dl>
+            ) : <p className="text-[0.85rem] text-mute">Базовые параметры совпадают.</p>}
+            <p className="mt-1 text-[0.76rem] leading-snug text-mute">Сравниваются базовые параметры вещей; итоговые значения также зависят от характеристик и эффектов персонажа.</p>
+          </DetailSection>
+        )}
+
+        {skill && (
+          <DetailSection title="Приём оружия">
+            <div className="border-l-2 border-flamedim bg-black/25 px-3 py-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h4 className="flex items-center gap-2 font-display text-[1rem] uppercase tracking-[0.05em] text-flamehi"><Sword size={15} aria-hidden />{skill.name}</h4>
+                <span className={`flex items-center gap-1 font-mono text-[0.76rem] ${skillOpen ? "text-verd" : "text-rubric"}`}>
+                  {skillOpen ? <Check size={13} aria-hidden /> : <Lock size={13} aria-hidden />} ИНТ {skillInt} · {skillOpen ? "открыт" : "закрыт"}
+                </span>
+              </div>
+              <p className="mt-2 text-[0.88rem] leading-relaxed text-parch/90">{skill.desc}</p>
+              <p className="mt-1.5 text-[0.82rem] leading-relaxed text-mute">{skill.passiveNote}</p>
+              <p className="mt-1.5 font-mono text-[0.76rem] text-mute">Откат: {skill.cooldown}. Масштабирование: {STAT_META[skill.scaleStat].short} ×{skill.scaleMult}.</p>
+            </div>
+          </DetailSection>
+        )}
+
+        <DetailSection title="Свойства и способности">
+          {!item.identified ? (
+            <div className="border border-dashed border-flamedim/60 bg-black/25 p-3">
+              <h4 className="flex items-center gap-2 font-display text-[1rem] uppercase tracking-[0.05em] text-flame"><Eye size={16} aria-hidden />Качество скрыто туманом</h4>
+              <p className="mt-2 text-[0.86rem] leading-relaxed text-mute">
+                {inShop
+                  ? "Редкость, дополнительные свойства и способности станут известны после покупки и исследования в арсенале."
+                  : "Исследуйте предмет, чтобы раскрыть редкость, дополнительные свойства и способности."}
+              </p>
+              {!inShop && onIdentify && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Btn tone="verd" disabled={player.stats.int < researchInt} onClick={() => onIdentify(item.uid, "int")}>
+                    Исследовать · ИНТ {researchInt}
+                  </Btn>
+                  <Btn tone="flame" disabled={player.gold < research.gold} onClick={() => onIdentify(item.uid, "gold")}>
+                    Оплатить · {research.gold} зол.
+                  </Btn>
+                </div>
+              )}
+              <p className="mt-2 text-[0.76rem] text-mute">Исследование за Интеллект не тратит золото.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {item.rarity === "common" && !item.effects.length && !item.epicSkill && !item.passive && !item.rareAffix && !item.legendaryPassive && (
+                <p className="text-[0.86rem] italic text-mute">Обычное качество: дополнительных свойств нет.</p>
+              )}
+              {item.effects.map((id, index) => {
+                const effect = GEAR_EFFECTS[id];
+                return effect ? (
+                  <div key={`${id}-${index}`} className="border-l-2 border-verd/60 pl-3">
+                    <h4 className="font-display text-[0.98rem] uppercase tracking-[0.04em] text-verd">{effect.name}</h4>
+                    <p className="mt-1 text-[0.86rem] leading-relaxed text-parch/85">{effect.detail}</p>
+                  </div>
+                ) : null;
+              })}
+              {item.rareAffix && (
+                <div className="border-l-2 border-verd/60 pl-3">
+                  <h4 className="font-display text-[0.98rem] uppercase tracking-[0.04em] text-verd">{RARE_AFFIXES[item.rareAffix].name}</h4>
+                  <p className="mt-1 text-[0.86rem] leading-relaxed text-parch/85">{RARE_AFFIXES[item.rareAffix].desc}</p>
+                </div>
+              )}
+              {item.epicSkill && (
+                <div className="border-l-2 border-flamedim pl-3">
+                  <h4 className="flex items-center gap-2 font-display text-[0.98rem] uppercase tracking-[0.04em] text-flamehi"><Sparkles size={14} aria-hidden />{EPIC_SKILLS[item.epicSkill].name}</h4>
+                  <p className="mt-1 text-[0.86rem] leading-relaxed text-parch/85">{EPIC_SKILLS[item.epicSkill].desc}</p>
+                  <p className="mt-1 font-mono text-[0.76rem] text-mute">Эпический приём · ИНТ {Math.max(1, EPIC_SKILLS[item.epicSkill].intReq - d.intDiscount)} · откат {EPIC_SKILLS[item.epicSkill].cooldown}</p>
+                </div>
+              )}
+              {item.passive && (
+                <div className="border-l-2 border-flamedim pl-3">
+                  <h4 className="font-display text-[0.98rem] uppercase tracking-[0.04em] text-flamehi">{GEAR_PASSIVES[item.passive].name}</h4>
+                  <p className="mt-1 text-[0.86rem] leading-relaxed text-parch/85">{GEAR_PASSIVES[item.passive].detail}</p>
+                </div>
+              )}
+              {item.legendaryPassive && (
+                <div className="border-l-2 border-flamedim pl-3">
+                  <h4 className="font-display text-[0.98rem] uppercase tracking-[0.04em] text-flamehi">{LEGENDARY_PASSIVES[item.legendaryPassive].name}</h4>
+                  <p className="mt-1 text-[0.86rem] leading-relaxed text-parch/85">{LEGENDARY_PASSIVES[item.legendaryPassive].desc}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </DetailSection>
       </div>
-
-      {/* Требования: характеристика и значение для использования */}
-      <div className="mt-3 border-t border-line/70 pt-2">
-        <div className="flex items-baseline justify-between gap-2 text-[0.78rem]">
-          <span className="sc">Требуется для использования</span>
-          <span className={`font-mono font-bold ${statOk && levelOk ? "text-verd" : "text-rubric"}`}>
-            {STAT_META[statReq].short} {needValue} · ур. {level}
-          </span>
-        </div>
-        <div className="mt-1 flex flex-wrap gap-1.5">
-          <span className={`border px-1.5 py-0.5 font-mono text-[0.66rem] ${statOk ? "border-verd text-verd" : "border-rubric text-rubric"}`}>
-            {STAT_META[statReq].name}: {haveValue}/{needValue} {statOk ? "✓" : "✗"}
-          </span>
-          <span className={`border px-1.5 py-0.5 font-mono text-[0.66rem] ${levelOk ? "border-verd text-verd" : "border-rubric text-rubric"}`}>
-            уровень: {player.level}/{level} {levelOk ? "✓" : "✗"}
-          </span>
-        </div>
-        <p className="mt-1.5 text-[0.74rem] italic leading-snug text-mute">{base.desc}</p>
-      </div>
-
-      {/* Что даёт предмет */}
-      <dl className="mt-2 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 border-t border-line/70 pt-2 text-[0.8rem]">
-        {rows.map(([k, v]) => (
-          <div key={k} className="contents">
-            <dt className="text-mute">{k}</dt>
-            <dd className="text-right font-mono tab text-flamehi">{v}</dd>
-          </div>
-        ))}
-        <dt className="text-mute">Цена</dt>
-        <dd className="text-right font-mono tab text-parch/85">{base.price} зол.</dd>
-      </dl>
-
-      {skill && (
-        <div className="mt-2 border-l-2 border-flamedim bg-black/35 px-2.5 py-1.5 text-[0.74rem]">
-          <div className="flex items-center justify-between gap-2">
-            <span className="font-display uppercase tracking-[0.08em] text-flamehi">Приём: {skill.name}</span>
-            <span
-              className={`font-mono text-[0.65rem] ${
-                player.stats.int >= skillIntReq ? "text-verd" : "text-rubric"
-              }`}
-            >
-              ИНТ {skillIntReq}
-            </span>
-          </div>
-          <div className="mt-0.5 text-parch/85">{skill.desc}</div>
-        </div>
-      )}
-
-      {identified ? (
-        <div className="mt-2 space-y-1 border-t border-line/70 pt-2 text-[0.74rem] leading-snug">
-          {effects.length === 0 && item.rarity === "common" && (
-            <p className="text-mute italic">Обычное качество: только базовые характеристики.</p>
-          )}
-          {effects.map((eff, i) => (
-            <div key={eff.id + i}>
-              <span className="font-mono text-[0.62rem] uppercase text-verd">[эффект] </span>
-              <b className="text-parch">{eff.name}:</b> <span className="text-mute">{eff.detail}</span>
-            </div>
-          ))}
-          {item.epicSkill && EPIC_SKILLS[item.epicSkill] && (
-            <div>
-              <span className="font-mono text-[0.62rem] uppercase text-flame">[боевой приём] </span>
-              <b className="text-flamehi">{EPIC_SKILLS[item.epicSkill].name}:</b>{" "}
-              <span className="text-mute">{EPIC_SKILLS[item.epicSkill].desc}</span>
-            </div>
-          )}
-          {passive && (
-            <div>
-              <span className="font-mono text-[0.62rem] uppercase text-rubric">[пассивная способность] </span>
-              <b className="text-flamehi">{passive.name}:</b> <span className="text-mute">{passive.detail}</span>
-            </div>
-          )}
-        </div>
-      ) : (
-        <p className="mt-2 border-t border-line/70 pt-2 text-[0.74rem] text-mute">
-          Исследуется в арсенале: <b className="text-verd">ИНТ {req.int}</b> (сейчас {player.stats.int}) или{" "}
-          <b className="text-flame">{req.gold} зол.</b>
-        </p>
-      )}
-    </div>
+    </Modal>
   );
 }

@@ -238,7 +238,8 @@ export function Guide({
           или кинжал), <b className="text-flamehi">шлем</b>, <b className="text-flamehi">тело</b>,{" "}
           <b className="text-flamehi">ботинки</b>, <b className="text-flamehi">наручи</b>,{" "}
           <b className="text-flamehi">два кольца</b> и <b className="text-flamehi">оберег</b>. Менять снаряжение
-          можно прямо в походе — панель на карте, а при наведении появляется сноска с полным разбором вещи.
+          можно в арсенале: надетые вещи слева, свободный инвентарь справа. Кнопка «Подробнее» открывает
+          полный разбор предмета. В походе снаряжение также можно сменить на панели карты.
         </p>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {SLOT_ORDER.map((slot) => (

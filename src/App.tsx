@@ -242,6 +242,7 @@ export default function App() {
   useEffect(() => {
     if (screen !== "dungeon") return;
     const onKey = (e: KeyboardEvent) => {
+      if (document.querySelector('[aria-modal="true"]')) return;
       const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       const map: Record<string, [number, number]> = {
         ArrowUp: [0, -1],
@@ -1237,7 +1238,7 @@ export default function App() {
   return (
     <div className="flex min-h-screen flex-col bg-soot lg:flex-row">
       <Rail player={player} run={run} battle={battle} onLeaveRun={leaveRun} />
-      <main className="order-1 min-w-0 flex-1 lg:order-2">
+      <main className="order-2 min-w-0 flex-1">
         {screen === "lobby" && (
           <Lobby
             player={player}
