@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import type { RarityTier } from "../game/types";
+import { itemArtSrc } from "../game/artManifest";
 import { RARITY_STYLE } from "./ui";
 
 interface AtlasCell {
@@ -119,6 +120,7 @@ export function ItemArt({
   framed?: boolean;
   className?: string;
 }) {
+  const individual = itemArtSrc(id);
   const cell = ATLAS_MAP[id] ?? { col: 0, row: 0 };
   const style: CSSProperties = {
     width: size,
@@ -131,14 +133,15 @@ export function ItemArt({
       role="img"
       aria-label={name ?? id}
       title={name}
+      data-item-art={individual ? "individual" : "atlas"}
       className={`item-art inline-block shrink-0 overflow-hidden bg-soot ${framed ? "border" : ""} ${className}`}
       style={{
         ...style,
-        backgroundImage: 'url("images/items-atlas.jpg")',
-        backgroundSize: "600% 600%",
-        backgroundPosition: `${cell.col * 20}% ${cell.row * 20}%`,
+        backgroundImage: individual ? `url("${individual}")` : 'url("images/items-atlas.jpg")',
+        backgroundSize: individual ? "cover" : "600% 600%",
+        backgroundPosition: individual ? "center" : `${cell.col * 20}% ${cell.row * 20}%`,
         backgroundRepeat: "no-repeat",
-        filter: cell.filter ?? "none",
+        filter: individual ? "none" : cell.filter ?? "none",
       }}
     />
   );

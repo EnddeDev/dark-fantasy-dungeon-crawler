@@ -1,10 +1,11 @@
 import type { CSSProperties } from "react";
+import { foeArtSrc } from "../game/artManifest";
 
 /**
  * Художественные портреты всех существ подземелья.
- * Базируются на живописных картинах маслом (foe-vermin, foe-husk, foe-bone, foe-wraith, foe-brute, foe-boss)
- * с индивидуальным цветовым грейдингом, атмосферными эффектами (споры, паутина, руны, пламя)
- * и реальной холщовой текстурой.
+ * Сначала ищем индивидуальную картину в public/images/monsters (или базовый портрет),
+ * а пока она не готова — используем живописную базу с индивидуальным цветовым грейдингом,
+ * атмосферными эффектами (споры, паутина, руны, пламя) и реальной холщовой текстурой.
  */
 
 interface CreatureStyle {
@@ -81,21 +82,29 @@ const CREATURE_STYLES: Record<string, CreatureStyle> = {
  * и атмосферным ореолом.
  */
 export function FoePortrait({
+  id,
   art,
   name,
   className = "",
   style,
 }: {
+  /** Игровой id существа: именно по нему ищется индивидуальная иллюстрация. */
+  id?: string;
   art: string;
   name?: string;
   className?: string;
   style?: CSSProperties;
 }) {
   const cleanId = art.replace(/^foe:/, "").replace(/^images\//, "").replace(/\.jpg$/, "");
-  const conf = CREATURE_STYLES[cleanId] ?? {
+  const styleKey = id ?? cleanId;
+  const conf = CREATURE_STYLES[styleKey] ?? {
     base: art.startsWith("images/") ? art : "images/foe-vermin.jpg",
     filter: "none",
   };
+  const individual = id ? foeArtSrc(id) : null;
+  const base = individual ?? conf.base;
+  const filter = individual ? "none" : conf.filter;
+  const overlay = individual ? undefined : conf.overlay;
 
   const overlayBg: Record<string, string> = {
     venom: "radial-gradient(circle at 45% 40%, rgba(34,197,94,0.18) 0%, transparent 65%)",
@@ -111,19 +120,29 @@ export function FoePortrait({
       className={`relative h-full w-full overflow-hidden bg-soot ${className}`}
       style={style}
       role="img"
-      aria-label={name ?? cleanId}
+      aria-label={name ?? id ?? cleanId}
     >
       <img
-        src={conf.base}
+        src={base}
         alt={name ?? ""}
+        loading="lazy"
+        decoding="async"
         className="h-full w-full object-cover object-top transition-transform duration-700 ease-out hover:scale-105"
-        style={{ filter: conf.filter }}
-        onError={(ev) => (ev.currentTarget.style.display = "none")}
+        style={{ filter }}
+        onError={(ev) => {
+          const img = ev.currentTarget;
+          if (individual && !img.dataset.fallback) {
+            img.dataset.fallback = "1";
+            img.src = conf.base;
+          } else {
+            img.style.display = "none";
+          }
+        }}
       />
-      {conf.overlay && (
+      {overlay && (
         <div
           className="pointer-events-none absolute inset-0 mix-blend-screen"
-          style={{ backgroundImage: overlayBg[conf.overlay] }}
+          style={{ backgroundImage: overlayBg[overlay] }}
         />
       )}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-soot via-soot/25 to-transparent" />
