@@ -10,7 +10,10 @@ export const FOE_ART: Readonly<Record<string, string>> = {
   "wraith": "images/foe-wraith.jpg",
   "brute": "images/foe-brute.jpg",
   "boss_warden": "images/foe-boss.jpg",
-  "imp": "images/monsters/imp.jpg"
+  "bat_vampire": "images/monsters/bat_vampire.jpg",
+  "imp": "images/monsters/imp.jpg",
+  "rat_giant": "images/monsters/rat_giant.jpg",
+  "rat_swarm": "images/monsters/rat_swarm.jpg"
 };
 
 export const ITEM_ART: Readonly<Record<string, string>> = {

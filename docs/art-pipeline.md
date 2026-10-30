@@ -21,13 +21,19 @@ npm run art:check -- --strict  # упасть, если хотя бы одном
 ```
 
 ## Приоритет следующих партий
-1. Монстры без индивидуального портрета: seer, golem, rat_swarm, rat_giant, bat_vampire, slime, goblin_scout, skeleton_guard, spider_weaver, sporeling.
-2. Далее: mimic_larva, kobold, ghost_light, goblin_warrior, orc_raider, skeleton_archer, harpy, ogre_oaf, spider_hunter, mimic_chest.
-3. Далее: gargoyle, dark_priest, werewolf, iron_guardian, witch_spider, troll, vampire_lord, lich_tender, wyrmling, devourer.
-4. Далее: golem_colossus, mimic_elder, spider_queen, bone_warlord, sphinx, boss_prelate, boss_inquisitor, boss_queen, boss_lich, boss_warlord, boss_devourer, boss_sphinx.
+1. Монстры без индивидуального портрета: seer, golem, slime, goblin_scout, skeleton_guard, spider_weaver, sporeling, mimic_larva, kobold, ghost_light.
+2. Далее: goblin_warrior, orc_raider, skeleton_archer, harpy, ogre_oaf, spider_hunter, mimic_chest, gargoyle, dark_priest, werewolf.
+3. Далее: iron_guardian, witch_spider, troll, vampire_lord, lich_tender, wyrmling, devourer, golem_colossus, mimic_elder, spider_queen.
+4. Далее: bone_warlord, sphinx, boss_prelate, boss_inquisitor, boss_queen, boss_lich, boss_warlord, boss_devourer, boss_sphinx.
 5. Предметы: greatsword, spear, warhammer2, dagger, shield_round, shield_tower, buckler, coif, helm, greathelm.
 6. Далее: crown_husk, shoes, greaves, strider_boots, wraps, vambraces, runed_bracers, ring_band, ring_edge, ring_ward.
 7. Далее: ring_venom, tooth, icon, soulstone, powder, cloth, root, herb, silk, fang.
 8. Далее: gland, ember, potion_haste, scroll_terror, scroll_snare, acid_vial, holy_water, potion_stone, bomb_flash.
+
+## Уже добавленные индивидуальные портреты
+- `imp`
+- `rat_swarm`
+- `rat_giant`
+- `bat_vampire`
 
 После каждой партии: `npm run art:manifest`, `npm run art:check`, `npx tsc --noEmit`, `node --test tests/game.test.cjs`, `npm run build`.
