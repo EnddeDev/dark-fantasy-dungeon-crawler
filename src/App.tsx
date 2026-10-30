@@ -195,6 +195,7 @@ function readSavedPlayer(): Player {
           statuses: { ...saved.statuses, poison: saved.statuses?.poison ?? 0 },
           knownRecipes: Array.isArray(saved.knownRecipes) ? saved.knownRecipes : [],
           shopLevel: Math.max(1, Math.min(SHOP_MAX_LEVEL, Number(saved.shopLevel) || 1)),
+          archetype: saved.archetype ?? null,
         };
         // Снятое снаряжение могло уменьшить максимум — здоровье не должно его превышать.
         const maxHp = derived(restored).maxHp;

@@ -13,6 +13,7 @@ import {
   consumableIntReq,
   consumableScaleLabel,
 } from "../game/content";
+import { GEAR_EFFECTS, GEAR_PASSIVES } from "../game/gearEffects";
 import { combatReadout, queuePreview, type BattleState, type PlayerAction } from "../game/battle";
 import { FoePortrait } from "./FoeArt";
 import { ItemArt } from "./ItemArt";
@@ -323,7 +324,7 @@ export function BattleView({
                     Очередь: твои ходы <b className="text-parch">{r.ap}</b> против{" "}
                     <b className="text-parch">{e.ap}</b> у {e.def.name}; ходы в ленте вверху — числа ходов, а не урон.
                   </p>
-                  {(b.p.rareAffixes.length > 0 || b.p.legendaryPassives.length > 0) && (
+                  {(b.p.rareAffixes.length > 0 || b.p.legendaryPassives.length > 0 || b.p.gearEffects.length > 0 || b.p.gearPassives.length > 0) && (
                     <div className="flex flex-wrap gap-1.5 pt-1">
                       {b.p.rareAffixes.map((ra, i) => (
                         <Tag key={ra + i} tone="verd">
@@ -334,6 +335,12 @@ export function BattleView({
                         <Tag key={lp + i} tone="rubric">
                           ★ {LEGENDARY_PASSIVES[lp]?.name ?? lp}
                         </Tag>
+                      ))}
+                      {b.p.gearEffects.map((ef, i) => (
+                        <Tag key={`ef-${i}`} tone="flame">{GEAR_EFFECTS[ef].name}</Tag>
+                      ))}
+                      {b.p.gearPassives.map((gp, i) => (
+                        <Tag key={`gp-${i}`} tone="flame">{GEAR_PASSIVES[gp].name}</Tag>
                       ))}
                     </div>
                   )}

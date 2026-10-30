@@ -25,7 +25,10 @@ import type {
 } from "./types";
 import { WEAR_RANGE } from "./types";
 export { WEAR_RANGE } from "./types";
-import { effectPoolFor, passivePoolFor, type GearEffectId, type GearPassiveId } from "./gearEffects";
+import { effectPoolFor, passivePoolFor, archetypePassive, type GearEffectId, type GearPassiveId } from "./gearEffects";
+import type { ArchetypeId } from "./archetypes";
+export { ARCHETYPES, ARCHETYPE_ORDER, archetypeForStat, archetypeMilestoneIds, archetypeByMilestone } from "./archetypes";
+export type { ArchetypeId } from "./archetypes";
 
 /* Таблицы лавки живут в world.ts; пробрасываем их здесь для удобства. */
 export { SHOP_MAX_LEVEL, shopRarityTable, shopUpgradeCost, shopWearTable } from "./world";
@@ -116,6 +119,8 @@ export interface Passive {
   name: string;
   desc: string;
 }
+
+/** Старые рубежи характеристик оставлены только для совместимости сохранений. */
 
 export const PASSIVES: Record<StatKey, Record<"5" | "10", [Passive, Passive]>> = {
   str: {
@@ -339,7 +344,11 @@ export interface WeaponSkillDef {
   cooldown: number;
   scaleStat: StatKey;
   scaleMult: number;
-  effect?: "bleed" | "pierce" | "guard" | "chill" | "sunder" | "stun" | "leech" | "poison";
+  effect?:
+    | "bleed" | "pierce" | "guard" | "chill" | "sunder" | "stun" | "leech" | "poison"
+    | "armor_damage" | "guard_wall" | "missing_hp" | "enemy_missing" | "double_attack"
+    | "guaranteed_crit" | "first_strike" | "debuff_damage" | "dodge_action"
+    | "skill_leech" | "curse_brand" | "create_scroll" | "full_guard";
   desc: string;
   passiveNote: string;
 }
@@ -371,6 +380,8 @@ export interface GearBaseDef {
   desc: string;
   weaponSkill?: WeaponSkillDef;
   preferredEpic?: EpicSkillId;
+  /** Боевой архетип предмета: задаёт пул эффектов и легендарную пассивку. */
+  archetype?: ArchetypeId;
 }
 
 /* До введения новых слотов базы использовали «weapon»/«armor»/«trinket»;
@@ -809,9 +820,61 @@ export function rollScaleMult(stat: StatKey, rng: () => number = Math.random): n
   return Number((lo + rng() * (hi - lo)).toFixed(1));
 }
 
+const ARCHETYPE_GEAR: GearBaseDef[] = [
+  {
+    id: "bulwark_mace", name: "Булава бастиона", slot: "mainHand", gearClass: "medium", stat: "str", archetype: "bulwark",
+    dmg: [6, 10], armor: 1, hp: 12, price: 420, level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 80,
+    desc: "Короткая булава для боя за щитом. Чем тяжелее доспех, тем страшнее её ответ.",
+    preferredEpic: "ash_aegis",
+    weaponSkill: { id: "bulwark_answer", name: "Ответ бастиона", intReq: 3, cooldown: 2, scaleStat: "str", scaleMult: 2.0, effect: "armor_damage", desc: "Удар щитом и булавой: урон оружия + 2.0×СИЛ и +50% брони к урону; включает Защиту.", passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.7×СИЛ." },
+  },
+  {
+    id: "barbarian_greataxe", name: "Секира кровавого обета", slot: "mainHand", hands: 2, gearClass: "heavy", stat: "str", archetype: "barbarian",
+    dmg: [24, 39], hp: 26, price: 760, level: 5, minFloor: 5, idIntReq: 5, idGoldCost: 120,
+    desc: "Двуручная секира втрое тяжелее одноручного топора. Не защищает — заставляет бить первым и последним.",
+    preferredEpic: "blood_lance",
+    weaponSkill: { id: "blood_reckoning", name: "Кровавый расчёт", intReq: 4, cooldown: 3, scaleStat: "str", scaleMult: 3.0, effect: "missing_hp", desc: "Урон оружия + 3.0×СИЛ; за каждые 10% недостающего здоровья +6% урона (до 60%).", passiveNote: "При ИНТ ≥ 4 обычные удары получают +1.1×СИЛ." },
+  },
+  {
+    id: "blood_hide", name: "Шкура кровавого зверя", slot: "body", gearClass: "medium", stat: "str", archetype: "barbarian",
+    hp: 64, price: 520, level: 4, minFloor: 4, idIntReq: 4, idGoldCost: 90,
+    desc: "Не держит удар — держит жизнь. Варвар выбирает мясо и кровь вместо стали.",
+    preferredEpic: "blood_lance",
+  },
+  {
+    id: "assassin_stiletto", name: "Стилет последней ночи", slot: "mainHand", gearClass: "light", stat: "agi", archetype: "assassin",
+    dmg: [5, 8], price: 480, level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 85,
+    desc: "Тонкий клинок для первого удара. В начале боя находит щель в любой броне.",
+    preferredEpic: "shadow_volley",
+    weaponSkill: { id: "death_mark", name: "Метка смерти", intReq: 3, cooldown: 3, scaleStat: "agi", scaleMult: 2.2, effect: "guaranteed_crit", desc: "Урон оружия + 2.2×ЛОВ; в первые 2 раунда крит гарантирован.", passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.8×ЛОВ." },
+  },
+  {
+    id: "ninja_kusarigama", name: "Кусаригама тени", slot: "mainHand", gearClass: "light", stat: "agi", archetype: "ninja",
+    dmg: [5, 7], price: 460, level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 85,
+    desc: "Серп на цепи. Не сильнее меча, но оставляет руку свободной для порохов и ядов.",
+    preferredEpic: "shadow_volley",
+    weaponSkill: { id: "shadow_snare", name: "Теневой захват", intReq: 3, cooldown: 2, scaleStat: "agi", scaleMult: 1.8, effect: "debuff_damage", desc: "Урон оружия + 1.8×ЛОВ; +10% урона за каждый негативный эффект на враге (до 40%).", passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.6×ЛОВ." },
+  },
+  {
+    id: "warlock_scepter", name: "Скипетр тёмного пакта", slot: "mainHand", gearClass: "light", stat: "int", archetype: "warlock",
+    dmg: [6, 9], price: 540, level: 4, minFloor: 4, idIntReq: 5, idGoldCost: 100,
+    desc: "Не для удара — для печати. Каждый приём возвращает часть крови владельца.",
+    preferredEpic: "fireball",
+    weaponSkill: { id: "pact_drain", name: "Отток пакта", intReq: 4, cooldown: 2, scaleStat: "int", scaleMult: 3.0, effect: "skill_leech", desc: "Урон оружия + 3.0×ИНТ сквозь броню; лечит на 25% нанесённого урона и сокращает откат этого приёма на 1.", passiveNote: "При ИНТ ≥ 4 обычные удары получают +1.1×ИНТ." },
+  },
+  {
+    id: "sage_censer", name: "Кадило живого слова", slot: "mainHand", gearClass: "light", stat: "int", archetype: "sage",
+    dmg: [5, 8], price: 560, level: 4, minFloor: 4, idIntReq: 5, idGoldCost: 100,
+    desc: "Дым от кадла складывается в строки. Мудрец творит свитки прямо в бою.",
+    preferredEpic: "ash_aegis",
+    weaponSkill: { id: "word_creation", name: "Слово творения", intReq: 4, cooldown: 3, scaleStat: "int", scaleMult: 2.4, effect: "create_scroll", desc: "Урон оружия + 2.4×ИНТ; создаёт 1 случайный свиток и сразу применяет его без траты хода.", passiveNote: "При ИНТ ≥ 4 обычные удары получают +0.8×ИНТ." },
+  },
+];
+
 export const GEAR_BASES: Record<string, GearBaseDef> = normalizeGearBases([
   ...Object.values(CORE_GEAR_BASES),
   ...EXTRA_GEAR,
+  ...ARCHETYPE_GEAR,
 ]);
 
 /* ─────────────  ВАРИАНТЫ ПРИЁМОВ ОРУЖИЯ  ───────────── */
@@ -973,11 +1036,27 @@ const EXTRA_TECHNIQUES: WeaponSkillDef[] = [
   },
 ];
 
+const ARCHETYPE_TECHNIQUES: WeaponSkillDef[] = [
+  { id: "bulwark_wall", name: "Стена щитов", intReq: 3, cooldown: 3, scaleStat: "str", scaleMult: 1.6, effect: "guard_wall", desc: "Урон оружия + 1.6×СИЛ; Защита на 2 хода и +4 брони до конца боя.", passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.6×СИЛ." },
+  { id: "bulwark_verdict", name: "Приговор лат", intReq: 4, cooldown: 2, scaleStat: "str", scaleMult: 2.2, effect: "armor_damage", desc: "Урон оружия + 2.2×СИЛ и +75% брони к урону.", passiveNote: "При ИНТ ≥ 4 обычные удары получают +0.8×СИЛ." },
+  { id: "rage_sweep", name: "Яростный размах", intReq: 4, cooldown: 3, scaleStat: "str", scaleMult: 2.4, effect: "double_attack", desc: "Два удара подряд: каждый наносит урон оружия + 2.4×СИЛ.", passiveNote: "При ИНТ ≥ 4 обычные удары получают +0.8×СИЛ." },
+  { id: "skull_split", name: "Раскол черепа", intReq: 5, cooldown: 3, scaleStat: "str", scaleMult: 3.2, effect: "enemy_missing", desc: "Урон оружия + 3.2×СИЛ; за каждые 10% недостающего здоровья врага +6% урона (до 60%).", passiveNote: "При ИНТ ≥ 5 обычные удары получают +1.1×СИЛ." },
+  { id: "twin_fangs", name: "Парные клыки", intReq: 3, cooldown: 2, scaleStat: "agi", scaleMult: 1.7, effect: "double_attack", desc: "Два быстрых укола: каждый наносит урон оружия + 1.7×ЛОВ.", passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.6×ЛОВ." },
+  { id: "opening_strike", name: "Удар открытия", intReq: 4, cooldown: 3, scaleStat: "agi", scaleMult: 2.4, effect: "first_strike", desc: "Урон оружия + 2.4×ЛОВ; в первые 2 раунда урон приёма удваивается.", passiveNote: "При ИНТ ≥ 4 обычные удары получают +0.8×ЛОВ." },
+  { id: "venom_chain", name: "Ядовитая цепь", intReq: 3, cooldown: 2, scaleStat: "agi", scaleMult: 1.6, effect: "poison", desc: "Урон оружия + 1.6×ЛОВ и отравление на 3 раунда.", passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.6×ЛОВ." },
+  { id: "empty_step", name: "Пустой шаг", intReq: 4, cooldown: 3, scaleStat: "agi", scaleMult: 1.5, effect: "dodge_action", desc: "Урон оружия + 1.5×ЛОВ; следующая атака врага полностью ускользает, а в следующем раунде +1 ход.", passiveNote: "При ИНТ ≥ 4 обычные удары получают +0.5×ЛОВ." },
+  { id: "curse_brand", name: "Печать проклятия", intReq: 4, cooldown: 3, scaleStat: "int", scaleMult: 2.6, effect: "curse_brand", desc: "Урон оружия + 2.6×ИНТ; проклятие и холод на 3 раунда.", passiveNote: "При ИНТ ≥ 4 обычные удары получают +0.9×ИНТ." },
+  { id: "soul_reprise", name: "Реприза души", intReq: 5, cooldown: 4, scaleStat: "int", scaleMult: 3.4, effect: "skill_leech", desc: "Урон оружия + 3.4×ИНТ сквозь броню; лечит на 35% урона и сокращает откат на 2.", passiveNote: "При ИНТ ≥ 5 обычные удары получают +1.2×ИНТ." },
+  { id: "warding_word", name: "Слово защиты", intReq: 4, cooldown: 4, scaleStat: "int", scaleMult: 2.0, effect: "full_guard", desc: "Урон оружия + 2.0×ИНТ; полная защита от урона на 2 хода.", passiveNote: "При ИНТ ≥ 4 обычные удары получают +0.7×ИНТ." },
+  { id: "scroll_tempest", name: "Буря свитков", intReq: 5, cooldown: 4, scaleStat: "int", scaleMult: 2.8, effect: "create_scroll", desc: "Урон оружия + 2.8×ИНТ; создаёт 2 случайных свитка и сразу применяет один.", passiveNote: "При ИНТ ≥ 5 обычные удары получают +1.0×ИНТ." },
+];
+
 export const WEAPON_TECHNIQUES: Record<string, WeaponSkillDef> = Object.fromEntries([
   ...Object.values(GEAR_BASES)
     .filter((b) => b.weaponSkill)
     .map((b) => [b.weaponSkill!.id, b.weaponSkill!]),
   ...EXTRA_TECHNIQUES.map((s) => [s.id, s]),
+  ...ARCHETYPE_TECHNIQUES.map((s) => [s.id, s]),
 ]);
 
 export const TECHNIQUE_POOL: Record<string, string[]> = {
@@ -988,6 +1067,12 @@ export const TECHNIQUE_POOL: Record<string, string[]> = {
   axe: ["bone_cleave", "reckless_swing", "rending_axe"],
   hammer: ["verdict_bell", "crushing_blow", "bulwark_smash"],
   abyss: ["void_reap", "shadow_rend", "soul_drink"],
+  bulwark_mace: ["bulwark_answer", "bulwark_wall", "bulwark_verdict"],
+  barbarian_greataxe: ["blood_reckoning", "rage_sweep", "skull_split"],
+  assassin_stiletto: ["death_mark", "twin_fangs", "opening_strike"],
+  ninja_kusarigama: ["shadow_snare", "venom_chain", "empty_step"],
+  warlock_scepter: ["pact_drain", "curse_brand", "soul_reprise"],
+  sage_censer: ["word_creation", "warding_word", "scroll_tempest"],
 };
 
 export function weaponSkillFor(item: GearItem | null | undefined): WeaponSkillDef | null {
@@ -1177,7 +1262,7 @@ export function createGearItem(opts: {
      редкое — 1 уникальный эффект по характеристике требования;
      эпическое — свойство редкого + (2 доп. эффекта ИЛИ 1 боевой приём);
      легендарное — всё выше + пассивная способность по той же характеристике. */
-  const pool = effectPoolFor(reqStat);
+  const pool = effectPoolFor(reqStat, base.archetype);
   const effects: GearEffectId[] = [];
 
   const hasTechnique = !!(TECHNIQUE_POOL[base.id] ?? []).length;
@@ -1208,7 +1293,11 @@ export function createGearItem(opts: {
   }
 
   const passive: GearPassiveId | undefined =
-    rarity === "legendary" ? pick(passivePoolFor(reqStat)) : undefined;
+    rarity === "legendary"
+      ? base.archetype
+        ? archetypePassive(base.archetype)
+        : pick(passivePoolFor(reqStat))
+      : undefined;
 
   return {
     uid: `g_${Date.now().toString(36)}_${++gearSeq}_${Math.random().toString(36).slice(2, 8)}`,
@@ -1380,7 +1469,8 @@ export interface ItemDef {
     type:
       | "heal" | "damage" | "cleanse" | "rage" | "flee" | "chill" | "sunder_damage"
       | "throw" | "poison" | "smoke" | "explosion" | "fear"
-      | "haste" | "terror" | "stun_enemy" | "acid" | "stone";
+      | "haste" | "terror" | "stun_enemy" | "acid" | "stone"
+      | "iron_tonic" | "blood_rage" | "quickblade" | "shadow_dust" | "pact_elixir" | "scroll_creation";
     power?: number;
     scale?: number;
     /** Характеристика масштабирования. У свитков всегда ИНТ, у метательного — ЛОВ. */
@@ -1421,6 +1511,24 @@ export const ITEMS: Record<string, ItemDef> = Object.fromEntries(
     I({ id: "fire", name: "Огненный гриб", kind: "reagent", reagentCat: "plant", price: 34, desc: "Тёплый на ощупь даже в холодной ладони." }),
     I({ id: "tear", name: "Слеза банши", kind: "reagent", reagentCat: "monster", price: 65, desc: "Собрана в полночь. Не высыхает." }),
     ...EXTRA_ITEMS,
+    I({ id: "iron_tonic", name: "Тоник железной кожи", kind: "potion", price: 120,
+      use: { type: "iron_tonic", rounds: 4 },
+      desc: "Бастион: +4 брони и +4 регенерации на 4 раунда, снимает кровотечение." }),
+    I({ id: "blood_rage", name: "Кровавая ярость", kind: "potion", price: 130,
+      use: { type: "blood_rage", rounds: 4 },
+      desc: "Варвар: ярость на 4 раунда (+50% урона) и +15% вампиризма оружием." }),
+    I({ id: "quickblade_oil", name: "Масло быстрого клинка", kind: "potion", price: 125,
+      use: { type: "quickblade", rounds: 3 },
+      desc: "Ассасин: +25% шанса крита и +50% силы крита на 3 раунда." }),
+    I({ id: "shadow_dust", name: "Пыль тени", kind: "throwable", price: 115,
+      use: { type: "shadow_dust", rounds: 2 },
+      desc: "Ниндзя: дымовая завеса на 2 атаки и +1 ход в следующем раунде." }),
+    I({ id: "pact_elixir", name: "Эликсир пакта", kind: "potion", price: 140,
+      use: { type: "pact_elixir", rounds: 3 },
+      desc: "Колдун: сбрасывает перезарядку приёмов и даёт +25% урона приёмов на 3 раунда." }),
+    I({ id: "scroll_creation", name: "Свиток сотворения", kind: "scroll", price: 160,
+      use: { type: "scroll_creation", intReq: 5 },
+      desc: "Мудрец: создаёт 2 случайных свитка в рюкзак и сразу применяет один из них." }),
   ].map((it) => [it.id, it]),
 );
 
@@ -1472,6 +1580,12 @@ export const RECIPES: Recipe[] = [
   { id: "r7", out: "scroll_frost", count: 1, need: ["tear", "bone"], intReq: 5, price: 110 },
   { id: "r8", out: "scroll_bolt", count: 1, need: ["tear", "fire", "bone"], intReq: 6, price: 140 },
   ...EXTRA_RECIPES,
+  { id: "r15", out: "iron_tonic", count: 1, need: ["root", "ember", "bone"], intReq: 4, price: 100 },
+  { id: "r16", out: "blood_rage", count: 1, need: ["fang", "moss", "fire"], intReq: 4, price: 105 },
+  { id: "r17", out: "quickblade_oil", count: 1, need: ["gland", "powder", "silk"], intReq: 4, price: 105 },
+  { id: "r18", out: "shadow_dust", count: 1, need: ["powder", "silk", "gland"], intReq: 3, price: 95 },
+  { id: "r19", out: "pact_elixir", count: 1, need: ["tear", "ember", "cloth"], intReq: 5, price: 120 },
+  { id: "r20", out: "scroll_creation", count: 1, need: ["cloth", "tear", "bone"], intReq: 6, price: 140 },
 ];
 
 export const BREW_FAILURE_CHANCE = 0.2;
@@ -1960,6 +2074,12 @@ const SUPPLY_POOL = [
   "bomb_flash",
   "acid_vial",
   "holy_water",
+  "iron_tonic",
+  "blood_rage",
+  "quickblade_oil",
+  "shadow_dust",
+  "pact_elixir",
+  "scroll_creation",
 ];
 
 function pickGearBase(level: number): string {

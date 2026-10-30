@@ -1,3 +1,5 @@
+import type { ArchetypeId } from "./archetypes";
+
 export type StatKey = "str" | "agi" | "int";
 
 /**
@@ -117,6 +119,8 @@ export interface Player {
   /** UID надетых предметов из armory */
   equip: Record<Slot, string | null>;
   passives: string[];
+  /** Выбранный на 5 уровне архетип. null — ещё не выбран. */
+  archetype?: ArchetypeId | null;
   statuses: { wound: number; curse: number; poison: number };
   kills: number;
   /** Уровень лавки 1…10: задаёт шансы изношенности, редкости и ассортимент. */

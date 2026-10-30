@@ -19,6 +19,7 @@ import {
 } from "../game/content";
 import { derived } from "../game/battle";
 import { GEAR_EFFECTS, GEAR_PASSIVES } from "../game/gearEffects";
+import { ARCHETYPES } from "../game/archetypes";
 import { SLOT_META } from "../game/types";
 import type { GearItem, Player } from "../game/types";
 import { ItemArt } from "./ItemArt";
@@ -57,6 +58,7 @@ export function GearNote({
   onIdentify?: (uid: string, mode: "int" | "gold") => void;
 }) {
   const st = scaledGearStats(item);
+  const archetype = st.base.archetype ? ARCHETYPES[st.base.archetype] : null;
   const d = derived(player);
   const level = item.level ?? 1;
   const req = gearStatReq(item);
@@ -101,6 +103,7 @@ export function GearNote({
                 <span className={`border border-line px-1.5 py-[3px] font-mono text-[0.86rem] leading-none ${RARITY_TEXT[item.rarity]}`}>{RARITY_META[item.rarity].name}</span>
               ) : <Tag tone="flame">Редкость неизвестна</Tag>}
               {wornIn.length > 0 && <Tag tone="verd">Надето: {wornIn.map((slot) => SLOT_META[slot].short).join(", ")}</Tag>}
+              {archetype && <Tag tone="flame">Архетип: {archetype.name}</Tag>}
             </div>
             <p className="mt-2 text-[1rem] italic leading-relaxed text-mute">{st.base.desc}</p>
           </div>

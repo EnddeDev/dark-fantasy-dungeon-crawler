@@ -26,6 +26,8 @@ const ATLAS_MAP: Record<string, AtlasCell> = {
   hammer: { col: 5, row: 0 },
   warhammer2: { col: 5, row: 0, filter: "contrast(1.4) brightness(0.85) sepia(0.25)" },
   abyss: { col: 0, row: 1 },
+  assassin_stiletto: { col: 0, row: 0, filter: "contrast(1.5) brightness(0.8) grayscale(0.5)" },
+  blood_hide: { col: 1, row: 1, filter: "sepia(0.6) contrast(1.3) brightness(0.9)" },
 
   // ── БРОНЯ, ШЛЕМЫ, ЩИТЫ ──
   rag: { col: 1, row: 1 },
@@ -68,6 +70,9 @@ const ATLAS_MAP: Record<string, AtlasCell> = {
   potion_haste: { col: 0, row: 3, filter: "hue-rotate(185deg) saturate(2.2) brightness(1.15)" },
   potion_stone: { col: 4, row: 2, filter: "grayscale(1) brightness(1.25) contrast(1.3)" },
   rage: { col: 0, row: 3 },
+  iron_tonic: { col: 4, row: 2, filter: "grayscale(0.8) brightness(1.1) contrast(1.4)" },
+  blood_rage: { col: 0, row: 3, filter: "saturate(1.8) brightness(0.9) contrast(1.3)" },
+  quickblade_oil: { col: 0, row: 3, filter: "hue-rotate(200deg) saturate(1.5) brightness(1.2)" },
   throwing_knife: { col: 1, row: 3 },
   poison_dart: { col: 2, row: 3 },
   smoke_bomb: { col: 3, row: 3 },

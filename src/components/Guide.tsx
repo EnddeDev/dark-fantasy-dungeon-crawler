@@ -3,6 +3,8 @@ import {
   BREW_FAILURE_CHANCE,
   CREATURE_META,
   ENEMIES,
+  ARCHETYPES,
+  ARCHETYPE_ORDER,
   GEAR_BASES,
   MAX_LEVEL,
   REAGENTS,
@@ -39,9 +41,38 @@ export function Guide({
         </p>
       </div>
 
+      <section className="border-b border-line py-5" aria-labelledby="guide-archetypes">
+        <h4 id="guide-archetypes" className="font-display text-xl uppercase tracking-[0.12em] text-flamehi">
+          01 / Архетипы и рубежи
+        </h4>
+        <p className="mt-2 text-[1rem] leading-relaxed text-parch/85">
+          На <b className="text-flamehi">5 уровне</b> выбери один из шести архетипов: по два на Силу, Ловкость и
+          Интеллект. На <b className="text-flamehi">10 уровне</b> откроется второй рубеж выбранного пути. Архетип
+          задаёт подходящие эффекты снаряжения, приёмы, легендарные пассивки и припасы.
+        </p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          {ARCHETYPE_ORDER.map((id) => {
+            const a = ARCHETYPES[id];
+            return (
+              <div key={id} className="border border-line bg-black/30 p-3">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="font-display text-[1.08rem] uppercase tracking-[0.08em] text-flamehi">{a.name}</span>
+                  <span className="font-mono text-[0.82rem] text-flamedim">{a.stat.toUpperCase()}</span>
+                </div>
+                <div className="mt-1 text-[0.9rem] text-mute">{a.short}</div>
+                <p className="mt-2 text-[0.96rem] leading-snug text-parch/85">{a.desc}</p>
+                <div className="mt-2 border-t border-line/60 pt-2 text-[0.9rem] leading-snug text-parch/80">
+                  <b className="text-flame">Рубеж 5:</b> {a.milestone5.name}. <b className="text-flame">Рубеж 10:</b> {a.milestone10.name}.
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
       <section className="border-b border-line py-5" aria-labelledby="guide-map">
         <h4 id="guide-map" className="font-display text-xl uppercase tracking-[0.12em] text-flamehi">
-          01 / Карта, комнаты и опасности
+          02 / Карта, комнаты и опасности
         </h4>
         <p className="mt-2 text-[1rem] leading-relaxed text-parch/85">
           Первый лабиринт {MIN_SIZE}×{MIN_SIZE}, с каждым этажом стороны растут до {MAX_SIZE}×{MAX_SIZE}. Факел
@@ -104,7 +135,7 @@ export function Guide({
 
       <section className="border-b border-line py-5" aria-labelledby="guide-event">
         <h4 id="guide-event" className="font-display text-xl uppercase tracking-[0.12em] text-flamehi">
-          02 / События с выбором
+          03 / События с выбором
         </h4>
         <p className="mt-2 text-[1rem] leading-relaxed text-parch/85">
           У каждого события два-три варианта, и <b className="text-flamehi">любой исход несёт и дар, и потерю</b>:
@@ -139,11 +170,11 @@ export function Guide({
 
       <section className="border-b border-line py-5" aria-labelledby="guide-level">
         <h4 id="guide-level" className="font-display text-xl uppercase tracking-[0.12em] text-flamehi">
-          03 / Опыт и развитие
+          04 / Опыт и развитие
         </h4>
         <p className="mt-2 text-[1rem] leading-relaxed text-parch/85">
           Старт: по 1 Силе, Ловкости и Интеллекту и 4 свободных очка. За новый уровень — ещё 2 очка. До значения 5
-          повышение стоит 1 очко, после — 2. На значениях 5 и 10 выбери по одной пассивной способности из двух.
+          повышение стоит 1 очко, после — 2. На 5 уровне выбери архетип, на 10 уровне откроется его второй рубеж.
           Максимальный уровень персонажа — {MAX_LEVEL}.
         </p>
         <div className="mt-3 border-l-2 border-flamedim bg-black/30 px-3 py-2.5 text-[0.97rem] leading-relaxed text-parch/90">
@@ -159,7 +190,7 @@ export function Guide({
 
       <section className="border-b border-line py-5" aria-labelledby="guide-threat">
         <h4 id="guide-threat" className="font-display text-xl uppercase tracking-[0.12em] text-flamehi">
-          04 / Уровни и угрозы монстров
+          05 / Уровни и угрозы монстров
         </h4>
         <p className="mt-2 text-[1rem] leading-relaxed text-parch/85">
           На этаже N встречаются монстры уровня N−1 (20%), N (55%) и N+1 (25%); на первом этаже возможен уровень 0.
@@ -201,7 +232,7 @@ export function Guide({
 
       <section className="border-b border-line py-5" aria-labelledby="guide-fight">
         <h4 id="guide-fight" className="font-display text-xl uppercase tracking-[0.12em] text-flamehi">
-          05 / Бой: очередь, сводка и эффекты
+          06 / Бой: очередь, сводка и эффекты
         </h4>
         <p className="mt-2 text-[1rem] leading-relaxed text-parch/85">
           Ходов больше — действуешь раньше. В ленте вверху показаны сами числа ходов: твой следующий ход подсвечен
@@ -231,7 +262,7 @@ export function Guide({
 
       <section className="border-b border-line py-5" aria-labelledby="guide-gear">
         <h4 id="guide-gear" className="font-display text-xl uppercase tracking-[0.12em] text-flamehi">
-          06 / Снаряжение: слоты, уровни, качество
+          07 / Снаряжение: слоты, уровни, качество
         </h4>
         <p className="mt-2 text-[1rem] leading-relaxed text-parch/85">
           Ячеек девять: <b className="text-flamehi">две руки</b> (двуручное оружие занимает обе, иначе оружие + щит
@@ -298,7 +329,7 @@ export function Guide({
 
       <section className="border-b border-line py-5" aria-labelledby="guide-shop">
         <h4 id="guide-shop" className="font-display text-xl uppercase tracking-[0.12em] text-flamehi">
-          07 / Лавка: 10 уровней
+          08 / Лавка: 10 уровней
         </h4>
         <p className="mt-2 text-[1rem] leading-relaxed text-parch/85">
           Вложение золота поднимает уровень лавки (250 зол. за второй, 500 за третий и так далее — цена равна
@@ -337,7 +368,7 @@ export function Guide({
 
       <section className="border-b border-line py-5" aria-labelledby="guide-brew">
         <h4 id="guide-brew" className="font-display text-xl uppercase tracking-[0.12em] text-flamehi">
-          08 / Реагенты, припасы и алхимия
+          09 / Реагенты, припасы и алхимия
         </h4>
         <p className="mt-2 text-[1rem] leading-relaxed text-parch/85">
           Реагенты живут отдельным отделом лавки и отдельной строкой в рюкзаке: порох, ткань, растения, части
@@ -363,7 +394,7 @@ export function Guide({
 
       <section className="py-5" aria-labelledby="guide-return">
         <h4 id="guide-return" className="font-display text-xl uppercase tracking-[0.12em] text-flamehi">
-          09 / Выход и новый спуск
+          10 / Выход и новый спуск
         </h4>
         <p className="mt-2 text-[1rem] leading-relaxed text-parch/85">
           «Покинуть подземелье» сохраняет всю добычу вылазки. Смерть забирает всё найденное на этажах, но уровень,

@@ -25,15 +25,21 @@ npm run art:check -- --strict  # упасть, если хотя бы одном
 2. Далее: goblin_warrior, orc_raider, skeleton_archer, harpy, ogre_oaf, spider_hunter, mimic_chest, gargoyle, dark_priest, werewolf.
 3. Далее: iron_guardian, witch_spider, troll, vampire_lord, lich_tender, wyrmling, devourer, golem_colossus, mimic_elder, spider_queen.
 4. Далее: bone_warlord, sphinx, boss_prelate, boss_inquisitor, boss_queen, boss_lich, boss_warlord, boss_devourer, boss_sphinx.
-5. Предметы: greatsword, spear, warhammer2, dagger, shield_round, shield_tower, buckler, coif, helm, greathelm.
-6. Далее: crown_husk, shoes, greaves, strider_boots, wraps, vambraces, runed_bracers, ring_band, ring_edge, ring_ward.
-7. Далее: ring_venom, tooth, icon, soulstone, powder, cloth, root, herb, silk, fang.
-8. Далее: gland, ember, potion_haste, scroll_terror, scroll_snare, acid_vial, holy_water, potion_stone, bomb_flash.
+5. Предметы архетипов без индивидуальной картины: assassin_stiletto, iron_tonic, blood_rage, quickblade_oil.
+6. Предметы: greatsword, spear, warhammer2, dagger, shield_round, shield_tower, buckler, coif, helm, greathelm.
+7. Далее: crown_husk, shoes, greaves, strider_boots, wraps, vambraces, runed_bracers, ring_band, ring_edge, ring_ward.
+8. Далее: ring_venom, tooth, icon, soulstone, powder, cloth, root, herb, silk, fang.
+9. Далее: gland, ember, potion_haste, scroll_terror, scroll_snare, acid_vial, holy_water, potion_stone, bomb_flash.
 
 ## Уже добавленные индивидуальные портреты
+
+Покрытие на текущий момент: монстры 10/49, предметы 43/86.
+
 - `imp`
 - `rat_swarm`
 - `rat_giant`
 - `bat_vampire`
+- `bulwark_mace`, `barbarian_greataxe`, `blood_hide`, `ninja_kusarigama`, `warlock_scepter`, `sage_censer`
+- `shadow_dust`, `pact_elixir`, `scroll_creation`
 
 После каждой партии: `npm run art:manifest`, `npm run art:check`, `npx tsc --noEmit`, `node --test tests/game.test.cjs`, `npm run build`.
