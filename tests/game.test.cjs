@@ -1118,3 +1118,62 @@ test("archetype supplies exist and obey consumable INT rules", () => {
     assert.equal(content.consumableIntReq(def, 0), def.kind === "scroll" ? def.use.intReq : 0);
   }
 });
+
+/* ─────────────  РУБЕЖИ ХАРАКТЕРИСТИК  ───────────── */
+const statMilestones = loadGameModule("statMilestones");
+
+test("stat milestones offer exactly two archetype options at 5 and 10 for every stat", () => {
+  for (const stat of ["str", "agi", "int"]) {
+    for (const tier of [5, 10]) {
+      const options = statMilestones.statMilestoneOptions(stat, tier);
+      assert.equal(options.length, 2);
+      assert.notEqual(options[0].archetype, options[1].archetype);
+      for (const o of options) {
+        assert.equal(o.stat, stat);
+        assert.equal(o.tier, tier);
+        assert.equal(archetypes.ARCHETYPES[o.archetype].stat, stat);
+        assert.ok(o.name && o.desc);
+      }
+    }
+  }
+});
+
+test("stat milestone choice is locked below threshold and cannot be taken twice", () => {
+  const p = mkP({ stats: { str: 4, agi: 1, int: 1 } });
+  assert.equal(statMilestones.canChooseStatMilestone(p, "str", 5), false);
+  const [a] = statMilestones.statMilestoneOptions("str", 5);
+  assert.equal(statMilestones.chooseStatMilestone(p, "str", 5, a.id), p);
+  const ready = { ...p, stats: { ...p.stats, str: 5 } };
+  const chosen = statMilestones.chooseStatMilestone(ready, "str", 5, a.id);
+  assert.ok(chosen.passives.includes(a.id));
+  assert.equal(chosen.statMilestones.str[5], a.id);
+  assert.equal(statMilestones.canChooseStatMilestone(chosen, "str", 5), false);
+  const [, b] = statMilestones.statMilestoneOptions("str", 5);
+  assert.equal(statMilestones.chooseStatMilestone(chosen, "str", 5, b.id), chosen);
+});
+
+test("cross-archetype milestone passive works without matching main archetype", () => {
+  const [barb] = statMilestones.statMilestoneOptions("str", 5).filter((o) => o.archetype === "barbarian");
+  const p = mkP({ archetype: "sage", stats: { str: 5, agi: 1, int: 8 }, passives: [barb.id] });
+  const g = content.createGearItem({ baseId: "barbarian_greataxe", rarity: "common", wear: "new", identified: true, level: 5 });
+  p.armory = [g];
+  p.equip = { ...p.equip, mainHand: g.uid };
+  p.hp = battle.derived(p).maxHp;
+  const b = battle.newBattle(p, 5, true);
+  b.queue = ["p"];
+  b.idx = 0;
+  b.p.hp = Math.floor(b.p.maxHp * 0.4);
+  const rnd = Math.random; Math.random = () => 0.99;
+  const after = battle.playerAct(b, { type: "attack" });
+  Math.random = rnd;
+  assert.ok(after.enemy.hp < b.enemy.hp);
+  assert.ok(after.log.some((l) => l.text.includes("Похищение жизни")), "варварский вампиризм должен работать у мудреца");
+});
+
+test("normalizeStatMilestones migrates old automatic archetype passives into stat choices", () => {
+  const old = mkP({ archetype: "bulwark", stats: { str: 5, agi: 1, int: 1 }, passives: ["arch_bulwark_5", "arch_bulwark_10"] });
+  const migrated = statMilestones.normalizeStatMilestones(old);
+  assert.equal(migrated.statMilestones.str[5], "arch_bulwark_5");
+  assert.ok(migrated.passives.includes("arch_bulwark_5"));
+  assert.ok(!migrated.passives.includes("arch_bulwark_10"), "рубеж 10 ещё не открыт");
+});

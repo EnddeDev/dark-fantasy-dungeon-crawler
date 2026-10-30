@@ -46,9 +46,9 @@ export function Guide({
           01 / Архетипы и рубежи
         </h4>
         <p className="mt-2 text-[1rem] leading-relaxed text-parch/85">
-          На <b className="text-flamehi">5 уровне</b> выбери один из шести архетипов: по два на Силу, Ловкость и
-          Интеллект. На <b className="text-flamehi">10 уровне</b> откроется второй рубеж выбранного пути. Архетип
-          задаёт подходящие эффекты снаряжения, приёмы, легендарные пассивки и припасы.
+          На <b className="text-flamehi">5 уровне</b> выбери основной архетип: по два на Силу, Ловкость и Интеллект.
+          Усиления открываются на <b className="text-flamehi">рубежах характеристик 5 и 10</b>: на каждом рубеже два варианта —
+          по одному на архетип этой характеристики. Можно усилить свой путь или взять дополнительное усиление соседнего архетипа.
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           {ARCHETYPE_ORDER.map((id) => {
@@ -62,7 +62,7 @@ export function Guide({
                 <div className="mt-1 text-[0.9rem] text-mute">{a.short}</div>
                 <p className="mt-2 text-[0.96rem] leading-snug text-parch/85">{a.desc}</p>
                 <div className="mt-2 border-t border-line/60 pt-2 text-[0.9rem] leading-snug text-parch/80">
-                  <b className="text-flame">Рубеж 5:</b> {a.milestone5.name}. <b className="text-flame">Рубеж 10:</b> {a.milestone10.name}.
+                  <b className="text-flame">Рубеж {a.stat.toUpperCase()} 5:</b> {a.milestone5.name}. <b className="text-flame">Рубеж {a.stat.toUpperCase()} 10:</b> {a.milestone10.name}.
                 </div>
               </div>
             );
@@ -174,7 +174,7 @@ export function Guide({
         </h4>
         <p className="mt-2 text-[1rem] leading-relaxed text-parch/85">
           Старт: по 1 Силе, Ловкости и Интеллекту и 4 свободных очка. За новый уровень — ещё 2 очка. До значения 5
-          повышение стоит 1 очко, после — 2. На 5 уровне выбери архетип, на 10 уровне откроется его второй рубеж.
+          повышение стоит 1 очко, после — 2. На 5 уровне выбери архетип. На значениях 5 и 10 каждой характеристики выбери одно усиление из двух.
           Максимальный уровень персонажа — {MAX_LEVEL}.
         </p>
         <div className="mt-3 border-l-2 border-flamedim bg-black/30 px-3 py-2.5 text-[0.97rem] leading-relaxed text-parch/90">

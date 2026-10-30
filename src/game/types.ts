@@ -1,4 +1,5 @@
 import type { ArchetypeId } from "./archetypes";
+import type { StatMilestoneChoices } from "./statMilestones";
 
 export type StatKey = "str" | "agi" | "int";
 
@@ -121,6 +122,8 @@ export interface Player {
   passives: string[];
   /** Выбранный на 5 уровне архетип. null — ещё не выбран. */
   archetype?: ArchetypeId | null;
+  /** Выборы на рубежах характеристик 5/10. */
+  statMilestones?: StatMilestoneChoices;
   statuses: { wound: number; curse: number; poison: number };
   kills: number;
   /** Уровень лавки 1…10: задаёт шансы изношенности, редкости и ассортимент. */
