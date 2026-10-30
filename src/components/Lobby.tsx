@@ -27,7 +27,8 @@ import {
   ITEMS,
   LEGENDARY_PASSIVES,
   MAX_LEVEL,
-  PASSIVES,
+  ARCHETYPES,
+  ARCHETYPE_ORDER,
   RARITY_META,
   RARE_AFFIXES,
   RECIPES,
@@ -50,6 +51,7 @@ import { mazeSizeForFloor } from "../game/maze";
 import { GEAR_BASES } from "../game/content";
 import { GEAR_EFFECTS, GEAR_PASSIVES } from "../game/gearEffects";
 import type { GearItem, Player, StatKey } from "../game/types";
+import type { ArchetypeId } from "../game/archetypes";
 import { SHOP_MAX_LEVEL, shopRarityTable, shopWearTable } from "../game/world";
 import { Guide } from "./Guide";
 import { Bestiary } from "./Bestiary";
@@ -233,7 +235,7 @@ export function Lobby({
   const [recipeGroup, setRecipeGroup] = useState<RecipeGroup>("potion");
   const [infoTip, setInfoTip] = useState<InfoTip>(null);
   const [selectedFloor, setSelectedFloor] = useState<number>(unlockedFloor);
-  const [pick, setPick] = useState<{ stat: StatKey; tier: 5 | 10 } | null>(null);
+  const [pickArchetype, setPickArchetype] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [purchasedUids, setPurchasedUids] = useState<Record<string, boolean>>({});
   const [gearQuery, setGearQuery] = useState("");
@@ -268,20 +270,32 @@ export function Lobby({
         hp: after,
       };
     });
-    if (next === 5 || next === 10) setPick({ stat: k, tier: next });
-    else say(`${STAT_META[k].name}: ${next}/10`);
+    say(`${STAT_META[k].name}: ${next}/10`);
   };
 
-  const choosePassive = (id: string) => {
-    if (!pick) return;
+  const chooseArchetype = (id: ArchetypeId) => {
+    const a = ARCHETYPES[id];
     setPlayer((p) => {
-      const passives = [...p.passives, id];
-      const after = derived({ ...p, passives }).maxHp;
-      return { ...p, passives, hp: after };
+      if (p.archetype) return p;
+      const passives = [...p.passives, a.milestone5.id];
+      const after = derived({ ...p, archetype: id, passives }).maxHp;
+      return { ...p, archetype: id, passives, hp: after };
     });
-    setPick(null);
-    say("Пассивная способность записана в лист");
+    setPickArchetype(false);
+    say(`Архетип выбран: ${a.name}`);
   };
+
+  /* Рубеж 10 уровня открывается автоматически для выбранного архетипа. */
+  useEffect(() => {
+    if (player.level < 10 || !player.archetype) return;
+    const capstone = ARCHETYPES[player.archetype].milestone10.id;
+    if (player.passives.includes(capstone)) return;
+    setPlayer((p) => {
+      if (p.passives.includes(capstone)) return p;
+      return { ...p, passives: [...p.passives, capstone] };
+    });
+    say(`Рубеж 10: ${ARCHETYPES[player.archetype].milestone10.name}`);
+  }, [player.level, player.archetype, player.passives]);
 
   /* Покупка расходников/свитков */
   const buyConsumable = (def: ItemDef) => {
@@ -721,6 +735,35 @@ export function Lobby({
                     />
                   </Panel>
 
+                  <Panel className="p-4" title="Рубежи архетипа" right={<span className="font-mono text-sm tab text-flame">{player.archetype ? ARCHETYPES[player.archetype].name : "не выбран"}</span>}>
+                    <p className="text-[1rem] leading-relaxed text-parch/85">
+                      На <b>5 уровне</b> выбери один из шести архетипов. На <b>10 уровне</b> откроется его второй рубеж.
+                      Снаряжение, эффекты, приёмы и легендарные пассивки подбираются под архетип.
+                    </p>
+                    {player.archetype ? (
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        {(["milestone5", "milestone10"] as const).map((key, i) => {
+                          const a = ARCHETYPES[player.archetype!];
+                          const m = a[key];
+                          const unlocked = player.level >= (i === 0 ? 5 : 10) && player.passives.includes(m.id);
+                          return (
+                            <div key={key} className={`border px-3 py-2 ${unlocked ? "border-flamedim/70 bg-flame/10" : "border-line/70 bg-black/20"}`}>
+                              <div className="sc text-[0.71rem]">рубеж {i === 0 ? 5 : 10}</div>
+                              <div className={`mt-1 font-display text-[1rem] uppercase tracking-[0.08em] ${unlocked ? "text-flamehi" : "text-mute"}`}>{m.name}</div>
+                              <p className="mt-1 text-[0.95rem] leading-snug text-parch/80">{m.desc}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="mt-3">
+                        <Btn tone={player.level >= 5 ? "flame" : "ghost"} disabled={player.level < 5} onClick={() => setPickArchetype(true)}>
+                          {player.level >= 5 ? "Выбрать архетип" : `Откроется на 5 уровне (${player.level}/5)`}
+                        </Btn>
+                      </div>
+                    )}
+                  </Panel>
+
                   {STAT_ORDER.map((k) => {
                     const v = player.stats[k];
                     const cost = statPointCost(v);
@@ -751,53 +794,15 @@ export function Lobby({
                           Стоимость повышения: до 5 — <b>1 очко</b>, после 5 (с 5 до 10) — <b>2 очка</b>.
                         </div>
 
-                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                          {(["5", "10"] as const).map((t) => {
-                            const threshold = Number(t);
-                            const options = PASSIVES[k][t];
-                            const chosen = player.passives.find((id) => options.some((o) => o.id === id));
-                            const unlocked = v >= threshold;
-                            const def = options.find((o) => o.id === chosen);
-                            return (
-                              <button
-                                key={t}
-                                disabled={!unlocked || !!chosen}
-                                onClick={() => setPick({ stat: k, tier: threshold as 5 | 10 })}
-                                className={`border px-3 py-2 text-left transition-colors ${
-                                  def
-                                    ? "border-flamedim/70 bg-flame/10"
-                                    : unlocked
-                                      ? "border-flamedim/60 bg-slab2 hover:border-flame"
-                                      : "border-line/70 bg-black/20"
-                                } disabled:cursor-default`}
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="sc text-[0.71rem]">рубеж {threshold}</span>
-                                  {unlocked ? (
-                                    <span className="font-mono text-[0.76rem] text-flame">
-                                      {def ? "выбрано" : "выбрать 1 из 2"}
-                                    </span>
-                                  ) : (
-                                    <span className="font-mono text-[0.76rem] text-mute">закрыто</span>
-                                  )}
-                                </div>
-                                <div
-                                  className={`mt-1 font-display text-[1rem] uppercase tracking-[0.08em] ${
-                                    def ? "text-flamehi" : unlocked ? "text-parch" : "text-mute"
-                                  }`}
-                                >
-                                  {def ? def.name : unlocked ? "Нажмите для выбора" : "Заперто"}
-                                </div>
-                                <div className="text-[0.9rem] leading-snug text-mute">
-                                  {def
-                                    ? def.desc
-                                    : unlocked
-                                      ? "Доступны 2 пассивные способности — выберите одну."
-                                      : `Откроется при значении ${threshold}.`}
-                                </div>
-                              </button>
-                            );
-                          })}
+                        <div className="mt-3 border border-line/70 bg-black/20 px-3 py-2">
+                          <div className="sc text-[0.71rem] text-flamedim">архетипы характеристики</div>
+                          <div className="mt-1 flex flex-wrap gap-2">
+                            {ARCHETYPE_ORDER.filter((id) => ARCHETYPES[id].stat === k).map((id) => (
+                              <span key={id} className={`border px-2 py-1 font-mono text-[0.8rem] ${player.archetype === id ? "border-flamedim bg-flame/10 text-flamehi" : "border-line text-mute"}`}>
+                                {ARCHETYPES[id].name}
+                              </span>
+                            ))}
+                          </div>
                         </div>
                       </Panel>
                     );
@@ -1348,28 +1353,28 @@ export function Lobby({
         </div>
       )}
 
-      {pick && (
+      {pickArchetype && (
         <Modal
-          title="Выбор пассивной способности"
-          sub={`${STAT_META[pick.stat].name} достигла ${pick.tier} — выберите 1 способность из 2`}
-          actions={<span className="font-mono text-[0.84rem] text-mute">Решение определяет ветку развития</span>}
+          title="Выбор архетипа"
+          sub="Рубеж 5 уровня — один путь на всю жизнь"
+          actions={<span className="font-mono text-[0.84rem] text-mute">По два архетипа на каждую характеристику</span>}
         >
           <div className="grid gap-3 sm:grid-cols-2">
-            {PASSIVES[pick.stat][String(pick.tier) as "5" | "10"].map((o) => (
-              <button
-                key={o.id}
-                onClick={() => choosePassive(o.id)}
-                className="group border border-line bg-slab2 p-3 text-left transition-all hover:border-flame hover:bg-flame/5"
-              >
-                <div className="font-display text-[1.08rem] uppercase tracking-[0.1em] text-flamehi group-hover:text-flame">
-                  {o.name}
-                </div>
-                <div className="mt-1 font-mono text-[0.78rem] text-flamedim">
-                  {pick.stat.toUpperCase()} · рубеж {pick.tier}
-                </div>
-                <p className="mt-2 text-[0.98rem] leading-snug text-parch/85">{o.desc}</p>
-              </button>
-            ))}
+            {ARCHETYPE_ORDER.map((id) => {
+              const a = ARCHETYPES[id];
+              return (
+                <button
+                  key={id}
+                  onClick={() => chooseArchetype(id)}
+                  className="group border border-line bg-slab2 p-3 text-left transition-all hover:border-flame hover:bg-flame/5"
+                >
+                  <div className="font-display text-[1.08rem] uppercase tracking-[0.1em] text-flamehi group-hover:text-flame">{a.name}</div>
+                  <div className="mt-1 font-mono text-[0.78rem] text-flamedim">{STAT_META[a.stat].name} · {a.short}</div>
+                  <p className="mt-2 text-[0.98rem] leading-snug text-parch/85">{a.desc}</p>
+                  <div className="mt-2 border-t border-line/60 pt-2 text-[0.9rem] text-mute">Рубеж 5: {a.milestone5.name}</div>
+                </button>
+              );
+            })}
           </div>
         </Modal>
       )}

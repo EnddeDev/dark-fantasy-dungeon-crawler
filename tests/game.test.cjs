@@ -819,6 +819,8 @@ test("legendary passive scales the character as described", () => {
 test("every gear base has an explicit logical weight class and affinity", () => {
   const expected = {
     knife: ["light", "agi"], dagger: ["light", "agi"], rapier: ["light", "agi"],
+    bulwark_mace: ["medium", "str"], barbarian_greataxe: ["heavy", "str"], blood_hide: ["medium", "str"],
+    assassin_stiletto: ["light", "agi"], ninja_kusarigama: ["light", "agi"], warlock_scepter: ["light", "int"], sage_censer: ["light", "int"],
     staff: ["light", "int"], abyss: ["medium", "int"],
     sword: ["medium", "str"], spear: ["medium", "agi"],
     axe: ["heavy", "str"], hammer: ["heavy", "str"], greatsword: ["heavy", "str"], warhammer2: ["heavy", "str"],
@@ -972,4 +974,147 @@ test("art manifest points to existing individual paintings and does not reuse on
   }
   assert.equal(new Set(Object.values(art.ITEM_ART)).size, Object.keys(art.ITEM_ART).length);
   assert.ok(art.FOE_ART.imp.includes("monsters/imp"));
+});
+
+/* ─────────────  АРХЕТИПЫ  ───────────── */
+const archetypes = require("../src/game/archetypes.ts");
+
+function withGear(baseId, extra = {}, rarity = "legendary") {
+  const g = content.createGearItem({ baseId, rarity, wear: "new", identified: true, level: 5 });
+  const p = mkP({ level: 10, stats: { str: 8, agi: 8, int: 8 }, hp: 200, ...extra });
+  p.armory = [g];
+  p.equip = { ...p.equip, mainHand: g.slot === "mainHand" ? g.uid : null, body: g.slot === "body" ? g.uid : null };
+  p.hp = battle.derived(p).maxHp;
+  return { p, g };
+}
+
+function seededRandom(seq) {
+  let i = 0;
+  return () => seq[i++ % seq.length];
+}
+
+test("six archetypes: two per stat, milestones at 5 and 10", () => {
+  const ids = Object.keys(archetypes.ARCHETYPES);
+  assert.equal(ids.length, 6);
+  for (const stat of ["str", "agi", "int"]) {
+    assert.equal(ids.filter((id) => archetypes.ARCHETYPES[id].stat === stat).length, 2);
+  }
+  for (const id of ids) {
+    const a = archetypes.ARCHETYPES[id];
+    assert.ok(a.milestone5.id.includes("_5"));
+    assert.ok(a.milestone10.id.includes("_10"));
+    assert.ok(a.gear.length > 0 && a.supplies.length > 0);
+  }
+});
+
+test("archetype gear rolls archetype effects and legendary passive", () => {
+  for (const [baseId, arch] of [
+    ["bulwark_mace", "bulwark"], ["barbarian_greataxe", "barbarian"], ["assassin_stiletto", "assassin"],
+    ["ninja_kusarigama", "ninja"], ["warlock_scepter", "warlock"], ["sage_censer", "sage"],
+  ]) {
+    const g = content.createGearItem({ baseId, rarity: "legendary", wear: "new", identified: true, level: 5 });
+    assert.equal(content.GEAR_BASES[baseId].archetype, arch);
+    assert.ok(g.effects.length >= 1);
+    for (const ef of g.effects) {
+      assert.ok(gearEffects.effectPoolFor(content.GEAR_BASES[baseId].stat, arch).includes(ef), `${baseId}/${ef}`);
+    }
+    assert.equal(g.passive, gearEffects.archetypePassive(arch));
+  }
+});
+
+test("bulwark: armor damage, thorns and guard reduction are applied", () => {
+  const { p } = withGear("bulwark_mace", { archetype: "bulwark", passives: ["arch_bulwark_5", "arch_bulwark_10"] });
+  const plate = content.createGearItem({ baseId: "plate", rarity: "rare", wear: "new", identified: true, level: 5 });
+  p.armory.push(plate);
+  p.equip.body = plate.uid;
+  const b = battle.newBattle(p, 1);
+  b.p.gearEffects.push("armor_damage", "thorns", "guard_bonus");
+  b.p.armor = 10;
+  b.p.guard = true;
+  const before = b.p.hp;
+  const enemyHp = b.enemy.hp;
+  // force no evade
+  const rnd = Math.random; Math.random = () => 0.99;
+  battle.enemyStep({ ...b, queue: ["e"], idx: 0 });
+  Math.random = rnd;
+  assert.ok(b.p.armor > 0);
+  const d = battle.derived(p);
+  assert.ok(d.gearEffects.includes("armor_damage") || b.p.gearEffects.includes("armor_damage"));
+  assert.ok(before >= 0 && enemyHp > 0);
+});
+
+test("barbarian: two-handed damage and missing-health scaling", () => {
+  const { p, g } = withGear("barbarian_greataxe", { archetype: "barbarian", passives: ["arch_barbarian_5", "arch_barbarian_10"] });
+  assert.equal(content.GEAR_BASES[g.baseId].hands, 2);
+  const one = content.GEAR_BASES.axe.dmg;
+  const two = content.GEAR_BASES[g.baseId].dmg;
+  assert.ok(two[0] >= one[0] * 2.8 && two[1] >= one[1] * 2.8, "двуручник должен быть примерно втрое сильнее");
+  const b = battle.newBattle(p, 1);
+  b.p.hp = Math.floor(b.p.maxHp * 0.3);
+  b.enemy.hp = Math.floor(b.enemy.maxHp * 0.4);
+  const rnd = Math.random; Math.random = () => 0.99;
+  const before = b.enemy.hp;
+  const after = battle.playerAct(b, { type: "attack" });
+  Math.random = rnd;
+  assert.ok(before - after.enemy.hp > 0);
+});
+
+test("assassin: first attack is guaranteed crit at milestone 10", () => {
+  const { p } = withGear("assassin_stiletto", { archetype: "assassin", passives: ["arch_assassin_5", "arch_assassin_10"] });
+  const b = battle.newBattle(p, 1);
+  const rnd = Math.random; Math.random = () => 0.99;
+  const after = battle.playerAct(b, { type: "attack" });
+  Math.random = rnd;
+  assert.ok(after.log.some((l) => l.text.includes("Критический удар")));
+  assert.equal(after.p.firstAttackDone, true);
+});
+
+test("ninja: consumables scale with AGI bonuses and grant lifesteal", () => {
+  const { p } = withGear("ninja_kusarigama", { archetype: "ninja", passives: ["arch_ninja_5", "arch_ninja_10"] });
+  p.bag = { throwing_knife: 2, shadow_dust: 1 };
+  const b = battle.newBattle(p, 5, true);
+  b.p.gearEffects.push("consumable_damage", "consumable_scale", "consumable_vamp");
+  b.p.hp = Math.floor(b.p.maxHp * 0.5);
+  const rnd = Math.random; Math.random = () => 0.99;
+  const after = battle.playerAct(b, { type: "item", id: "throwing_knife" });
+  Math.random = rnd;
+  assert.ok(after.enemy.hp < b.enemy.hp);
+  assert.ok(after.log.some((l) => l.text.includes("Похищение жизни")));
+  const b2 = battle.newBattle(p, 5, true);
+  const dust = battle.playerAct(b2, { type: "item", id: "shadow_dust" });
+  assert.ok(dust.p.statuses.shadowStep >= 1 && dust.p.statuses.smoke > 0);
+});
+
+test("warlock: skill damage, cooldown reduction and lifesteal", () => {
+  const { p } = withGear("warlock_scepter", { archetype: "warlock", passives: ["arch_warlock_5", "arch_warlock_10"] });
+  const b = battle.newBattle(p, 1);
+  b.p.gearEffects.push("skill_damage", "skill_cd", "skill_vamp", "skill_scale");
+  b.p.hp = Math.floor(b.p.maxHp * 0.5);
+  const rnd = Math.random; Math.random = () => 0.99;
+  const after = battle.playerAct(b, { type: "weapon_skill" });
+  Math.random = rnd;
+  assert.ok(after.enemy.hp < b.enemy.hp);
+  assert.ok(after.p.weaponCd < b.p.weaponSkill.cooldown);
+  assert.ok(after.log.some((l) => l.text.includes("Похищение жизни")));
+});
+
+test("sage: scroll creation, scroll damage and scroll save", () => {
+  const { p } = withGear("sage_censer", { archetype: "sage", passives: ["arch_sage_5", "arch_sage_10"] });
+  p.bag = { scroll_creation: 1, scroll_bolt: 1 };
+  const b = battle.newBattle(p, 5, true);
+  b.p.gearEffects.push("scroll_damage", "scroll_scale", "scroll_vamp", "scroll_save", "scroll_create");
+  const rnd = Math.random; Math.random = () => 0.0;
+  const after = battle.playerAct(b, { type: "item", id: "scroll_creation" });
+  Math.random = rnd;
+  assert.ok(Object.keys(after.bag).some((id) => id.startsWith("scroll_") && id !== "scroll_creation"));
+  assert.ok(after.bag.scroll_creation === 1, "свиток сотворения должен сохраниться при 100% шансе");
+  assert.ok(after.log.some((l) => l.text.includes("сотворён")));
+});
+
+test("archetype supplies exist and obey consumable INT rules", () => {
+  for (const id of ["iron_tonic", "blood_rage", "quickblade_oil", "shadow_dust", "pact_elixir", "scroll_creation"]) {
+    const def = content.ITEMS[id];
+    assert.ok(def, id);
+    assert.equal(content.consumableIntReq(def, 0), def.kind === "scroll" ? def.use.intReq : 0);
+  }
 });

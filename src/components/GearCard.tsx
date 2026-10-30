@@ -14,6 +14,7 @@ import {
   slotsForItem,
   wearRequirementNote,
 } from "../game/content";
+import { ARCHETYPES } from "../game/archetypes";
 import type { GearItem, Player, Slot } from "../game/types";
 import { SLOT_META } from "../game/types";
 import { ItemArt } from "./ItemArt";
@@ -48,6 +49,7 @@ export function GearCard({
   purchased?: boolean;
 }) {
   const st = scaledGearStats(item);
+  const archetype = st.base.archetype ? ARCHETYPES[st.base.archetype] : null;
   const wear = WEAR_META[item.wear];
   const rarity = RARITY_META[item.rarity];
   const possibleSlots = slotsForItem(item);
@@ -84,7 +86,7 @@ export function GearCard({
             {st.base.name}
           </h4>
           <p className="mt-1 text-[0.9rem] leading-snug text-mute">
-            {GEAR_CLASS_META[gearClassFor(item)].name} · ур. {item.level ?? 1}
+            {GEAR_CLASS_META[gearClassFor(item)].name} · ур. {item.level ?? 1}{archetype ? ` · ${archetype.name}` : ""}
             {st.base.hands === 2 ? " · обе руки" : ""}
           </p>
         </div>

@@ -76,7 +76,7 @@ export const EXTRA_GEAR: GearBaseDef[] = [
   /* ── ПРАВАЯ РУКА: двуручное оружие занимает обе руки ── */
   G({
     id: "greatsword", name: "Клеймор следопыта", slot: "mainHand", hands: 2,
-    dmg: [11, 17], price: 460, level: 3, minFloor: 3, idIntReq: 5, idGoldCost: 80,
+    dmg: [18, 30], price: 460, level: 3, minFloor: 3, idIntReq: 5, idGoldCost: 80,
     desc: "Метр ржавой стали: медленно, но вскрывает латы вместе с тем, кто в них стоит.",
     preferredEpic: "blood_lance",
     weaponSkill: {
@@ -88,7 +88,7 @@ export const EXTRA_GEAR: GearBaseDef[] = [
   }),
   G({
     id: "spear", name: "Копьё пещерного охотника", slot: "mainHand", hands: 2,
-    dmg: [9, 15], price: 380, level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 70,
+    dmg: [15, 24], price: 380, level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 70,
     desc: "Древко обмотано сухожилиями, наконечник точен в один уклон.",
     preferredEpic: "shadow_volley",
     weaponSkill: {
@@ -100,7 +100,7 @@ export const EXTRA_GEAR: GearBaseDef[] = [
   }),
   G({
     id: "warhammer2", name: "Осадный молот", slot: "mainHand", hands: 2,
-    dmg: [13, 20], price: 690, level: 5, minFloor: 5, idIntReq: 6, idGoldCost: 110,
+    dmg: [30, 48], price: 690, level: 5, minFloor: 5, idIntReq: 6, idGoldCost: 110,
     desc: "Собран из баллистиры. Ломает стены, если до них дотянуться.",
     preferredEpic: "frost_nova",
     weaponSkill: {

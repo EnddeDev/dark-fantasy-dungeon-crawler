@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Activity, Coins, LogOut, Sparkles } from "lucide-react";
 import {
+  ARCHETYPES,
   GEAR_BASES,
   LEGENDARY_PASSIVES,
   MAX_LEVEL,
@@ -11,6 +12,7 @@ import {
   xpForNextLevel,
 } from "../game/content";
 import { GEAR_EFFECTS, GEAR_PASSIVES } from "../game/gearEffects";
+import { archetypeByMilestone } from "../game/archetypes";
 import { combatReadout, derived, equippedList, type BattleState } from "../game/battle";
 import type { Player, Run } from "../game/types";
 import { Btn, Meter, Pips, Tag } from "./ui";
@@ -26,6 +28,7 @@ type EffectEntry = {
 
 function EffectList({ entries, empty }: { entries: EffectEntry[]; empty: string }) {
   if (!entries.length) return <p className="text-[0.98rem] leading-relaxed text-mute">{empty}</p>;
+
   return (
     <div className="space-y-2.5">
       {entries.map((entry) => (
@@ -80,6 +83,7 @@ export function Rail({
   const [section, setSection] = useState<"stats" | "effects">("stats");
   const [mobileOpen, setMobileOpen] = useState(false);
   const d = derived(player);
+  const arch = player.archetype ? ARCHETYPES[player.archetype] : null;
   const readout = battle ? combatReadout(battle) : null;
   const hp = battle ? battle.p.hp : player.hp;
   const maxHp = battle ? battle.p.maxHp : d.maxHp;
@@ -94,6 +98,17 @@ export function Rail({
   const worn = equippedList(player).filter((item) => item.identified);
 
   const learned: EffectEntry[] = player.passives.flatMap((id) => {
+    const arch = archetypeByMilestone(id);
+    if (arch) {
+      const m = arch.milestone5.id === id ? arch.milestone5 : arch.milestone10;
+      return [{
+        id: `learned-${id}`,
+        title: m.name,
+        detail: m.desc,
+        source: `${arch.name} · ${STAT_META[arch.stat].name}`,
+        badge: id === "arch_bulwark_10" && battle?.p.immortalUsed ? "Использовано" : undefined,
+      }];
+    }
     for (const stat of STAT_ORDER) {
       for (const tier of ["5", "10"] as const) {
         const passive = PASSIVES[stat][tier].find((entry) => entry.id === id);
@@ -289,7 +304,8 @@ export function Rail({
 
               <SheetSection title={battle ? "Бой · текущие значения" : "Боевые параметры"}>
                 <div className="grid grid-cols-2 gap-2">
-                  <Metric label="Урон оружия" value={`${damage[0]}–${damage[1]}`} note={battle ? "До брони противника" : `Включая +${flatDamage} от силы и пассивных умений`} />
+                  <Metric label="Архетип" value={arch ? arch.name : "не выбран"} note={arch ? `${arch.short} · рубежи 5/10` : "Откроется на 5 уровне"} />
+            <Metric label="Урон оружия" value={`${damage[0]}–${damage[1]}`} note={battle ? "До брони противника" : `Включая +${flatDamage} от силы и пассивных умений`} />
                   <Metric label="Броня" value={String(armor)} note={`Снаряжение: +${d.armorBonus}`} />
                   <Metric label="Уклонение" value={percent(d.evade)} note="Предел — 65%" />
                   <Metric label="Критический удар" value={percent(d.critChance)} note="Базовый множитель ×2" />
