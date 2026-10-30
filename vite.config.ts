@@ -10,8 +10,14 @@ const __dirname = path.dirname(__filename);
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Относительные пути работают и в корне домена, и на GitHub Pages в подпапке репозитория.
+  base: "./",
   plugins: [react(), tailwindcss(), viteSingleFile()],
   server: {
+    host: "0.0.0.0",
+    allowedHosts: [".e2b.app"],
+  },
+  preview: {
     host: "0.0.0.0",
     allowedHosts: [".e2b.app"],
   },
