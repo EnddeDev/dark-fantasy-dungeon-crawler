@@ -13,6 +13,7 @@ import {
 } from "../game/content";
 import { GEAR_EFFECTS, GEAR_PASSIVES } from "../game/gearEffects";
 import { archetypeByMilestone } from "../game/archetypes";
+import { statMilestoneById } from "../game/statMilestones";
 import { combatReadout, derived, equippedList, type BattleState } from "../game/battle";
 import type { Player, Run } from "../game/types";
 import { Btn, Meter, Pips, Tag } from "./ui";
@@ -98,6 +99,17 @@ export function Rail({
   const worn = equippedList(player).filter((item) => item.identified);
 
   const learned: EffectEntry[] = player.passives.flatMap((id) => {
+    const sm = statMilestoneById(id);
+    if (sm) {
+      const arch = ARCHETYPES[sm.archetype];
+      return [{
+        id: `learned-${id}`,
+        title: sm.name,
+        detail: sm.desc,
+        source: `${STAT_META[sm.stat].name} ${sm.tier} · ${arch.name}`,
+        badge: id === "arch_bulwark_10" && battle?.p.immortalUsed ? "Использовано" : undefined,
+      }];
+    }
     const arch = archetypeByMilestone(id);
     if (arch) {
       const m = arch.milestone5.id === id ? arch.milestone5 : arch.milestone10;

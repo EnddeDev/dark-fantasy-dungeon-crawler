@@ -34,6 +34,7 @@ import {
 import { MAP_EVENTS, mapEventById, SHOP_MAX_LEVEL, shopUpgradeCost, type MapEffect } from "./game/world";
 import { rollStepEvent } from "./game/events";
 import { cellIdx, findPath, genMaze, mazeSizeForFloor, wallBetween } from "./game/maze";
+import { normalizeStatMilestones } from "./game/statMilestones";
 import type { Cell, GearItem, ModalState, Player, Run, Slot } from "./game/types";
 import { SLOT_META, SLOT_ORDER } from "./game/types";
 
@@ -196,10 +197,12 @@ function readSavedPlayer(): Player {
           knownRecipes: Array.isArray(saved.knownRecipes) ? saved.knownRecipes : [],
           shopLevel: Math.max(1, Math.min(SHOP_MAX_LEVEL, Number(saved.shopLevel) || 1)),
           archetype: saved.archetype ?? null,
+          statMilestones: saved.statMilestones ?? {},
         };
         // Снятое снаряжение могло уменьшить максимум — здоровье не должно его превышать.
-        const maxHp = derived(restored).maxHp;
-        return { ...restored, hp: Math.max(1, Math.min(maxHp, restored.hp || maxHp)) };
+        const migrated = normalizeStatMilestones(restored);
+        const maxHp = derived(migrated).maxHp;
+        return { ...migrated, hp: Math.max(1, Math.min(maxHp, migrated.hp || maxHp)) };
       }
     }
   } catch {
