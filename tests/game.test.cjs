@@ -961,3 +961,15 @@ test("rarity effects and legendary passives follow gear affinity, not weight cla
     }
   }
 });
+
+test("art manifest points to existing individual paintings and does not reuse one item file for several ids", () => {
+  const art = loadGameModule("artManifest");
+  for (const [id, src] of Object.entries(art.FOE_ART)) {
+    assert.ok(fs.existsSync(path.join("public", src)), `${id}: ${src}`);
+  }
+  for (const [id, src] of Object.entries(art.ITEM_ART)) {
+    assert.ok(fs.existsSync(path.join("public", src)), `${id}: ${src}`);
+  }
+  assert.equal(new Set(Object.values(art.ITEM_ART)).size, Object.keys(art.ITEM_ART).length);
+  assert.ok(art.FOE_ART.imp.includes("monsters/imp"));
+});

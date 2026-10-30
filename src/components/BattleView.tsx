@@ -424,7 +424,7 @@ export function BattleView({
         {/* ПРОТИВНИК */}
         <div className="relative order-2 flex flex-col border-line bg-black/30 lg:order-none lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:border-l">
           <div className="relative aspect-[5/4] w-full overflow-hidden border-b border-line bg-soot">
-            <FoePortrait art={e.def.art} name={e.def.name} />
+            <FoePortrait id={e.def.id} art={e.def.art} name={e.def.name} />
             <div className="absolute inset-0 bg-gradient-to-t from-soot via-soot/10 to-transparent" />
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,transparent_40%,rgba(0,0,0,0.65)_100%)]" />
             {b.flash && b.flash.target === "e" && (

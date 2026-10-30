@@ -170,7 +170,7 @@ export function Bestiary() {
             return (
               <article key={enemy.id} className={`grid gap-3 py-3 sm:grid-cols-[72px_1fr_auto] ${available ? "" : "opacity-55"}`}>
                 <span className="block h-[72px] w-[72px] shrink-0 overflow-hidden border border-line">
-                  <FoePortrait art={enemy.art} name={enemy.name} />
+                  <FoePortrait id={enemy.id} art={enemy.art} name={enemy.name} />
                 </span>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -204,7 +204,7 @@ export function Bestiary() {
           {BOSSES.map((boss) => (
             <article key={boss.id} className="grid gap-3 p-4 sm:grid-cols-[72px_1fr]">
               <span className="block h-[72px] w-[72px] shrink-0 overflow-hidden border border-rubric/60">
-                <FoePortrait art={boss.art} name={boss.name} />
+                <FoePortrait id={boss.id} art={boss.art} name={boss.name} />
               </span>
               <div>
                 <h5 className="font-display text-base uppercase tracking-[0.08em] text-flamehi">{boss.name}</h5>
