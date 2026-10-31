@@ -9,6 +9,7 @@ import {
   THREAT_META,
   consumableIntReq,
   consumablePower,
+  consumableScaleStat,
   createGearItem,
   isImmuneTo,
   pick,
@@ -22,6 +23,7 @@ import {
   supplyLevel,
 
   type EnemyDef,
+  type ItemDef,
   type EnemyMove,
   type EpicSkillDef,
   type WeaponSkillDef,
@@ -1242,15 +1244,15 @@ function consumableDamageMult(b: BattleState, def: { kind: string; use?: { type:
   if (hasPassive(b, "arch_ninja_10")) m *= 1 + Math.min(0.4, debuffs * 0.10);
   return m;
 }
-function consumablePowerWithGear(b: BattleState, def: { kind: string; use?: { type: string; scale?: number; scaleStat?: StatKey; power?: number } }) {
-  let power = consumablePower(def as never, b.p.stats);
-  const u = def.use;
-  if (!u || u.type === "cleanse") return power;
-  if (u.type === "heal" && def.kind !== "scroll") return power;
-  const stat: StatKey = "agi";
+function consumablePowerWithGear(b: BattleState, def: ItemDef) {
+  let power = consumablePower(def, b.p.stats);
+  const stat = consumableScaleStat(def);
+  if (!stat) return power;
   const bonus = def.kind === "scroll"
     ? effectPower(b, "scroll_scale") + (hasPassive(b, "arch_sage_5") ? 0.5 : 0)
-    : effectPower(b, "consumable_scale") + (hasPassive(b, "arch_ninja_5") ? 0.5 : 0);
+    : stat === "agi"
+      ? effectPower(b, "consumable_scale") + (hasPassive(b, "arch_ninja_5") ? 0.5 : 0)
+      : 0;
   if (bonus > 0) power += Math.round(b.p.stats[stat] * bonus);
   return power;
 }
@@ -1617,12 +1619,6 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
           push(b, `${def.name}: +25% шанса крита и +50% силы крита на ${u.rounds} раунда.`, "p");
           break;
         }
-        case "shadow_dust": {
-          b.p.statuses.smoke = Math.max(b.p.statuses.smoke, u.rounds ?? 2);
-          b.p.statuses.shadowStep += 1;
-          push(b, `${def.name}: дымовая завеса и +1 ход в следующем раунде.`, "p");
-          break;
-        }
         case "pact_elixir": {
           b.p.weaponCd = 0;
           for (const k of Object.keys(b.p.epicCds)) b.p.epicCds[k] = 0;
@@ -1949,10 +1945,10 @@ export function combatReadout(b: BattleState): CombatReadout {
     if (bonus > 0)
       dmgMods.push({
         id: "weapon_passive",
-        label: `Приём: ${ws.name}`,
+        label: "Бонус оружия",
         flat: bonus,
         good: true,
-        detail: `Открыт Интеллектом ${st.int} ≥ ${wsReq}: +${bonus} к каждому удару.`,
+        detail: `+${bonus} к каждому удару.`,
       });
   }
   if (b.p.passives.includes("heavy_hand"))

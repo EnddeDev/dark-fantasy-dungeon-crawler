@@ -896,28 +896,53 @@ test("only scrolls require Intelligence among consumables", () => {
   }
 });
 
-test("all consumables scale from Agility; vials and holy water are potions now", () => {
-  const ids = ["throwing_knife", "poison_dart", "acid_vial", "blast_bomb", "holy_water", "serrated_knife", "frost_bomb", "blight_powder", "wither_dust"];
-  const low = { str: 1, agi: 2, int: 10 };
-  const high = { str: 1, agi: 8, int: 1 };
-  for (const id of ids) {
+test("healing and support potions have fixed power without a stat multiplier", () => {
+  const low = { str: 1, agi: 1, int: 1 };
+  const high = { str: 10, agi: 10, int: 10 };
+  for (const id of ["potion_s", "potion_l", "antidote", "rage", "fear_vial", "potion_haste", "potion_stone", "iron_tonic", "blood_rage", "quickblade_oil", "pact_elixir"]) {
     const def = content.ITEMS[id];
-    assert.equal(content.consumableScaleStat(def), "agi", id);
+    assert.equal(def.kind, "potion", id);
+    assert.equal(content.consumableScaleStat(def), null, id);
+    assert.equal(content.consumableScaleLabel(def), "", id);
+    assert.equal(content.consumablePower(def, low), content.consumablePower(def, high), id);
+    assert.equal(def.use.scale, undefined, id);
+    assert.equal(def.use.scaleStat, undefined, id);
+  }
+  const mk = (stats, id) => {
+    const b = battle.newBattle(player({ hp: 500, stats, bag: { [id]: 1 } }), 1);
+    b.queue = ["p", "e"]; b.idx = 0;
+    b.p.hp = 1; b.p.maxHp = 500;
+    return b;
+  };
+  for (const [id, amount] of [["potion_s", 28], ["potion_l", 65], ["antidote", 8]]) {
+    const after = battle.playerAct(mk(high, id), { type: "item", id });
+    assert.equal(after.p.hp, 1 + amount, id);
+  }
+});
+
+test("damaging potions and scrolls scale from Intelligence; throwables stay on Agility", () => {
+  const low = { str: 1, agi: 10, int: 1 };
+  const high = { str: 1, agi: 1, int: 10 };
+  for (const id of ["acid_vial", "holy_water", "scroll_spark", "scroll_fire", "scroll_heal", "scroll_frost", "scroll_bolt"]) {
+    const def = content.ITEMS[id];
+    assert.equal(content.consumableScaleStat(def), "int", id);
     assert.ok(content.consumablePower(def, high) > content.consumablePower(def, low), id);
+    assert.ok(content.consumableScaleLabel(def).includes("×ИНТ"), id);
+    assert.ok(def.desc.includes("×ИНТ"), id);
+  }
+  for (const id of ["throwing_knife", "poison_dart", "blast_bomb", "serrated_knife", "frost_bomb", "blight_powder", "wither_dust"]) {
+    const def = content.ITEMS[id];
+    assert.equal(def.kind, "throwable", id);
+    assert.equal(content.consumableScaleStat(def), "agi", id);
+    assert.ok(content.consumablePower(def, low) > content.consumablePower(def, high), id);
     assert.ok(content.consumableScaleLabel(def).includes("×ЛОВ"), id);
   }
   assert.equal(content.ITEMS.acid_vial.kind, "potion");
   assert.equal(content.ITEMS.holy_water.kind, "potion");
   assert.equal(content.ITEMS.fear_vial.kind, "potion");
-  for (const id of ["scroll_spark", "scroll_fire", "scroll_heal", "scroll_frost", "scroll_bolt"]) {
-    const def = content.ITEMS[id];
-    assert.equal(content.consumableScaleStat(def), "agi", id);
-    assert.ok(content.consumableScaleLabel(def).includes("×ЛОВ"), id);
-    assert.ok(content.consumableIntReq(def, 0) > 0, id);
-  }
 });
 
-test("battle consumable damage follows Agility and ignores Intelligence for non-scrolls", () => {
+test("battle consumable damage uses INT for spells and AGI for throwables", () => {
   const mk = (stats, bag) => {
     const pl = player({ hp: 500, stats, bag });
     const b = battle.newBattle(pl, 1);
@@ -928,19 +953,39 @@ test("battle consumable damage follows Agility and ignores Intelligence for non-
     b.p.hp = 500; b.p.maxHp = 500; b.p.evade = 0;
     return b;
   };
-  for (const id of ["throwing_knife", "poison_dart", "acid_vial", "blast_bomb", "holy_water"]) {
-    const agi = battle.playerAct(mk({ str: 1, agi: 8, int: 1 }, { [id]: 1 }), { type: "item", id });
-    const int = battle.playerAct(mk({ str: 1, agi: 2, int: 10 }, { [id]: 1 }), { type: "item", id });
-    assert.ok(5000 - agi.enemy.hp > 5000 - int.enemy.hp, `${id}: ЛОВ должна давать больше урона, чем ИНТ`);
-    assert.equal(agi.bag[id], undefined);
-  }
-  // Свиток по-прежнему требует ИНТ, но сила считается от ЛОВ.
-  const lowInt = mk({ str: 1, agi: 8, int: 1 }, { scroll_spark: 1 });
-  const refused = battle.playerAct(lowInt, { type: "item", id: "scroll_spark" });
-  assert.equal(refused.bag.scroll_spark, 1);
-  const highAgi = battle.playerAct(mk({ str: 1, agi: 8, int: 8 }, { scroll_spark: 1 }), { type: "item", id: "scroll_spark" });
-  const lowAgi = battle.playerAct(mk({ str: 1, agi: 1, int: 8 }, { scroll_spark: 1 }), { type: "item", id: "scroll_spark" });
-  assert.ok(5000 - highAgi.enemy.hp > 5000 - lowAgi.enemy.hp);
+  const rnd = Math.random; Math.random = () => 0.99;
+  try {
+    for (const id of ["throwing_knife", "poison_dart", "blast_bomb", "serrated_knife", "frost_bomb"]) {
+      const agi = battle.playerAct(mk({ str: 1, agi: 8, int: 1 }, { [id]: 1 }), { type: "item", id });
+      const int = battle.playerAct(mk({ str: 1, agi: 2, int: 10 }, { [id]: 1 }), { type: "item", id });
+      assert.ok(5000 - agi.enemy.hp > 5000 - int.enemy.hp, `${id}: ЛОВ должна давать больше урона`);
+      assert.equal(agi.bag[id], undefined);
+    }
+    for (const id of ["acid_vial", "holy_water", "scroll_spark", "scroll_fire", "scroll_frost", "scroll_bolt"]) {
+      const int = battle.playerAct(mk({ str: 1, agi: 1, int: 10 }, { [id]: 1 }), { type: "item", id });
+      const agi = battle.playerAct(mk({ str: 1, agi: 10, int: 10 }, { [id]: 1 }), { type: "item", id });
+      const low = battle.playerAct(mk({ str: 1, agi: 10, int: 6 }, { [id]: 1 }), { type: "item", id });
+      assert.ok(5000 - int.enemy.hp > 5000 - low.enemy.hp, `${id}: ИНТ должна усиливать урон`);
+      assert.equal(5000 - int.enemy.hp, 5000 - agi.enemy.hp, `${id}: ЛОВ не должна усиливать урон`);
+    }
+    const lowInt = mk({ str: 1, agi: 8, int: 1 }, { scroll_spark: 1 });
+    const refused = battle.playerAct(lowInt, { type: "item", id: "scroll_spark" });
+    assert.equal(refused.bag.scroll_spark, 1);
+  } finally { Math.random = rnd; }
+});
+
+test("shadow dust is removed from items, recipes, drops and archetype supplies", () => {
+  assert.equal(content.ITEMS.shadow_dust, undefined);
+  assert.equal(content.SUPPLY_LEVELS.shadow_dust, undefined);
+  assert.ok(!content.RECIPES.some((r) => r.out === "shadow_dust" || r.id === "r18"));
+  for (const arch of Object.values(content.ARCHETYPES)) assert.ok(!arch.supplies.includes("shadow_dust"));
+  const rnd = Math.random; Math.random = () => 0.99;
+  try {
+    for (let i = 0; i < 100; i++) {
+      const loot = battle.rollConsumableLoot(10, 3);
+      assert.ok(!loot.includes("shadow_dust"));
+    }
+  } finally { Math.random = rnd; }
 });
 
 test("magical scroll bonuses do not amplify non-scroll consumables", () => {
@@ -1079,7 +1124,7 @@ test("assassin: first attack is guaranteed crit at milestone 10", () => {
 
 test("ninja: consumables scale with AGI bonuses and grant lifesteal", () => {
   const { p } = withGear("ninja_kusarigama", { archetype: "ninja", passives: ["arch_ninja_5", "arch_ninja_10"] });
-  p.bag = { throwing_knife: 2, shadow_dust: 1 };
+  p.bag = { throwing_knife: 2, smoke_bomb: 1 };
   const b = battle.newBattle(p, 5, true);
   b.p.gearEffects.push("consumable_damage", "consumable_scale", "consumable_vamp");
   b.p.hp = Math.floor(b.p.maxHp * 0.5);
@@ -1089,8 +1134,8 @@ test("ninja: consumables scale with AGI bonuses and grant lifesteal", () => {
   assert.ok(after.enemy.hp < b.enemy.hp);
   assert.ok(after.log.some((l) => l.text.includes("Похищение жизни")));
   const b2 = battle.newBattle(p, 5, true);
-  const dust = battle.playerAct(b2, { type: "item", id: "shadow_dust" });
-  assert.ok(dust.p.statuses.shadowStep >= 1 && dust.p.statuses.smoke > 0);
+  const smoke = battle.playerAct(b2, { type: "item", id: "smoke_bomb" });
+  assert.ok(smoke.p.statuses.smoke > 0);
 });
 
 test("warlock: skill damage, cooldown reduction and lifesteal", () => {
@@ -1120,7 +1165,7 @@ test("sage: scroll creation, scroll damage and scroll save", () => {
 });
 
 test("archetype supplies exist and obey consumable INT rules", () => {
-  for (const id of ["iron_tonic", "blood_rage", "quickblade_oil", "shadow_dust", "pact_elixir", "scroll_creation"]) {
+  for (const id of ["iron_tonic", "blood_rage", "quickblade_oil", "serrated_knife", "pact_elixir", "scroll_creation"]) {
     const def = content.ITEMS[id];
     assert.ok(def, id);
     assert.equal(content.consumableIntReq(def, 0), def.kind === "scroll" ? def.use.intReq : 0);

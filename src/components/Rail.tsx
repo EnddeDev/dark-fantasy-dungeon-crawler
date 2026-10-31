@@ -9,7 +9,6 @@ import {
   RARE_AFFIXES,
   legendaryPassiveDesc,
   rareAffixDesc,
-  epicSkillDesc,
   STAT_META,
   STAT_ORDER,
   xpForNextLevel,
@@ -19,7 +18,7 @@ import { archetypeByMilestone } from "../game/archetypes";
 import { statMilestoneById } from "../game/statMilestones";
 import { combatReadout, derived, equippedList, type BattleState } from "../game/battle";
 import type { Player, Run } from "../game/types";
-import { Btn, Meter, Pips, Tag } from "./ui";
+import { Btn, Meter, Pips } from "./ui";
 
 type EffectEntry = {
   id: string;
@@ -72,7 +71,7 @@ function Metric({ label, value, note }: { label: string; value: string; note?: s
 
 const percent = (value: number) => `${Math.round(value * 100)}%`;
 
-/** Лист персонажа без списка экипировки: сами вещи и их смена находятся в арсенале. */
+/** Панель персонажа: характеристики и эффекты; смена вещей находится в арсенале. */
 export function Rail({
   player,
   run,
@@ -89,8 +88,6 @@ export function Rail({
   const d = derived(player);
   const arch = player.archetype ? ARCHETYPES[player.archetype] : null;
   const readout = battle ? combatReadout(battle) : null;
-  const hp = battle ? battle.p.hp : player.hp;
-  const maxHp = battle ? battle.p.maxHp : d.maxHp;
   const flatDamage = d.strFlat + (player.passives.includes("heavy_hand") ? 3 : 0) + d.rareAffixes.filter((id) => id === "might").length * 3;
   const damage: [number, number] = readout ? [readout.dmgMin, readout.dmgMax] : [d.hit[0] + flatDamage, d.hit[1] + flatDamage];
   const armor = readout?.armor ?? d.armor;
@@ -195,28 +192,12 @@ export function Rail({
     current.push({ id: "titan-immunity", title: "Сердце колосса", detail: "Иммунитет к периодическому урону от кровотечения и яда." });
   }
 
-  const skills = [
-    ...(d.weaponSkill ? [{ ...d.weaponSkill, kind: "Приём оружия", cooldown: battle?.p.weaponCd ?? 0 }] : []),
-    ...d.epicSkills.map((skill) => ({ ...skill, desc: epicSkillDesc(skill.id, d.epicSkillLevels[skill.id] ?? 1), kind: "Эпический приём", cooldown: battle?.p.epicCds[skill.id] ?? 0 })),
-  ];
-  const skillEntries: EffectEntry[] = skills.map((skill) => {
-    const required = Math.max(1, skill.intReq - d.intDiscount);
-    const unlocked = player.stats.int >= required;
-    return {
-      id: `skill-${skill.id}`,
-      title: skill.name,
-      detail: `${skill.desc}${"passiveNote" in skill && typeof skill.passiveNote === "string" ? ` ${skill.passiveNote}` : ""}`,
-      source: `${skill.kind} · ИНТ ${required} · откат ${skill.cooldown}`,
-      badge: !unlocked ? "Закрыт" : skill.cooldown > 0 ? `Откат: ${skill.cooldown}` : "Открыт",
-      negative: !unlocked,
-    };
-  });
   const activeCount = current.length;
   const unknownCount = equippedList(player).filter((item) => !item.identified).length;
-  const activeEffects = activeCount + learned.length + gearEntries.length + skillEntries.length;
+  const activeEffects = activeCount + learned.length + gearEntries.length;
 
   return (
-    <aside className="order-1 min-w-0 shrink-0 border-b border-line bg-slab lg:sticky lg:top-0 lg:h-dvh lg:w-[350px] lg:border-b-0 lg:border-r xl:w-[380px]" aria-label="Лист персонажа">
+    <aside className="order-1 min-w-0 shrink-0 border-b border-line bg-slab lg:sticky lg:top-0 lg:h-dvh lg:w-[350px] lg:border-b-0 lg:border-r xl:w-[380px]" aria-label="Персонаж">
       <div className="lg:flex lg:h-full lg:flex-col">
         {/* Кошелёк не уезжает при прокрутке характеристик и эффектов. */}
         <div className="sticky top-0 z-20 shrink-0 border-b border-flamedim/40 bg-slab px-4 py-3 shadow-[0_6px_18px_-12px_#000]" aria-label="Кошель персонажа">
@@ -238,13 +219,12 @@ export function Rail({
           onClick={() => setMobileOpen((open) => !open)}
           className="flex w-full items-center justify-between border-b border-line px-4 py-2.5 text-left font-display text-[1rem] uppercase tracking-[0.08em] text-flamehi lg:hidden"
         >
-          Лист персонажа <span className="font-mono text-[0.86rem] normal-case tracking-normal text-mute">{mobileOpen ? "Свернуть" : "Развернуть"}</span>
+          Персонаж <span className="font-mono text-[0.86rem] normal-case tracking-normal text-mute">{mobileOpen ? "Свернуть" : "Развернуть"}</span>
         </button>
 
         <div className={`${mobileOpen ? "block" : "hidden"} min-h-0 flex-1 lg:block lg:overflow-y-auto`}>
           <header className="border-b border-line px-4 py-4">
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="sc text-[0.84rem]">Лист персонажа</span>
+            <div className="flex items-baseline justify-end gap-2">
               <span className="font-mono text-[0.88rem] text-mute">Побед: {player.kills}</span>
             </div>
             <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
@@ -252,16 +232,12 @@ export function Rail({
               <span className="font-mono text-sm text-flame">Ур. {player.level}/{MAX_LEVEL}</span>
             </div>
             <div className="mt-3 grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1.5">
-              <span className="text-[0.94rem] text-mute">Здоровье</span>
-              <span className="font-mono text-sm tab text-parch">{hp}<span className="text-mute"> / {maxHp}</span></span>
-              <Meter value={hp} max={maxHp} tone="rubric" className="col-span-2 h-2" />
               <span className="mt-1 text-[0.94rem] text-mute">Опыт</span>
               <span className="mt-1 font-mono text-[0.92rem] tab text-parch">
                 {player.level >= MAX_LEVEL ? "МАКС" : `${player.xp} / ${xpNeed}`}
               </span>
               <Meter value={player.level >= MAX_LEVEL ? 1 : player.xp} max={player.level >= MAX_LEVEL ? 1 : xpNeed} tone="flame" className="col-span-2 h-1.5" ticks={8} />
             </div>
-            {player.statPoints > 0 && <div className="mt-2.5"><Tag tone="flame">Свободных очков: {player.statPoints}</Tag></div>}
           </header>
 
           {run && (
@@ -280,7 +256,7 @@ export function Rail({
             </div>
           )}
 
-          <div className="grid grid-cols-2 border-b border-line bg-black/20 p-1.5" role="group" aria-label="Раздел листа персонажа">
+          <div className="grid grid-cols-2 border-b border-line bg-black/20 p-1.5" role="group" aria-label="Раздел персонажа">
             {([
               ["stats", "Характеристики", Activity],
               ["effects", "Эффекты", Sparkles],
@@ -333,16 +309,6 @@ export function Rail({
                 </div>
               </SheetSection>
 
-              <SheetSection title="Здоровье и снаряжение">
-                <dl className="space-y-2 text-[0.97rem]">
-                  <div className="flex justify-between gap-3"><dt className="text-mute">Максимум здоровья</dt><dd className="font-mono tab text-parch">{d.maxHp}</dd></div>
-                  <div className="flex justify-between gap-3"><dt className="text-mute">Бонус здоровья от вещей</dt><dd className="font-mono tab text-verd">+{d.hpBonus}</dd></div>
-                  <div className="flex justify-between gap-3"><dt className="text-mute">Бонус уклонения от вещей</dt><dd className="font-mono tab text-verd">+{percent(d.evadeBonus)}</dd></div>
-                  <div className="flex justify-between gap-3"><dt className="text-mute">Оружие правой руки</dt><dd className="text-right text-parch">{d.weaponName}</dd></div>
-                </dl>
-                <p className="mt-3 text-[0.9rem] leading-relaxed text-mute">Надетые вещи и их замена — в разделе «Арсенал».</p>
-              </SheetSection>
-
               <SheetSection title="Исследования и ловушки">
                 <dl className="space-y-2 text-[0.97rem]">
                   <div className="flex justify-between gap-3"><dt className="text-mute">Бонус к обезвреживанию</dt><dd className="font-mono tab text-verd">+{trapBonus} п.п.</dd></div>
@@ -363,9 +329,6 @@ export function Rail({
               <SheetSection title="Свойства надетых вещей">
                 <EffectList entries={gearEntries} empty="У исследованных надетых вещей пока нет дополнительных свойств." />
                 {unknownCount > 0 && <p className="mt-3 border border-dashed border-flamedim/50 p-2.5 text-[0.92rem] leading-relaxed text-mute">Не исследовано вещей: {unknownCount}. Откройте «Арсенал» → «Подробнее», чтобы изучить их свойства.</p>}
-              </SheetSection>
-              <SheetSection title="Приёмы снаряжения">
-                <EffectList entries={skillEntries} empty="Надетое оружие не даёт особых приёмов." />
               </SheetSection>
             </div>
           )}

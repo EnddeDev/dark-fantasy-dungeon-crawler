@@ -26,6 +26,7 @@ import {
   pick,
   randInt,
   REAGENTS,
+  RECIPES,
   rollShopStock,
   scaledGearStats,
   consumableIntReq,
@@ -189,12 +190,20 @@ function readSavedPlayer(): Player {
         const mainItem = armory.find((g) => g.uid === equip.mainHand);
         if (mainItem && GEAR_BASES[mainItem.baseId]?.hands === 2) equip.offHand = null;
 
+        const bag = Object.fromEntries(
+          Object.entries(saved.bag)
+            .filter(([id, count]) => ITEMS[id] && Number.isFinite(count) && count > 0)
+            .map(([id, count]) => [id, Math.floor(count)]),
+        );
+        const knownRecipes = (Array.isArray(saved.knownRecipes) ? saved.knownRecipes : [])
+          .filter((id) => RECIPES.some((recipe) => recipe.id === id));
         const restored: Player = {
           ...saved,
+          bag,
           armory,
           equip,
           statuses: { ...saved.statuses, poison: saved.statuses?.poison ?? 0 },
-          knownRecipes: Array.isArray(saved.knownRecipes) ? saved.knownRecipes : [],
+          knownRecipes,
           shopLevel: Math.max(1, Math.min(SHOP_MAX_LEVEL, Number(saved.shopLevel) || 1)),
           archetype: saved.archetype ?? null,
           statMilestones: saved.statMilestones ?? {},

@@ -89,7 +89,7 @@ export const ARCHETYPES: Record<ArchetypeId, ArchetypeDef> = {
     short: "Расходники и тень",
     desc: "Урон от расходников, множитель ЛОВ для расходников, вампиризм от них, лишние ходы, уклонение. Добивает цели под негативными эффектами и исчезает перед ударом.",
     gear: ["ninja_kusarigama", "shoes", "wraps", "ring_venom", "shroud"],
-    supplies: ["shadow_dust", "poison_dart", "acid_vial", "smoke_bomb", "blast_bomb"],
+    supplies: ["serrated_knife", "poison_dart", "acid_vial", "smoke_bomb", "blast_bomb"],
     milestone5: {
       id: "arch_ninja_5",
       name: "Путь тени",
