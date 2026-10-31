@@ -19,6 +19,7 @@ import { combatReadout, queuePreview, type BattleState, type PlayerAction } from
 import { FoePortrait } from "./FoeArt";
 import { ItemArt } from "./ItemArt";
 import { Btn, Meter, Tag } from "./ui";
+import { BiomeRule, BiomeTag, biomeStyle } from "./BiomeLabel";
 
 /** Римская нумерация для строк инициативы. */
 function roman(n: number): string {
@@ -141,6 +142,9 @@ export function BattleView({
       hint: "у кого больше — тот всегда раньше",
     },
     { label: "Уклонение", base: `${Math.round(r.evade * 100)}%`, now: `${Math.round(r.evade * 100)}%`, hint: "шанс полного промаха врага" },
+    ...(r.missChance > 0
+      ? [{ label: "Промах в мраке", base: "0%", now: `${Math.round(r.missChance * 100)}%`, hint: "дополнительная проверка для физических ударов обоих участников" }]
+      : []),
     { label: "Критический удар", base: `${Math.round(r.crit * 100)}%`, now: `${Math.round(r.crit * 100)}%`, hint: "двойной урон" },
     { label: "Стойкость", base: `${Math.round(r.resist * 100)}%`, now: `${Math.round(r.resist * 100)}%`, hint: "шанс отбить рану, проклятие, яд" },
     { label: "Характеристики", base: `${b.p.stats.str}/${b.p.stats.agi}/${b.p.stats.int}`, now: `${b.p.stats.str}/${b.p.stats.agi}/${b.p.stats.int}`, hint: "СИЛ / ЛОВ / ИНТ" },
@@ -154,7 +158,7 @@ export function BattleView({
   const activeEffects = effects.filter((m) => m.id !== "immortal" || !b.p.immortalUsed);
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="biome-surface flex min-h-screen flex-col bg-soot" data-biome={b.biome} style={biomeStyle(b.biome)}>
       {/* ── ПОЛОСА ИНИЦИАТИВЫ ── */}
       <div className="border-b-2 border-flamedim/50 bg-black/65 px-4 py-3 sm:px-6">
         <div className="mb-2 flex flex-wrap items-end justify-between gap-x-6 gap-y-1">
@@ -163,6 +167,7 @@ export function BattleView({
               {b.isBoss ? "Битва со Стражем" : "Бой"}
             </h2>
             <span className="font-mono text-lg tab text-flame">РАУНД {roman(b.round)}</span>
+            <BiomeTag biome={b.biome} />
           </div>
           <span
             className={`font-display text-sm uppercase tracking-[0.2em] ${
@@ -210,6 +215,11 @@ export function BattleView({
           </span>
         </div>
       </div>
+      {b.biome !== "classic" && (
+        <div className="border-b border-line bg-black/35 px-4 py-2 sm:px-6">
+          <BiomeRule biome={b.biome} />
+        </div>
+      )}
 
       <div className="grid flex-1 items-start xl:grid-cols-[minmax(260px,0.9fr)_minmax(320px,1.05fr)_minmax(300px,0.9fr)]">
         {/* ПЕРСОНАЖ */}

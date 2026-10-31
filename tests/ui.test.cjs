@@ -109,3 +109,52 @@ test("battle puts actions in the center and the log under the enemy on the right
   const effects = html.slice(effectsStart, effectsEnd);
   assert.ok(!/при[её]м/i.test(effects), "effects panel should not describe techniques");
 });
+
+
+test("dungeon map renders distinct biome palettes, textures and rules", () => {
+  const cases = [
+    ["swamp", "Подземное болото", "#9fb87a", "Лечение обоих участников −50%"],
+    ["ice", "Ледяные просторы", "#e7f1f5", "−3 ОЗ в начале своего хода"],
+    ["dark", "Тёмное подземелье", "#b7b9ba", "Видимость 2 клетки"],
+    ["fire", "Огненные недра", "#3a1712", "горение усиливается на 2 ОЗ"],
+  ];
+  for (const [id, name, color, rule] of cases) {
+    const m = maze.genMaze(8, 3, id);
+    const run = { floor: 3, maze: m, pos: m.start, prevPos: m.start, seen: {}, steps: 0, gold: 0, loot: [], gearLoot: [], keys: 0, log: [] };
+    const html = renderToStaticMarkup(React.createElement(Dungeon, {
+      run, player: makePlayer(), bag: { potion_s: 1, scroll_heal: 1 }, hp: 20, maxHp: 40,
+      intStat: 4, intDiscount: 0, path: [], pathPaused: false,
+      onMove: noop, onCellClick: noop, onUseItem: noop, onEquip: noop, onUnequip: noop,
+      onCancelPath: noop, onResumePath: noop,
+    }));
+    assert.ok(html.includes(`data-biome="${id}"`), id);
+    assert.ok(html.includes(name), id);
+    assert.ok(html.includes(color), id);
+    assert.ok(html.includes(rule), id);
+    assert.ok(html.includes("biomeTexture"), id);
+    if (id === "swamp") {
+      assert.ok(html.includes("+28 здоровья"), "potion stays full");
+      assert.ok(html.includes("+24 здоровья"), "scroll is halved");
+    }
+  }
+});
+
+test("battle view shows the biome rule and live burning stacks", () => {
+  const fire = battle.newBattle(makePlayer(), 3, false, "fire");
+  fire.p.statuses.burning = 2;
+  fire.enemy.statuses.burning = 3;
+  const html = renderToStaticMarkup(React.createElement(BattleView, {
+    battle: fire, onAct: noop, onEnemyTurn: noop, onContinue: noop,
+  }));
+  assert.ok(html.includes('data-biome="fire"'));
+  assert.ok(html.includes("Огненные недра"));
+  assert.ok(html.includes("Горение ×2"));
+  assert.ok(html.includes("Горение врага ×3"));
+
+  const dark = battle.newBattle(makePlayer(), 3, false, "dark");
+  const darkHtml = renderToStaticMarkup(React.createElement(BattleView, {
+    battle: dark, onAct: noop, onEnemyTurn: noop, onContinue: noop,
+  }));
+  assert.ok(darkHtml.includes("Промах в мраке"));
+  assert.ok(darkHtml.includes("25%"));
+});

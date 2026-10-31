@@ -1,5 +1,6 @@
 import type { ArchetypeId } from "./archetypes";
 import type { StatMilestoneChoices } from "./statMilestones";
+import type { BiomeId } from "./biomes";
 
 export type StatKey = "str" | "agi" | "int";
 
@@ -146,6 +147,8 @@ export interface Cell {
 
 export interface Maze {
   size: number;
+  /** Тип этажа. Необязателен для совместимости со старыми картами: отсутствие = классика. */
+  biome?: BiomeId;
   /** h[y][x] — стена между (x,y-1) и (x,y) */
   h: boolean[][];
   /** v[y][x] — стена между (x-1,y) и (x,y) */

@@ -23,7 +23,7 @@ npm run dev
 
 ```bash
 npx tsc --noEmit
-node --test tests/game.test.cjs
+npm test
 npm run build
 npm run preview
 ```

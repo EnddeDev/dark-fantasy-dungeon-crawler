@@ -35,6 +35,7 @@ import {
 import { MAP_EVENTS, mapEventById, SHOP_MAX_LEVEL, shopUpgradeCost, type MapEffect } from "./game/world";
 import { rollStepEvent } from "./game/events";
 import { cellIdx, findPath, genMaze, mazeSizeForFloor, wallBetween } from "./game/maze";
+import { BIOMES, biomeHealingAmount, biomeVision, mazeBiome } from "./game/biomes";
 import { normalizeStatMilestones } from "./game/statMilestones";
 import type { Cell, GearItem, ModalState, Player, Run, Slot } from "./game/types";
 import { SLOT_META, SLOT_ORDER } from "./game/types";
@@ -457,7 +458,7 @@ export default function App() {
       gearLoot: [],
       keys: 0,
       steps: 0,
-      log: [`Спускаетесь на этаж ${floor} (${maze.size}×${maze.size}). Факел освещает круг радиусом 3, но стены и запертые двери блокируют свет.`],
+      log: [`Спускаетесь на этаж ${floor}: ${BIOMES[mazeBiome(maze)].name}. Факел освещает круг радиусом ${biomeVision(mazeBiome(maze))}, но стены и запертые двери блокируют свет.`],
     });
     if (floor > best) {
       setBest(floor);
@@ -542,7 +543,7 @@ export default function App() {
       r.log.push("Перед лестницей встаёт Страж яруса!");
       setPlayer((p) => ({ ...p, hp, statuses }));
       setRun(r);
-      setBattle(newBattle({ ...player, hp, statuses }, r.floor, true));
+      setBattle(newBattle({ ...player, hp, statuses }, r.floor, true, mazeBiome(r.maze)));
       setScreen("battle");
       return;
     }
@@ -552,7 +553,7 @@ export default function App() {
       if (!m.bossDefeated) {
         setPlayer((p) => ({ ...p, hp, statuses }));
         setRun(r);
-        setBattle(newBattle({ ...player, hp, statuses }, r.floor, true));
+        setBattle(newBattle({ ...player, hp, statuses }, r.floor, true, mazeBiome(r.maze)));
         setScreen("battle");
         return;
       }
@@ -680,7 +681,7 @@ export default function App() {
     /* Бой со случайным существом */
     setPlayer((p) => ({ ...p, hp, statuses }));
     setRun(r);
-    setBattle(newBattle({ ...player, hp, statuses }, r.floor, false));
+    setBattle(newBattle({ ...player, hp, statuses }, r.floor, false, mazeBiome(r.maze)));
     setScreen("battle");
   };
 
@@ -772,7 +773,7 @@ export default function App() {
     for (const e of effects) {
       switch (e.k) {
         case "hp": hp += e.v ?? 0; break;
-        case "heal": hp = Math.min(derived(player).maxHp, hp + (e.v ?? 0)); break;
+        case "heal": hp = Math.min(derived(player).maxHp, hp + biomeHealingAmount(mazeBiome(run.maze), e.v ?? 0)); break;
         case "gold": goldDelta += e.v ?? 0; break;
         case "gold_loss": goldDelta -= e.v ?? 0; break;
         case "xp": xpGain += e.v ?? 0; break;
@@ -882,7 +883,7 @@ export default function App() {
     const statuses = { ...player.statuses };
     let msg = "";
     if (u.type === "heal") {
-      const amt = consumablePower(def, player.stats);
+      const amt = biomeHealingAmount(mazeBiome(run.maze), consumablePower(def, player.stats), def.kind === "potion");
       hp = Math.min(d.maxHp, hp + amt);
       if (def.kind === "scroll") statuses.wound = 0;
       msg = `${def.name}: +${amt} здоровья.`;
@@ -916,11 +917,11 @@ export default function App() {
       prevPos: { ...maze.start },
       seen: { [`${maze.start.x},${maze.start.y}`]: true },
       keys: 0,
-      log: [...run.log, `Спуск на этаж ${nf} (${maze.size}×${maze.size}). Монстры опаснее, сокровища богаче.`],
+      log: [...run.log, `Спуск на этаж ${nf}: ${BIOMES[mazeBiome(maze)].name}. ${BIOMES[mazeBiome(maze)].effect}`],
     });
     setPlayer((p) => {
       const d = derived(p);
-      return { ...p, hp: Math.min(d.maxHp, p.hp + 10) };
+      return { ...p, hp: Math.min(d.maxHp, p.hp + biomeHealingAmount(mazeBiome(maze), 10)) };
     });
     setPath([]);
     setPathPaused(false);
@@ -1003,6 +1004,7 @@ export default function App() {
   const renderModal = () => {
     if (!modal) return null;
     const close = () => setModal(null);
+    const biome = mazeBiome(run?.maze);
 
     switch (modal.kind) {
       case "intro":
@@ -1018,8 +1020,11 @@ export default function App() {
           >
             <ul className="space-y-2">
               <li className="dropcap">
-                <b className="text-flame">Туман и стены:</b> сквозь стены ничего не видно — открыты только
-                пройденные клетки и <b>круг радиусом 3</b> — стены и углы блокируют свет.
+                <b className="text-flame">{BIOMES[biome].name}:</b> {BIOMES[biome].description}
+              </li>
+              <li>
+                <b className="text-flame">Туман и стены:</b> открыты только пройденные клетки и круг радиусом{" "}
+                <b>{biomeVision(biome)}</b>; стены, углы и запертые двери блокируют свет.
               </li>
               <li>
                 <b className="text-flame">Новая клетка:</b> 60% тихо, 10% ловушка, 20% бой и 10% небольшая находка.

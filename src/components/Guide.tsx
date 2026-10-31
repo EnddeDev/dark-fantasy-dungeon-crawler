@@ -29,6 +29,8 @@ import {
   xpForNextLevel,
 } from "../game/content";
 import { MAP_EVENTS } from "../game/world";
+import { BIOMES, BIOME_ORDER, biomeChanceLabel } from "../game/biomes";
+import { BiomeIcon } from "./BiomeLabel";
 import { MAX_SIZE, MIN_SIZE, TORCH, chestCountForFloor, mazeSizeForFloor } from "../game/maze";
 import { SLOT_META, SLOT_ORDER } from "../game/types";
 import type { RarityTier, StatKey, WearTier } from "../game/types";
@@ -40,6 +42,7 @@ const GUIDE_NAV = [
   { href: "#guide-stats", label: "Характеристики" },
   { href: "#guide-gear", label: "Снаряжение" },
   { href: "#guide-combat", label: "Правила боя" },
+  { href: "#guide-biomes", label: "Лабиринты" },
   { href: "#guide-reference", label: "Подробности" },
 ] as const;
 
@@ -454,7 +457,40 @@ export function Guide({
         </Note>
       </GuideSection>
 
-      {/* Дополнительно — свёрнуто, чтобы не мешать первым трём разделам. */}
+      {/* 04 — типы этажей */}
+      <GuideSection id="guide-biomes" step="04" title="Типы лабиринтов">
+        <p>
+          На <b className="text-flamehi">1–2 этажах</b> всегда классический лабиринт.
+          Начиная с <b className="text-flamehi">3-го</b> тип выбирается при создании этажа:
+          классика — <b className="text-flamehi">30%</b>, каждый особый лабиринт — <b className="text-flamehi">17,5%</b>.
+          Правило действует на все бои этажа, включая босса, и меняется только после спуска.
+        </p>
+        <div className="grid gap-3 lg:grid-cols-2">
+          {BIOME_ORDER.map((id) => {
+            const biome = BIOMES[id];
+            return (
+              <div key={id} className="border border-line bg-black/30 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h5 className="flex items-center gap-2 font-display text-[1.08rem] uppercase tracking-[0.08em] text-flamehi">
+                    <BiomeIcon biome={id} size={17} />
+                    {biome.name}
+                  </h5>
+                  <span className="font-mono text-[0.84rem] text-flame">{biomeChanceLabel(id)}</span>
+                </div>
+                <p className="mt-2 font-mono text-[0.9rem] leading-snug text-flame">{biome.effect}</p>
+                <p className="mt-1.5 text-[0.97rem] leading-snug text-parch/85">{biome.description}</p>
+              </div>
+            );
+          })}
+        </div>
+        <Note>
+          <b className="text-flamehi">Огненные недра:</b> горение считается отдельно для игрока и врага.
+          Первый свой ход начинается с потери 2 ОЗ, второй — 4 ОЗ, третий — 6 ОЗ.
+          Противоядие не снимает горение среды.
+        </Note>
+      </GuideSection>
+
+      {/* Дополнительно — свёрнуто, чтобы не мешать первым разделам. */}
       <section id="guide-reference" aria-labelledby="guide-reference-title" className="scroll-mt-6 py-6">
         <h4 id="guide-reference-title" className="font-display text-xl uppercase tracking-[0.12em] text-flamehi">
           Подробности и справочные таблицы
@@ -467,8 +503,8 @@ export function Guide({
           <Reference id="guide-map" title="Карта, комнаты и управление">
             <p>
               Первый лабиринт {MIN_SIZE}×{MIN_SIZE}, с этажами стороны растут до {MAX_SIZE}×{MAX_SIZE}.
-              Факел освещает текущую клетку и до {TORCH} полей по прямым коридорам; сквозь стены и запертые двери не видно.
-              Пройденные клетки остаются на карте тусклым следом.
+              Обычный факел освещает текущую клетку и до {TORCH} полей по прямым коридорам; в тёмном подземелье — до 2.
+              Сквозь стены и запертые двери не видно. Пройденные клетки остаются на карте тусклым следом.
             </p>
             <p className="flex items-start gap-2">
               <MousePointerClick size={15} className="mt-1 shrink-0 text-flame" aria-hidden />
