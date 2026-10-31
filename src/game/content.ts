@@ -121,14 +121,14 @@ export const STAT_META: Record<
   agi: {
     name: "Ловкость",
     short: "ЛОВ",
-    blurb: "Количество ходов в раунде, сила расходников, урон ловкого оружия и обезвреживание ловушек.",
-    gain: "+1 ход каждые 2 очка, урон ловкого оружия и расходников",
+    blurb: "Количество ходов в раунде, сила метательных расходников, урон ловкого оружия и обезвреживание ловушек.",
+    gain: "+1 ход каждые 2 очка, урон ловкого оружия и метательных расходников",
   },
   int: {
     name: "Интеллект",
     short: "ИНТ",
-    blurb: "Использование свитков, открытие способностей оружия и экипировки, исследование редкости и алхимия.",
-    gain: "открывает свитки, приёмы оружия и исследование",
+    blurb: "Сила свитков и наносящих урон зелий, чтение свитков, приёмы оружия, исследование и алхимия.",
+    gain: "усиливает свитки и урон зелий, открывает приёмы и исследование",
   },
 };
 
@@ -1617,11 +1617,11 @@ export interface ItemDef {
       | "heal" | "damage" | "cleanse" | "rage" | "flee" | "chill" | "sunder_damage"
       | "throw" | "poison" | "smoke" | "explosion" | "fear"
       | "haste" | "terror" | "stun_enemy" | "acid" | "stone"
-      | "iron_tonic" | "blood_rage" | "quickblade" | "shadow_dust" | "pact_elixir" | "scroll_creation"
+      | "iron_tonic" | "blood_rage" | "quickblade" | "pact_elixir" | "scroll_creation"
       | "bleed" | "blight" | "wither";
     power?: number;
     scale?: number;
-    /** Характеристика масштабирования: у всех расходников ЛОВ. */
+    /** Характеристика масштабирования: зелья без множителя, урон зелий и свитки — ИНТ, метательное — ЛОВ. */
     scaleStat?: StatKey;
     intReq?: number;
     fleeRate?: number;
@@ -1636,9 +1636,9 @@ const I = (d: ItemDef) => d;
 export const ITEMS: Record<string, ItemDef> = Object.fromEntries(
   [
     /* зелья и расходники */
-    I({ id: "potion_s", name: "Малое зелье лечения", kind: "potion", price: 45, use: { type: "heal", power: 28, scale: 1, scaleStat: "agi" }, desc: "Восстанавливает 28 + 1×ЛОВ здоровья. Вкус жжёного мёда и золы." }),
-    I({ id: "potion_l", name: "Большое зелье лечения", kind: "potion", price: 120, use: { type: "heal", power: 65, scale: 1.5, scaleStat: "agi" }, desc: "Восстанавливает 65 + 1.5×ЛОВ здоровья. Густое, тёплое, варится на слезе банши." }),
-    I({ id: "antidote", name: "Горечь полыни", kind: "potion", price: 42, use: { type: "cleanse", power: 8, scale: 0.5, scaleStat: "agi" }, desc: "Снимает кровотечение, проклятие и яд, возвращает 8 + 0.5×ЛОВ здоровья." }),
+    I({ id: "potion_s", name: "Малое зелье лечения", kind: "potion", price: 45, use: { type: "heal", power: 28 }, desc: "Восстанавливает 28 здоровья. Вкус жжёного мёда и золы." }),
+    I({ id: "potion_l", name: "Большое зелье лечения", kind: "potion", price: 120, use: { type: "heal", power: 65 }, desc: "Восстанавливает 65 здоровья. Густое, тёплое, варится на слезе банши." }),
+    I({ id: "antidote", name: "Горечь полыни", kind: "potion", price: 42, use: { type: "cleanse", power: 8 }, desc: "Снимает кровотечение, проклятие и яд, возвращает 8 здоровья." }),
     I({ id: "rage", name: "Эликсир ярости", kind: "potion", price: 95, use: { type: "rage", rounds: 5 }, desc: "Пять раундов злости: +50% к урону." }),
     /* оружейные расходники не требуют Интеллекта */
     I({ id: "throwing_knife", name: "Метательный кинжал", kind: "throwable", price: 28, use: { type: "throw", power: 10, scale: 1.5, scaleStat: "agi" }, desc: "Быстрый бросок: 10 + 1.5×ЛОВ физического урона." }),
@@ -1647,12 +1647,12 @@ export const ITEMS: Record<string, ItemDef> = Object.fromEntries(
     I({ id: "blast_bomb", name: "Взрывная бомба", kind: "throwable", price: 95, use: { type: "explosion", power: 24, scale: 1.5, scaleStat: "agi" }, desc: "Взрыв наносит 24 + 1.5×ЛОВ урона, игнорируя броню." }),
     I({ id: "fear_vial", name: "Зелье ужаса", kind: "potion", price: 70, level: 2, minFloor: 2, use: { type: "fear", rounds: 2 }, desc: "Живая цель пропустит 2 следующих хода. Нежить и големы страха не знают." }),
     /* свитки (требуют Интеллект) */
-    I({ id: "scroll_spark", name: "Свиток искры", kind: "scroll", price: 60, use: { type: "damage", power: 16, scale: 3, scaleStat: "agi", intReq: 2 }, desc: "16 + 3×ЛОВ урона. Короткая формула поджога; чтение требует ИНТ 2." }),
-    I({ id: "scroll_fire", name: "Свиток огня", kind: "scroll", price: 85, use: { type: "damage", power: 24, scale: 4, scaleStat: "agi", intReq: 3 }, desc: "24 + 4×ЛОВ урона. Буквы в нём дописаны от руки, спеша; чтение требует ИНТ 3." }),
-    I({ id: "scroll_heal", name: "Свиток исцеления", kind: "scroll", price: 90, use: { type: "heal", power: 32, scale: 4, scaleStat: "agi", intReq: 3 }, desc: "32 + 4×ЛОВ здоровья и снимает кровотечение. Чтение требует ИНТ 3." }),
+    I({ id: "scroll_spark", name: "Свиток искры", kind: "scroll", price: 60, use: { type: "damage", power: 16, scale: 3, scaleStat: "int", intReq: 2 }, desc: "16 + 3×ИНТ урона. Короткая формула поджога; чтение требует ИНТ 2." }),
+    I({ id: "scroll_fire", name: "Свиток огня", kind: "scroll", price: 85, use: { type: "damage", power: 24, scale: 4, scaleStat: "int", intReq: 3 }, desc: "24 + 4×ИНТ урона. Буквы в нём дописаны от руки, спеша; чтение требует ИНТ 3." }),
+    I({ id: "scroll_heal", name: "Свиток исцеления", kind: "scroll", price: 90, use: { type: "heal", power: 32, scale: 4, scaleStat: "int", intReq: 3 }, desc: "32 + 4×ИНТ здоровья и снимает кровотечение. Чтение требует ИНТ 3." }),
     I({ id: "scroll_shadow", name: "Свиток тени", kind: "scroll", price: 155, use: { type: "flee", fleeRate: 0, intReq: 4 }, desc: "Тень не теряет добычу — уносит из боя без потерь." }),
-    I({ id: "scroll_frost", name: "Свиток ледяных оков", kind: "scroll", price: 135, use: { type: "chill", power: 20, scale: 3, scaleStat: "agi", intReq: 5, rounds: 3 }, desc: "20 + 3×ЛОВ урона и холод на 3 раунда (урон врага −30%). Чтение требует ИНТ 5." }),
-    I({ id: "scroll_bolt", name: "Свиток молнии", kind: "scroll", price: 175, use: { type: "sunder_damage", power: 38, scale: 5, scaleStat: "agi", intReq: 6 }, desc: "38 + 5×ЛОВ урона сквозь броню и раскол защиты (−2 брони). Чтение требует ИНТ 6." }),
+    I({ id: "scroll_frost", name: "Свиток ледяных оков", kind: "scroll", price: 135, use: { type: "chill", power: 20, scale: 3, scaleStat: "int", intReq: 5, rounds: 3 }, desc: "20 + 3×ИНТ урона и холод на 3 раунда (урон врага −30%). Чтение требует ИНТ 5." }),
+    I({ id: "scroll_bolt", name: "Свиток молнии", kind: "scroll", price: 175, use: { type: "sunder_damage", power: 38, scale: 5, scaleStat: "int", intReq: 6 }, desc: "38 + 5×ИНТ урона сквозь броню и раскол защиты (−2 брони). Чтение требует ИНТ 6." }),
     /* реагенты */
     I({ id: "moss", name: "Кровавый мох", kind: "reagent", reagentCat: "plant", price: 28, desc: "Растёт на том, что не похоронили." }),
     I({ id: "bone", name: "Костяная пыль", kind: "reagent", reagentCat: "monster", price: 28, desc: "Растёртые ошмётки чьего-то упрямства." }),
@@ -1668,9 +1668,6 @@ export const ITEMS: Record<string, ItemDef> = Object.fromEntries(
     I({ id: "quickblade_oil", name: "Масло быстрого клинка", kind: "potion", price: 125,
       use: { type: "quickblade", rounds: 3 },
       desc: "Ассасин: +25% шанса крита и +50% силы крита на 3 раунда." }),
-    I({ id: "shadow_dust", name: "Пыль тени", kind: "throwable", price: 115,
-      use: { type: "shadow_dust", rounds: 2 },
-      desc: "Ниндзя: дымовая завеса на 2 атаки и +1 ход в следующем раунде." }),
     I({ id: "pact_elixir", name: "Эликсир пакта", kind: "potion", price: 140,
       use: { type: "pact_elixir", rounds: 3 },
       desc: "Колдун: сбрасывает перезарядку приёмов и даёт +25% урона приёмов на 3 раунда." }),
@@ -1686,7 +1683,7 @@ export const SUPPLY_LEVELS: Record<string, number> = {
   blast_bomb: 2, fear_vial: 2, scroll_spark: 1, scroll_fire: 2, scroll_heal: 2,
   scroll_shadow: 3, scroll_frost: 3, scroll_bolt: 4, potion_l: 3, potion_haste: 3,
   potion_stone: 3, scroll_terror: 3, scroll_snare: 4, acid_vial: 2, holy_water: 3,
-  bomb_flash: 3, iron_tonic: 4, blood_rage: 4, quickblade_oil: 4, shadow_dust: 4,
+  bomb_flash: 3, iron_tonic: 4, blood_rage: 4, quickblade_oil: 4,
   pact_elixir: 5, scroll_creation: 5, serrated_knife: 2, frost_bomb: 3,
   blight_powder: 4, wither_dust: 5,
 };
@@ -1706,9 +1703,15 @@ export function consumableIntReq(def: ItemDef, intDiscount = 0): number {
   return Math.max(0, (def.use?.intReq ?? 0) - intDiscount);
 }
 
-/** Все расходники масштабируются от ЛОВ; свитки по-прежнему требуют ИНТ для чтения. */
+/**
+  * Зелья лечения/поддержки не имеют множителя характеристики.
+  * Зелья с уроном и свитки считаются от ИНТ; метательные расходники — от ЛОВ.
+  */
 export function consumableScaleStat(def: ItemDef): StatKey | null {
-  if (!def.use) return null;
+  const u = def.use;
+  if (!u) return null;
+  if (def.kind === "scroll") return "int";
+  if (def.kind === "potion") return u.type === "damage" || u.type === "acid" ? "int" : null;
   return "agi";
 }
 
@@ -1753,7 +1756,6 @@ export const RECIPES: Recipe[] = [
   { id: "r15", out: "iron_tonic", count: 1, need: ["root", "ember", "bone"], intReq: 4, price: 100 },
   { id: "r16", out: "blood_rage", count: 1, need: ["fang", "moss", "fire"], intReq: 4, price: 105 },
   { id: "r17", out: "quickblade_oil", count: 1, need: ["gland", "powder", "silk"], intReq: 4, price: 105 },
-  { id: "r18", out: "shadow_dust", count: 1, need: ["powder", "silk", "gland"], intReq: 3, price: 95, station: "workshop" },
   { id: "r19", out: "pact_elixir", count: 1, need: ["tear", "ember", "cloth"], intReq: 5, price: 120 },
   { id: "r20", out: "scroll_creation", count: 1, need: ["cloth", "tear", "bone"], intReq: 6, price: 140 },
 ];
@@ -2253,7 +2255,6 @@ const SUPPLY_POOL = [
   "iron_tonic",
   "blood_rage",
   "quickblade_oil",
-  "shadow_dust",
   "pact_elixir",
   "scroll_creation",
   "serrated_knife",

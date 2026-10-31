@@ -433,13 +433,15 @@ export function genMaze(size = MIN_SIZE, floor = Math.max(1, size - 5)): Maze {
     eventTaken.add(i);
   }
 
-  /* Гарантия 1–2 событий: если строгих кандидатов не хватило, берём любую доступную клетку */
+  /* Гарантия 1–2 событий: если строгих кандидатов не хватило, берём любую клетку,
+     достижимую после открытия дверей ключами. Служебные клетки и колонны исключаем. */
   if (events.length < 1) {
+    const anyReach = bfs(base, base.start);
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
         const i = cellIdx(x, y, size);
         if (i === 0 || eventTaken.has(i) || pillarIdx.has(i)) continue;
-        if (reach[y][x] >= 0) {
+        if (anyReach[y][x] >= 0) {
           events.push(i);
           eventTaken.add(i);
           break;

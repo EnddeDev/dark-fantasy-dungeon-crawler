@@ -49,7 +49,6 @@ import {
 import { SLOT_META, SLOT_ORDER } from "../game/types";
 import type { RarityTier, Slot } from "../game/types";
 import { derived } from "../game/battle";
-import { mazeSizeForFloor } from "../game/maze";
 import { GEAR_BASES } from "../game/content";
 import { GEAR_EFFECTS, GEAR_PASSIVES } from "../game/gearEffects";
 import type { GearItem, Player, StatKey } from "../game/types";
@@ -63,7 +62,7 @@ import { Bestiary } from "./Bestiary";
 import { ItemArt } from "./ItemArt";
 import { GearNote } from "./GearNote";
 import { GearCard } from "./GearCard";
-import { Btn, Meter, Modal, Panel, Pips, Rune, Tag } from "./ui";
+import { Btn, Meter, Modal, Panel, Pips, Tag } from "./ui";
 
 
 type Tab = "train" | "armory" | "shop" | "brew" | "workshop" | "forge" | "bestiary" | "guide";
@@ -98,16 +97,16 @@ function intReqLabel(def: ItemDef, discount: number): string {
 function effectSummary(def: ItemDef): { what: string; when: string } {
   const u = def.use;
   if (!u) return { what: def.desc, when: "не применяется" };
-  const intPart = consumableScaleLabel(def);
+  const bonusPart = consumableScaleLabel(def);
   switch (u.type) {
     case "heal":
       return {
-        what: `Восстанавливает ${u.power}${intPart} здоровья.`,
+        what: `Восстанавливает ${u.power}${bonusPart} здоровья.`,
         when: "Мгновенно. Работает в коридоре и в бою.",
       };
     case "damage":
       return {
-        what: `Наносит врагу ${u.power}${intPart} урона.`,
+        what: `Наносит врагу ${u.power}${bonusPart} урона.`,
         when: `Мгновенно. ${u.vs ? `Против существ типа «${u.vs}» урон вдвое.` : "Только в бою."}`,
       };
     case "cleanse":
@@ -116,10 +115,10 @@ function effectSummary(def: ItemDef): { what: string; when: string } {
         when: "Мгновенно. Работает в коридоре и в бою.",
       };
     case "throw":
-      return { what: `Наносит ${u.power}${intPart} физического урона.`, when: "Мгновенно. Только в бою." };
+      return { what: `Наносит ${u.power}${bonusPart} физического урона.`, when: "Мгновенно. Только в бою." };
     case "poison":
       return {
-        what: `Наносит ${u.power}${intPart} урона и отравляет живую цель.`,
+        what: `Наносит ${u.power}${bonusPart} урона и отравляет живую цель.`,
         when: `Яд действует ${u.rounds} раунда. Нежить и конструкты невосприимчивы.`,
       };
     case "smoke":
@@ -129,7 +128,7 @@ function effectSummary(def: ItemDef): { what: string; when: string } {
       };
     case "explosion":
       return {
-        what: `Наносит ${u.power}${intPart} урона, игнорируя броню.`,
+        what: `Наносит ${u.power}${bonusPart} урона, игнорируя броню.`,
         when: "Мгновенно. Только в бою.",
       };
     case "fear":
@@ -144,12 +143,12 @@ function effectSummary(def: ItemDef): { what: string; when: string } {
       };
     case "chill":
       return {
-        what: `Наносит ${u.power}${intPart} урона и сковывает врага.`,
+        what: `Наносит ${u.power}${bonusPart} урона и сковывает врага.`,
         when: `Урон врага −30% на ${u.rounds} раунда.`,
       };
     case "sunder_damage":
       return {
-        what: `Наносит ${u.power}${intPart} урона сквозь броню и ломает её.`,
+        what: `Наносит ${u.power}${bonusPart} урона сквозь броню и ломает её.`,
         when: "Мгновенно. Броня врага −2 до конца боя.",
       };
     case "flee":
@@ -159,8 +158,8 @@ function effectSummary(def: ItemDef): { what: string; when: string } {
       };
     case "acid":
       return {
-        what: `Наносит ${u.power}${intPart} урона сквозь броню и разъедает её на −3.`,
-        when: "Мгновенно. Только в бою. Интеллект не нужен.",
+        what: `Наносит ${u.power}${bonusPart} урона сквозь броню и разъедает её на −3.`,
+        when: "Мгновенно. Только в бою.",
       };
     case "haste":
       return { what: "+1 ход в каждом раунде.", when: `Действует ${u.rounds} раунда.` };
@@ -625,10 +624,6 @@ export function Lobby({
         <header className="max-w-2xl">
           <span className="sc text-flamedim">Лобби · лагерь под сводами</span>
           <h2 className="font-title text-4xl leading-[0.95] text-flamehi sm:text-5xl">Сумрак</h2>
-          <p className="mt-2 max-w-xl text-[1rem] leading-relaxed text-parch/85">
-            Здесь распределяют очки, исследуют трофейные клинки и покупают забытые рецепты. Выбери знакомый
-            ярус для следующей вылазки: коридоры внизу длиннее, а Стражи — сильнее.
-          </p>
           <div className="mt-4 flex flex-wrap items-center gap-4 font-mono text-xs text-mute">
             <span className="tab">
               уровень: <span className="text-flamehi">{player.level}/{MAX_LEVEL}</span>
@@ -651,16 +646,11 @@ export function Lobby({
         {/* накладка-панель */}
         <div className="mt-8 border border-line bg-slab/95 shadow-[0_40px_100px_-40px_#000] backdrop-blur-[2px]">
           <div className="border-b border-line bg-black/40 px-5 py-4">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <span className="sc text-flamedim">Выбор яруса</span>
-                <p className="mt-1 text-[0.95rem] text-mute">
-                  Победи Стража, чтобы открыть следующий этаж навсегда. Можно начинать сразу с любого открытого.
-                </p>
-              </div>
-              <span className="font-mono text-[0.9rem] text-flame">
-                выбран {selectedFloor}-й · {mazeSizeForFloor(selectedFloor)}×{mazeSizeForFloor(selectedFloor)} · опыт без потолка этажа
-              </span>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <span className="sc text-flamedim">Выбор яруса</span>
+              <Btn tone="flame" className="px-6 py-2.5 text-sm" onClick={() => onStart(selectedFloor)}>
+                Начать с этажа {selectedFloor}
+              </Btn>
             </div>
             <div className="mt-3 flex max-w-full gap-2 overflow-x-auto pb-1" role="group" aria-label="Выбор этажа подземелья">
               {Array.from({ length: unlockedFloor }, (_, i) => i + 1).map((floor) => (
@@ -675,19 +665,9 @@ export function Lobby({
                       : "border-line text-mute hover:border-flamedim hover:text-parch"
                   }`}
                 >
-                  {floor} · {mazeSizeForFloor(floor)}×{mazeSizeForFloor(floor)}
+                  {floor}
                 </button>
               ))}
-            </div>
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
-              <p className="text-[0.94rem] text-mute">
-                {player.statPoints > 0
-                  ? `Нераспределённые очки характеристик: ${player.statPoints}.`
-                  : "В лобби здоровье восстановлено перед вылазкой."}
-              </p>
-              <Btn tone="flame" className="px-8 py-3 text-sm" onClick={() => onStart(selectedFloor)}>
-                Начать с этажа {selectedFloor}
-              </Btn>
             </div>
           </div>
           <nav className="flex flex-wrap border-b border-line">
@@ -718,8 +698,7 @@ export function Lobby({
 
           <div className="p-5 sm:p-6">
             {tab === "train" && (
-              <div className="grid gap-5 lg:grid-cols-[1fr_330px]">
-                <div className="space-y-4">
+              <div className="max-w-3xl space-y-4">
                   <Panel
                     className="p-4"
                     title={`Уровень ${player.level} из ${MAX_LEVEL}`}
@@ -731,8 +710,7 @@ export function Lobby({
                   >
                     <div className="grid grid-cols-[1fr_auto] items-center gap-2">
                       <span className="text-sm text-parch/85">
-                        За каждый новый уровень даётся <b>+2 очка характеристик</b>. Опыт добывается в боях, за
-                        победу над Боссами этажей и вскрытие сундуков. На этаже N максимум уровень N+1.
+                        За каждый новый уровень даётся <b>+3 очка характеристик</b>.
                       </span>
                       <span className="font-mono text-xs tab text-flamehi">
                         {player.level >= MAX_LEVEL ? "МАКС" : `${player.xp} / ${xpNeed} XP`}
@@ -790,9 +768,6 @@ export function Lobby({
                           </Btn>
                         </div>
                         <p className="mt-2 text-[1rem] leading-snug text-parch/80">{STAT_META[k].blurb}</p>
-                        <div className="mt-1 font-mono text-[0.84rem] text-mute">
-                          Стоимость повышения: до 5 — <b>1 очко</b>, после 5 (с 5 до 10) — <b>2 очка</b>.
-                        </div>
 
                         <div className="mt-3 grid gap-2 sm:grid-cols-2">
                           {([5, 10] as const).map((tier) => {
@@ -831,35 +806,6 @@ export function Lobby({
                       </Panel>
                     );
                   })}
-                </div>
-
-                <div className="space-y-4">
-                  <Panel className="p-4" title="Правила развития">
-                    <ul className="space-y-2 text-[0.97rem] leading-snug text-parch/85">
-                      <li>
-                        <b className="text-flame">Старт:</b> все характеристики равны 1, даётся <b>4 очка</b> для
-                        свободного распределения.
-                      </li>
-                      <li>
-                        <b className="text-flame">Опыт и уровни:</b> максимум 10 уровень. Каждый уровень приносит{" "}
-                        <b>+2 очка характеристик</b>. Ограничения по этажу нет, но поздние уровни требуют всё больше вылазок.
-                      </li>
-                      <li>
-                        <b className="text-flame">Порог 5:</b> повышение до 5 стоит 1 очко; после 5 каждое очко
-                        характеристики требует <b>2 очка</b>.
-                      </li>
-                      <li>
-                        <b className="text-flame">Интеллект и оружие:</b> открывает особые приёмы у каждого оружия
-                        (например, <i>Рапира: Фехтование</i> — доп. урон от ловкости), позволяет читать свитки и
-                        бесплатно исследовать редкость снаряжения.
-                      </li>
-                    </ul>
-                    <Rune className="my-3" />
-                    <p className="text-[0.92rem] leading-snug text-mute">
-                      На 5-м и 10-м значении открывается выбор одной из двух пассивных способностей.
-                    </p>
-                  </Panel>
-                </div>
               </div>
             )}
 

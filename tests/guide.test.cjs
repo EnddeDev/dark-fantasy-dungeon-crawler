@@ -80,6 +80,8 @@ test("extra reference material is collapsed by default", () => {
 });
 
 test("guide keeps the current combat and crafting numbers", () => {
+  assert.ok(html.includes("Метательные — от Ловкости"));
+  assert.ok(html.includes("Обычные зелья лечения и поддержки работают без множителя"));
   assert.match(html, /25% сопротивления эффектам/);
   assert.match(html, /только в первом раунде/);
   assert.match(html, /250 × текущий уровень/);

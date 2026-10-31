@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Footprints, Hammer, Info, X } from "lucide-react";
-import { GEAR_BASES, ITEMS, canWear, gearStatReqLabel, slotsForItem, wearRequirementNote } from "../game/content";
+import { GEAR_BASES, ITEMS, canWear, consumableIntReq, consumablePower, gearStatReqLabel, slotsForItem, wearRequirementNote } from "../game/content";
 import { TORCH, computeVisibility, openDirs } from "../game/maze";
 import type { GearItem, Player, Run, Slot } from "../game/types";
 import { SLOT_META, SLOT_ORDER } from "../game/types";
@@ -124,9 +124,6 @@ export function Dungeon({
           <h2 className="font-display text-lg uppercase tracking-[0.2em] text-flamehi">
             Этаж <span className="font-mono tab">{run.floor}</span>
           </h2>
-          <span className="sc">
-            Лабиринт {S}×{S} · комнат {m.rooms.length} · сундуков {m.chests.length} · событий {m.events.length}
-          </span>
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[0.86rem] text-mute">
           <span className="tab">шагов: <span className="text-parch">{run.steps}</span></span>
@@ -607,7 +604,7 @@ export function Dungeon({
             <div className="flex flex-wrap gap-2">
               {fieldConsumables.map(([id, n]) => {
                 const def = ITEMS[id];
-                const req = Math.max(0, (def.use?.intReq ?? 0) - intDiscount);
+                const req = consumableIntReq(def, intDiscount);
                 const intOk = intStat >= req;
                 return (
                   <button
@@ -626,10 +623,8 @@ export function Dungeon({
                         {!intOk
                           ? `нужен ИНТ ${req}`
                           : def.use?.type === "heal"
-                            ? def.use.scale
-                              ? `+${def.use.power} + ${def.use.scale}×ИНТ ОЗ`
-                              : `+${def.use.power} здоровья`
-                            : "снять раны, проклятие и яд"}
+                            ? `+${consumablePower(def, player.stats)} здоровья`
+                            : `снять раны, проклятие и яд (+${def.use?.power ?? 8} ОЗ)`}
                       </span>
                     </span>
                   </button>

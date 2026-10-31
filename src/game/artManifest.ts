@@ -52,7 +52,6 @@ export const ITEM_ART: Readonly<Record<string, string>> = {
   "scroll_shadow": "images/items/scroll_shadow.jpg",
   "scroll_spark": "images/items/scroll_spark.jpg",
   "seal": "images/items/seal.jpg",
-  "shadow_dust": "images/items/shadow_dust.jpg",
   "shroud": "images/items/shroud.jpg",
   "smoke_bomb": "images/items/smoke_bomb.jpg",
   "staff": "images/items/staff.jpg",

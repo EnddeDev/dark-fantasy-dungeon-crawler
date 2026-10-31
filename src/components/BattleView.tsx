@@ -211,9 +211,9 @@ export function BattleView({
         </div>
       </div>
 
-      <div className="grid flex-1 lg:grid-cols-[1fr_minmax(320px,430px)]">
+      <div className="grid flex-1 items-start xl:grid-cols-[minmax(260px,0.9fr)_minmax(320px,1.05fr)_minmax(300px,0.9fr)]">
         {/* ПЕРСОНАЖ */}
-        <div className="order-1 border-b border-line p-4 sm:p-6 lg:order-none lg:col-start-1 lg:row-start-1 lg:border-b-0">
+        <div className="order-3 min-w-0 border-b border-line p-4 sm:p-6 xl:order-1 xl:col-start-1 xl:border-b-0">
           <div className="border border-line bg-slab/80 p-4">
             <div className="flex flex-wrap items-baseline justify-between gap-3">
               <div>
@@ -307,7 +307,6 @@ export function BattleView({
                   <p className="text-mute">
                     Расчёт удара: <b className="text-parch">{b.p.hit[0]}–{b.p.hit[1]}</b> по оружию +{" "}
                     <b className="text-parch">{Math.floor(b.p.stats.str * 0.8)}</b> от СИЛ ({b.p.stats.str}×0.8)
-                    {ws && wsIntOk ? ` + приём «${ws.name}»` : ""}
                     {r.dmgMods.filter((m) => m.mult && m.mult !== 1).length
                       ? `, затем множители ${r.dmgMods
                           .filter((m) => m.mult && m.mult !== 1)
@@ -364,7 +363,7 @@ export function BattleView({
             {/* Действующие эффекты: что именно они меняют в характеристиках */}
             <div className="mt-3 border-t-2 border-line/80 bg-black/40 p-3">
               <div className="flex items-baseline justify-between">
-                <span className="sc text-flamedim">Эффекты на персонаже в бою</span>
+                <span className="sc text-flamedim">Эффекты в бою</span>
                 <span className="font-mono text-[0.78rem] text-mute">{activeEffects.length} активных</span>
               </div>
               {activeEffects.length === 0 ? (
@@ -410,100 +409,12 @@ export function BattleView({
           </div>
         </div>
 
-        {/* ЖУРНАЛ */}
-        <div className="order-3 border-t border-line p-4 sm:p-6 lg:order-none lg:col-start-1 lg:row-start-2">
-          <div className="border border-line bg-black/45 p-4">
-            <div className="sc mb-2">Хроника боя</div>
-            <div className="max-h-[34vh] space-y-1.5 overflow-y-auto pr-1 text-[1rem] leading-snug">
-              {b.log.slice(-40).reverse().map((l) => (
-                <div
-                  key={l.id}
-                  className={`border-l-2 pl-2 ${
-                    l.kind === "p" ? "border-flamedim text-parch" : l.kind === "e" ? "border-rubric text-parch/85" : "border-line text-mute italic"
-                  }`}
-                >
-                  {l.text}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
 
-        {/* ПРОТИВНИК */}
-        <div className="relative order-2 flex flex-col border-line bg-black/30 lg:order-none lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:border-l">
-          <div className="relative aspect-[5/4] w-full overflow-hidden border-b border-line bg-soot">
-            <FoePortrait id={e.def.id} art={e.def.art} name={e.def.name} />
-            <div className="absolute inset-0 bg-gradient-to-t from-soot via-soot/10 to-transparent" />
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,transparent_40%,rgba(0,0,0,0.65)_100%)]" />
-            {b.flash && b.flash.target === "e" && (
-              <div
-                key={b.flash.id}
-                className={`hitflash pointer-events-none absolute inset-0 flex items-center justify-center ${
-                  b.flash.kind === "guard" ? "bg-verd/25" : "bg-rubric/30"
-                }`}
-              >
-                <span className="font-mono text-4xl text-parch drop-shadow-[0_2px_6px_#000]">
-                  {b.flash.kind === "miss" ? "мимо" : b.flash.kind === "guard" ? "−" : `−${b.flash.amount}`}
-                </span>
-              </div>
-            )}
-            <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
-              {b.isBoss && <Tag tone="rubric">БОСС ЭТАЖА</Tag>}
-              <Tag tone="mute">ур. {e.level}</Tag>
-            </div>
-            <button
-              onClick={() => setCodex(true)}
-              className="absolute right-3 top-3 flex items-center gap-1.5 border border-flamedim bg-black/70 px-2.5 py-1.5 font-display text-[0.82rem] uppercase tracking-[0.14em] text-flame transition-colors hover:bg-flame hover:text-ink"
-            >
-              <BookOpen size={13} aria-hidden />
-              Способности
-            </button>
-            <div className="absolute inset-x-0 bottom-0 p-4">
-              {e.def.title && <div className="sc mb-0.5 text-rubric">{e.def.title}</div>}
-              <div className="mb-1 flex items-baseline justify-between gap-2">
-                <h3 className="font-display text-xl uppercase tracking-[0.12em] text-flamehi">{e.def.name}</h3>
-                <span className="font-mono text-sm tab text-parch">{e.hp}/{e.maxHp}</span>
-              </div>
-              <Meter value={e.hp} max={e.maxHp} tone="rubric" />
-            </div>
-          </div>
-
-          <div className="space-y-2 border-b border-line bg-slab/80 px-4 py-3">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[0.84rem] text-mute">
-              <span className="flex items-center gap-1.5 text-verd">
-                <Skull size={13} aria-hidden />
-                {CREATURE_META[e.def.type].name}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Shield size={13} aria-hidden />
-                броня {e.armor}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Swords size={13} aria-hidden />
-                ходов {e.ap}
-              </span>
-              <span>урон {e.atk[0]}–{e.atk[1]}</span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              <Tag tone={b.isBoss ? "rubric" : e.threat === "catastrophe" ? "rubric" : e.threat === "horror" ? "flame" : "verd"}>
-                {b.isBoss ? "Босс" : THREAT_META[e.threat].name}
-              </Tag>
-              {e.passive && <Tag tone="rubric">{e.passive.name}</Tag>}
-              {e.guard && <Tag tone="verd">в защите</Tag>}
-              {e.statuses.chill > 0 && <Tag tone="flame">ослаблен · {e.statuses.chill}</Tag>}
-              {e.statuses.bleed > 0 && <Tag tone="rubric">кровь · {e.statuses.bleed}</Tag>}
-              {e.statuses.poison > 0 && <Tag tone="rubric">яд · {e.statuses.poison}</Tag>}
-              {e.statuses.fear > 0 && <Tag tone="flame">страх · {e.statuses.fear}</Tag>}
-              {e.statuses.stunAp > 0 && <Tag tone="flame">оглушён −{e.statuses.stunAp}</Tag>}
-              {e.statuses.blight > 0 && <Tag tone="rubric">порча · {e.statuses.blight}</Tag>}
-              {e.statuses.wither > 0 && <Tag tone="rubric">увядание · {e.statuses.wither}</Tag>}
-              {e.forceGuard > 0 && <Tag tone="verd">вынужден держать оборону</Tag>}
-            </div>
-            <p className="text-[0.92rem] italic leading-snug text-mute">{e.def.flavor}</p>
-          </div>
-
-          {/* ДЕЙСТВИЯ */}
-          <div className="border-t border-line bg-slab/95 p-4">
+        {/* ДЕЙСТВИЯ — центральная колонка */}
+        <div className="order-2 min-w-0 border-b border-line p-4 sm:p-6 xl:order-2 xl:col-start-2 xl:border-b-0">
+          <div className="xl:sticky xl:top-4">
+          <div className="border border-line bg-slab/95 p-4">
+            <h3 className="sc mb-3 text-flamedim">Действия</h3>
             {!b.over && !myTurn && (
               <div className="mb-3 h-2 w-full overflow-hidden bg-black/50">
                 <div className="h-full w-1/3 animate-pulse bg-rubric/60" />
@@ -518,7 +429,7 @@ export function BattleView({
               </div>
             )}
             {menu === "main" && (
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div className="grid grid-cols-2 gap-2">
                 <Btn tone="flame" disabled={!myTurn || b.p.statuses.sealAttack > 0} onClick={() => act({ type: "attack" })}>
                   Удар
                 </Btn>
@@ -534,9 +445,6 @@ export function BattleView({
                 <Btn tone="danger" disabled={!myTurn} onClick={() => act({ type: "flee" })}>
                   Сбежать
                 </Btn>
-                <div className="hidden items-center justify-center border border-line/60 px-2 text-center font-mono text-[0.78rem] leading-tight text-mute sm:flex">
-                  очередь: {side === "p" ? "ты" : "враг"}
-                </div>
               </div>
             )}
 
@@ -651,6 +559,102 @@ export function BattleView({
                 </div>
               </div>
             )}
+          </div>
+          </div>
+        </div>
+
+        {/* ПРОТИВНИК И ХРОНИКА — правая колонка */}
+        <div className="order-1 min-w-0 xl:order-3 xl:col-start-3 xl:border-l xl:border-line">
+        {/* ПРОТИВНИК */}
+        <div className="relative flex flex-col border-line bg-black/30">
+          <div className="relative aspect-[5/4] w-full overflow-hidden border-b border-line bg-soot">
+            <FoePortrait id={e.def.id} art={e.def.art} name={e.def.name} />
+            <div className="absolute inset-0 bg-gradient-to-t from-soot via-soot/10 to-transparent" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,transparent_40%,rgba(0,0,0,0.65)_100%)]" />
+            {b.flash && b.flash.target === "e" && (
+              <div
+                key={b.flash.id}
+                className={`hitflash pointer-events-none absolute inset-0 flex items-center justify-center ${
+                  b.flash.kind === "guard" ? "bg-verd/25" : "bg-rubric/30"
+                }`}
+              >
+                <span className="font-mono text-4xl text-parch drop-shadow-[0_2px_6px_#000]">
+                  {b.flash.kind === "miss" ? "мимо" : b.flash.kind === "guard" ? "−" : `−${b.flash.amount}`}
+                </span>
+              </div>
+            )}
+            <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
+              {b.isBoss && <Tag tone="rubric">БОСС ЭТАЖА</Tag>}
+              <Tag tone="mute">ур. {e.level}</Tag>
+            </div>
+            <button
+              onClick={() => setCodex(true)}
+              className="absolute right-3 top-3 flex items-center gap-1.5 border border-flamedim bg-black/70 px-2.5 py-1.5 font-display text-[0.82rem] uppercase tracking-[0.14em] text-flame transition-colors hover:bg-flame hover:text-ink"
+            >
+              <BookOpen size={13} aria-hidden />
+              Способности
+            </button>
+            <div className="absolute inset-x-0 bottom-0 p-4">
+              {e.def.title && <div className="sc mb-0.5 text-rubric">{e.def.title}</div>}
+              <div className="mb-1 flex items-baseline justify-between gap-2">
+                <h3 className="font-display text-xl uppercase tracking-[0.12em] text-flamehi">{e.def.name}</h3>
+                <span className="font-mono text-sm tab text-parch">{e.hp}/{e.maxHp}</span>
+              </div>
+              <Meter value={e.hp} max={e.maxHp} tone="rubric" />
+            </div>
+          </div>
+
+          <div className="space-y-2 border-b border-line bg-slab/80 px-4 py-3">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[0.84rem] text-mute">
+              <span className="flex items-center gap-1.5 text-verd">
+                <Skull size={13} aria-hidden />
+                {CREATURE_META[e.def.type].name}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Shield size={13} aria-hidden />
+                броня {e.armor}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Swords size={13} aria-hidden />
+                ходов {e.ap}
+              </span>
+              <span>урон {e.atk[0]}–{e.atk[1]}</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <Tag tone={b.isBoss ? "rubric" : e.threat === "catastrophe" ? "rubric" : e.threat === "horror" ? "flame" : "verd"}>
+                {b.isBoss ? "Босс" : THREAT_META[e.threat].name}
+              </Tag>
+              {e.passive && <Tag tone="rubric">{e.passive.name}</Tag>}
+              {e.guard && <Tag tone="verd">в защите</Tag>}
+              {e.statuses.chill > 0 && <Tag tone="flame">ослаблен · {e.statuses.chill}</Tag>}
+              {e.statuses.bleed > 0 && <Tag tone="rubric">кровь · {e.statuses.bleed}</Tag>}
+              {e.statuses.poison > 0 && <Tag tone="rubric">яд · {e.statuses.poison}</Tag>}
+              {e.statuses.fear > 0 && <Tag tone="flame">страх · {e.statuses.fear}</Tag>}
+              {e.statuses.stunAp > 0 && <Tag tone="flame">оглушён −{e.statuses.stunAp}</Tag>}
+              {e.statuses.blight > 0 && <Tag tone="rubric">порча · {e.statuses.blight}</Tag>}
+              {e.statuses.wither > 0 && <Tag tone="rubric">увядание · {e.statuses.wither}</Tag>}
+              {e.forceGuard > 0 && <Tag tone="verd">вынужден держать оборону</Tag>}
+            </div>
+            <p className="text-[0.92rem] italic leading-snug text-mute">{e.def.flavor}</p>
+          </div>
+
+        </div>
+          <div className="border-t border-line p-4">
+            <div className="border border-line bg-black/45 p-4">
+              <div className="sc mb-2">Хроника боя</div>
+              <div className="max-h-[38vh] space-y-1.5 overflow-y-auto pr-1 text-[0.98rem] leading-snug xl:max-h-[46vh]">
+                {b.log.slice(-40).reverse().map((l) => (
+                  <div
+                    key={l.id}
+                    className={`border-l-2 pl-2 ${
+                      l.kind === "p" ? "border-flamedim text-parch" : l.kind === "e" ? "border-rubric text-parch/85" : "border-line text-mute italic"
+                    }`}
+                  >
+                    {l.text}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>
