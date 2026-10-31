@@ -29,6 +29,16 @@ import {
   type WeaponSkillDef,
 } from "./content";
 import { SLOT_ORDER } from "./types";
+import {
+  FIRE_BURN_STEP,
+  ICE_TURN_DAMAGE,
+  biomeHealingAmount,
+  biomeMissChance,
+  biomeStrikeMult,
+  fireBurnDamage,
+  normalizeBiome,
+  type BiomeId,
+} from "./biomes";
 import { BOSS_EFFECT_RESIST, enemyEffectPower, rollEnemyEffects } from "./enemyEffects";
 import { GEAR_EFFECTS } from "./gearEffects";
 import type { ArchetypeId } from "./archetypes";
@@ -64,6 +74,8 @@ export interface LogLine {
 
 export interface BattleState {
   floor: number;
+  /** Правило среды текущего этажа. */
+  biome: BiomeId;
   isBoss: boolean;
   enemy: {
     def: EnemyDef;
@@ -85,7 +97,7 @@ export interface BattleState {
     armor: number;
     gold: [number, number];
     xp: number;
-    statuses: { chill: number; bleed: number; poison: number; fear: number; stunAp: number; blight: number; wither: number };
+    statuses: { chill: number; bleed: number; poison: number; fear: number; stunAp: number; blight: number; wither: number; burning: number };
     guard: boolean;
     /** Раунды, в которые враг вынужден держать защиту (свиток ужаса, бомба). */
     forceGuard: number;
@@ -149,6 +161,8 @@ export interface BattleState {
       dodgeNext: number;
       /** Дополнительные ходы в следующем раунде. */
       shadowStep: number;
+      /** Слои горения огненных недр: усилиются в начале каждого своего хода. */
+      burning: number;
       /** Печати босса: запрет действий в следующий ход игрока. */
       sealItems: number;
       sealSkills: number;
@@ -626,7 +640,7 @@ function flash(b: BattleState, target: "p" | "e", kind: "hit" | "guard" | "miss"
   b.flash = { id: ++flashSeq, target, kind, amount };
 }
 
-export function newBattle(pl: Player, floor: number, isBoss = false): BattleState {
+export function newBattle(pl: Player, floor: number, isBoss = false, biome: BiomeId = "classic"): BattleState {
   const d = derived(pl);
   const s = spawnEnemy(floor, isBoss);
   const def = s.def;
@@ -636,6 +650,7 @@ export function newBattle(pl: Player, floor: number, isBoss = false): BattleStat
 
   const b: BattleState = {
     floor,
+    biome: normalizeBiome(biome),
     isBoss,
     enemy: {
       def,
@@ -652,7 +667,7 @@ export function newBattle(pl: Player, floor: number, isBoss = false): BattleStat
       armor: s.armor,
       gold: s.gold,
       xp: s.xp,
-      statuses: { chill: 0, bleed: 0, poison: 0, fear: 0, stunAp: 0, blight: 0, wither: 0 },
+      statuses: { chill: 0, bleed: 0, poison: 0, fear: 0, stunAp: 0, blight: 0, wither: 0, burning: 0 },
       guard: false,
       forceGuard: 0,
     },
@@ -704,6 +719,7 @@ export function newBattle(pl: Player, floor: number, isBoss = false): BattleStat
         tempArmor: 0,
         dodgeNext: 0,
         shadowStep: 0,
+        burning: 0,
         sealItems: 0,
         sealSkills: 0,
         sealAttack: 0,
@@ -734,6 +750,7 @@ export function newBattle(pl: Player, floor: number, isBoss = false): BattleStat
   if (s.passive) {
     push(b, `Пассивный эффект: ${s.passive.name} — ${s.passive.desc}`, "sys");
   }
+  beginTurn(b);
   return b;
 }
 
@@ -811,9 +828,19 @@ function applyEnemyStatus(b: BattleState, key: "chill" | "bleed" | "poison" | "f
 }
 function healEnemy(b: BattleState, amount: number): number {
   const mult = b.enemy.statuses.wither > 0 ? 0.25 : 1;
-  const heal = Math.max(0, Math.round(amount * mult));
-  b.enemy.hp = Math.min(b.enemy.maxHp, b.enemy.hp + heal);
-  return heal;
+  const requested = Math.max(0, Math.round(amount * mult));
+  const heal = biomeHealingAmount(b.biome, requested);
+  const actual = Math.min(b.enemy.maxHp - b.enemy.hp, heal);
+  b.enemy.hp += actual;
+  return actual;
+}
+
+/** Единая точка лечения игрока: болото режет всё, кроме зелий. Возвращает реально восстановленные ОЗ. */
+function healPlayer(b: BattleState, amount: number, isPotion = false): number {
+  const heal = biomeHealingAmount(b.biome, amount, isPotion);
+  const actual = Math.min(b.p.maxHp - b.p.hp, heal);
+  b.p.hp += actual;
+  return actual;
 }
 function grantDodgeAction(b: BattleState) {
   const chance = Math.min(1, effectPower(b, "dodge_action") / 100 + passivePower(b, "ninja_phantom", "dodge") / 100);
@@ -883,7 +910,7 @@ function calcWeaponRoll(b: BattleState, mult = 1, bonusFlat = 0, opts: { skill?:
     d *= critMult;
     crit = true;
   }
-  return { d: Math.max(1, Math.round(d * mult)), crit };
+  return { d: Math.max(1, Math.round(d * mult * biomeStrikeMult(b.biome))), crit };
 }
 
 function applyVamp(b: BattleState, dealt: number, extraRatio = 0, source: "weapon" | "skill" | "consumable" | "scroll" | "any" = "any") {
@@ -910,9 +937,8 @@ function applyVamp(b: BattleState, dealt: number, extraRatio = 0, source: "weapo
     if (hasPassive(b, "arch_sage_5")) ratio += 0.08;
   }
   if (ratio <= 0 || dealt <= 0) return;
-  const heal = Math.max(1, Math.round(dealt * ratio));
-  b.p.hp = Math.min(b.p.maxHp, b.p.hp + heal);
-  push(b, `Похищение жизни: +${heal} здоровья.`, "p");
+  const heal = healPlayer(b, Math.max(1, Math.round(dealt * ratio)));
+  if (heal > 0) push(b, `Похищение жизни: +${heal} здоровья.`, "p");
 }
 
 function hitEnemy(
@@ -920,7 +946,14 @@ function hitEnemy(
   raw: number,
   kind: "phys" | "magic" | "true",
   note = "",
+  strike = kind === "phys",
 ): number {
+  const darkMiss = biomeMissChance(b.biome);
+  if (strike && darkMiss > 0 && Math.random() < darkMiss) {
+    flash(b, "e", "miss", 0);
+    push(b, `Мрак скрывает цель: удар проходит мимо.${note}`, "sys");
+    return 0;
+  }
   const evade = eEffect(b, "evade") / 100;
   if (evade > 0 && Math.random() < evade) {
     flash(b, "e", "miss", 0);
@@ -955,7 +988,13 @@ function hitEnemy(
 }
 
 /** false означает, что враг промахнулся: побочные эффекты атаки тоже не срабатывают. */
-function incoming(b: BattleState, raw: number, kind: "phys" | "magic", src: string): boolean {
+function incoming(b: BattleState, raw: number, kind: "phys" | "magic", src: string, strike = kind === "phys"): boolean {
+  const darkMiss = biomeMissChance(b.biome);
+  if (strike && darkMiss > 0 && Math.random() < darkMiss) {
+    flash(b, "p", "miss", 0);
+    push(b, `Мрак скрывает тебя: ${src} — промах.`, "sys");
+    return false;
+  }
   if (b.p.statuses.fullGuard > 0) {
     flash(b, "p", "guard", 0);
     push(b, `Полная защита поглощает удар (${src}).`, "p");
@@ -982,6 +1021,7 @@ function incoming(b: BattleState, raw: number, kind: "phys" | "magic", src: stri
     return false;
   }
   let d = raw;
+  if (strike) d = Math.round(d * biomeStrikeMult(b.biome));
   const effArmor = Math.max(0, b.p.armor + b.p.statuses.tempArmor + (b.p.statuses.ironTonic > 0 ? 4 : 0) - b.p.statuses.sundered);
   if (kind === "phys") d -= effArmor;
   d -= effectPower(b, "damage_resist");
@@ -1027,18 +1067,20 @@ function incoming(b: BattleState, raw: number, kind: "phys" | "magic", src: stri
   if (b.p.hp <= 0) {
     if (hasPassive(b, "arch_bulwark_10") && !b.p.immortalUsed) {
       b.p.immortalUsed = true;
-      b.p.hp = 1;
+      b.p.hp = 0;
+      const heal = healPlayer(b, 1);
       b.p.guard = true;
-      flash(b, "p", "heal", 1);
-      push(b, "Непробиваемый: смертельный удар оставил 1 ОЗ и включил Защиту!", "p");
+      flash(b, "p", "heal", heal);
+      push(b, `Непробиваемый: смертельный удар оставил ${heal} ОЗ и включил Защиту!`, "p");
       return true;
     }
     if (hasLeg(b, "immortal_pact") && !b.p.immortalUsed) {
       b.p.immortalUsed = true;
-      b.p.hp = 18;
+      b.p.hp = 0;
+      const heal = healPlayer(b, 18);
       b.p.guard = true;
-      flash(b, "p", "heal", 18);
-      push(b, "Печать бессмертия вспыхивает! Ты остаёшься на ногах с 18 ОЗ и в Защите.", "p");
+      flash(b, "p", "heal", heal);
+      push(b, `Печать бессмертия вспыхивает! Ты остаёшься на ногах с ${heal} ОЗ и в Защите.`, "p");
       return true;
     }
     b.p.hp = 0;
@@ -1062,6 +1104,47 @@ function gainLoot(b: BattleState) {
   // Обычный монстр: 30% ничего, 30% золото, 20% реагенты, 15% припасы, 5% снаряжение.
   const drop = rollEnemyLoot(e.level, b.floor, e.threat);
   b.loot = { gold: drop.gold, items: drop.items, gear: drop.gear, xp: e.xp };
+}
+
+/** Environmental tick at the start of the active side's turn. Called once per queue step. */
+function beginTurn(b: BattleState) {
+  if (b.over) return;
+  const side = b.queue[b.idx];
+  if (!side) return;
+
+  if (b.biome === "ice" && side === "p") {
+    b.p.hp = Math.max(0, b.p.hp - ICE_TURN_DAMAGE);
+    flash(b, "p", "hit", ICE_TURN_DAMAGE);
+    push(b, `Ледяные просторы: холод отнимает ${ICE_TURN_DAMAGE} здоровья в начале твоего хода.`, "sys");
+  }
+
+  if (b.biome === "fire") {
+    if (side === "p") {
+      b.p.statuses.burning += 1;
+      const dmg = fireBurnDamage(b.p.statuses.burning);
+      b.p.hp = Math.max(0, b.p.hp - dmg);
+      flash(b, "p", "hit", dmg);
+      push(b, `Огненные недра: горение ×${b.p.statuses.burning} отнимает ${dmg} здоровья (каждый слой +${FIRE_BURN_STEP}).`, "sys");
+    } else {
+      b.enemy.statuses.burning += 1;
+      const dmg = fireBurnDamage(b.enemy.statuses.burning);
+      b.enemy.hp = Math.max(0, b.enemy.hp - dmg);
+      flash(b, "e", "hit", dmg);
+      push(b, `Огненные недра: ${b.enemy.def.name} горит ×${b.enemy.statuses.burning} и теряет ${dmg} здоровья.`, "sys");
+    }
+  }
+
+  if (b.enemy.hp <= 0) {
+    b.enemy.hp = 0;
+    b.over = "win";
+    gainLoot(b);
+    push(b, `${b.enemy.def.name} повержен! (+${b.enemy.xp} опыта)`, "sys");
+    return;
+  }
+  if (b.p.hp <= 0) {
+    b.p.hp = 0;
+    b.over = "lose";
+  }
 }
 
 function advance(b: BattleState) {
@@ -1116,7 +1199,8 @@ function advance(b: BattleState) {
       passivePower(b, "bulwark_wall", "regen") +
       (b.p.statuses.ironTonic > 0 ? 4 : 0);
     if (regen > 0 && b.p.hp > 0) {
-      b.p.hp = Math.min(b.p.maxHp, b.p.hp + regen);
+      const healed = healPlayer(b, regen);
+      if (healed > 0) push(b, `Регенерация: +${healed} здоровья.`, "p");
     }
 
     const prevCurse = b.p.statuses.curse;
@@ -1189,9 +1273,11 @@ function advance(b: BattleState) {
       b.over = "lose";
       return;
     }
+    beginTurn(b);
     return;
   }
   b.idx = idx;
+  beginTurn(b);
 }
 
 const CREATED_SCROLLS = ["scroll_bolt", "scroll_heal", "scroll_frost", "scroll_terror"];
@@ -1211,8 +1297,7 @@ function castCreatedScroll(b: BattleState, name: string) {
   const power = consumablePower(def, b.p.stats);
   const mult = consumableDamageMult(b, def);
   if (def.use?.type === "heal") {
-    const amt = Math.round(power * mult);
-    b.p.hp = Math.min(b.p.maxHp, b.p.hp + amt);
+    const amt = healPlayer(b, Math.round(power * mult));
     push(b, `${def.name} сразу применяется: +${amt} здоровья.`, "p");
   } else if (def.use?.type === "chill") {
     const dealt = hitEnemy(b, Math.round(power * mult), "magic", ` [${def.name}, сотворён]`);
@@ -1283,9 +1368,8 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
       applyVamp(b, dealt, 0, "weapon");
       b.p.firstAttackDone = true;
       if (crit && hasPassive(b, "arch_assassin_10")) {
-        const heal = Math.max(1, Math.round(dealt * 0.15));
-        b.p.hp = Math.min(b.p.maxHp, b.p.hp + heal);
-        push(b, `Тень смерти: крит возвращает +${heal} здоровья.`, "p");
+        const heal = healPlayer(b, Math.max(1, Math.round(dealt * 0.15)));
+        if (heal > 0) push(b, `Тень смерти: крит возвращает +${heal} здоровья.`, "p");
       }
       const stunChance = Math.min(1, effectPower(b, "stun_chance") / 100 +
         passivePower(b, "heavy_blow", "stun") / 100 +
@@ -1326,12 +1410,11 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
         //.Multi-hit: каждый удар — отдельная обычная атака без бонуса приёма.
         const isMulti = eff === "double_attack";
         const { d, crit } = calcWeaponRoll(b, 1, isMulti ? 0 : bonus, { skill: !isMulti, forceCrit: !isMulti && eff === "guaranteed_crit" && b.round <= 2 });
-        const dealt = hitEnemy(b, d, isMulti ? "phys" : trueDamage ? "true" : "phys", ` [Приём: ${ws.name}${crit ? ", КРИТ!" : ""}${hits > 1 ? ` ${i + 1}/${hits}` : ""}]`);
+        const dealt = hitEnemy(b, d, isMulti ? "phys" : trueDamage ? "true" : "phys", ` [Приём: ${ws.name}${crit ? ", КРИТ!" : ""}${hits > 1 ? ` ${i + 1}/${hits}` : ""}]`, true);
         dealtTotal += dealt;
         applyVamp(b, dealt, 0, "weapon");
         if (crit && hasPassive(b, "arch_assassin_10")) {
-          const heal = Math.max(1, Math.round(dealt * 0.15));
-          b.p.hp = Math.min(b.p.maxHp, b.p.hp + heal);
+          healPlayer(b, Math.max(1, Math.round(dealt * 0.15)));
         }
         if (isMulti) b.p.firstAttackDone = true;
         if (isMulti && b.enemy.hp > 0) {
@@ -1439,13 +1522,11 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
       } else if (sk.id === "blood_lance") {
         const dmg = Math.round((epicMagnitude(sk.id, "base", skLevel) + epicMagnitude(sk.id, "scale", skLevel) * b.p.stats.str) * spellPowerMult * skillDamageMult(b));
         const dealt = hitEnemy(b, dmg, "true", " [Кровавое копьё]");
-        const heal = Math.max(2, Math.round(dealt * (epicMagnitude(sk.id, "leech", skLevel) / 100)));
-        b.p.hp = Math.min(b.p.maxHp, b.p.hp + heal);
+        const heal = healPlayer(b, Math.max(2, Math.round(dealt * (epicMagnitude(sk.id, "leech", skLevel) / 100))));
         flash(b, "p", "heal", heal);
         push(b, `Кровавое копьё возвращает тебе +${heal} здоровья.`, "p");
       } else if (sk.id === "ash_aegis") {
-        const heal = Math.round((epicMagnitude(sk.id, "base", skLevel) + epicMagnitude(sk.id, "scale", skLevel) * b.p.stats.int) * spellPowerMult);
-        b.p.hp = Math.min(b.p.maxHp, b.p.hp + heal);
+        const heal = healPlayer(b, Math.round((epicMagnitude(sk.id, "base", skLevel) + epicMagnitude(sk.id, "scale", skLevel) * b.p.stats.int) * spellPowerMult));
         b.p.statuses.wound = 0;
         b.p.statuses.curse = 0;
         b.p.statuses.poison = 0;
@@ -1494,10 +1575,10 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
         case "heal": {
           let amt = itemPower;
           if (def.kind === "scroll") amt = Math.round(amt * scrollMult);
-          b.p.hp = Math.min(b.p.maxHp, b.p.hp + amt);
+          const healed = healPlayer(b, amt, def.kind === "potion");
           if (def.kind === "scroll") b.p.statuses.wound = 0;
-          flash(b, "p", "heal", amt);
-          push(b, `${def.name}: +${amt} здоровья.`, "p");
+          flash(b, "p", "heal", healed);
+          push(b, `${def.name}: +${healed} здоровья.`, "p");
           break;
         }
         case "damage": {
@@ -1529,8 +1610,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
           b.p.statuses.wound = 0;
           b.p.statuses.curse = 0;
           b.p.statuses.poison = 0;
-          const amt = Math.max(1, Math.round(itemPower));
-          b.p.hp = Math.min(b.p.maxHp, b.p.hp + amt);
+          const amt = healPlayer(b, Math.max(1, Math.round(itemPower)), def.kind === "potion");
           push(b, `${def.name}: раны, проклятие и яд сняты (+${amt} ОЗ).`, "p");
           break;
         }
@@ -1676,8 +1756,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
         const echoPower = consumablePowerWithGear(b, def);
         const echoMult = consumableDamageMult(b, def);
         if (u.type === "heal") {
-          const amt = Math.round(echoPower * echoMult);
-          b.p.hp = Math.min(b.p.maxHp, b.p.hp + amt);
+          const amt = healPlayer(b, Math.round(echoPower * echoMult));
           flash(b, "p", "heal", amt);
           push(b, `Эхо заклинаний повторяет ${def.name}: +${amt} здоровья.`, "p");
         } else if (u.type === "damage" || u.type === "chill" || u.type === "sunder_damage") {
@@ -1891,6 +1970,9 @@ export interface Modifier {
 }
 
 export interface CombatReadout {
+  biome: BiomeId;
+  /** Дополнительный шанс промаха физическим ударом из-за среды. */
+  missChance: number;
   /** Урон оружия без модификаторов. */
   baseMin: number;
   baseMax: number;
@@ -1938,6 +2020,8 @@ export function combatReadout(b: BattleState): CombatReadout {
   const baseMax = b.p.hit[1] + strFlat;
 
   const dmgMods: Modifier[] = [];
+  if (b.biome === "ice")
+    dmgMods.push({ id: "biome_ice", label: "Ледяные просторы", mult: 0.75, good: false, detail: "Физические удары оружием слабее на 25%." });
   const ws = b.p.weaponSkill;
   const wsReq = ws ? Math.max(1, ws.intReq - b.p.intDiscount) : 0;
   if (ws && st.int >= wsReq) {
@@ -2026,6 +2110,12 @@ export function combatReadout(b: BattleState): CombatReadout {
 
   /* Защита */
   const defMods: Modifier[] = [];
+  if (b.biome === "swamp")
+    defMods.push({ id: "biome_swamp", label: "Болото: лечение −50%", good: false, detail: "Действует на обоих участников. Зелья лечения и поддержки не ослабляются." });
+  if (b.biome === "dark")
+    defMods.push({ id: "biome_dark", label: "Мрак: промах 25%", good: false, detail: "Дополнительная проверка для физических ударов игрока и врага." });
+  if (b.p.statuses.burning > 0)
+    defMods.push({ id: "biome_burning", label: `Горение ×${b.p.statuses.burning}`, good: false, detail: `−${fireBurnDamage(b.p.statuses.burning)} ОЗ в начале своего хода; следующий слой −${fireBurnDamage(b.p.statuses.burning + 1)}.` });
   if (b.p.statuses.sundered > 0)
     defMods.push({
       id: "sundered",
@@ -2102,6 +2192,10 @@ export function combatReadout(b: BattleState): CombatReadout {
 
   /* Урон врага по мне */
   const enemyMods: Modifier[] = [];
+  if (b.biome === "ice")
+    enemyMods.push({ id: "biome_ice_enemy", label: "Лёд: удары врага −25%", mult: 0.75, good: true, detail: "Физические атаки противника ослаблены холодом." });
+  if (b.enemy.statuses.burning > 0)
+    enemyMods.push({ id: "biome_burning_enemy", label: `Горение врага ×${b.enemy.statuses.burning}`, good: true, detail: `−${fireBurnDamage(b.enemy.statuses.burning)} ОЗ врагу в начале его хода; следующий слой −${fireBurnDamage(b.enemy.statuses.burning + 1)}.` });
   if (b.enemy.statuses.blight > 0)
     enemyMods.push({ id: "blight", label: "Порча", mult: 0.8, good: true, rounds: b.enemy.statuses.blight, detail: "Урон врага −20% и потеря ОЗ за раунд." });
   if (b.enemy.statuses.wither > 0)
@@ -2155,7 +2249,7 @@ export function combatReadout(b: BattleState): CombatReadout {
   if (b.enemy.passive?.id === "venom")
     enemyMods.push({ id: "evenom", label: "Ядовитый враг", mult: 1, good: false, detail: "Его удары отравляют тебя на 2 раунда." });
 
-  const enemyMult = chill ? 0.7 : 1;
+  const enemyMult = (chill ? 0.7 : 1) * biomeStrikeMult(b.biome);
   const defMult = multOf(defMods.filter((m) => m.mult !== undefined));
   const eMin = Math.round(b.enemy.atk[0] * enemyMult);
   const eMax = Math.round(b.enemy.atk[1] * enemyMult);
@@ -2168,6 +2262,8 @@ export function combatReadout(b: BattleState): CombatReadout {
   const ap = Math.max(1, apBase + gearAp + (haste > 0 ? 1 : 0) + sageAp + b.p.statuses.shadowStep - b.p.statuses.stunAp);
 
   return {
+    biome: b.biome,
+    missChance: biomeMissChance(b.biome),
     baseMin,
     baseMax,
     dmgMin: rawMin,

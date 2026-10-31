@@ -63,7 +63,7 @@ test("guide does not repeat the stale agility-evasion claim", () => {
 });
 
 test("guide navigation anchors point to existing sections", () => {
-  for (const id of ["guide-stats", "guide-gear", "guide-combat", "guide-reference"]) {
+  for (const id of ["guide-stats", "guide-gear", "guide-combat", "guide-biomes", "guide-reference"]) {
     assert.ok(html.includes(`href="#${id}"`), `missing nav link ${id}`);
     assert.ok(html.includes(`id="${id}"`), `missing section ${id}`);
   }
@@ -88,4 +88,21 @@ test("guide keeps the current combat and crafting numbers", () => {
   assert.match(html, /качество 25\/50\/75%/);
   assert.match(html, /изношенность 30\/60%/);
   assert.match(html, /шанс успеха 80%/);
+});
+
+
+test("guide explains the five labyrinth biomes and their exact spawn chances", () => {
+  const section = html.indexOf('id="guide-biomes"');
+  const reference = html.indexOf('id="guide-reference"');
+  assert.ok(section > 0 && reference > section);
+  for (const name of ["Классический лабиринт", "Подземное болото", "Ледяные просторы", "Тёмное подземелье", "Огненные недра"]) {
+    assert.ok(html.includes(name), name);
+  }
+  assert.ok(html.includes("1–2 этажах"));
+  assert.ok(html.includes("30%"));
+  assert.ok(html.includes("17,5%"));
+  assert.ok(html.includes("Лечение обоих участников −50%"));
+  assert.ok(html.includes("−3 ОЗ в начале своего хода"));
+  assert.ok(html.includes("Видимость 2 клетки"));
+  assert.ok(html.includes("горение усиливается на 2 ОЗ"));
 });

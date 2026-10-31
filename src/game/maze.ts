@@ -1,4 +1,5 @@
 import type { Cell, Maze } from "./types";
+import { biomeVision, mazeBiome, normalizeBiome, rollBiome, type BiomeId } from "./biomes";
 
 export const MIN_SIZE = 6;
 export const MAX_SIZE = 10;
@@ -206,9 +207,10 @@ function carveRooms(h: boolean[][], v: boolean[][], size: number): Room[] {
   return rooms;
 }
 
-export function genMaze(size = MIN_SIZE, floor = Math.max(1, size - 5)): Maze {
+export function genMaze(size = MIN_SIZE, floor = Math.max(1, size - 5), biome?: BiomeId): Maze {
   size = Math.min(MAX_SIZE, Math.max(MIN_SIZE, Math.floor(size)));
   floor = Math.max(1, Math.floor(floor));
+  const selectedBiome = floor < 3 ? "classic" : biome === undefined ? rollBiome(floor) : normalizeBiome(biome);
   const h: boolean[][] = Array.from({ length: size + 1 }, () => Array(size).fill(true));
   const v: boolean[][] = Array.from({ length: size }, () => Array(size + 1).fill(true));
 
@@ -253,6 +255,7 @@ export function genMaze(size = MIN_SIZE, floor = Math.max(1, size - 5)): Maze {
 
   const base: Maze = {
     size,
+    biome: selectedBiome,
     h,
     v,
     start: { x: 0, y: 0 },
@@ -555,6 +558,7 @@ export function computeVisibility(
   seen: Record<string, boolean>,
 ): number[][] {
   const s = m.size;
+  const radius = biomeVision(mazeBiome(m), TORCH);
   const out: number[][] = Array.from({ length: s }, (_, y) =>
     Array.from({ length: s }, (_, x) => (seen[`${x},${y}`] ? 2 : 0)),
   );
@@ -563,11 +567,11 @@ export function computeVisibility(
     out[pos.y][pos.x] = 1;
   }
 
-  // Круговая видимость: проверяем все клетки в радиусе TORCH
-  for (let y = Math.max(0, pos.y - TORCH); y <= Math.min(s - 1, pos.y + TORCH); y++) {
-    for (let x = Math.max(0, pos.x - TORCH); x <= Math.min(s - 1, pos.x + TORCH); x++) {
+  // Круговая видимость: радиус зависит от типа этажа.
+  for (let y = Math.max(0, pos.y - radius); y <= Math.min(s - 1, pos.y + radius); y++) {
+    for (let x = Math.max(0, pos.x - radius); x <= Math.min(s - 1, pos.x + radius); x++) {
       const dist = Math.max(Math.abs(x - pos.x), Math.abs(y - pos.y));
-      if (dist > TORCH) continue;
+      if (dist > radius) continue;
       if (dist === 0) continue;
 
       // Проверяем прямую видимость

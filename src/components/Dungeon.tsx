@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { Footprints, Hammer, Info, X } from "lucide-react";
 import { GEAR_BASES, ITEMS, canWear, consumableIntReq, consumablePower, gearStatReqLabel, slotsForItem, wearRequirementNote } from "../game/content";
 import { TORCH, computeVisibility, openDirs } from "../game/maze";
+import { BIOMES, BIOME_MAP_COLORS, biomeHealingAmount, biomeVision, mazeBiome } from "../game/biomes";
+import { BiomeRule, BiomeTag, biomeStyle } from "./BiomeLabel";
 import type { GearItem, Player, Run, Slot } from "../game/types";
 import { SLOT_META, SLOT_ORDER } from "../game/types";
 import { ItemArt } from "./ItemArt";
@@ -46,6 +48,9 @@ export function Dungeon({
   onResumePath: () => void;
 }) {
   const m = run.maze;
+  const biome = mazeBiome(m);
+  const colors = BIOME_MAP_COLORS[biome];
+  const radius = biomeVision(biome, TORCH);
   const S = m.size;
   const W = S * CS;
   const [openSlot, setOpenSlot] = useState<Slot | null>(null);
@@ -85,7 +90,7 @@ export function Dungeon({
         dark.push({ x, y, o: 1 });
       } else if (vis[y][x] === 1) {
         const dist = Math.max(Math.abs(x - run.pos.x), Math.abs(y - run.pos.y));
-        if (dist === TORCH) dark.push({ x, y, o: 0.35 });
+        if (dist === radius) dark.push({ x, y, o: 0.35 });
       }
     }
   }
@@ -118,12 +123,13 @@ export function Dungeon({
   };
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-b border-line bg-black/40 px-4 py-3 sm:px-6">
-        <div className="flex items-baseline gap-4">
+    <div className="biome-surface flex min-h-screen flex-col bg-soot" data-biome={biome} style={biomeStyle(biome)}>
+      <header className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-b border-line bg-black/40 px-4 py-3 sm:px-6">
+        <div className="flex flex-wrap items-center gap-3">
           <h2 className="font-display text-lg uppercase tracking-[0.2em] text-flamehi">
             Этаж <span className="font-mono tab">{run.floor}</span>
           </h2>
+          <BiomeTag biome={biome} />
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[0.86rem] text-mute">
           <span className="tab">шагов: <span className="text-parch">{run.steps}</span></span>
@@ -138,28 +144,33 @@ export function Dungeon({
           </span>
         </div>
       </header>
+      {biome !== "classic" && (
+        <div className="border-b border-line bg-black/30 px-4 py-2 sm:px-6">
+          <BiomeRule biome={biome} />
+        </div>
+      )}
 
       <div className="flex flex-1 flex-col items-center gap-6 px-4 py-6 sm:px-6 min-[1400px]:flex-row min-[1400px]:items-start min-[1400px]:justify-center">
         {/* КАРТА-ЧЕРТЁЖ */}
         <div className="relative w-full min-w-0 max-w-[600px]">
           <div className="grain relative border border-line bg-ink p-2 shadow-[0_30px_80px_-40px_#000]">
-            <svg viewBox={`-6 -6 ${W + 12} ${W + 12}`} className="block w-full" role="img" aria-label="План подземелья">
+            <svg viewBox={`-6 -6 ${W + 12} ${W + 12}`} className="block w-full" role="img" aria-label={`План подземелья: ${BIOMES[biome].name}`}>
               <defs>
                 <radialGradient id="torch">
-                  <stop offset="0%" stopColor="#f6d48a" stopOpacity="0.65" />
-                  <stop offset="50%" stopColor="#e0a33c" stopOpacity="0.28" />
-                  <stop offset="100%" stopColor="#e0a33c" stopOpacity="0" />
+                  <stop offset="0%" stopColor={colors.accentHi} stopOpacity="0.65" />
+                  <stop offset="50%" stopColor={colors.accent} stopOpacity="0.28" />
+                  <stop offset="100%" stopColor={colors.accent} stopOpacity="0" />
                 </radialGradient>
                 <pattern id="grid" width={CS} height={CS} patternUnits="userSpaceOnUse">
-                  <path d={`M${CS} 0V${CS}H0`} fill="none" stroke="#8f7f5e" strokeOpacity="0.18" strokeWidth="0.7" />
+                  <path d={`M${CS} 0V${CS}H0`} fill="none" stroke={colors.grid} strokeOpacity="0.18" strokeWidth="0.7" />
                 </pattern>
                 <pattern id="fogHatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-                  <rect width="8" height="8" fill="#070504" />
-                  <path d="M0 0V8" stroke="#1c140d" strokeWidth="2.8" />
+                  <rect width="8" height="8" fill={colors.fog} />
+                  <path d="M0 0V8" stroke={colors.fogLine} strokeWidth="2.8" />
                 </pattern>
                 <pattern id="roomHall" width="12" height="12" patternUnits="userSpaceOnUse">
-                  <rect width="12" height="12" fill="#cbb894" />
-                  <path d="M12 0V12H0" fill="none" stroke="#9e855c" strokeWidth="1" />
+                  <rect width="12" height="12" fill={colors.room} />
+                  <path d="M12 0V12H0" fill="none" stroke={colors.roomLine} strokeWidth="1" />
                 </pattern>
                 <pattern id="roomThrone" width="14" height="14" patternUnits="userSpaceOnUse">
                   <rect width="14" height="14" fill="#661912" />
@@ -182,20 +193,56 @@ export function Dungeon({
                   <rect width="12" height="12" fill="#a8894d" />
                   <circle cx="6" cy="6" r="3" fill="#ffd470" stroke="#7a5c20" strokeWidth="0.8" />
                 </pattern>
+                {biome !== "classic" && (
+                  <pattern id="biomeTexture" width="44" height="44" patternUnits="userSpaceOnUse">
+                    {biome === "swamp" && (
+                      <>
+                        <ellipse cx="12" cy="14" rx="10" ry="5" fill="#496b3a" opacity="0.38" />
+                        <ellipse cx="33" cy="34" rx="8" ry="4" fill="#3f6a35" opacity="0.32" />
+                        <path d="M22 40v-9m0 4l-4-5m4 2l4-6M6 30v-7m0 3l-3-4" stroke="#2f4f2a" strokeWidth="1.3" fill="none" opacity="0.55" />
+                      </>
+                    )}
+                    {biome === "ice" && (
+                      <>
+                        <path d="M11 4v14M4 11h14M6 6l10 10M16 6L6 16" stroke="#ffffff" strokeWidth="1.1" opacity="0.85" />
+                        <path d="M33 27v12M27 33h12M29 29l8 8M37 29l-8 8" stroke="#bfe3f2" strokeWidth="1" opacity="0.8" />
+                        <circle cx="30" cy="9" r="1.6" fill="#ffffff" opacity="0.9" />
+                        <circle cx="8" cy="34" r="1.3" fill="#ffffff" opacity="0.8" />
+                      </>
+                    )}
+                    {biome === "dark" && (
+                      <>
+                        <path d="M0 44L44 0M-11 11L11 -11M33 55L55 33" stroke="#6a6e72" strokeWidth="1" opacity="0.28" />
+                        <circle cx="12" cy="12" r="1" fill="#4a4e52" opacity="0.35" />
+                        <circle cx="32" cy="28" r="1.4" fill="#4a4e52" opacity="0.3" />
+                      </>
+                    )}
+                    {biome === "fire" && (
+                      <>
+                        <path d="M4 40L14 26L10 18L22 8M28 44L32 30L42 22M18 34L26 30" stroke="#ff6a2a" strokeWidth="1.6" fill="none" opacity="0.6" />
+                        <circle cx="34" cy="10" r="2" fill="#ffb347" opacity="0.75" />
+                        <circle cx="8" cy="8" r="1.4" fill="#ff8a3d" opacity="0.7" />
+                      </>
+                    )}
+                  </pattern>
+                )}
               </defs>
 
-              <rect x={0} y={0} width={W} height={W} fill="#d9c9a6" />
-              <image
-                href="images/parchment.jpg"
-                x={0}
-                y={0}
-                width={W}
-                height={W}
-                preserveAspectRatio="xMidYMid slice"
-                opacity="0.34"
-                style={{ mixBlendMode: "multiply" }}
-              />
-              <rect x={0} y={0} width={W} height={W} fill="#efdfb6" opacity="0.22" style={{ mixBlendMode: "screen" }} />
+              <rect x={0} y={0} width={W} height={W} fill={colors.paper} />
+              {biome === "classic" && (
+                <image
+                  href="images/parchment.jpg"
+                  x={0}
+                  y={0}
+                  width={W}
+                  height={W}
+                  preserveAspectRatio="xMidYMid slice"
+                  opacity="0.34"
+                  style={{ mixBlendMode: "multiply" }}
+                />
+              )}
+              <rect x={0} y={0} width={W} height={W} fill={colors.wash} opacity={biome === "classic" ? 0.22 : 0.18} style={{ mixBlendMode: "screen" }} />
+              {biome !== "classic" && <rect x={0} y={0} width={W} height={W} fill="url(#biomeTexture)" opacity="0.55" />}
               <rect x={0} y={0} width={W} height={W} fill="url(#grid)" />
 
               {/* Комнаты разных типов с индивидуальным настилом и бордюром */}
@@ -209,7 +256,7 @@ export function Dungeon({
                 const ry = room.y * CS;
                 const rw = room.w * CS;
                 const rh = room.h * CS;
-                const patternId =
+                const patternId = biome !== "classic" ? "roomHall" :
                   room.kind === "throne"
                     ? "roomThrone"
                     : room.kind === "crypt"
@@ -221,7 +268,7 @@ export function Dungeon({
                     : room.kind === "treasury"
                     ? "roomTreasury"
                     : "roomHall";
-                const labelColor =
+                const labelColor = biome !== "classic" ? colors.roomLabel :
                   room.kind === "throne"
                     ? "#f6d48a"
                     : room.kind === "crypt"
@@ -235,7 +282,7 @@ export function Dungeon({
                     <rect x={rx + 2} y={ry + 2} width={rw - 4} height={rh - 4} fill={`url(#${patternId})`} opacity="0.92" />
                     <rect
                       x={rx + 2} y={ry + 2} width={rw - 4} height={rh - 4}
-                      fill="none" stroke="#e0a33c" strokeOpacity="0.5" strokeWidth="1.4" strokeDasharray="5 4"
+                      fill="none" stroke={colors.accent} strokeOpacity="0.5" strokeWidth="1.4" strokeDasharray="5 4"
                     />
                     <text
                       x={rx + 6} y={ry + 12} fill={labelColor} fontSize="9"
@@ -245,15 +292,15 @@ export function Dungeon({
                     </text>
                     {room.pillars.map(([pxc, pyc], pi) => (
                       <g key={`pil${ri}-${pi}`} transform={`translate(${pxc * CS + CS / 2} ${pyc * CS + CS / 2})`}>
-                        <rect x={-9} y={-9} width={18} height={18} fill="#261b12" stroke="#120c08" strokeWidth="2" />
-                        <path d="M-9 -9h18M-9 -9v18" stroke="#f5ce75" strokeWidth="1.6" fill="none" />
+                        <rect x={-9} y={-9} width={18} height={18} fill={colors.wallShadow} stroke={colors.wallShadow} strokeWidth="2" />
+                        <path d="M-9 -9h18M-9 -9v18" stroke={colors.wallEdge} strokeWidth="1.6" fill="none" />
                       </g>
                     ))}
                   </g>
                 );
               })}
 
-              <path d={seenTrail.join(" ")} stroke="#7a5c2a" strokeOpacity="0.65" strokeWidth="2.4" fill="none" />
+              <path d={seenTrail.join(" ")} stroke={colors.trail} strokeOpacity="0.65" strokeWidth="2.4" fill="none" />
 
               {/* сундуки */}
               {m.chests.map((i) => {
@@ -263,9 +310,9 @@ export function Dungeon({
                 if (m.doors.includes(i) && !m.openedDoors.includes(i)) return null;
                 return (
                   <g key={`c${i}`} transform={`translate(${cx} ${cy})`} opacity={open ? 0.4 : 1}>
-                    <rect x={-11} y={-4} width={22} height={13} fill={open ? "#6b5b45" : "#c98b2e"} stroke="#171310" strokeWidth="2" />
-                    <path d="M-11 -4a11 8 0 0 1 22 0" fill={open ? "#6b5b45" : "#e0a33c"} stroke="#171310" strokeWidth="2" />
-                    <rect x={-2} y={0} width={4} height={5} fill="#171310" />
+                    <rect x={-11} y={-4} width={22} height={13} fill={open ? "#6b5b45" : "#c98b2e"} stroke={colors.wallShadow} strokeWidth="2" />
+                    <path d="M-11 -4a11 8 0 0 1 22 0" fill={open ? "#6b5b45" : "#e0a33c"} stroke={colors.wallShadow} strokeWidth="2" />
+                    <rect x={-2} y={0} width={4} height={5} fill={colors.wallShadow} />
                   </g>
                 );
               })}
@@ -279,8 +326,8 @@ export function Dungeon({
                   <g key={`d${i}`} transform={`translate(${cx} ${cy})`}>
                     <path
                       d="M-9 12V-2a9 9 0 0 1 18 0v14z"
-                      fill={opened ? "none" : "#2f4f43"}
-                      stroke="#171310"
+                      fill={opened ? "none" : colors.trail}
+                      stroke={colors.wallShadow}
                       strokeWidth="2.2"
                       strokeDasharray={opened ? "3 3" : undefined}
                     />
@@ -301,8 +348,8 @@ export function Dungeon({
                   const { cx, cy } = center(i);
                   return (
                     <g key={`k${i}`} transform={`translate(${cx} ${cy})`}>
-                      <circle cx={-5} cy={0} r={4.5} fill="none" stroke="#2f4f43" strokeWidth="2.6" />
-                      <path d="M-1 0h11M7 0v4M10 0v3" stroke="#2f4f43" strokeWidth="2.6" strokeLinecap="round" />
+                      <circle cx={-5} cy={0} r={4.5} fill="none" stroke={colors.trail} strokeWidth="2.6" />
+                      <path d="M-1 0h11M7 0v4M10 0v3" stroke={colors.trail} strokeWidth="2.6" strokeLinecap="round" />
                     </g>
                   );
                 })}
@@ -314,7 +361,7 @@ export function Dungeon({
                   const { cx, cy } = center(i);
                   return (
                     <g key={`e${i}`} transform={`translate(${cx} ${cy}) rotate(45)`} className="breathe">
-                      <rect x={-9} y={-9} width={18} height={18} fill="#efdfb6" stroke="#8a5f1e" strokeWidth="2.4" />
+                      <rect x={-9} y={-9} width={18} height={18} fill={colors.wash} stroke={colors.accent} strokeWidth="2.4" />
                       <path d="M-4 0h8M0 -4v8" stroke="#a52a2a" strokeWidth="2.4" strokeLinecap="round" />
                     </g>
                   );
@@ -323,8 +370,8 @@ export function Dungeon({
               {/* Босс перед лестницей */}
               {visAt(m.boss.x, m.boss.y) > 0 && (
                 <g transform={`translate(${m.boss.x * CS + CS / 2} ${m.boss.y * CS + CS / 2})`} opacity={m.bossDefeated ? 0.35 : 1}>
-                  <circle r={11} fill={m.bossDefeated ? "#5a4a3a" : "#8f1d14"} stroke="#171310" strokeWidth="2" />
-                  <path d="M-6 -3L-3 -8L0 -4L3 -8L6 -3L5 5L-5 5Z" fill="#f6d48a" stroke="#171310" strokeWidth="1.4" />
+                  <circle r={11} fill={m.bossDefeated ? "#5a4a3a" : "#8f1d14"} stroke={colors.wallShadow} strokeWidth="2" />
+                  <path d="M-6 -3L-3 -8L0 -4L3 -8L6 -3L5 5L-5 5Z" fill="#f6d48a" stroke={colors.wallShadow} strokeWidth="1.4" />
                   {!m.bossDefeated && (
                     <>
                       <circle cx={-2.5} cy={1} r={1.3} fill="#8f1d14" />
@@ -337,7 +384,7 @@ export function Dungeon({
               {/* Лестница */}
               {visAt(m.stairs.x, m.stairs.y) > 0 && (
                 <g transform={`translate(${m.stairs.x * CS + 7} ${m.stairs.y * CS + 8})`}>
-                  <path d="M0 0h18M3 5h15M6 10h12M9 15h9" stroke="#171310" strokeWidth="2.6" strokeLinecap="round" />
+                  <path d="M0 0h18M3 5h15M6 10h12M9 15h9" stroke={colors.wallShadow} strokeWidth="2.6" strokeLinecap="round" />
                   <path d="M25 3l5 5-5 5" fill="none" stroke="#a52a2a" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
                 </g>
               )}
@@ -348,19 +395,19 @@ export function Dungeon({
               ))}
 
               {/* Стены лабиринта: поверх тумана, трёхслойная тёплая кладка с золотой факельной кромкой */}
-              <path d={wallPath} stroke="#120c08" strokeWidth="7" strokeLinecap="square" fill="none" opacity="0.95" />
-              <path d={wallPath} stroke="#85592e" strokeWidth="4.5" strokeLinecap="square" fill="none" />
-              <path d={wallPath} stroke="#f5ce75" strokeWidth="1.8" strokeLinecap="square" fill="none" />
-              <path d={wallPath} stroke="#fff7db" strokeWidth="0.8" strokeLinecap="square" fill="none" opacity="0.9" />
+              <path d={wallPath} stroke={colors.wallShadow} strokeWidth="7" strokeLinecap="square" fill="none" opacity="0.95" />
+              <path d={wallPath} stroke={colors.wall} strokeWidth="4.5" strokeLinecap="square" fill="none" />
+              <path d={wallPath} stroke={colors.wallEdge} strokeWidth="1.8" strokeLinecap="square" fill="none" />
+              <path d={wallPath} stroke={colors.wallLight} strokeWidth="0.8" strokeLinecap="square" fill="none" opacity="0.9" />
 
               {/* маршрут, выбранный мышью */}
               {routeD && (
                 <g>
-                  <path d={routeD} fill="none" stroke="#8a5f1e" strokeOpacity="0.55" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d={routeD} fill="none" stroke={colors.accent} strokeOpacity="0.55" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
                   <path
                     d={routeD}
                     fill="none"
-                    stroke="#e0a33c"
+                    stroke={colors.accent}
                     strokeWidth="3"
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -397,8 +444,8 @@ export function Dungeon({
               {/* персонаж */}
               <g style={{ transform: `translate(${px}px, ${py}px)`, transition: "transform 280ms cubic-bezier(.2,.8,.2,1)" }} className="flicker">
                 <circle r={CS * 1.4} fill="url(#torch)" />
-                <circle r={9} fill="#f6d48a" stroke="#171310" strokeWidth="2.5" />
-                <path d="M0 -4.5L4.5 0L0 4.5L-4.5 0Z" fill="#171310" />
+                <circle r={9} fill={colors.accentHi} stroke={colors.wallShadow} strokeWidth="2.5" />
+                <path d="M0 -4.5L4.5 0L0 4.5L-4.5 0Z" fill={colors.wallShadow} />
               </g>
             </svg>
             <div className="vignette pointer-events-none absolute inset-2" />
@@ -427,16 +474,16 @@ export function Dungeon({
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3 font-mono text-[0.82rem] text-mute">
             <span className="flex flex-wrap items-center gap-3">
               <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 bg-[#c98b2e]" />сундук</span>
-              <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 bg-[#2f4f43]" />дверь</span>
-              <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full border-2 border-[#2f4f43]" />ключ</span>
+              <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5" style={{ backgroundColor: colors.trail }} />дверь</span>
+              <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full border-2" style={{ borderColor: colors.trail }} />ключ</span>
               <span className="flex items-center gap-1.5">
-                <span className="inline-block h-2.5 w-2.5 rotate-45 border border-[#8a5f1e]" />
+                <span className="inline-block h-2.5 w-2.5 rotate-45 border" style={{ borderColor: colors.accent }} />
                 событие
               </span>
               <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full bg-[#8f1d14]" />босс</span>
               <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 bg-[#a52a2a]" />лестница</span>
               <span className="flex items-center gap-1.5">
-                <span className="inline-block h-2.5 w-2.5 border border-dashed border-[#8a6a3c] bg-[#cbb894]" />
+                <span className="inline-block h-2.5 w-2.5 border border-dashed" style={{ borderColor: colors.roomLine, backgroundColor: colors.room }} />
                 комната
               </span>
             </span>
@@ -623,8 +670,8 @@ export function Dungeon({
                         {!intOk
                           ? `нужен ИНТ ${req}`
                           : def.use?.type === "heal"
-                            ? `+${consumablePower(def, player.stats)} здоровья`
-                            : `снять раны, проклятие и яд (+${def.use?.power ?? 8} ОЗ)`}
+                            ? `+${biomeHealingAmount(biome, consumablePower(def, player.stats), def.kind === "potion")} здоровья`
+                            : `снять раны, проклятие и яд (+${biomeHealingAmount(biome, def.use?.power ?? 8, def.kind === "potion")} ОЗ)`}
                       </span>
                     </span>
                   </button>
