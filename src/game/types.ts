@@ -104,6 +104,7 @@ export interface GearItem {
 }
 
 export type Threat = "normal" | "horror" | "catastrophe";
+export type EnemySeal = "items" | "skills" | "attack";
 
 export interface Player {
   name: string;

@@ -31,6 +31,12 @@ const MOVE_LABELS: Record<string, string> = {
   drain: "похищение",
   sunder: "раскол брони",
   bell_stun: "оглушение",
+  poison: "яд",
+  multi: "двойной выпад",
+  terror: "насмешка",
+  seal_items: "печать немоты",
+  seal_skills: "печать забвения",
+  seal_attack: "печать оков",
 };
 
 export function Bestiary() {

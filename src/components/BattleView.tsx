@@ -13,7 +13,7 @@ import {
   consumableIntReq,
   consumableScaleLabel,
 } from "../game/content";
-import { GEAR_EFFECTS, GEAR_PASSIVES } from "../game/gearEffects";
+import { GEAR_EFFECTS, GEAR_PASSIVES, effectDetail } from "../game/gearEffects";
 import { epicSkillDesc } from "../game/content";
 import { combatReadout, queuePreview, type BattleState, type PlayerAction } from "../game/battle";
 import { FoePortrait } from "./FoeArt";
@@ -485,8 +485,8 @@ export function BattleView({
               <span>урон {e.atk[0]}–{e.atk[1]}</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              <Tag tone={e.threat === "catastrophe" ? "rubric" : e.threat === "horror" ? "flame" : "verd"}>
-                {THREAT_META[e.threat].name}
+              <Tag tone={b.isBoss ? "rubric" : e.threat === "catastrophe" ? "rubric" : e.threat === "horror" ? "flame" : "verd"}>
+                {b.isBoss ? "Босс" : THREAT_META[e.threat].name}
               </Tag>
               {e.passive && <Tag tone="rubric">{e.passive.name}</Tag>}
               {e.guard && <Tag tone="verd">в защите</Tag>}
@@ -495,6 +495,8 @@ export function BattleView({
               {e.statuses.poison > 0 && <Tag tone="rubric">яд · {e.statuses.poison}</Tag>}
               {e.statuses.fear > 0 && <Tag tone="flame">страх · {e.statuses.fear}</Tag>}
               {e.statuses.stunAp > 0 && <Tag tone="flame">оглушён −{e.statuses.stunAp}</Tag>}
+              {e.statuses.blight > 0 && <Tag tone="rubric">порча · {e.statuses.blight}</Tag>}
+              {e.statuses.wither > 0 && <Tag tone="rubric">увядание · {e.statuses.wither}</Tag>}
               {e.forceGuard > 0 && <Tag tone="verd">вынужден держать оборону</Tag>}
             </div>
             <p className="text-[0.92rem] italic leading-snug text-mute">{e.def.flavor}</p>
@@ -508,15 +510,22 @@ export function BattleView({
               </div>
             )}
 
+            {(b.p.statuses.sealAttack > 0 || b.p.statuses.sealSkills > 0 || b.p.statuses.sealItems > 0) && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {b.p.statuses.sealAttack > 0 && <Tag tone="rubric">Печать оков: удар запрещён</Tag>}
+                {b.p.statuses.sealSkills > 0 && <Tag tone="rubric">Печать забвения: приёмы запрещены</Tag>}
+                {b.p.statuses.sealItems > 0 && <Tag tone="rubric">Печать немоты: расходники запрещены</Tag>}
+              </div>
+            )}
             {menu === "main" && (
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                <Btn tone="flame" disabled={!myTurn} onClick={() => act({ type: "attack" })}>
+                <Btn tone="flame" disabled={!myTurn || b.p.statuses.sealAttack > 0} onClick={() => act({ type: "attack" })}>
                   Удар
                 </Btn>
-                <Btn tone={wsReady || b.p.epicSkills.length > 0 ? "flame" : "ghost"} disabled={!myTurn} onClick={() => setMenu("skill")}>
+                <Btn tone={wsReady || b.p.epicSkills.length > 0 ? "flame" : "ghost"} disabled={!myTurn || b.p.statuses.sealSkills > 0} onClick={() => setMenu("skill")}>
                   Приёмы
                 </Btn>
-                <Btn disabled={!myTurn} onClick={() => setMenu("item")}>
+                <Btn disabled={!myTurn || b.p.statuses.sealItems > 0} onClick={() => setMenu("item")}>
                   Рюкзак
                 </Btn>
                 <Btn tone="verd" disabled={!myTurn} onClick={() => act({ type: "guard" })}>
@@ -656,7 +665,7 @@ export function BattleView({
                 <span className="sc text-flamedim">Кодекс противника</span>
                 <h3 className="font-display text-xl uppercase tracking-[0.1em] text-flamehi">{e.def.name}</h3>
                 <p className="font-mono text-[0.84rem] text-mute">
-                  {CREATURE_META[e.def.type].name} · уровень {e.level} · {THREAT_META[e.threat].name} · этаж {b.floor}
+                  {CREATURE_META[e.def.type].name} · уровень {e.level} · {b.isBoss ? "Босс" : THREAT_META[e.threat].name} · этаж {b.floor}
                 </p>
               </div>
               <button onClick={() => setCodex(false)} className="mt-1 text-mute hover:text-rubric" aria-label="Закрыть">
@@ -700,6 +709,20 @@ export function BattleView({
                 </section>
               )}
 
+              {e.effects.length > 0 && (
+                <section className="border border-flamedim/60 bg-flame/5 p-3">
+                  <h4 className="sc mb-2 text-flame">Эффекты противника (уровень {e.level})</h4>
+                  <ul className="space-y-1 text-[0.94rem] text-parch/85">
+                    {e.effects.map((id) => (
+                      <li key={id}>
+                        <b className="text-flamehi">{GEAR_EFFECTS[id]?.name ?? id}</b>: {effectDetail(id, e.level)}
+                      </li>
+                    ))}
+                  </ul>
+                  {b.isBoss && <p className="mt-2 font-mono text-[0.84rem] text-rubric">Сопротивление эффектам: 25%</p>}
+                </section>
+              )}
+
               <section>
                 <h4 className="sc mb-2 text-verd">Что на него действует и что нет</h4>
                 <ul className="space-y-1 text-[0.94rem] text-parch/85">
@@ -720,7 +743,7 @@ export function BattleView({
 
               <section>
                 <h4 className="sc mb-2 text-flamedim">Что оставляет после себя</h4>
-                <p className="text-[0.94rem] text-parch/85">{THREAT_META[e.threat].desc}</p>
+                <p className="text-[0.94rem] text-parch/85">{b.isBoss ? "Босс оставляет золото, припасы и гарантированный трофей не ниже редкого качества." : THREAT_META[e.threat].desc}</p>
                 <p className="mt-1 font-mono text-[0.86rem] text-mute">
                   опыт: {e.xp} XP · золото: {e.gold[0]}–{e.gold[1]}
                 </p>

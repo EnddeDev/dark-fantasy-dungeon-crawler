@@ -64,9 +64,16 @@ export function xpForNextLevel(level: number): number {
   return XP_TABLE[level] ?? 0;
 }
 
-/** До значения 5 повышение стоит 1 очко; после 5 (т.е. 5→6 .. 9→10) стоит 2 очка */
-export function statPointCost(currentVal: number): number {
-  return currentVal >= 5 ? 2 : 1;
+/**
+ * Цена подъёма характеристики с currentVal до currentVal+1.
+ * Диапазоны считаются по целевому значению: СИЛ 1–3/4–6/7–9/10,
+ * ЛОВ всегда 2, кроме 5 и 10 (3), ИНТ 1–3/4–8/9–10.
+ */
+export function statPointCost(stat: StatKey, currentVal: number): number {
+  const next = Math.min(10, currentVal + 1);
+  if (stat === "agi") return next === 5 || next === 10 ? 3 : 2;
+  if (stat === "int") return next <= 3 ? 1 : next <= 8 ? 2 : 4;
+  return next <= 3 ? 1 : next <= 6 ? 2 : next <= 9 ? 3 : 4;
 }
 
 /**
@@ -88,7 +95,7 @@ export function grantXp(p0: Player, gained: number): { player: Player; levelsGai
     if (xp < need) break;
     xp -= need;
     level += 1;
-    statPoints += 2;
+    statPoints += 3;
     levelsGained += 1;
   }
   if (level >= MAX_LEVEL) xp = 0;
@@ -375,7 +382,7 @@ export const LEGENDARY_PASSIVES: Record<LegendaryPassiveId, LegendaryPassiveDef>
   time_weaver: {
     id: "time_weaver",
     name: "Поступь вне времени",
-    desc: "Даёт +1 дополнительный ход в каждом раунде боя.",
+    desc: "Даёт дополнительные ходы только в первом раунде боя (скейлится от уровня предмета).",
   },
   immortal_pact: {
     id: "immortal_pact",
@@ -1136,9 +1143,9 @@ const EXTRA_TECHNIQUES: WeaponSkillDef[] = [
 const ARCHETYPE_TECHNIQUES: WeaponSkillDef[] = [
   { id: "bulwark_wall", name: "Стена щитов", intReq: 3, cooldown: 3, scaleStat: "str", scaleMult: 1.6, effect: "guard_wall", desc: "Урон оружия + 1.6×СИЛ; Защита на 2 хода и +4 брони до конца боя.", passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.6×СИЛ." },
   { id: "bulwark_verdict", name: "Приговор лат", intReq: 4, cooldown: 2, scaleStat: "str", scaleMult: 2.2, effect: "armor_damage", desc: "Урон оружия + 2.2×СИЛ и +75% брони к урону.", passiveNote: "При ИНТ ≥ 4 обычные удары получают +0.8×СИЛ." },
-  { id: "rage_sweep", name: "Яростный размах", intReq: 4, cooldown: 3, scaleStat: "str", scaleMult: 2.4, effect: "double_attack", desc: "Два удара подряд: каждый наносит урон оружия + 2.4×СИЛ.", passiveNote: "При ИНТ ≥ 4 обычные удары получают +0.8×СИЛ." },
+  { id: "rage_sweep", name: "Яростный размах", intReq: 4, cooldown: 3, scaleStat: "str", scaleMult: 2.4, effect: "double_attack", desc: "Два обычных удара подряд без дополнительного бонуса; каждый отдельно бросает крит, оглушение и эффекты от удара.", passiveNote: "При ИНТ ≥ 4 обычные удары получают +0.8×СИЛ." },
   { id: "skull_split", name: "Раскол черепа", intReq: 5, cooldown: 3, scaleStat: "str", scaleMult: 3.2, effect: "enemy_missing", desc: "Урон оружия + 3.2×СИЛ; за каждые 10% недостающего здоровья врага +6% урона (до 60%).", passiveNote: "При ИНТ ≥ 5 обычные удары получают +1.1×СИЛ." },
-  { id: "twin_fangs", name: "Парные клыки", intReq: 3, cooldown: 2, scaleStat: "agi", scaleMult: 1.7, effect: "double_attack", desc: "Два быстрых укола: каждый наносит урон оружия + 1.7×ЛОВ.", passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.6×ЛОВ." },
+  { id: "twin_fangs", name: "Парные клыки", intReq: 3, cooldown: 2, scaleStat: "agi", scaleMult: 1.7, effect: "double_attack", desc: "Два обычных удара подряд без дополнительного бонуса; каждый отдельно бросает крит, оглушение и эффекты от удара.", passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.6×ЛОВ." },
   { id: "opening_strike", name: "Удар открытия", intReq: 4, cooldown: 3, scaleStat: "agi", scaleMult: 2.4, effect: "first_strike", desc: "Урон оружия + 2.4×ЛОВ; в первые 2 раунда урон приёма удваивается.", passiveNote: "При ИНТ ≥ 4 обычные удары получают +0.8×ЛОВ." },
   { id: "venom_chain", name: "Ядовитая цепь", intReq: 3, cooldown: 2, scaleStat: "agi", scaleMult: 1.6, effect: "poison", desc: "Урон оружия + 1.6×ЛОВ и отравление на 3 раунда.", passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.6×ЛОВ." },
   { id: "empty_step", name: "Пустой шаг", intReq: 4, cooldown: 3, scaleStat: "agi", scaleMult: 1.5, effect: "dodge_action", desc: "Урон оружия + 1.5×ЛОВ; следующая атака врага полностью ускользает, а в следующем раунде +1 ход.", passiveNote: "При ИНТ ≥ 4 обычные удары получают +0.5×ЛОВ." },
@@ -1367,8 +1374,10 @@ export function createGearItem(opts: {
       ? pick(affixPool)
       : undefined;
 
+  const itemLevelForAp = opts.level ?? base.level ?? 1;
+  const legacyPool = ALL_LEG_IDS.filter((id) => id !== "time_weaver" || itemLevelForAp >= 3);
   const legacyPassive: LegendaryPassiveId | undefined =
-    rarity === "legendary" ? pick(ALL_LEG_IDS) : undefined;
+    rarity === "legendary" ? pick(legacyPool) : undefined;
 
   /* Множитель состояния: изношенное 0.75±0.05, ношенное 1.0±0.10, новое 1.25±0.05…0.10 */
   const wearMult = rollWearMult(wear);
@@ -1377,7 +1386,7 @@ export function createGearItem(opts: {
      редкое — 1 уникальный эффект по характеристике требования;
      эпическое — свойство редкого + (2 доп. эффекта ИЛИ 1 боевой приём);
      легендарное — всё выше + пассивная способность по той же характеристике. */
-  const pool = effectPoolFor(reqStat, base.archetype);
+  const pool = effectPoolFor(reqStat, base.archetype).filter((id) => id !== "ap" || itemLevelForAp >= 3);
   const effects: GearEffectId[] = [];
 
   const hasTechnique = !!(TECHNIQUE_POOL[base.id] ?? []).length;
@@ -1407,11 +1416,12 @@ export function createGearItem(opts: {
     }
   }
 
+  const passivePool = passivePoolFor(reqStat, base.archetype).filter((id) => id !== "assassin_shadow" || itemLevelForAp >= 3);
   const passive: GearPassiveId | undefined =
     rarity === "legendary"
-      ? base.archetype
+      ? base.archetype && (archetypePassive(base.archetype) !== "assassin_shadow" || itemLevelForAp >= 3)
         ? archetypePassive(base.archetype)
-        : pick(passivePoolFor(reqStat))
+        : pick(passivePool.length ? passivePool : passivePoolFor(reqStat))
       : undefined;
 
   return {
@@ -1599,15 +1609,19 @@ export interface ItemDef {
   price?: number;
   /** Категория реагента: в магазине реагенты идут отдельным отделом. */
   reagentCat?: ReagentCat;
+  /** Уровень припаса = минимальный этаж, с которого он выпадает. */
+  level?: number;
+  minFloor?: number;
   use?: {
     type:
       | "heal" | "damage" | "cleanse" | "rage" | "flee" | "chill" | "sunder_damage"
       | "throw" | "poison" | "smoke" | "explosion" | "fear"
       | "haste" | "terror" | "stun_enemy" | "acid" | "stone"
-      | "iron_tonic" | "blood_rage" | "quickblade" | "shadow_dust" | "pact_elixir" | "scroll_creation";
+      | "iron_tonic" | "blood_rage" | "quickblade" | "shadow_dust" | "pact_elixir" | "scroll_creation"
+      | "bleed" | "blight" | "wither";
     power?: number;
     scale?: number;
-    /** Характеристика масштабирования. У свитков всегда ИНТ, у метательного — ЛОВ. */
+    /** Характеристика масштабирования: у всех расходников ЛОВ. */
     scaleStat?: StatKey;
     intReq?: number;
     fleeRate?: number;
@@ -1622,23 +1636,23 @@ const I = (d: ItemDef) => d;
 export const ITEMS: Record<string, ItemDef> = Object.fromEntries(
   [
     /* зелья и расходники */
-    I({ id: "potion_s", name: "Малое зелье лечения", kind: "potion", price: 45, use: { type: "heal", power: 28 }, desc: "Вкус жжёного мёда и золы. Стягивает свежие раны." }),
-    I({ id: "potion_l", name: "Большое зелье лечения", kind: "potion", price: 120, use: { type: "heal", power: 65 }, desc: "Густое, тёплое, варится на слезе банши." }),
-    I({ id: "antidote", name: "Горечь полыни", kind: "potion", price: 42, use: { type: "cleanse" }, desc: "Снимает кровотечение, проклятие и яд, возвращает +8 здоровья." }),
+    I({ id: "potion_s", name: "Малое зелье лечения", kind: "potion", price: 45, use: { type: "heal", power: 28, scale: 1, scaleStat: "agi" }, desc: "Восстанавливает 28 + 1×ЛОВ здоровья. Вкус жжёного мёда и золы." }),
+    I({ id: "potion_l", name: "Большое зелье лечения", kind: "potion", price: 120, use: { type: "heal", power: 65, scale: 1.5, scaleStat: "agi" }, desc: "Восстанавливает 65 + 1.5×ЛОВ здоровья. Густое, тёплое, варится на слезе банши." }),
+    I({ id: "antidote", name: "Горечь полыни", kind: "potion", price: 42, use: { type: "cleanse", power: 8, scale: 0.5, scaleStat: "agi" }, desc: "Снимает кровотечение, проклятие и яд, возвращает 8 + 0.5×ЛОВ здоровья." }),
     I({ id: "rage", name: "Эликсир ярости", kind: "potion", price: 95, use: { type: "rage", rounds: 5 }, desc: "Пять раундов злости: +50% к урону." }),
     /* оружейные расходники не требуют Интеллекта */
     I({ id: "throwing_knife", name: "Метательный кинжал", kind: "throwable", price: 28, use: { type: "throw", power: 10, scale: 1.5, scaleStat: "agi" }, desc: "Быстрый бросок: 10 + 1.5×ЛОВ физического урона." }),
     I({ id: "poison_dart", name: "Отравленный дротик", kind: "throwable", price: 48, use: { type: "poison", power: 5, scale: 1, scaleStat: "agi", rounds: 3 }, desc: "Прокалывает кожу и травит живую цель 3 раунда. Нежить и големы невосприимчивы." }),
     I({ id: "smoke_bomb", name: "Дымовая бомба", kind: "throwable", price: 78, use: { type: "smoke", rounds: 2 }, desc: "Густой дым не даёт врагу попасть по тебе в следующие 2 атаки. Это не побег." }),
     I({ id: "blast_bomb", name: "Взрывная бомба", kind: "throwable", price: 95, use: { type: "explosion", power: 24, scale: 1.5, scaleStat: "agi" }, desc: "Взрыв наносит 24 + 1.5×ЛОВ урона, игнорируя броню." }),
-    I({ id: "fear_vial", name: "Флакон ужаса", kind: "throwable", price: 70, use: { type: "fear", rounds: 2 }, desc: "Живая цель пропустит 2 следующих хода. Нежить и големы страха не знают." }),
+    I({ id: "fear_vial", name: "Зелье ужаса", kind: "potion", price: 70, level: 2, minFloor: 2, use: { type: "fear", rounds: 2 }, desc: "Живая цель пропустит 2 следующих хода. Нежить и големы страха не знают." }),
     /* свитки (требуют Интеллект) */
-    I({ id: "scroll_spark", name: "Свиток искры", kind: "scroll", price: 60, use: { type: "damage", power: 16, scale: 3, scaleStat: "int", intReq: 2 }, desc: "Короткая формула поджога. Читается даже при тусклом свете." }),
-    I({ id: "scroll_fire", name: "Свиток огня", kind: "scroll", price: 85, use: { type: "damage", power: 24, scale: 4, scaleStat: "int", intReq: 3 }, desc: "Буквы в нём дописаны от руки, спеша." }),
-    I({ id: "scroll_heal", name: "Свиток исцеления", kind: "scroll", price: 90, use: { type: "heal", power: 32, scale: 4, scaleStat: "int", intReq: 3 }, desc: "Сшивает плоть словом и снимает кровотечение." }),
+    I({ id: "scroll_spark", name: "Свиток искры", kind: "scroll", price: 60, use: { type: "damage", power: 16, scale: 3, scaleStat: "agi", intReq: 2 }, desc: "16 + 3×ЛОВ урона. Короткая формула поджога; чтение требует ИНТ 2." }),
+    I({ id: "scroll_fire", name: "Свиток огня", kind: "scroll", price: 85, use: { type: "damage", power: 24, scale: 4, scaleStat: "agi", intReq: 3 }, desc: "24 + 4×ЛОВ урона. Буквы в нём дописаны от руки, спеша; чтение требует ИНТ 3." }),
+    I({ id: "scroll_heal", name: "Свиток исцеления", kind: "scroll", price: 90, use: { type: "heal", power: 32, scale: 4, scaleStat: "agi", intReq: 3 }, desc: "32 + 4×ЛОВ здоровья и снимает кровотечение. Чтение требует ИНТ 3." }),
     I({ id: "scroll_shadow", name: "Свиток тени", kind: "scroll", price: 155, use: { type: "flee", fleeRate: 0, intReq: 4 }, desc: "Тень не теряет добычу — уносит из боя без потерь." }),
-    I({ id: "scroll_frost", name: "Свиток ледяных оков", kind: "scroll", price: 135, use: { type: "chill", power: 20, scale: 3, scaleStat: "int", intReq: 5, rounds: 3 }, desc: "Вяжет врага холодом на 3 раунда (урон врага −30%)." }),
-    I({ id: "scroll_bolt", name: "Свиток молнии", kind: "scroll", price: 175, use: { type: "sunder_damage", power: 38, scale: 5, scaleStat: "int", intReq: 6 }, desc: "Удар сквозь любую броню и раскол защиты врага (−2 брони)." }),
+    I({ id: "scroll_frost", name: "Свиток ледяных оков", kind: "scroll", price: 135, use: { type: "chill", power: 20, scale: 3, scaleStat: "agi", intReq: 5, rounds: 3 }, desc: "20 + 3×ЛОВ урона и холод на 3 раунда (урон врага −30%). Чтение требует ИНТ 5." }),
+    I({ id: "scroll_bolt", name: "Свиток молнии", kind: "scroll", price: 175, use: { type: "sunder_damage", power: 38, scale: 5, scaleStat: "agi", intReq: 6 }, desc: "38 + 5×ЛОВ урона сквозь броню и раскол защиты (−2 брони). Чтение требует ИНТ 6." }),
     /* реагенты */
     I({ id: "moss", name: "Кровавый мох", kind: "reagent", reagentCat: "plant", price: 28, desc: "Растёт на том, что не похоронили." }),
     I({ id: "bone", name: "Костяная пыль", kind: "reagent", reagentCat: "monster", price: 28, desc: "Растёртые ошмётки чьего-то упрямства." }),
@@ -1666,18 +1680,36 @@ export const ITEMS: Record<string, ItemDef> = Object.fromEntries(
   ].map((it) => [it.id, it]),
 );
 
+/** Уровень припаса = минимальный этаж дропа. */
+export const SUPPLY_LEVELS: Record<string, number> = {
+  potion_s: 1, antidote: 1, rage: 2, throwing_knife: 1, poison_dart: 1, smoke_bomb: 2,
+  blast_bomb: 2, fear_vial: 2, scroll_spark: 1, scroll_fire: 2, scroll_heal: 2,
+  scroll_shadow: 3, scroll_frost: 3, scroll_bolt: 4, potion_l: 3, potion_haste: 3,
+  potion_stone: 3, scroll_terror: 3, scroll_snare: 4, acid_vial: 2, holy_water: 3,
+  bomb_flash: 3, iron_tonic: 4, blood_rage: 4, quickblade_oil: 4, shadow_dust: 4,
+  pact_elixir: 5, scroll_creation: 5, serrated_knife: 2, frost_bomb: 3,
+  blight_powder: 4, wither_dust: 5,
+};
+for (const it of Object.values(ITEMS)) {
+  if (it.use && it.level == null) {
+    it.level = SUPPLY_LEVELS[it.id] ?? 1;
+    it.minFloor = it.level;
+  }
+}
+export function supplyLevel(id: string): number {
+  return ITEMS[id]?.level ?? SUPPLY_LEVELS[id] ?? 1;
+}
+
 /** Только свитки требуют Интеллекта; зелья и метательные расходники доступны без него. */
 export function consumableIntReq(def: ItemDef, intDiscount = 0): number {
   if (def.kind !== "scroll") return 0;
   return Math.max(0, (def.use?.intReq ?? 0) - intDiscount);
 }
 
-/** Характеристика, от которой считается сила расходника. null — фиксированный эффект. */
+/** Все расходники масштабируются от ЛОВ; свитки по-прежнему требуют ИНТ для чтения. */
 export function consumableScaleStat(def: ItemDef): StatKey | null {
-  const u = def.use;
-  if (!u?.scale) return null;
-  if (def.kind === "scroll") return "int";
-  return u.scaleStat ?? "agi";
+  if (!def.use) return null;
+  return "agi";
 }
 
 /** Единая формула для боя, лобби и подсказок: база + масштаб × характеристика. */
@@ -1695,6 +1727,8 @@ export function consumableScaleLabel(def: ItemDef): string {
   return ` + ${u.scale}×${STAT_META[stat].short}`;
 }
 
+export type CraftStation = "alchemy" | "workshop";
+
 export interface Recipe {
   id: string;
   out: string;
@@ -1702,6 +1736,8 @@ export interface Recipe {
   need: string[];
   intReq: number;
   price: number;
+  /** Алхимия варит зелья и свитки, мастерская собирает метательные расходники. */
+  station?: CraftStation;
 }
 
 export const RECIPES: Recipe[] = [
@@ -1717,7 +1753,7 @@ export const RECIPES: Recipe[] = [
   { id: "r15", out: "iron_tonic", count: 1, need: ["root", "ember", "bone"], intReq: 4, price: 100 },
   { id: "r16", out: "blood_rage", count: 1, need: ["fang", "moss", "fire"], intReq: 4, price: 105 },
   { id: "r17", out: "quickblade_oil", count: 1, need: ["gland", "powder", "silk"], intReq: 4, price: 105 },
-  { id: "r18", out: "shadow_dust", count: 1, need: ["powder", "silk", "gland"], intReq: 3, price: 95 },
+  { id: "r18", out: "shadow_dust", count: 1, need: ["powder", "silk", "gland"], intReq: 3, price: 95, station: "workshop" },
   { id: "r19", out: "pact_elixir", count: 1, need: ["tear", "ember", "cloth"], intReq: 5, price: 120 },
   { id: "r20", out: "scroll_creation", count: 1, need: ["cloth", "tear", "bone"], intReq: 6, price: 140 },
 ];
@@ -1779,7 +1815,10 @@ export type EnemyMove =
   | "bell_stun"
   | "poison"
   | "multi"
-  | "terror";
+  | "terror"
+  | "seal_items"
+  | "seal_skills"
+  | "seal_attack";
 
 export interface EnemyDef {
   id: string;
@@ -2016,6 +2055,9 @@ export const ENEMY_MOVE_META: Record<EnemyMove, { name: string; desc: string }> 
   poison: { name: "Ядовитый удар", desc: "Ранит и вводит яд: раунды 4 урона за каждый пройденный раунд." },
   multi: { name: "Двойной выпад", desc: "Два удара по 65% урона подряд — броня считается каждый раз." },
   terror: { name: "Насмешка и заслон", desc: "Накладывает проклятие на 2 раунда и тут же уходит в защиту." },
+  seal_items: { name: "Печать немоты", desc: "Запрещает игроку использовать расходники в его следующий ход." },
+  seal_skills: { name: "Печать забвения", desc: "Запрещает игроку использовать приёмы в его следующий ход." },
+  seal_attack: { name: "Печать оков", desc: "Запрещает игроку обычную атаку в его следующий ход." },
 };
 
 export const STAT_ORDER: StatKey[] = ["str", "agi", "int"];
@@ -2214,6 +2256,10 @@ const SUPPLY_POOL = [
   "shadow_dust",
   "pact_elixir",
   "scroll_creation",
+  "serrated_knife",
+  "frost_bomb",
+  "blight_powder",
+  "wither_dust",
 ];
 
 function pickGearBase(level: number): string {
@@ -2252,7 +2298,8 @@ export function rollEnemyLoot(
     return out;
   }
   if (category === "supplies") {
-    out.items.push(pick(SUPPLY_POOL, rng));
+    const pool = SUPPLY_POOL.filter((id) => supplyLevel(id) <= floor);
+    out.items.push(pick(pool.length ? pool : SUPPLY_POOL, rng));
     return out;
   }
 

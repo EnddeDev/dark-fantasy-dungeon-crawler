@@ -45,7 +45,7 @@ export const GEAR_EFFECTS: Record<GearEffectId, GearEffectDef> = {
   crit_chance: { id: "crit_chance", stat: "agi", name: "Шанс крита", desc: "Вероятность критического удара.", detail: "+5% к шансу критического удара" },
   crit_mult: { id: "crit_mult", stat: "agi", name: "Сила крита", desc: "Критический удар становится жестче.", detail: "+30% к множителю критического урона" },
   vamp: { id: "vamp", stat: "agi", name: "Вампиризм", desc: "Часть урона возвращается здоровьем.", detail: "+8% лечения от нанесённого урона" },
-  ap: { id: "ap", stat: "agi", name: "Лишний ход", desc: "Больше действий в раунде.", detail: "+1 ход в раунде" },
+  ap: { id: "ap", stat: "agi", name: "Лишний ход", desc: "Дополнительные ходы только в первом раунде.", detail: "+1 ход в первом раунде" },
   first_strike: { id: "first_strike", stat: "agi", name: "Первый удар", desc: "Начало боя смертельно.", detail: "+20% урона в первые 2 раунда" },
   consumable_damage: { id: "consumable_damage", stat: "agi", name: "Алхимический удар", desc: "Расходники бьют сильнее.", detail: "+15% урона расходников" },
   consumable_scale: { id: "consumable_scale", stat: "agi", name: "Точная доза", desc: "ЛОВ сильнее влияет на расходники.", detail: "+0.25×ЛОВ к масштабу расходников" },
@@ -111,7 +111,7 @@ export function effectDetail(id: GearEffectId, level = 1): string {
     case "crit_chance": return `+${n}% к шансу критического удара`;
     case "crit_mult": return `+${n}% к множителю критического урона`;
     case "vamp": return `+${n}% лечения от нанесённого урона`;
-    case "ap": return `+${n} ход в раунде`;
+    case "ap": return `+${n} ход только в первом раунде`;
     case "first_strike": return `+${n}% урона в первые 2 раунда`;
     case "consumable_damage": return `+${n}% урона расходников`;
     case "consumable_scale": return `+${n}×ЛОВ к масштабу расходников`;

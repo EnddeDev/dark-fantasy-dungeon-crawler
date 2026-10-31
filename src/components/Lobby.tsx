@@ -5,6 +5,8 @@ import {
   Brain,
   EyeOff,
   FlaskConical,
+  Hammer,
+  Wrench,
   Gem,
   PackageSearch,
   Search,
@@ -54,6 +56,8 @@ import type { GearItem, Player, StatKey } from "../game/types";
 import type { ArchetypeId } from "../game/archetypes";
 import { canChooseStatMilestone, chooseStatMilestone, chosenStatMilestone, statMilestoneOptions, type StatMilestoneTier } from "../game/statMilestones";
 import { SHOP_MAX_LEVEL, shopRarityTable, shopUpgradeCost, shopWearTable } from "../game/world";
+import { forgeOptions, forgeUpgrade, type ForgeUpgradeKind } from "../game/forge";
+import { WEAR_RANGE } from "../game/types";
 import { Guide } from "./Guide";
 import { Bestiary } from "./Bestiary";
 import { ItemArt } from "./ItemArt";
@@ -62,7 +66,7 @@ import { GearCard } from "./GearCard";
 import { Btn, Meter, Modal, Panel, Pips, Rune, Tag } from "./ui";
 
 
-type Tab = "train" | "armory" | "shop" | "brew" | "bestiary" | "guide";
+type Tab = "train" | "armory" | "shop" | "brew" | "workshop" | "forge" | "bestiary" | "guide";
 type ShopSection = "equipment" | "supplies" | "reagents" | "recipes";
 type SupplyGroup = "potion" | "throwable" | "scroll";
 type RecipeGroup = "potion" | "throwable" | "scroll";
@@ -187,6 +191,8 @@ const TAB_ICONS = {
   armory: Sword,
   shop: ShoppingBag,
   brew: FlaskConical,
+  workshop: Wrench,
+  forge: Hammer,
   bestiary: Skull,
   guide: BookOpen,
 } as const;
@@ -202,6 +208,8 @@ const TABS: { id: Tab; label: string; badge?: (p: Player) => number }[] = [
   },
   { id: "shop", label: "Магазин" },
   { id: "brew", label: "Алхимия" },
+  { id: "workshop", label: "Мастерская" },
+  { id: "forge", label: "Кузница" },
   { id: "bestiary", label: "Бестиарий" },
   { id: "guide", label: "Как играть" },
 ];
@@ -248,6 +256,8 @@ export function Lobby({
   /** Подробности открываются кнопкой; храним UID, чтобы видеть результат исследования. */
   const [gearDetail, setGearDetail] = useState<{ uid: string; inShop: boolean } | null>(null);
   const [chosenSlot, setChosenSlot] = useState<Slot | null>(null);
+  const [forgeUid, setForgeUid] = useState<string | null>(null);
+  const [forgeConfirm, setForgeConfirm] = useState<{ uid: string; kind: ForgeUpgradeKind } | null>(null);
 
   const d = derived(player);
   const say = (t: string) => {
@@ -259,7 +269,7 @@ export function Lobby({
   const upgradeStat = (k: StatKey) => {
     const cur = player.stats[k];
     if (cur >= 10) return;
-    const cost = statPointCost(cur);
+    const cost = statPointCost(k, cur);
     if (player.statPoints < cost) return;
     const next = cur + 1;
     setPlayer((p) => {
@@ -415,7 +425,9 @@ export function Lobby({
     setPlayer(() => result.player);
     say(result.success
       ? `Создано: ${ITEMS[r.out].name}${player.passives.includes("brewer") ? " (+1)" : ""}`
-      : "Алхимия не удалась: реагенты потрачены, результата нет.");
+      : r.station === "workshop"
+        ? "Сборка не удалась: реагенты потрачены, результата нет."
+        : "Алхимия не удалась: реагенты потрачены, результата нет.");
   };
 
   const shopSupplies = Object.values(ITEMS).filter(
@@ -424,6 +436,8 @@ export function Lobby({
   const shopReagents = Object.values(ITEMS).filter((i) => i.kind === "reagent" && (i.price ?? 0) > 0);
   /** Рецепты дорожают: лист редкого зелья ценится выше. */
   const recipePrice = (r: Recipe) => Math.round(r.price * 1.8 / 5) * 5;
+  const stationRecipes = (station: "alchemy" | "workshop") =>
+    RECIPES.filter((r) => (r.station ?? "alchemy") === station);
   const groupedRecipes = RECIPES.filter((r) => groupOfKind(ITEMS[r.out].kind) === recipeGroup);
   const wearTable = shopWearTable(player.shopLevel);
   const rarityTable = shopRarityTable(player.shopLevel);
@@ -752,7 +766,7 @@ export function Lobby({
 
                   {STAT_ORDER.map((k) => {
                     const v = player.stats[k];
-                    const cost = statPointCost(v);
+                    const cost = statPointCost(k, v);
                     const can = player.statPoints >= cost && v < 10;
                     return (
                       <Panel
@@ -1069,6 +1083,7 @@ export function Lobby({
                                   {def.name}
                                 </h4>
                                 <div className="mt-1 flex flex-wrap justify-end gap-1">
+                                  <Tag tone="verd">ур. {def.level ?? 1}</Tag>
                                   {intReq > 0 && (
                                     <Tag tone={player.stats.int >= intReq ? "verd" : "rubric"}>ИНТ {intReq}</Tag>
                                   )}
@@ -1194,15 +1209,17 @@ export function Lobby({
               </div>
             )}
 
-            {tab === "brew" && (
+            {(tab === "brew" || tab === "workshop") && (
               <div>
                 <p className="dropcap mb-4 max-w-2xl text-[1.02rem] leading-relaxed text-parch/85">
-                  Рецепты нельзя угадать: сперва купи лист у торговца. Изученные рецепты остаются с тобой.
-                  При варке есть {Math.round(BREW_FAILURE_CHANCE * 100)}% шанс неудачи — ингредиенты сгорят,
+                  {tab === "brew"
+                    ? "Алхимия варит зелья и свитки. Рецепты нельзя угадать: сперва купи лист у торговца."
+                    : "Мастерская собирает метательные расходники: кинжалы, бомбы и прахи. Рецепты продаются у торговца."}
+                  {" "}При создании есть {Math.round(BREW_FAILURE_CHANCE * 100)}% шанс неудачи — ингредиенты сгорят,
                   даже если ничего не выйдет.
                 </p>
                 <div className="grid gap-3 lg:grid-cols-2">
-                  {RECIPES.map((r, index) => {
+                  {stationRecipes(tab === "workshop" ? "workshop" : "alchemy").map((r, index) => {
                     if (!player.knownRecipes.includes(r.id)) {
                       return (
                         <div key={r.id} className="flex items-center justify-between gap-3 border-b border-line bg-black/25 px-3 py-3">
@@ -1264,6 +1281,78 @@ export function Lobby({
                       </Panel>
                     );
                   })}
+                </div>
+              </div>
+            )}
+
+            {tab === "forge" && (
+              <div>
+                <p className="dropcap mb-4 max-w-2xl text-[1.02rem] leading-relaxed text-parch/85">
+                  Кузница улучшает качество, изношенность и уровень снаряжения. Каждая попытка стоит золота
+                  и может уничтожить предмет: чем выше цель, тем страшнее риск.
+                </p>
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+                  <Panel title="Выбери предмет" className="p-4">
+                    <div className="max-h-[28rem] space-y-2 overflow-y-auto pr-1">
+                      {player.armory.length === 0 && <p className="text-sm italic text-mute">Арсенал пуст.</p>}
+                      {player.armory.map((g) => {
+                        const base = GEAR_BASES[g.baseId];
+                        const active = forgeUid === g.uid;
+                        return (
+                          <button
+                            key={g.uid}
+                            onClick={() => setForgeUid(g.uid)}
+                            className={`flex w-full items-center justify-between gap-2 border px-3 py-2 text-left transition-colors ${active ? "border-flame bg-flame/10" : "border-line bg-slab2 hover:border-flamedim"}`}
+                          >
+                            <span>
+                              <span className="block font-display text-[1.02rem] uppercase tracking-[0.08em] text-flamehi">{base?.name ?? g.baseId}</span>
+                              <span className="block font-mono text-[0.82rem] text-mute">
+                                ур. {g.level} · {RARITY_META[g.rarity].name} · {WEAR_RANGE[g.wear].label}
+                              </span>
+                            </span>
+                            {Object.values(player.equip).includes(g.uid) && <Tag tone="verd">надето</Tag>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </Panel>
+                  <Panel title="Горн" className="p-4">
+                    {(() => {
+                      const item = player.armory.find((g) => g.uid === forgeUid);
+                      if (!item) return <p className="text-sm italic text-mute">Выбери предмет слева, чтобы увидеть улучшения.</p>;
+                      return (
+                        <div className="space-y-3">
+                          {forgeOptions(item).map((opt) => {
+                            const can = opt.available && player.gold >= opt.cost;
+                            const toLabel = opt.kind === "rarity" ? RARITY_META[opt.to as RarityTier]?.name ?? opt.to
+                              : opt.kind === "wear" ? WEAR_RANGE[opt.to as keyof typeof WEAR_RANGE]?.label ?? opt.to
+                              : `ур. ${opt.to}`;
+                            return (
+                              <div key={opt.kind} className="border border-line bg-black/25 p-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <span className="font-display text-[1.05rem] uppercase tracking-[0.08em] text-flamehi">{opt.label}</span>
+                                  <span className="font-mono text-[0.86rem] text-mute">{opt.from} → {toLabel}</span>
+                                </div>
+                                <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[0.84rem]">
+                                  <Tag tone="flame">{opt.cost} зол.</Tag>
+                                  <Tag tone="rubric">риск уничтожения {Math.round(opt.destroyChance * 100)}%</Tag>
+                                  {!opt.available && <Tag tone="mute">предел</Tag>}
+                                </div>
+                                <Btn
+                                  className="mt-2"
+                                  tone={can ? "flame" : "ghost"}
+                                  disabled={!can}
+                                  onClick={() => setForgeConfirm({ uid: item.uid, kind: opt.kind })}
+                                >
+                                  Улучшить
+                                </Btn>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </Panel>
                 </div>
               </div>
             )}
@@ -1343,6 +1432,41 @@ export function Lobby({
             })()
           )}
         </div>
+      )}
+
+      {forgeConfirm && (
+        <Modal
+          title="Подтвердить улучшение"
+          onClose={() => setForgeConfirm(null)}
+          actions={
+            <div className="flex justify-end gap-2">
+              <Btn tone="ghost" onClick={() => setForgeConfirm(null)}>Отмена</Btn>
+              <Btn tone="flame" onClick={() => {
+                const res = forgeUpgrade(player, forgeConfirm.uid, forgeConfirm.kind);
+                setPlayer(() => {
+                  const maxHp = derived(res.player).maxHp;
+                  return { ...res.player, hp: Math.min(res.player.hp, maxHp) };
+                });
+                say(res.message);
+                setForgeConfirm(null);
+              }}>
+                В горн
+              </Btn>
+            </div>
+          }
+        >
+          {(() => {
+            const item = player.armory.find((g) => g.uid === forgeConfirm.uid);
+            const opt = item ? forgeOptions(item).find((o) => o.kind === forgeConfirm.kind) : null;
+            if (!item || !opt) return null;
+            return (
+              <div className="space-y-2 text-[1rem] leading-relaxed text-parch/90">
+                <p>Улучшение «{opt.label.toLowerCase()}» стоит <b className="text-flamehi">{opt.cost} зол.</b></p>
+                <p>Шанс уничтожения предмета: <b className="text-rubric">{Math.round(opt.destroyChance * 100)}%</b>. Золото списывается даже при неудаче.</p>
+              </div>
+            );
+          })()}
+        </Modal>
       )}
 
       {gearDetail && detailItem && (

@@ -107,7 +107,7 @@ function makeInitial(): Player {
     name: "Покоритель",
     level: 1,
     xp: 0,
-    statPoints: 4,
+    statPoints: 2,
     stats: { str: 1, agi: 1, int: 1 },
     hp: 1,
     gold: 220,
