@@ -14,6 +14,7 @@ import {
   consumableScaleLabel,
 } from "../game/content";
 import { GEAR_EFFECTS, GEAR_PASSIVES } from "../game/gearEffects";
+import { epicSkillDesc } from "../game/content";
 import { combatReadout, queuePreview, type BattleState, type PlayerAction } from "../game/battle";
 import { FoePortrait } from "./FoeArt";
 import { ItemArt } from "./ItemArt";
@@ -574,7 +575,7 @@ export function BattleView({
                           <span className="block font-display text-[1.02rem] uppercase tracking-[0.1em] text-flame">
                             [Эпич.] {sk.name}
                           </span>
-                          <span className="block text-[0.89rem] leading-snug text-mute">{sk.desc}</span>
+                          <span className="block text-[0.89rem] leading-snug text-mute">{epicSkillDesc(sk.id, b.p.epicSkillLevels[sk.id] ?? 1)}</span>
                         </span>
                         <span className={`shrink-0 font-mono text-[0.84rem] ${!intOk ? "text-rubric" : cd > 0 ? "text-mute" : "text-verd"}`}>
                           {!intOk ? `нужен ИНТ ${req}` : cd > 0 ? `перезар. ${cd} р.` : "готово"}

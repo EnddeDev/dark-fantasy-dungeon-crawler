@@ -232,6 +232,7 @@ export default function App() {
   const [unlockedFloor, setUnlockedFloor] = useState<number>(readUnlockedFloor);
   /** Маршрут, выбранный мышью: клетки по порядку от текущей. */
   const [path, setPath] = useState<Cell[]>([]);
+  const [pathPaused, setPathPaused] = useState(false);
 
   const logRun = (line: string) => setRun((r) => (r ? { ...r, log: [...r.log, line] } : r));
 
@@ -277,33 +278,42 @@ export default function App() {
 
   /* Автопоход по маршруту, выбранному мышью: по одному шагу, но шаг — событие. */
   useEffect(() => {
-    if (path.length === 0) return;
-    if (screen !== "dungeon" || modal || battle || !run) {
-      setPath([]);
+    if (path.length === 0) {
+      setPathPaused(false);
       return;
     }
+    if (screen !== "dungeon" || !run) {
+      setPath([]);
+      setPathPaused(false);
+      return;
+    }
+    if (modal || battle) {
+      setPathPaused(true);
+      return;
+    }
+    if (pathPaused) return;
     const target = path[0];
     const dx = target.x - run.pos.x;
     const dy = target.y - run.pos.y;
     if (Math.abs(dx) + Math.abs(dy) !== 1) {
       setPath([]);
+      setPathPaused(false);
       return;
     }
     const id = cellIdx(target.x, target.y, run.maze.size);
     const closedDoor = run.maze.doors.includes(id) && !run.maze.openedDoors.includes(id);
     if (closedDoor) {
-      /* Перед запертой дверью маршрут обрывается — откроют сами. */
-      setPath([]);
-      move(dx, dy);
+      setPathPaused(true);
+      move(dx, dy, true);
       return;
     }
     const t = window.setTimeout(() => {
-      move(dx, dy);
+      move(dx, dy, true);
       setPath((p) => p.slice(1));
     }, 110);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, screen, modal, battle, run]);
+  }, [path, pathPaused, screen, modal, battle, run]);
 
   useEffect(() => {
     if (!battle || !battle.over || battle.over === "win") return;
@@ -444,6 +454,8 @@ export default function App() {
       setBest(floor);
       writeBest(floor);
     }
+    setPath([]);
+    setPathPaused(false);
     setScreen("dungeon");
     setLobbyEntry("train");
     setModal({ kind: "intro" });
@@ -607,7 +619,7 @@ export default function App() {
       return;
     }
 
-    /* На известном пути ловушек 5%, на новом — 10%. Враги всегда 20%. */
+    /* Новая клетка: 60/10/20/10. Известная клетка: 90% ничего, 10% бой. */
     const event = rollStepEvent(knownPath);
     if (event === "quiet") {
       r.log.push(
@@ -663,7 +675,11 @@ export default function App() {
     setScreen("battle");
   };
 
-  const move = (dx: number, dy: number) => {
+  const move = (dx: number, dy: number, fromPath = false) => {
+    if (!fromPath) {
+      setPath([]);
+      setPathPaused(false);
+    }
     if (screen !== "dungeon" || modal || !run) return;
     const { x, y } = run.pos;
     const nx = x + dx;
@@ -690,13 +706,15 @@ export default function App() {
   const clickCell = (cx: number, cy: number) => {
     if (!run || modal || battle || screen !== "dungeon") return;
     if (cx === run.pos.x && cy === run.pos.y) return;
-    if (!run.seen[`${cx},${cy}`]) return;
     const route = findPath(run.maze, run.pos, { x: cx, y: cy }, { avoidClosedDoors: run.keys === 0 });
     if (!route || route.length === 0) {
       setPath([]);
+      setPathPaused(false);
+      logRun("Туда нет открытого пути.");
       return;
     }
     setPath(route);
+    setPathPaused(false);
   };
 
   const handleEquip = (uid: string, slot: Slot) => {
@@ -832,6 +850,8 @@ export default function App() {
     setRun(next);
     setModal(null);
     stepInto(x, y, next);
+    setPath((p) => (p[0]?.x === x && p[0]?.y === y ? p.slice(1) : p));
+    setPathPaused(true);
   };
 
   const useFieldItem = (id: string) => {
@@ -894,6 +914,7 @@ export default function App() {
       return { ...p, hp: Math.min(d.maxHp, p.hp + 10) };
     });
     setPath([]);
+    setPathPaused(false);
     setShopStock(rollShopStock(player.shopLevel, nf));
     const nb = Math.max(best, nf);
     setBest(nb);
@@ -958,6 +979,7 @@ export default function App() {
       };
     });
     setPath([]);
+    setPathPaused(false);
     setShopStock(rollShopStock(player.shopLevel, r.floor));
     setRun(null);
     setScreen("lobby");
@@ -988,11 +1010,11 @@ export default function App() {
             <ul className="space-y-2">
               <li className="dropcap">
                 <b className="text-flame">Туман и стены:</b> сквозь стены ничего не видно — открыты только
-                пройденные клетки и <b>круг радиусом 3</b> — стены блокируют свет.
+                пройденные клетки и <b>круг радиусом 3</b> — стены и углы блокируют свет.
               </li>
               <li>
                 <b className="text-flame">Новая клетка:</b> 60% тихо, 10% ловушка, 20% бой и 10% небольшая находка.
-                Повторный путь: 75% тихо, 5% ловушка, 20% бой.
+                Повторный путь: 90% ничего, 10% бой.
               </li>
               <li>
                 <b className="text-rubric">Страж перед лестницей:</b> спуск на следующий ярус охраняет Босс со
@@ -1281,12 +1303,14 @@ export default function App() {
             intStat={player.stats.int}
             intDiscount={d.intDiscount}
             path={path}
+            pathPaused={pathPaused}
             onMove={move}
             onCellClick={clickCell}
             onUseItem={useFieldItem}
             onEquip={handleEquip}
             onUnequip={handleUnequip}
-            onCancelPath={() => setPath([])}
+            onCancelPath={() => { setPath([]); setPathPaused(false); }}
+            onResumePath={() => setPathPaused(false)}
           />
         )}
         {screen === "battle" && battle && (

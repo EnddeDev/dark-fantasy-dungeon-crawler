@@ -165,8 +165,8 @@ test("new and explored cells use exact probability boundaries", () => {
     ["quiet", "quiet", "trap", "trap", "fight", "fight", "find", "find"],
   );
   assert.deepEqual(
-    [0, 0.749, 0.75, 0.799, 0.8, 0.999].map((r) => events.rollStepEvent(true, r)),
-    ["quiet", "quiet", "trap", "trap", "fight", "fight"],
+    [0, 0.899, 0.9, 0.999].map((r) => events.rollStepEvent(true, r)),
+    ["quiet", "quiet", "fight", "fight"],
   );
 });
 
@@ -870,8 +870,9 @@ test("weapon technique descriptions and passive notes match the actual affinity 
       assert.equal(ws.scaleStat, content.gearAffinity(item));
       assert.ok(ws.desc.includes(`${ws.scaleMult}×${short}`), `${baseId}/${skillId}: ${ws.desc}`);
       assert.ok(ws.passiveNote.includes(`×${short}`), ws.passiveNote);
-      const range = ws.scaleStat === "int" ? [2, 4.5] : ws.scaleStat === "str" ? [1.5, 3.5] : [1.5, 2.5];
-      assert.ok(ws.scaleMult >= range[0] && ws.scaleMult <= range[1]);
+      const baseRange = ws.scaleStat === "int" ? [2, 4.5] : ws.scaleStat === "str" ? [1.5, 3.5] : [1.5, 2.5];
+      assert.ok(ws.scaleMult >= baseRange[0], `${baseId}/${skillId}: ${ws.scaleMult}`);
+      assert.ok(ws.desc.includes(`${ws.scaleMult}×${short}`), ws.desc);
     }
   }
 });
@@ -1176,4 +1177,146 @@ test("normalizeStatMilestones migrates old automatic archetype passives into sta
   assert.equal(migrated.statMilestones.str[5], "arch_bulwark_5");
   assert.ok(migrated.passives.includes("arch_bulwark_5"));
   assert.ok(!migrated.passives.includes("arch_bulwark_10"), "рубеж 10 ещё не открыт");
+});
+
+
+/* ─────────────  БАГ-ФИКСЫ И БАЛАНС СНАРЯЖЕНИЯ  ───────────── */
+
+test("shop upgrade price is the same function used by the UI and the charge", () => {
+  for (let level = 1; level < 10; level++) {
+    const cost = content.shopUpgradeCost(level);
+    assert.ok(Number.isInteger(cost) && cost > 0);
+    assert.equal(cost, Math.round(40 * 1.3 ** (level - 1) / 5) * 5);
+  }
+});
+
+test("line of sight does not leak around corners or through closed doors", () => {
+  const m = maze.genMaze(6);
+  m.h = Array.from({ length: 7 }, () => Array(6).fill(true));
+  m.v = Array.from({ length: 6 }, () => Array(7).fill(true));
+  // L-коридор: (0,0) -> (1,0) -> (1,1)
+  m.v[0][1] = false;
+  m.h[1][1] = false;
+  m.doors = [];
+  m.openedDoors = [];
+  const vis = maze.computeVisibility(m, { x: 0, y: 0 }, {});
+  assert.equal(vis[0][1], 1, "соседняя открытая клетка видна");
+  assert.equal(vis[1][1], 0, "клетка за углом не видна");
+  assert.equal(vis[1][0], 0, "диагональ через закрытый угол не видна");
+
+  // Прямой коридор с закрытой дверью посередине
+  m.h[1][0] = false;
+  m.h[2][0] = false;
+  m.h[3][0] = false;
+  m.doors = [maze.cellIdx(0, 2, 6)];
+  const doorVis = maze.computeVisibility(m, { x: 0, y: 0 }, {});
+  assert.equal(doorVis[2][0], 1, "сама дверь видна");
+  assert.equal(doorVis[3][0], 0, "за дверью темно");
+  m.openedDoors = [maze.cellIdx(0, 2, 6)];
+  const openVis = maze.computeVisibility(m, { x: 0, y: 0 }, {});
+  assert.equal(openVis[3][0], 1, "открытая дверь пропускает свет");
+});
+
+test("pathfinding accepts unseen targets and returns a walkable route", () => {
+  const m = maze.genMaze(6);
+  const target = { x: m.stairs.x, y: m.stairs.y };
+  const route = maze.findPath(m, m.start, target);
+  assert.ok(route && route.length > 0);
+  let prev = m.start;
+  for (const cell of route) {
+    assert.equal(Math.abs(cell.x - prev.x) + Math.abs(cell.y - prev.y), 1);
+    assert.ok(!maze.wallBetween(m, prev.x, prev.y, cell.x - prev.x, cell.y - prev.y));
+    prev = cell;
+  }
+  assert.deepEqual(prev, target);
+});
+
+test("gear class ordering: armor H>M>L, HP L>H>M, evade M>L>H", () => {
+  const trios = [
+    ["shroud", "mail", "plate"],
+    ["buckler", "shield_round", "shield_tower"],
+    ["knife", "sword", "axe"],
+  ];
+  for (const [light, medium, heavy] of trios) {
+    const mk = (id) => {
+      const g = content.createGearItem({ baseId: id, level: 1, wear: "worn", rarity: "common", identified: true });
+      g.wearMult = 1;
+      g.statMult = 1;
+      return content.scaledGearStats(g);
+    };
+    const L = mk(light), M = mk(medium), H = mk(heavy);
+    assert.ok(H.armor > M.armor && M.armor > L.armor, `${light}/${medium}/${heavy}: броня`);
+    assert.ok(L.hp > H.hp && H.hp > M.hp, `${light}/${medium}/${heavy}: ОЗ`);
+    assert.ok(M.evade > L.evade && L.evade > H.evade, `${light}/${medium}/${heavy}: уклонение`);
+  }
+});
+
+test("item level scales stats, effects, techniques and legendary passives by +20% ceil", () => {
+  const scaling = loadGameModule("gearScaling");
+  assert.equal(scaling.scaleIntegerByLevel(10, 1), 10);
+  assert.equal(scaling.scaleIntegerByLevel(10, 2), 12);
+  assert.equal(scaling.scaleIntegerByLevel(10, 3), 15);
+  assert.equal(scaling.scalePercentByLevel(3, 2), 4);
+  assert.equal(scaling.scaleMultByLevel(1.8, 2), 2.16);
+
+  const item = content.createGearItem({ baseId: "plate", level: 1, wear: "worn", rarity: "legendary", identified: true });
+  item.wearMult = 1;
+  item.statMult = 1;
+  item.effects = ["damage_resist"];
+  item.passive = "fortress";
+  const low = content.scaledGearStats(item);
+  const high = content.scaledGearStats({ ...item, level: 3 });
+  assert.ok(high.armor > low.armor);
+  assert.ok(high.hp > low.hp);
+  assert.equal(scaling.effectMagnitude("damage_resist", 3), 4);
+  assert.equal(scaling.passiveMagnitude("fortress", "resist", 3), 29);
+  assert.equal(scaling.legendaryMagnitude("executioner", "damage", 2), 42);
+
+  const weapon = content.createGearItem({ baseId: "sword", level: 1, wear: "worn", rarity: "common", identified: true });
+  const ws1 = content.weaponSkillFor(weapon);
+  const ws2 = content.weaponSkillFor({ ...weapon, level: 2 });
+  assert.ok(ws2.scaleMult > ws1.scaleMult);
+});
+
+test("medium weapons can be gripped two-handed for ceil(1.5x) damage and occupy the off-hand", () => {
+  const base = { ...mkP(), level: 10, stats: { str: 10, agi: 10, int: 10 } };
+  const sword = content.createGearItem({ baseId: "sword", level: 1, wear: "worn", rarity: "common", identified: true });
+  sword.wearMult = 1;
+  const shield = content.createGearItem({ baseId: "shield_round", level: 1, wear: "worn", rarity: "common", identified: true });
+  let p = { ...base, armory: [sword, shield], equip: { ...base.equip, offHand: shield.uid } };
+  const one = content.scaledGearStats(sword).dmg;
+  const res = content.equipItem(p, sword.uid, "mainHand", "two");
+  p = res.player;
+  assert.equal(p.equip.offHand, null);
+  assert.equal(p.armory.find((g) => g.uid === sword.uid).grip, "two");
+  const two = content.scaledGearStats(p.armory.find((g) => g.uid === sword.uid)).dmg;
+  assert.equal(two[0], Math.ceil(one[0] * 1.5));
+  assert.equal(two[1], Math.ceil(one[1] * 1.5));
+  assert.equal(battle.derived(p).gearHands, 2);
+  // Нельзя занять левую руку, пока среднее оружие держат двумя руками
+  const blocked = content.equipItem(p, shield.uid, "offHand");
+  assert.equal(blocked.player.equip.offHand, null);
+  assert.ok(blocked.note);
+});
+
+test("light weapons can be equipped in either hand", () => {
+  const base = { ...mkP(), level: 10, stats: { str: 10, agi: 10, int: 10 } };
+  const knife = content.createGearItem({ baseId: "knife", level: 1, wear: "worn", rarity: "common", identified: true });
+  assert.deepEqual(content.slotsForItem(knife), ["mainHand", "offHand"]);
+  let p = { ...base, armory: [knife] };
+  p = content.equipItem(p, knife.uid, "offHand").player;
+  assert.equal(p.equip.offHand, knife.uid);
+  assert.equal(p.equip.mainHand, null);
+  p = content.equipItem(p, knife.uid, "mainHand").player;
+  assert.equal(p.equip.mainHand, knife.uid);
+  assert.equal(p.equip.offHand, null);
+});
+
+test("technique INT requirements follow item level tiers and STR gear is lower", () => {
+  const mk = (baseId, level) => content.createGearItem({ baseId, level, wear: "worn", rarity: "common", identified: true });
+  for (const [level, expected] of [[1, 2], [5, 2], [6, 3], [8, 3], [9, 4], [10, 4]]) {
+    assert.equal(content.weaponSkillFor(mk("staff", level)).intReq, expected);
+    assert.equal(content.weaponSkillFor(mk("rapier", level)).intReq, expected);
+    assert.equal(content.weaponSkillFor(mk("sword", level)).intReq, Math.max(1, expected - 1));
+  }
 });

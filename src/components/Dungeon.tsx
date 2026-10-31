@@ -19,12 +19,14 @@ export function Dungeon({
   intStat,
   intDiscount,
   path,
+  pathPaused,
   onMove,
   onCellClick,
   onUseItem,
   onEquip,
   onUnequip,
   onCancelPath,
+  onResumePath,
 }: {
   run: Run;
   player: Player;
@@ -34,12 +36,14 @@ export function Dungeon({
   intStat: number;
   intDiscount: number;
   path: { x: number; y: number }[];
+  pathPaused: boolean;
   onMove: (dx: number, dy: number) => void;
   onCellClick: (x: number, y: number) => void;
   onUseItem: (id: string) => void;
   onEquip: (uid: string, slot: Slot) => void;
   onUnequip: (slot: Slot) => void;
   onCancelPath: () => void;
+  onResumePath: () => void;
 }) {
   const m = run.maze;
   const S = m.size;
@@ -376,7 +380,6 @@ export function Dungeon({
               {Array.from({ length: S * S }).map((_, i) => {
                 const x = i % S;
                 const y = Math.floor(i / S);
-                if (!vis[y][x]) return null;
                 const near = isNextTo(x, y);
                 const onRoute = path.some((p) => p.x === x && p.y === y);
                 return (
@@ -408,12 +411,19 @@ export function Dungeon({
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border border-flamedim/70 bg-black/45 px-3 py-2 font-mono text-[0.88rem]">
               <span className="flex items-center gap-2 text-flamehi">
                 <Footprints size={14} aria-hidden />
-                маршрут: {path.length} {path.length === 1 ? "шаг" : path.length < 5 ? "шага" : "шагов"}
-                <span className="text-mute">— шаги пойдут по очереди</span>
+                {pathPaused ? "маршрут приостановлен" : "маршрут"}: {path.length} {path.length === 1 ? "шаг" : path.length < 5 ? "шага" : "шагов"}
+                <span className="text-mute">{pathPaused ? "— можно продолжить или отменить" : "— шаги пойдут по очереди"}</span>
               </span>
-              <button onClick={onCancelPath} className="flex items-center gap-1 text-mute transition-colors hover:text-rubric">
-                <X size={13} aria-hidden /> отменить
-              </button>
+              <span className="flex items-center gap-3">
+                {pathPaused && (
+                  <button onClick={onResumePath} className="text-verd transition-colors hover:text-flamehi">
+                    продолжить
+                  </button>
+                )}
+                <button onClick={onCancelPath} className="flex items-center gap-1 text-mute transition-colors hover:text-rubric">
+                  <X size={13} aria-hidden /> отменить
+                </button>
+              </span>
             </div>
           )}
 
@@ -584,12 +594,11 @@ export function Dungeon({
               <span className="text-rubric">20%</span> бой · <span className="text-verd">10%</span> находка
             </p>
             <p className="mt-1 font-mono text-[0.88rem] text-parch/80">
-              Известный путь: <span className="text-flame">75%</span> тихо · <span className="text-rubric">5%</span> ловушка ·{" "}
-              <span className="text-rubric">20%</span> бой
+              Известный путь: <span className="text-flame">90%</span> ничего · <span className="text-rubric">10%</span> бой
             </p>
             <p className="mt-1.5">
-              Кликни любую видимую клетку — маршрут прочертится на чертеже и пойдёт сам. Свет не проходит сквозь
-              стены, а перед лестницей стоит <b className="text-rubric">Босс этажа</b>.
+              Кликни любую клетку — маршрут прочертится на чертеже и пойдёт сам. После боя или ловушки его можно
+              продолжить. Свет не проходит сквозь стены и углы, а перед лестницей стоит <b className="text-rubric">Босс этажа</b>.
             </p>
           </div>
 

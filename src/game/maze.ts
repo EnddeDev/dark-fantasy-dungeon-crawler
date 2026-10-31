@@ -501,43 +501,49 @@ export function findPath(
 }
 
 /**
- * Честная видимость без взгляда сквозь стены:
- * 0 — темнота (не видно)
- * 1 — освещено факелом прямо сейчас (текущая клетка и до 3 полей вперёд по коридору без преград-стен)
- * 2 — уже пройденные клетки (память)
+ * Честная видимость без взгляда сквозь стены и углы.
+ * Луч идёт из центра клетки в центр цели; каждое пересечение стены проверяется.
+ * Если луч проходит точно через угол, обе стороны угла должны быть открыты.
+ * Закрытая дверь видна сама, но свет за неё не проходит.
  */
-/**
- * Проверяет прямую видимость между двумя клетками через ray marching.
- * Стены полностью блокируют вид, закрытая дверь видна сама, но за неё свет не проходит.
- */
-function hasLOS(m: Maze, from: Cell, to: Cell): boolean {
+export function hasLOS(m: Maze, from: Cell, to: Cell): boolean {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
-  const steps = Math.max(Math.abs(dx), Math.abs(dy));
-  if (steps === 0) return true;
+  if (dx === 0 && dy === 0) return true;
+  if (to.x < 0 || to.y < 0 || to.x >= m.size || to.y >= m.size) return false;
 
-  for (let step = 1; step <= steps; step++) {
-    const nx = Math.round(from.x + (dx * step) / steps);
-    const ny = Math.round(from.y + (dy * step) / steps);
-    const px = Math.round(from.x + (dx * (step - 1)) / steps);
-    const py = Math.round(from.y + (dy * (step - 1)) / steps);
+  const stepX = dx > 0 ? 1 : dx < 0 ? -1 : 0;
+  const stepY = dy > 0 ? 1 : dy < 0 ? -1 : 0;
+  const tDeltaX = dx === 0 ? Infinity : Math.abs(1 / dx);
+  const tDeltaY = dy === 0 ? Infinity : Math.abs(1 / dy);
+  let tMaxX = dx === 0 ? Infinity : Math.abs(0.5 / dx);
+  let tMaxY = dy === 0 ? Infinity : Math.abs(0.5 / dy);
+  let x = from.x;
+  let y = from.y;
+  const closedDoor = (cx: number, cy: number) => {
+    const idx = cellIdx(cx, cy, m.size);
+    return m.doors.includes(idx) && !m.openedDoors.includes(idx);
+  };
 
-    const ddx = nx - px;
-    const ddy = ny - py;
-
-    /* Закрытая дверь на пути блокирует всё, что за ней */
-    const targetIdx = cellIdx(nx, ny, m.size);
-    if (step < steps && m.doors.includes(targetIdx) && !m.openedDoors.includes(targetIdx)) return false;
-
-    if (Math.abs(ddx) + Math.abs(ddy) === 2) {
-      const blockedX = wallBetween(m, px, py, ddx, 0);
-      const blockedY = wallBetween(m, px, py, 0, ddy);
-      if (blockedX || blockedY) return false;
-    } else if (ddx !== 0 || ddy !== 0) {
-      if (wallBetween(m, px, py, ddx, ddy)) return false;
+  while (x !== to.x || y !== to.y) {
+    if (Math.abs(tMaxX - tMaxY) < 1e-9) {
+      /* Угол: нельзя выглядывать из-за стены, даже если вторая сторона открыта. */
+      if (wallBetween(m, x, y, stepX, 0) || wallBetween(m, x, y, 0, stepY)) return false;
+      x += stepX;
+      y += stepY;
+      tMaxX += tDeltaX;
+      tMaxY += tDeltaY;
+    } else if (tMaxX < tMaxY) {
+      if (wallBetween(m, x, y, stepX, 0)) return false;
+      x += stepX;
+      tMaxX += tDeltaX;
+    } else {
+      if (wallBetween(m, x, y, 0, stepY)) return false;
+      y += stepY;
+      tMaxY += tDeltaY;
     }
+    if ((x !== to.x || y !== to.y) && closedDoor(x, y)) return false;
   }
-
   return true;
 }
 
@@ -564,13 +570,7 @@ export function computeVisibility(
 
       // Проверяем прямую видимость
       if (hasLOS(m, pos, { x, y })) {
-        const idx = cellIdx(x, y, s);
-        // Закрытая дверь видна сама, но за неё факел не светит
-        if (m.doors.includes(idx) && !m.openedDoors.includes(idx)) {
-          out[y][x] = 1;
-        } else {
-          out[y][x] = 1;
-        }
+        out[y][x] = 1;
       }
     }
   }

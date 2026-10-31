@@ -16,9 +16,16 @@ import {
   identifyReqs,
   scaledGearStats,
   slotsForItem,
+  epicSkillDesc,
+  legendaryPassiveDesc,
+  rareAffixDesc,
+  canTwoHandGrip,
+  effectiveHands,
+  gearAffinity,
 } from "../game/content";
 import { derived } from "../game/battle";
-import { GEAR_EFFECTS, GEAR_PASSIVES } from "../game/gearEffects";
+import { techniqueIntReq } from "../game/gearScaling";
+import { GEAR_EFFECTS, GEAR_PASSIVES, effectDetail, passiveDetail } from "../game/gearEffects";
 import { ARCHETYPES } from "../game/archetypes";
 import { SLOT_META } from "../game/types";
 import type { GearItem, Player } from "../game/types";
@@ -70,6 +77,7 @@ export function GearNote({
   const compareSlot = allowed.find((slot) => player.equip[slot] && player.equip[slot] !== item.uid) ?? allowed[0];
   const compared = player.armory.find((entry) => entry.uid === player.equip[compareSlot]);
   const other = !wornIn.length && compared && compared.uid !== item.uid ? scaledGearStats(compared) : null;
+  const gripNote = canTwoHandGrip(item) ? (item.grip === "two" ? "Двумя руками (урон ×1.5)" : "Одной рукой; можно взять двумя (×1.5)") : effectiveHands(item) === 2 ? "Обе руки" : "Одна рука";
   const skill = st.skill;
   const skillInt = skill ? Math.max(1, skill.intReq - d.intDiscount) : 0;
   const skillOpen = !!skill && player.stats.int >= skillInt;
@@ -116,7 +124,7 @@ export function GearNote({
           </div>
           <p className="mt-2 text-[0.96rem] leading-relaxed text-mute">
             Ячейки: {allowed.map((slot) => SLOT_META[slot].name).join(" / ")}.
-            {st.base.hands === 2 && " Двуручное оружие занимает обе руки."}
+            {effectiveHands(item) === 2 && " Оружие занимает обе руки."}
           </p>
         </DetailSection>
 
@@ -126,6 +134,7 @@ export function GearNote({
             {st.armor > 0 && <Row label="Броня" value={`+${st.armor}`} />}
             {st.hp > 0 && <Row label="Здоровье" value={`+${st.hp}`} />}
             {st.evade > 0 && <Row label="Уклонение" value={`+${Math.round(st.evade * 100)}%`} />}
+            <Row label="Хват" value={gripNote} />
             <Row label="Состояние" value={`${WEAR_META[item.wear].name} · ×${st.wearMult.toFixed(3)}`} />
             <Row label="Диапазон состояния" value={`×${range.lo}–${range.hi}, базовый ×${range.base}`} />
             <Row label="Разброс параметров" value={`${spread > 0 ? "+" : ""}${spread}%`} />
@@ -195,33 +204,33 @@ export function GearNote({
                 return effect ? (
                   <div key={`${id}-${index}`} className="border-l-2 border-verd/60 pl-3">
                     <h4 className="font-display text-[1.08rem] uppercase tracking-[0.04em] text-verd">{effect.name}</h4>
-                    <p className="mt-1 text-[0.98rem] leading-relaxed text-parch/85">{effect.detail}</p>
+                    <p className="mt-1 text-[0.98rem] leading-relaxed text-parch/85">{effectDetail(id, level)}</p>
                   </div>
                 ) : null;
               })}
               {item.rareAffix && (
                 <div className="border-l-2 border-verd/60 pl-3">
                   <h4 className="font-display text-[1.08rem] uppercase tracking-[0.04em] text-verd">{RARE_AFFIXES[item.rareAffix].name}</h4>
-                  <p className="mt-1 text-[0.98rem] leading-relaxed text-parch/85">{RARE_AFFIXES[item.rareAffix].desc}</p>
+                  <p className="mt-1 text-[0.98rem] leading-relaxed text-parch/85">{rareAffixDesc(item.rareAffix, level)}</p>
                 </div>
               )}
               {item.epicSkill && (
                 <div className="border-l-2 border-flamedim pl-3">
                   <h4 className="flex items-center gap-2 font-display text-[1.08rem] uppercase tracking-[0.04em] text-flamehi"><Sparkles size={14} aria-hidden />{EPIC_SKILLS[item.epicSkill].name}</h4>
-                  <p className="mt-1 text-[0.98rem] leading-relaxed text-parch/85">{EPIC_SKILLS[item.epicSkill].desc}</p>
-                  <p className="mt-1 font-mono text-[0.9rem] text-mute">Эпический приём · ИНТ {Math.max(1, EPIC_SKILLS[item.epicSkill].intReq - d.intDiscount)} · откат {EPIC_SKILLS[item.epicSkill].cooldown}</p>
+                  <p className="mt-1 text-[0.98rem] leading-relaxed text-parch/85">{epicSkillDesc(item.epicSkill, level)}</p>
+                  <p className="mt-1 font-mono text-[0.9rem] text-mute">Эпический приём · ИНТ {Math.max(1, techniqueIntReq(level, gearAffinity(item)) - d.intDiscount)} · откат {EPIC_SKILLS[item.epicSkill].cooldown}</p>
                 </div>
               )}
               {item.passive && (
                 <div className="border-l-2 border-flamedim pl-3">
                   <h4 className="font-display text-[1.08rem] uppercase tracking-[0.04em] text-flamehi">{GEAR_PASSIVES[item.passive].name}</h4>
-                  <p className="mt-1 text-[0.98rem] leading-relaxed text-parch/85">{GEAR_PASSIVES[item.passive].detail}</p>
+                  <p className="mt-1 text-[0.98rem] leading-relaxed text-parch/85">{passiveDetail(item.passive, level)}</p>
                 </div>
               )}
               {item.legendaryPassive && (
                 <div className="border-l-2 border-flamedim pl-3">
                   <h4 className="font-display text-[1.08rem] uppercase tracking-[0.04em] text-flamehi">{LEGENDARY_PASSIVES[item.legendaryPassive].name}</h4>
-                  <p className="mt-1 text-[0.98rem] leading-relaxed text-parch/85">{LEGENDARY_PASSIVES[item.legendaryPassive].desc}</p>
+                  <p className="mt-1 text-[0.98rem] leading-relaxed text-parch/85">{legendaryPassiveDesc(item.legendaryPassive, level)}</p>
                 </div>
               )}
             </div>
