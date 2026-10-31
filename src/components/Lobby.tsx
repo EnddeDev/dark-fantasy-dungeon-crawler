@@ -53,7 +53,7 @@ import { GEAR_EFFECTS, GEAR_PASSIVES } from "../game/gearEffects";
 import type { GearItem, Player, StatKey } from "../game/types";
 import type { ArchetypeId } from "../game/archetypes";
 import { canChooseStatMilestone, chooseStatMilestone, chosenStatMilestone, statMilestoneOptions, type StatMilestoneTier } from "../game/statMilestones";
-import { SHOP_MAX_LEVEL, shopRarityTable, shopWearTable } from "../game/world";
+import { SHOP_MAX_LEVEL, shopRarityTable, shopUpgradeCost, shopWearTable } from "../game/world";
 import { Guide } from "./Guide";
 import { Bestiary } from "./Bestiary";
 import { ItemArt } from "./ItemArt";
@@ -364,9 +364,9 @@ export function Lobby({
     say(`Исследовано: ${st.base.name} — ${rName}!`);
   };
 
-  const equipGear = (item: GearItem, slot: Slot) => {
+  const equipGear = (item: GearItem, slot: Slot, grip?: "one" | "two") => {
     const before = derived(player).maxHp;
-    const { player: next, note } = equipItem(player, item.uid, slot);
+    const { player: next, note } = equipItem(player, item.uid, slot, grip);
     if (next === player) {
       say(note ?? "Не удалось надеть предмет.");
       return;
@@ -427,7 +427,7 @@ export function Lobby({
   const groupedRecipes = RECIPES.filter((r) => groupOfKind(ITEMS[r.out].kind) === recipeGroup);
   const wearTable = shopWearTable(player.shopLevel);
   const rarityTable = shopRarityTable(player.shopLevel);
-  const upgradeCost = player.shopLevel >= SHOP_MAX_LEVEL ? 0 : 250 * player.shopLevel;
+  const upgradeCost = player.shopLevel >= SHOP_MAX_LEVEL ? 0 : shopUpgradeCost(player.shopLevel);
   const xpNeed = xpForNextLevel(player.level);
 
   const filterGear = (items: GearItem[]) => {
@@ -585,7 +585,7 @@ export function Lobby({
       preferredSlot={mode === "inventory" ? chosenSlot ?? undefined : undefined}
       purchased={!!purchasedUids[item.uid]}
       onInspect={() => setGearDetail({ uid: item.uid, inShop: mode === "shop" })}
-      onEquip={(target) => equipGear(item, chosenSlot && slotsForItem(item).includes(chosenSlot) ? chosenSlot : target)}
+      onEquip={(target, grip) => equipGear(item, chosenSlot && slotsForItem(item).includes(chosenSlot) ? chosenSlot : target, grip)}
       onUnequip={takeOff}
       onSell={() => sellGear(item)}
       onBuy={() => buyGear(item)}

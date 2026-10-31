@@ -26,6 +26,17 @@ import type {
 import { WEAR_RANGE } from "./types";
 export { WEAR_RANGE } from "./types";
 import { effectPoolFor, passivePoolFor, archetypePassive, type GearEffectId, type GearPassiveId } from "./gearEffects";
+import {
+  clampGearLevel,
+  epicMagnitude,
+  gearLevelMultiplier,
+  legendaryMagnitude,
+  rareAffixMagnitude,
+  scaleIntegerByLevel,
+  scaleMultByLevel,
+  scalePercentByLevel,
+  techniqueIntReq,
+} from "./gearScaling";
 import type { ArchetypeId } from "./archetypes";
 export { ARCHETYPES, ARCHETYPE_ORDER, archetypeForStat, archetypeMilestoneIds, archetypeByMilestone } from "./archetypes";
 export type { ArchetypeId } from "./archetypes";
@@ -217,6 +228,37 @@ export interface RareAffixDef {
   desc: string;
 }
 
+export function legendaryPassiveDesc(id: LegendaryPassiveId, level = 1): string {
+  const l = clampGearLevel(level);
+  const n = (key: string) => legendaryMagnitude(id, key, l);
+  switch (id) {
+    case "executioner":
+      return `По врагам с менее чем 50% здоровья весь твой урон увеличен на ${n("damage")}%.`;
+    case "time_weaver":
+      return `Даёт +${n("ap")} дополнительный ход в каждом раунде боя.`;
+    case "immortal_pact":
+      return `Один раз за бой спасает от смерти и восстанавливает ${n("heal")}% максимального здоровья.`;
+    case "archmage_blood":
+      return `Урон свитков и заклинаний +${n("spellDamage")}%; требования ИНТ снижены на ${n("intDiscount")}.`;
+    case "titan_heart":
+      return `+${n("hp")} максимального здоровья, +${n("armor")} брони; иммунитет к кровотечению и яду.`;
+  }
+}
+
+export function rareAffixDesc(id: RareAffixId, level = 1): string {
+  const l = clampGearLevel(level);
+  const n = (key: string) => rareAffixMagnitude(id, key, l);
+  switch (id) {
+    case "vamp": return `${n("ratio")}% урона возвращается здоровьем.`;
+    case "crit": return `+${n("chance")}% к шансу критического удара.`;
+    case "thorns": return `+${n("damage")} урона врагу за каждый его удар по тебе.`;
+    case "regen": return `+${n("heal")} здоровья в конце каждого раунда.`;
+    case "pierce": return `Атаки игнорируют ${n("armor")} брони врага.`;
+    case "swift": return `+${n("evade")}% к уклонению.`;
+    case "might": return `+${n("damage")} к урону всеми атаками и +${n("hp")} к максимальному здоровью.`;
+  }
+}
+
 export const RARE_AFFIXES: Record<RareAffixId, RareAffixDef> = {
   vamp: {
     id: "vamp",
@@ -301,6 +343,23 @@ export const EPIC_SKILLS: Record<EpicSkillId, EpicSkillDef> = {
   },
 };
 
+export function epicSkillDesc(id: EpicSkillId, level = 1): string {
+  const l = clampGearLevel(level);
+  const n = (key: string) => epicMagnitude(id, key, l);
+  switch (id) {
+    case "fireball":
+      return `Взрыв пламени: ${n("base")} + ${n("scale")}×ИНТ чистого урона и поджог врага (${n("burn")} урона/раунд на ${n("rounds")} раунда).`;
+    case "blood_lance":
+      return `Пронзает броню на ${n("base")} + ${n("scale")}×СИЛ урона и восстанавливает тебе ${n("leech")}% от этого урона.`;
+    case "ash_aegis":
+      return `Восстанавливает ${n("base")} + ${n("scale")}×ИНТ здоровья, снимает кровотечение/проклятие и ставит в Защиту.`;
+    case "shadow_volley":
+      return `Серия выпадов на ${n("base")} + ${n("scale")}×ЛОВ урона сквозь броню и ослабление атаки врага на ${n("rounds")} раунда.`;
+    case "frost_nova":
+      return `Наносит ${n("base")} + ${n("scale")}×ИНТ урона, сковывает врага холодом на ${n("rounds")} раунда и отнимает у него ${n("stun")} ход.`;
+  }
+}
+
 export interface LegendaryPassiveDef {
   id: LegendaryPassiveId;
   name: string;
@@ -339,6 +398,8 @@ export const LEGENDARY_PASSIVES: Record<LegendaryPassiveId, LegendaryPassiveDef>
 
 export interface WeaponSkillDef {
   id: string;
+  /** Уровень предмета, от которого масштабирован приём. */
+  level?: number;
   name: string;
   intReq: number;
   cooldown: number;
@@ -720,6 +781,34 @@ const GEAR_STAT_FIX: Record<string, StatKey> = {
   tooth: "agi",
 };
 
+/**
+ * Базовые защитные свойства класса для сопоставимых слотов.
+ * Порядок при одинаковых уровне/состоянии: защита Т>С>Л, ОЗ Л>Т>С, уклонение С>Л>Т.
+ */
+const CLASS_DEFENSE: Record<"light" | "medium" | "heavy", { armor: number; hp: number; evade: number }> = {
+  light: { armor: 1, hp: 18, evade: 4 },
+  medium: { armor: 3, hp: 12, evade: 7 },
+  heavy: { armor: 5, hp: 15, evade: 2 },
+};
+const SLOT_DEFENSE_SCALE: Partial<Record<Slot, number>> = {
+  mainHand: 0.55,
+  offHand: 1,
+  head: 0.7,
+  body: 1,
+  feet: 0.7,
+  wrists: 0.6,
+};
+function classDefense(slot: Slot, gearClass: "light" | "medium" | "heavy") {
+  const t = CLASS_DEFENSE[gearClass];
+  const k = SLOT_DEFENSE_SCALE[slot] ?? 0;
+  if (k === 0) return { armor: 0, hp: 0, evade: 0 };
+  return {
+    armor: Math.max(0, Math.round(t.armor * k)),
+    hp: Math.max(1, Math.round(t.hp * k)),
+    evade: Math.max(1, Math.round(t.evade * k)) / 100,
+  };
+}
+
 function normalizeGearBases(list: LegacyGear[]): Record<string, GearBaseDef> {
   const out: Record<string, GearBaseDef> = {};
   for (const raw of list) {
@@ -731,12 +820,20 @@ function normalizeGearBases(list: LegacyGear[]): Record<string, GearBaseDef> {
     const stat: StatKey =
       raw.stat ?? GEAR_STAT_FIX[raw.id] ?? raw.weaponSkill?.scaleStat ??
       (gearClass === "heavy" ? "str" : gearClass === "light" ? "int" : "agi");
+    const hasClassTemplate = SLOT_DEFENSE_SCALE[slot] !== undefined;
+    const defense = hasClassTemplate ? classDefense(slot, gearClass) : null;
+    const isWeapon = !!raw.dmg;
+    const hands = gearClass === "medium" && slot === "mainHand" && isWeapon ? 1 : raw.hands;
     out[raw.id] = {
       ...raw,
       level,
       slot,
       gearClass,
       stat,
+      hands,
+      armor: defense ? defense.armor : raw.armor,
+      hp: defense ? defense.hp : raw.hp,
+      evade: defense ? defense.evade : raw.evade,
       altSlots: raw.altSlots ?? ALT_FIX[raw.id],
       minFloor: raw.minFloor ?? level,
     };
@@ -752,15 +849,15 @@ export const GEAR_CLASS_META: Record<
 > = {
   light: {
     name: "Лёгкое",
-    desc: "Малый вес: кинжалы, рапиры, посохи, ткань, обувь и украшения. Характеристика зависит от назначения предмета.",
+    desc: "Малый вес: больше здоровья и уклонения, чем у тяжёлого; меньше защиты, чем у среднего.",
   },
   medium: {
     name: "Среднее",
-    desc: "Сбалансированное снаряжение: мечи, копья, кольчуги, открытые шлемы и круглые щиты.",
+    desc: "Сбалансированное снаряжение: больше защиты, чем у лёгкого, и больше уклонения, чем у обоих других классов.",
   },
   heavy: {
     name: "Тяжёлое",
-    desc: "Массивное снаряжение: топоры, молоты, двуручники, латы, закрытые шлемы и башенные щиты.",
+    desc: "Массивное снаряжение: больше защиты и здоровья, чем у среднего; уклонение ниже, чем у лёгкого.",
   },
 };
 
@@ -1083,40 +1180,58 @@ export function weaponSkillFor(item: GearItem | null | undefined): WeaponSkillDe
     : base.weaponSkill;
   if (!raw) return null;
 
-  /* Приём следует характеристике назначения предмета, а не его весу.
-     Описание и пассивная прибавка пересобираются, чтобы не расходиться с расчётом. */
+  const level = clampGearLevel(item.level);
   const scaleStat = gearAffinity(item);
   const range: [number, number] =
     scaleStat === "int" ? [2, 4.5] : scaleStat === "str" ? [1.5, 3.5] : [1.5, 2.5];
   const mid = (range[0] + range[1]) / 2;
   const deviation = Math.max(-0.5, Math.min(0.5, raw.scaleMult - mid));
-  const scaleMult = Number(Math.max(range[0], Math.min(range[1], mid + deviation)).toFixed(1));
+  const baseMult = Number(Math.max(range[0], Math.min(range[1], mid + deviation)).toFixed(1));
+  const scaleMult = scaleMultByLevel(baseMult, level);
+  const intReq = techniqueIntReq(level, scaleStat);
   const short = STAT_META[scaleStat].short;
   const desc = raw.desc.replace(/(\d+(?:\.\d+)?)×(?:ЛОВ|СИЛ|ИНТ)/g, `${scaleMult}×${short}`);
-  const passiveNote = `При ИНТ ≥ ${raw.intReq} обычные удары получают +${(scaleMult * 0.35).toFixed(2)}×${short} к урону.`;
-  return { ...raw, scaleStat, scaleMult, desc, passiveNote };
+  const passiveBonus = scaleMultByLevel(baseMult * 0.35, level);
+  const passiveNote = `При ИНТ ≥ ${intReq} обычные удары получают +${passiveBonus.toFixed(2)}×${short} к урону.`;
+  return { ...raw, level, scaleStat, scaleMult, intReq, desc, passiveNote };
 }
 
 let gearSeq = 100;
 
-/** Рост характеристик с уровнем предмета: 1-й уровень ×1, 10-й ≈ ×2.44. */
+/** Рост характеристик с уровнем предмета: каждый уровень +20% с округлением вверх. */
 export function gearLevelMult(item: GearItem): number {
-  return 1 + 0.16 * Math.max(0, (item.level ?? 1) - 1);
+  return gearLevelMultiplier(item.level ?? 1);
+}
+
+export function canTwoHandGrip(item: GearItem): boolean {
+  const base = GEAR_BASES[item.baseId];
+  return !!base?.dmg && base.slot === "mainHand" && gearClassFor(item) === "medium";
+}
+
+export function effectiveHands(item: GearItem): 1 | 2 {
+  if (canTwoHandGrip(item) && item.grip === "two") return 2;
+  return (GEAR_BASES[item.baseId]?.hands ?? 1) >= 2 ? 2 : 1;
 }
 
 export function scaledGearStats(item: GearItem) {
   const base = GEAR_BASES[item.baseId] ?? GEAR_BASES.knife;
   const m = item.wearMult ?? WEAR_META[item.wear].mult;
   const v = item.statMult ?? 1;
-  const l = gearLevelMult(item);
+  const level = clampGearLevel(item.level);
   const roll = item.dmgRoll ?? base.dmg;
-  const dmg: [number, number] | undefined = roll
-    ? [Math.max(1, Math.round(roll[0] * m * l)), Math.max(2, Math.round(roll[1] * m * l))]
+  let dmg: [number, number] | undefined = roll
+    ? [
+        Math.max(1, scaleIntegerByLevel(Math.ceil(roll[0] * m), level)),
+        Math.max(2, scaleIntegerByLevel(Math.ceil(roll[1] * m), level)),
+      ]
     : undefined;
-  const armor = base.armor ? Math.max(1, Math.round(base.armor * m * v * l)) : 0;
-  const hp = base.hp ? Math.max(1, Math.round(base.hp * m * v * l)) : 0;
-  const evade = base.evade ? Number((base.evade * m * v * l).toFixed(2)) : 0;
-  return { base, dmg, armor, hp, evade, skill: weaponSkillFor(item), level: item.level ?? 1, wearMult: m };
+  if (dmg && canTwoHandGrip(item) && item.grip === "two") {
+    dmg = [Math.ceil(dmg[0] * 1.5), Math.ceil(dmg[1] * 1.5)];
+  }
+  const armor = base.armor ? scaleIntegerByLevel(Math.ceil(base.armor * m * v), level) : 0;
+  const hp = base.hp ? scaleIntegerByLevel(Math.ceil(base.hp * m * v), level) : 0;
+  const evade = base.evade ? scalePercentByLevel(Math.ceil(base.evade * 100 * m * v), level) / 100 : 0;
+  return { base, dmg, armor, hp, evade, skill: weaponSkillFor(item), level, wearMult: m };
 }
 
 /** Требования исследования предмета растут вместе с его уровнем. */
@@ -1393,7 +1508,12 @@ export function rollShopStock(shopLevel: number, floor = 1, rng: () => number = 
 export function slotsForItem(item: GearItem): Slot[] {
   const base = GEAR_BASES[item.baseId];
   if (!base) return [item.slot];
-  return base.altSlots ?? [base.slot];
+  if (base.altSlots) return base.altSlots;
+  /* Лёгкое оружие можно взять в любую руку. */
+  if (base.dmg && gearClassFor(item) === "light" && (base.slot === "mainHand" || base.slot === "offHand")) {
+    return base.slot === "mainHand" ? ["mainHand", "offHand"] : ["offHand", "mainHand"];
+  }
+  return [base.slot];
 }
 
 export interface EquipResult {
@@ -1406,7 +1526,7 @@ export interface EquipResult {
  * Надеть предмет. Учитывает двуручное оружие (занимает обе руки),
  * парное оружие, щиты и два слота под кольца.
  */
-export function equipItem(player: Player, uid: string, slot: Slot): EquipResult {
+export function equipItem(player: Player, uid: string, slot: Slot, grip?: "one" | "two"): EquipResult {
   const item = player.armory.find((g) => g.uid === uid);
   if (!item) return { player, note: "Предмет не найден в арсенале." };
 
@@ -1420,7 +1540,18 @@ export function equipItem(player: Player, uid: string, slot: Slot): EquipResult 
   const base = GEAR_BASES[item.baseId];
   const byUid = new Map(player.armory.map((g) => [g.uid, g]));
   const equip: Record<Slot, string | null> = { ...player.equip };
+  let armory = player.armory;
   let note: string | undefined;
+
+  /* Среднее оружие можно взять двумя руками: левая рука освобождается, урон ×1.5. */
+  if (slot === "mainHand" && canTwoHandGrip(item)) {
+    const nextGrip = grip ?? item.grip ?? "one";
+    armory = player.armory.map((g) => (g.uid === uid ? { ...g, grip: nextGrip } : g));
+    if (nextGrip === "two" && equip.offHand) {
+      note = `Левая рука освобождена: ${base?.name ?? "оружие"} взято двумя руками.`;
+      equip.offHand = null;
+    }
+  }
 
   /* Двуручное оружие вытесняет левую руку. */
   if (slot === "mainHand" && base?.hands === 2 && equip.offHand) {
@@ -1428,9 +1559,12 @@ export function equipItem(player: Player, uid: string, slot: Slot): EquipResult 
     note = `Левая рука освобождена: двуручник вытесняет ${off ? GEAR_BASES[off.baseId]?.name ?? "предмет" : "щит"}.`;
     equip.offHand = null;
   }
-  /* Вторая рука вытесняет двуручное оружие. */
+  /* Вторая рука вытесняет двуручное оружие или требует сменить хват. */
   if (slot === "offHand" && equip.mainHand) {
     const main = byUid.get(equip.mainHand);
+    if (main && canTwoHandGrip(main) && main.grip === "two") {
+      return { player, note: "Правая рука держит оружие двумя руками. Смените хват на одноручный, чтобы занять левую руку." };
+    }
     if (main && GEAR_BASES[main.baseId]?.hands === 2) {
       note = `Двуручник снят в пользу ${base?.name ?? "предмета"} во второй руке.`;
       equip.mainHand = null;
@@ -1443,7 +1577,7 @@ export function equipItem(player: Player, uid: string, slot: Slot): EquipResult 
   equip[slot] = uid;
 
   /* Здоровье подрезает вызывающая сторона: в контенте нет derived, чтобы не было цикла импортов. */
-  return { player: { ...player, equip }, note };
+  return { player: { ...player, armory, equip }, note };
 }
 
 export function unequipSlot(player: Player, slot: Slot): Player {

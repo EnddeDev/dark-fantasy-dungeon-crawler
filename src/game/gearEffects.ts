@@ -4,6 +4,7 @@
  */
 import type { ArchetypeId } from "./archetypes";
 import type { StatKey } from "./types";
+import { effectMagnitude, passiveMagnitude } from "./gearScaling";
 
 export type GearEffectId =
   // СИЛ / Бастион
@@ -83,12 +84,70 @@ export const GEAR_PASSIVES: Record<GearPassiveId, GearPassiveDef> = {
   spell_echo: { id: "spell_echo", stat: "int", name: "Эхо заклинаний", desc: "Свиток может сработать дважды.", detail: "+20% шанс повторного применения свитка" },
   time_warp: { id: "time_warp", stat: "int", name: "Искажение времени", desc: "Негативные эффекты почти вечны.", detail: "+2 раунда к длительности наложенных эффектов" },
   bulwark_wall: { id: "bulwark_wall", stat: "str", name: "Живая стена", desc: "Бастион превращает бой в осаду.", detail: "+4 регенерации, +6 шипов, защита снижает урон ещё на 20%" },
-  barbarian_rage: { id: "barbarian_rage", stat: "str", name: "Ярость мясника", desc: "Варвар живёт, пока бьёт.", detail: "+12% вампиризма, +20% урона при_health<50%, +15% шанс оглушения" },
+  barbarian_rage: { id: "barbarian_rage", stat: "str", name: "Ярость мясника", desc: "Варвар живёт, пока бьёт.", detail: "+12% вампиризма, +20% урона при ОЗ < 50%, +15% шанс оглушения" },
   assassin_shadow: { id: "assassin_shadow", stat: "agi", name: "Тень убийцы", desc: "Первый удар решает бой.", detail: "+1 ход в первом раунде, +25% шанса крита и +50% силы крита в первые 2 раунда" },
   ninja_phantom: { id: "ninja_phantom", stat: "agi", name: "Фантом", desc: "Ниндзя исчезает между ударами.", detail: "+10% уклонения, расходники лечат на 12%, после уклонения 25% шанс +1 хода" },
   warlock_pact: { id: "warlock_pact", stat: "int", name: "Печать пакта", desc: "Колдун платит кровью за силу.", detail: "+25% урона приёмов, −1 откат, приёмы лечат на 12%" },
   sage_library: { id: "sage_library", stat: "int", name: "Запретная библиотека", desc: "Мудрец читает мир как книгу.", detail: "+25% урона свитков, +20% шанс не потратить свиток, +1 свиток при создании" },
 };
+
+/** Описание эффекта с учётом уровня предмета. */
+export function effectDetail(id: GearEffectId, level = 1): string {
+  const n = effectMagnitude(id, level);
+  switch (id) {
+    case "damage_resist": return `−${n} урона за каждый входящий удар`;
+    case "thorns": return `+${n} урона врагу за каждый его удар по тебе`;
+    case "regen": return `+${n} здоровья в конце каждого раунда`;
+    case "resist": return `+${n}% сопротивления эффектам`;
+    case "guard_bonus": return `Защита снижает входящий урон ещё на ${n}%`;
+    case "armor_damage": return `+${n}% брони к урону оружия и приёмов`;
+    case "stun_chance": return `+${n}% шанс оглушить врага на 1 ход`;
+    case "vamp_str": return `+${n}% лечения от урона оружием и приёмами`;
+    case "missing_hp_damage": return `+${n}% урона за каждые 10% недостающего здоровья (до ${n * 10}%)`;
+    case "enemy_missing_damage": return `+${n}% урона за каждые 10% недостающего здоровья врага (до ${n * 10}%)`;
+    case "two_hand_damage": return `+${n}% урона двуручным оружием`;
+    case "evade": return `+${n}% к уклонению`;
+    case "counter": return `+${n}% шанс нанести второй удар подряд`;
+    case "crit_chance": return `+${n}% к шансу критического удара`;
+    case "crit_mult": return `+${n}% к множителю критического урона`;
+    case "vamp": return `+${n}% лечения от нанесённого урона`;
+    case "ap": return `+${n} ход в раунде`;
+    case "first_strike": return `+${n}% урона в первые 2 раунда`;
+    case "consumable_damage": return `+${n}% урона расходников`;
+    case "consumable_scale": return `+${n}×ЛОВ к масштабу расходников`;
+    case "consumable_vamp": return `+${n}% лечения от урона расходников`;
+    case "debuff_damage": return `+${n}% урона за каждый негативный эффект на враге (до ${n * 4}%)`;
+    case "dodge_action": return `+${n}% шанс после уклонения получить +1 ход в следующем раунде`;
+    case "skill_damage": return `+${n}% урона приёмов`;
+    case "skill_cd": return `−${n} раунд перезарядки приёмов (минимум 1)`;
+    case "skill_vamp": return `+${n}% лечения от урона приёмов`;
+    case "status_duration": return `+${n} раунд к длительности наложенных эффектов`;
+    case "skill_scale": return `+${n} к множителю характеристики приёмов`;
+    case "scroll_damage": return `+${n}% урона свитков`;
+    case "scroll_scale": return `+${n}×ИНТ к масштабу свитков`;
+    case "scroll_vamp": return `+${n}% лечения от урона свитков`;
+    case "scroll_save": return `+${n}% шанс не потратить свиток`;
+    case "scroll_create": return `+${n} свиток при создании приёмом`;
+  }
+}
+
+export function passiveDetail(id: GearPassiveId, level = 1): string {
+  const n = (key: string) => passiveMagnitude(id, key, level);
+  switch (id) {
+    case "heavy_blow": return `+${n("stun")}% шанс оглушения с каждого удара`;
+    case "fortress": return `−${n("resist")}% ко всему входящему урону`;
+    case "dance": return `+${n("counter")}% шанс контратаки после своего удара`;
+    case "precision": return `+${n("crit")}% к шансу критического удара`;
+    case "spell_echo": return `+${n("echo")}% шанс повторного применения свитка`;
+    case "time_warp": return `+${n("duration")} раунда к длительности наложенных эффектов`;
+    case "bulwark_wall": return `+${n("regen")} регенерации, +${n("thorns")} шипов, защита снижает урон ещё на ${n("guard")}%`;
+    case "barbarian_rage": return `+${n("vamp")}% вампиризма, +${n("damage")}% урона при ОЗ < 50%, +${n("stun")}% шанс оглушения`;
+    case "assassin_shadow": return `+${n("ap")} ход в первом раунде, +${n("crit")}% шанса крита и +${n("critMult")}% силы крита в первые 2 раунда`;
+    case "ninja_phantom": return `+${n("evade")}% уклонения, расходники лечат на ${n("vamp")}%, после уклонения ${n("dodge")}% шанс +1 хода`;
+    case "warlock_pact": return `+${n("skillDamage")}% урона приёмов, −${n("cd")} откат, приёмы лечат на ${n("vamp")}%`;
+    case "sage_library": return `+${n("scrollDamage")}% урона свитков, +${n("save")}% шанс не потратить свиток, +${n("create")} свиток при создании`;
+  }
+}
 
 const ARCHETYPE_EFFECTS: Record<ArchetypeId, GearEffectId[]> = {
   bulwark: ["damage_resist", "thorns", "regen", "resist", "guard_bonus", "armor_damage"],

@@ -12,6 +12,8 @@ import {
   gearStatReqLabel,
   scaledGearStats,
   slotsForItem,
+  canTwoHandGrip,
+  effectiveHands,
   wearRequirementNote,
 } from "../game/content";
 import { ARCHETYPES } from "../game/archetypes";
@@ -42,7 +44,7 @@ export function GearCard({
   /** Ячейка, выбранная в левой колонке: у кольца останется одна кнопка надевания. */
   preferredSlot?: Slot;
   onInspect: () => void;
-  onEquip?: (slot: Slot) => void;
+  onEquip?: (slot: Slot, grip?: "one" | "two") => void;
   onUnequip?: (slot: Slot) => void;
   onSell?: () => void;
   onBuy?: () => void;
@@ -87,7 +89,7 @@ export function GearCard({
           </h4>
           <p className="mt-1 text-[0.9rem] leading-snug text-mute">
             {GEAR_CLASS_META[gearClassFor(item)].name} · ур. {item.level ?? 1}{archetype ? ` · ${archetype.name}` : ""}
-            {st.base.hands === 2 ? " · обе руки" : ""}
+            {effectiveHands(item) === 2 ? " · обе руки" : canTwoHandGrip(item) ? " · хват: одной/двумя" : ""}
           </p>
         </div>
         {equipped && <Check size={16} className="mt-1 shrink-0 text-verd" aria-label="Надето" />}
@@ -155,16 +157,39 @@ export function GearCard({
         ) : (
           <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
             {allowed.map((target) => (
-              <Btn
-                key={target}
-                tone="verd"
-                className="px-2.5 py-2 text-[0.86rem]"
-                disabled={!wearable}
-                title={wearable ? `Надеть: ${SLOT_META[target].name}` : wearRequirementNote(item, player)}
-                onClick={() => onEquip?.(target)}
-              >
-                <Plus size={12} aria-hidden /> {allowed.length > 1 ? SLOT_META[target].short : "Надеть"}
-              </Btn>
+              canTwoHandGrip(item) && target === "mainHand" ? (
+                <span key={target} className="flex flex-wrap gap-1.5">
+                  <Btn
+                    tone="verd"
+                    className="px-2.5 py-2 text-[0.86rem]"
+                    disabled={!wearable}
+                    title={wearable ? "Надеть одной рукой" : wearRequirementNote(item, player)}
+                    onClick={() => onEquip?.(target, "one")}
+                  >
+                    <Plus size={12} aria-hidden /> Одной рукой
+                  </Btn>
+                  <Btn
+                    tone="flame"
+                    className="px-2.5 py-2 text-[0.86rem]"
+                    disabled={!wearable}
+                    title={wearable ? "Взять двумя руками: урон ×1.5, левая рука свободна" : wearRequirementNote(item, player)}
+                    onClick={() => onEquip?.(target, "two")}
+                  >
+                    <Plus size={12} aria-hidden /> Двумя руками
+                  </Btn>
+                </span>
+              ) : (
+                <Btn
+                  key={target}
+                  tone="verd"
+                  className="px-2.5 py-2 text-[0.86rem]"
+                  disabled={!wearable}
+                  title={wearable ? `Надеть: ${SLOT_META[target].name}` : wearRequirementNote(item, player)}
+                  onClick={() => onEquip?.(target)}
+                >
+                  <Plus size={12} aria-hidden /> {allowed.length > 1 ? SLOT_META[target].short : "Надеть"}
+                </Btn>
+              )
             ))}
             <Btn tone="danger" className="px-2.5 py-2 text-[0.86rem]" onClick={onSell} title={`Продать за ${gearSellPrice(item)} зол.`}>
               Продать

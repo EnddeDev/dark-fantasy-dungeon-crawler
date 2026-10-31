@@ -7,11 +7,14 @@ import {
   MAX_LEVEL,
   PASSIVES,
   RARE_AFFIXES,
+  legendaryPassiveDesc,
+  rareAffixDesc,
+  epicSkillDesc,
   STAT_META,
   STAT_ORDER,
   xpForNextLevel,
 } from "../game/content";
-import { GEAR_EFFECTS, GEAR_PASSIVES } from "../game/gearEffects";
+import { GEAR_EFFECTS, GEAR_PASSIVES, effectDetail, passiveDetail } from "../game/gearEffects";
 import { archetypeByMilestone } from "../game/archetypes";
 import { statMilestoneById } from "../game/statMilestones";
 import { combatReadout, derived, equippedList, type BattleState } from "../game/battle";
@@ -151,19 +154,19 @@ export function Rail({
     const source = item.baseId;
     item.effects.forEach((id) => {
       const effect = GEAR_EFFECTS[id];
-      if (effect) addGearEffect(`effect-${id}`, effect.name, effect.detail, source);
+      if (effect) addGearEffect(`effect-${id}`, effect.name, effectDetail(id, item.level ?? 1), source);
     });
     if (item.passive) {
       const passive = GEAR_PASSIVES[item.passive];
-      if (passive) addGearEffect(`passive-${item.passive}`, passive.name, passive.detail, source);
+      if (passive) addGearEffect(`passive-${item.passive}`, passive.name, passiveDetail(item.passive, item.level ?? 1), source);
     }
     if (item.rareAffix) {
       const affix = RARE_AFFIXES[item.rareAffix];
-      addGearEffect(`affix-${item.rareAffix}`, affix.name, affix.desc, source);
+      addGearEffect(`affix-${item.rareAffix}`, affix.name, rareAffixDesc(item.rareAffix, item.level ?? 1), source);
     }
     if (item.legendaryPassive) {
       const passive = LEGENDARY_PASSIVES[item.legendaryPassive];
-      addGearEffect(`legendary-${item.legendaryPassive}`, passive.name, passive.desc, source);
+      addGearEffect(`legendary-${item.legendaryPassive}`, passive.name, legendaryPassiveDesc(item.legendaryPassive, item.level ?? 1), source);
     }
   });
   const gearEntries: EffectEntry[] = [...gearEffects.values()].map((entry) => ({
@@ -194,7 +197,7 @@ export function Rail({
 
   const skills = [
     ...(d.weaponSkill ? [{ ...d.weaponSkill, kind: "Приём оружия", cooldown: battle?.p.weaponCd ?? 0 }] : []),
-    ...d.epicSkills.map((skill) => ({ ...skill, kind: "Эпический приём", cooldown: battle?.p.epicCds[skill.id] ?? 0 })),
+    ...d.epicSkills.map((skill) => ({ ...skill, desc: epicSkillDesc(skill.id, d.epicSkillLevels[skill.id] ?? 1), kind: "Эпический приём", cooldown: battle?.p.epicCds[skill.id] ?? 0 })),
   ];
   const skillEntries: EffectEntry[] = skills.map((skill) => {
     const required = Math.max(1, skill.intReq - d.intDiscount);
