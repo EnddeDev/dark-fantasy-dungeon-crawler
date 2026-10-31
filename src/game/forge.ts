@@ -18,10 +18,8 @@ export interface ForgeOption {
   from: string;
   to: string;
   cost: number;
-  /** Шанс уничтожения предмета, 0..1. */
+  /** Шанс уничтожения предмета, 0..1. Если предмет не уничтожен, улучшение успешно. */
   destroyChance: number;
-  /** Шанс успешного повышения (для уровня). Остальные улучшения успешны, если предмет не уничтожен. */
-  successChance?: number;
   available: boolean;
 }
 
@@ -36,8 +34,8 @@ export function levelUpgradeCost(level: number): number {
   return 100 + 50 * (clampGearLevel(level) + 1);
 }
 
-/** Шанс повысить уровень: 10% + 5% за каждый текущий уровень сверх первого. */
-export function levelUpgradeChance(level: number): number {
+/** Риск уничтожения при повышении уровня: 10% + 5% за каждый текущий уровень сверх первого. */
+export function levelUpgradeDestroyChance(level: number): number {
   return Math.min(1, Math.round((0.1 + 0.05 * (clampGearLevel(level) - 1)) * 100) / 100);
 }
 
@@ -72,8 +70,7 @@ export function forgeOptions(item: GearItem): ForgeOption[] {
       from: String(lvl),
       to: String(Math.min(MAX_GEAR_LEVEL, lvl + 1)),
       cost: levelUpgradeCost(lvl),
-      destroyChance: 0.25,
-      successChance: levelUpgradeChance(lvl),
+      destroyChance: levelUpgradeDestroyChance(lvl),
       available: lvl < MAX_GEAR_LEVEL,
     },
   ];
@@ -131,7 +128,7 @@ export interface ForgeResult {
 
 /**
  * Выполняет попытку улучшения. Золото списывается всегда;
- * при провале предмет либо остаётся прежним, либо уничтожается.
+ * единственный риск — уничтожение предмета. Если он уцелел, улучшение гарантировано.
  */
 export function forgeUpgrade(
   player: Player,
@@ -146,27 +143,7 @@ export function forgeUpgrade(
   if (player.gold < opt.cost) return { player, destroyed: false, success: false, cost: 0, message: "Не хватает золота." };
 
   const paid: Player = { ...player, gold: player.gold - opt.cost };
-  // Для уровня сначала проверяем успех повышения; при провале — риск уничтожения.
-  if (kind === "level" && opt.successChance !== undefined && rng() >= opt.successChance) {
-    const destroyedOnFail = rng() < opt.destroyChance;
-    if (destroyedOnFail) {
-      const equip = { ...paid.equip };
-      for (const slot of Object.keys(equip) as (keyof typeof equip)[]) {
-        if (equip[slot] === uid) equip[slot] = null;
-      }
-      return {
-        player: { ...paid, armory: paid.armory.filter((g) => g.uid !== uid), equip },
-        destroyed: true, success: false, cost: opt.cost,
-        message: `«${GEAR_BASES[item.baseId]?.name ?? "Предмет"}» не выдержал горна и уничтожен.`,
-      };
-    }
-    return {
-      player: paid, destroyed: false, success: false, cost: opt.cost,
-      message: `Горн не принял металл: уровень «${GEAR_BASES[item.baseId]?.name ?? "Предмет"}» не повышен. Золото потрачено.`,
-    };
-  }
-  // Уровень уже прошёл проверку успеха выше; повторный риск уничтожения не бросаем.
-  const destroyed = kind === "level" ? false : rng() < opt.destroyChance;
+  const destroyed = rng() < opt.destroyChance;
   if (destroyed) {
     const equip = { ...paid.equip };
     for (const slot of Object.keys(equip) as (keyof typeof equip)[]) {

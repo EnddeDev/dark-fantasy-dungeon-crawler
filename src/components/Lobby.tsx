@@ -1354,7 +1354,6 @@ export function Lobby({
                                 <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[0.84rem]">
                                   <Tag tone="flame">{opt.cost} зол.</Tag>
                                   <Tag tone="rubric">риск уничтожения {Math.round(opt.destroyChance * 100)}%</Tag>
-                                  {opt.successChance !== undefined && <Tag tone="verd">шанс успеха {Math.round(opt.successChance * 100)}%</Tag>}
                                   {!opt.available && <Tag tone="mute">предел</Tag>}
                                 </div>
                                 <Btn
@@ -1501,10 +1500,7 @@ export function Lobby({
             return (
               <div className="space-y-2 text-[1rem] leading-relaxed text-parch/90">
                 <p>Улучшение «{opt.label.toLowerCase()}» стоит <b className="text-flamehi">{opt.cost} зол.</b></p>
-                {opt.successChance !== undefined && (
-                  <p>Шанс повышения: <b className="text-verd">{Math.round(opt.successChance * 100)}%</b> (10% + 5% за каждый текущий уровень сверх первого).</p>
-                )}
-                <p>Риск уничтожения при провале: <b className="text-rubric">{Math.round(opt.destroyChance * 100)}%</b>. Золото списывается даже при неудаче.</p>
+                <p>Риск уничтожения: <b className="text-rubric">{Math.round(opt.destroyChance * 100)}%</b>. Если предмет уцелеет, улучшение гарантировано. Золото списывается даже при уничтожении.</p>
               </div>
             );
           })()}
