@@ -12,12 +12,9 @@ import type { RarityTier, StatKey, WearTier } from "./types";
 
 export const SHOP_MAX_LEVEL = 10;
 
-/** Цена улучшения лавки: 1→2 = 40, далее в 1.3× дороже. */
-const UPGRADE_BASE = 40;
-const UPGRADE_FACTOR = 1.3;
-
+/** Цена улучшения лавки: 250 × текущий уровень (1→2 = 250, 9→10 = 2250). */
 export function shopUpgradeCost(level: number): number {
-  return Math.round(UPGRADE_BASE * UPGRADE_FACTOR ** (level - 1) / 5) * 5;
+  return 250 * Math.max(1, Math.floor(level));
 }
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -488,12 +485,24 @@ export const EXTRA_ITEMS: ItemDef[] = [
   { id: "scroll_snare", name: "Свиток оков", kind: "scroll", price: 145,
     use: { type: "stun_enemy", intReq: 4, rounds: 1 },
     desc: "Вяжет инициативу: враг теряет 1 ход в следующем раунде." },
-  { id: "acid_vial", name: "Флакон кислоты", kind: "throwable", price: 88,
-    use: { type: "acid", power: 12, scale: 1, scaleStat: "agi", rounds: 2 },
-    desc: "12 + 1×ЛОВ урона и −3 брони врагу (надолго). Без Интеллекта." },
-  { id: "holy_water", name: "Святая вода", kind: "throwable", price: 105,
+  { id: "acid_vial", name: "Зелье кислоты", kind: "potion", price: 88, level: 2, minFloor: 2,
+    use: { type: "acid", power: 12, scale: 1.5, scaleStat: "agi", rounds: 2 },
+    desc: "12 + 1.5×ЛОВ урона и снимает 3 брони врага (надолго)." },
+  { id: "holy_water", name: "Зелье святого пламени", kind: "potion", price: 105, level: 3, minFloor: 3,
     use: { type: "damage", power: 18, scale: 3, scaleStat: "agi", vs: "undead" },
-    desc: "18 + 3×ЛОВ урона. Нежити — вдвое против обычных. Интеллект не нужен." },
+    desc: "18 + 3×ЛОВ урона. Нежити — вдвое против обычных." },
+  { id: "serrated_knife", name: "Зазубренный кинжал", kind: "throwable", price: 62, level: 2, minFloor: 2,
+    use: { type: "bleed", power: 8, scale: 1.5, scaleStat: "agi", rounds: 3 },
+    desc: "8 + 1.5×ЛОВ физического урона и кровотечение на 3 раунда." },
+  { id: "frost_bomb", name: "Морозная бомба", kind: "throwable", price: 84, level: 3, minFloor: 3,
+    use: { type: "chill", power: 10, scale: 1.5, scaleStat: "agi", rounds: 3 },
+    desc: "10 + 1.5×ЛОВ урона и замерзание: урон врага −30% на 3 раунда." },
+  { id: "blight_powder", name: "Прах порчи", kind: "throwable", price: 96, level: 4, minFloor: 4,
+    use: { type: "blight", power: 6, scale: 1, scaleStat: "agi", rounds: 3 },
+    desc: "6 + 1×ЛОВ урона и порча: враг наносит −20% урона и теряет 3+этаж ОЗ за раунд." },
+  { id: "wither_dust", name: "Прах увядания", kind: "throwable", price: 110, level: 5, minFloor: 5,
+    use: { type: "wither", power: 4, scale: 1, scaleStat: "agi", rounds: 3 },
+    desc: "4 + 1×ЛОВ урона и увядание: любое лечение врага снижено на 75% на 3 раунда." },
   { id: "potion_stone", name: "Зелье каменной кожи", kind: "potion", price: 100,
     use: { type: "stone", rounds: 3 },
     desc: "Три раунда входящий урон снижен на 30%." },
@@ -505,8 +514,16 @@ export const EXTRA_ITEMS: ItemDef[] = [
 export const EXTRA_RECIPES: Recipe[] = [
   { id: "r9", out: "potion_haste", count: 1, need: ["root", "herb", "powder"], intReq: 3, price: 85 },
   { id: "r10", out: "scroll_terror", count: 1, need: ["silk", "cloth", "bone"], intReq: 4, price: 95 },
-  { id: "r11", out: "acid_vial", count: 1, need: ["powder", "gland"], intReq: 2, price: 70 },
-  { id: "r12", out: "holy_water", count: 1, need: ["herb", "tear", "cloth"], intReq: 4, price: 100 },
+  { id: "r11", out: "acid_vial", count: 1, need: ["powder", "gland"], intReq: 2, price: 70, station: "alchemy" },
+  { id: "r12", out: "holy_water", count: 1, need: ["herb", "tear", "cloth"], intReq: 4, price: 100, station: "alchemy" },
+  { id: "r21", out: "serrated_knife", count: 2, need: ["fang", "powder"], intReq: 2, price: 55, station: "workshop" },
+  { id: "r22", out: "frost_bomb", count: 1, need: ["powder", "ember", "cloth"], intReq: 3, price: 75, station: "workshop" },
+  { id: "r23", out: "blight_powder", count: 1, need: ["gland", "bone", "herb"], intReq: 3, price: 85, station: "workshop" },
+  { id: "r24", out: "wither_dust", count: 1, need: ["tear", "bone", "silk"], intReq: 4, price: 95, station: "workshop" },
+  { id: "r25", out: "throwing_knife", count: 3, need: ["fang", "powder"], intReq: 1, price: 40, station: "workshop" },
+  { id: "r26", out: "smoke_bomb", count: 1, need: ["powder", "cloth", "herb"], intReq: 2, price: 65, station: "workshop" },
+  { id: "r27", out: "blast_bomb", count: 1, need: ["powder", "ember", "fang"], intReq: 3, price: 85, station: "workshop" },
+  { id: "r28", out: "bomb_flash", count: 1, need: ["powder", "silk", "cloth"], intReq: 3, price: 80, station: "workshop" },
   { id: "r13", out: "potion_stone", count: 1, need: ["root", "ember", "bone"], intReq: 5, price: 105 },
   { id: "r14", out: "scroll_snare", count: 1, need: ["silk", "root"], intReq: 4, price: 90 },
 ];

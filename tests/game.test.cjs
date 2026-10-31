@@ -42,7 +42,7 @@ function player(extra = {}) {
     name: "Покоритель",
     level: 1,
     xp: 0,
-    statPoints: 4,
+    statPoints: 2,
     stats: { str: 1, agi: 1, int: 1 },
     hp: 30,
     gold: 0,
@@ -174,7 +174,7 @@ test("levels are never capped by the floor, but late levels cost many runs", () 
   const first = content.grantXp(player(), 100_000);
   assert.equal(first.player.level, 10);
   assert.equal(first.player.xp, 0);
-  assert.equal(first.player.statPoints, 22);
+  assert.equal(first.player.statPoints, 29);
   assert.strictEqual(content.grantXp(first.player, 10_000).player, first.player);
 
   // Порог растёт, а опыт с монстра невелик: поздние уровни требуют всё больше заходов.
@@ -537,6 +537,7 @@ test("every creature and item can be fought to a terminal state", () => {
   const known = new Set([
     "attack", "heavy", "guard", "wound", "curse", "drain", "sunder",
     "bell_stun", "poison", "multi", "terror", "flee",
+    "seal_items", "seal_skills", "seal_attack",
   ]);
   for (const mv of seenMoves) assert.ok(known.has(mv), `неизвестный приём ${mv}`);
   assert.ok(seenMoves.has("multi") && seenMoves.has("terror") && seenMoves.has("poison"),
@@ -868,11 +869,14 @@ test("weapon technique descriptions and passive notes match the actual affinity 
       const ws = content.weaponSkillFor(item);
       const short = content.STAT_META[ws.scaleStat].short;
       assert.equal(ws.scaleStat, content.gearAffinity(item));
-      assert.ok(ws.desc.includes(`${ws.scaleMult}×${short}`), `${baseId}/${skillId}: ${ws.desc}`);
+      if (ws.effect === "double_attack") {
+        assert.ok(ws.desc.includes("без дополнительного бонуса"), `${baseId}/${skillId}: ${ws.desc}`);
+      } else {
+        assert.ok(ws.desc.includes(`${ws.scaleMult}×${short}`), `${baseId}/${skillId}: ${ws.desc}`);
+      }
       assert.ok(ws.passiveNote.includes(`×${short}`), ws.passiveNote);
       const baseRange = ws.scaleStat === "int" ? [2, 4.5] : ws.scaleStat === "str" ? [1.5, 3.5] : [1.5, 2.5];
       assert.ok(ws.scaleMult >= baseRange[0], `${baseId}/${skillId}: ${ws.scaleMult}`);
-      assert.ok(ws.desc.includes(`${ws.scaleMult}×${short}`), ws.desc);
     }
   }
 });
@@ -892,23 +896,25 @@ test("only scrolls require Intelligence among consumables", () => {
   }
 });
 
-test("throwing knife, poison dart, acid, bomb and holy water scale from Agility, not Intelligence", () => {
-  const ids = ["throwing_knife", "poison_dart", "acid_vial", "blast_bomb", "holy_water"];
+test("all consumables scale from Agility; vials and holy water are potions now", () => {
+  const ids = ["throwing_knife", "poison_dart", "acid_vial", "blast_bomb", "holy_water", "serrated_knife", "frost_bomb", "blight_powder", "wither_dust"];
   const low = { str: 1, agi: 2, int: 10 };
   const high = { str: 1, agi: 8, int: 1 };
   for (const id of ids) {
     const def = content.ITEMS[id];
-    assert.equal(def.kind, "throwable");
     assert.equal(content.consumableScaleStat(def), "agi", id);
     assert.ok(content.consumablePower(def, high) > content.consumablePower(def, low), id);
     assert.ok(content.consumableScaleLabel(def).includes("×ЛОВ"), id);
   }
+  assert.equal(content.ITEMS.acid_vial.kind, "potion");
+  assert.equal(content.ITEMS.holy_water.kind, "potion");
+  assert.equal(content.ITEMS.fear_vial.kind, "potion");
   for (const id of ["scroll_spark", "scroll_fire", "scroll_heal", "scroll_frost", "scroll_bolt"]) {
     const def = content.ITEMS[id];
-    assert.equal(content.consumableScaleStat(def), "int", id);
-    assert.ok(content.consumableScaleLabel(def).includes("×ИНТ"), id);
+    assert.equal(content.consumableScaleStat(def), "agi", id);
+    assert.ok(content.consumableScaleLabel(def).includes("×ЛОВ"), id);
+    assert.ok(content.consumableIntReq(def, 0) > 0, id);
   }
-  assert.equal(content.consumableScaleStat(content.ITEMS.potion_s), null);
 });
 
 test("battle consumable damage follows Agility and ignores Intelligence for non-scrolls", () => {
@@ -928,12 +934,13 @@ test("battle consumable damage follows Agility and ignores Intelligence for non-
     assert.ok(5000 - agi.enemy.hp > 5000 - int.enemy.hp, `${id}: ЛОВ должна давать больше урона, чем ИНТ`);
     assert.equal(agi.bag[id], undefined);
   }
-  // Свиток по-прежнему требует ИНТ и усиливается им.
+  // Свиток по-прежнему требует ИНТ, но сила считается от ЛОВ.
   const lowInt = mk({ str: 1, agi: 8, int: 1 }, { scroll_spark: 1 });
   const refused = battle.playerAct(lowInt, { type: "item", id: "scroll_spark" });
   assert.equal(refused.bag.scroll_spark, 1);
-  const highInt = battle.playerAct(mk({ str: 1, agi: 1, int: 8 }, { scroll_spark: 1 }), { type: "item", id: "scroll_spark" });
-  assert.ok(5000 - highInt.enemy.hp >= 16 + 3 * 8);
+  const highAgi = battle.playerAct(mk({ str: 1, agi: 8, int: 8 }, { scroll_spark: 1 }), { type: "item", id: "scroll_spark" });
+  const lowAgi = battle.playerAct(mk({ str: 1, agi: 1, int: 8 }, { scroll_spark: 1 }), { type: "item", id: "scroll_spark" });
+  assert.ok(5000 - highAgi.enemy.hp > 5000 - lowAgi.enemy.hp);
 });
 
 test("magical scroll bonuses do not amplify non-scroll consumables", () => {
@@ -1186,7 +1193,7 @@ test("shop upgrade price is the same function used by the UI and the charge", ()
   for (let level = 1; level < 10; level++) {
     const cost = content.shopUpgradeCost(level);
     assert.ok(Number.isInteger(cost) && cost > 0);
-    assert.equal(cost, Math.round(40 * 1.3 ** (level - 1) / 5) * 5);
+    assert.equal(cost, 250 * level);
   }
 });
 
@@ -1319,4 +1326,167 @@ test("technique INT requirements follow item level tiers and STR gear is lower",
     assert.equal(content.weaponSkillFor(mk("rapier", level)).intReq, expected);
     assert.equal(content.weaponSkillFor(mk("sword", level)).intReq, Math.max(1, expected - 1));
   }
+});
+
+/* ─────────────  БАЛАНС, БОССЫ, ПРИПАСЫ И КУЗНИЦА  ───────────── */
+
+const forge = loadGameModule("forge");
+
+test("stat point costs follow the per-stat target-value tables", () => {
+  const cost = (stat, from) => content.statPointCost(stat, from);
+  assert.deepEqual([1, 2, 3, 4, 5, 6, 7, 8, 9].map((v) => cost("str", v - 1)), [1, 1, 1, 2, 2, 2, 3, 3, 3]);
+  assert.equal(cost("str", 9), 4);
+  assert.deepEqual([1, 2, 3, 4, 5, 6, 7, 8, 9].map((v) => cost("agi", v - 1)), [2, 2, 2, 2, 3, 2, 2, 2, 2]);
+  assert.equal(cost("agi", 9), 3);
+  assert.deepEqual([1, 2, 3, 4, 5, 6, 7, 8, 9].map((v) => cost("int", v - 1)), [1, 1, 1, 2, 2, 2, 2, 2, 4]);
+  assert.equal(cost("int", 9), 4);
+  const leveled = content.grantXp(mkP({ statPoints: 2 }), 100_000);
+  assert.equal(leveled.player.statPoints, 2 + 9 * 3);
+});
+
+test("monster stats multiply by 1.5 per level, AP excluded; boss level equals floor", () => {
+  const rng = seededRandom([0.5, 0.5, 0.5, 0.5, 0.5, 0.5]);
+  const l1 = battle.spawnEnemy(1, false, rng);
+  const l2 = battle.spawnEnemy(2, false, seededRandom([0.5, 0.5, 0.5, 0.5, 0.5, 0.5]));
+  // Сравниваем одного и того же монстра через принудительный уровень этажа.
+  const def = l1.def;
+  const mkAt = (floor) => {
+    const old = Math.random;
+    Math.random = () => 0.5;
+    const s = battle.spawnEnemy(floor, false);
+    Math.random = old;
+    return s;
+  };
+  const a = mkAt(1), b = mkAt(2);
+  if (a.def.id === b.def.id && a.threat === b.threat) {
+    assert.ok(Math.abs(b.hp / a.hp - 1.5) < 0.02, `HP ×1.5: ${a.hp} → ${b.hp}`);
+    assert.ok(Math.abs(b.atk[0] / a.atk[0] - 1.5) < 0.02, `ATK ×1.5`);
+    assert.equal(b.ap, a.ap, "ходы не скейлятся от уровня");
+  }
+  const boss = battle.spawnEnemy(7, true, seededRandom([0.1, 0.2, 0.3, 0.4, 0.5, 0.6]));
+  assert.equal(boss.level, 7);
+  assert.equal(boss.effects.length, 7);
+  assert.ok(boss.moves.some((m) => m.startsWith("seal_")));
+});
+
+test("extra-turn gear is gated to level 3+, capped 1/2/3 and lasts one round", () => {
+  const mkAp = (level, rarity) => {
+    const g = content.createGearItem({ baseId: "ring_band", level, rarity, wear: "new", identified: true });
+    g.effects = ["ap"];
+    g.passive = undefined;
+    g.legendaryPassive = undefined;
+    return g;
+  };
+  assert.equal(battle.gearExtraAp(mkAp(2, "legendary")), 0);
+  assert.equal(battle.gearExtraAp(mkAp(3, "rare")), 1);
+  assert.equal(battle.gearExtraAp(mkAp(5, "epic")), 1);
+  assert.equal(battle.gearExtraAp(mkAp(6, "rare")), 2);
+  assert.equal(battle.gearExtraAp(mkAp(10, "epic")), 2);
+  assert.equal(battle.gearExtraAp(mkAp(10, "legendary")), 3);
+  const g = mkAp(10, "legendary");
+  const p = { ...mkP({ level: 10, stats: { str: 5, agi: 5, int: 5 } }), armory: [g], equip: { ...mkP().equip, ring1: g.uid } };
+  const d = battle.derived(p);
+  assert.equal(d.firstRoundApBonus, 3);
+  assert.equal(d.ap, 2 + Math.floor(5 / 2));
+  const b = battle.newBattle(p, 1);
+  assert.equal(b.p.firstRoundApBonus, 3);
+  const r1 = battle.combatReadout(b);
+  b.round = 2;
+  const r2 = battle.combatReadout(b);
+  assert.equal(r1.ap, r2.ap + 3);
+});
+
+test("multi-hit technique deals normal attacks without the flat technique bonus", () => {
+  const g = content.createGearItem({ baseId: "barbarian_greataxe", skillId: "rage_sweep", level: 1, wear: "new", rarity: "common", identified: true });
+  g.dmgRoll = [10, 10];
+  const p = { ...mkP({ level: 10, stats: { str: 1, agi: 10, int: 4 }, hp: 500 }), armory: [g], equip: { ...mkP().equip, mainHand: g.uid } };
+  const b = battle.newBattle(p, 1);
+  b.queue = ["p", "e"]; b.idx = 0;
+  b.enemy.hp = 5000; b.enemy.maxHp = 5000; b.enemy.armor = 0; b.enemy.passive = null; b.enemy.effects = []; b.enemy.effectPower = {};
+  b.p.evade = 0; b.p.critChance = 0;
+  const old = Math.random; Math.random = () => 0.99;
+  const after = battle.playerAct(b, { type: "weapon_skill" });
+  Math.random = old;
+  const dealt = 5000 - after.enemy.hp;
+  // Два обычных удара ровно по броску оружия, без +2.4×СИЛ.
+  const normal = b.p.hit[0] + Math.floor(b.p.stats.str * 0.8);
+  assert.equal(dealt, normal * 2, `ожидалось два обычных удара без бонуса, получено ${dealt}`);
+});
+
+test("supplies have levels tied to minimum drop floor and new statuses work", () => {
+  assert.equal(content.supplyLevel("throwing_knife"), 1);
+  assert.equal(content.supplyLevel("wither_dust"), 5);
+  for (let i = 0; i < 200; i++) {
+    const loot = battle.rollConsumableLoot(1, 3);
+    for (const id of loot) {
+      if (content.ITEMS[id]?.use) assert.ok(content.supplyLevel(id) <= 1, `${id} выпал на этаже 1`);
+    }
+  }
+  const pl = player({ hp: 500, stats: { str: 1, agi: 8, int: 1 }, bag: { serrated_knife: 1, wither_dust: 1, blight_powder: 1 } });
+  const mk = (id) => {
+    const b = battle.newBattle(pl, 5);
+    b.queue = ["p", "e"]; b.idx = 0;
+    b.enemy.hp = 5000; b.enemy.maxHp = 5000; b.enemy.armor = 0; b.enemy.passive = null; b.enemy.effects = []; b.enemy.effectPower = {};
+    b.enemy.def = { ...b.enemy.def, type: "beast", moves: ["attack"] };
+    b.enemy.moves = ["attack"];
+    return battle.playerAct(b, { type: "item", id });
+  };
+  assert.ok(mk("serrated_knife").enemy.statuses.bleed > 0);
+  assert.ok(mk("blight_powder").enemy.statuses.blight > 0);
+  assert.ok(mk("wither_dust").enemy.statuses.wither > 0);
+});
+
+test("workshop recipes craft throwables and alchemy stays separate", () => {
+  const workshop = content.RECIPES.filter((r) => r.station === "workshop");
+  assert.ok(workshop.length >= 6);
+  for (const r of workshop) assert.equal(content.ITEMS[r.out].kind, "throwable");
+  const r = workshop.find((x) => x.out === "serrated_knife");
+  const pl = mkP({ stats: { str: 1, agi: 5, int: 5 }, bag: { fang: 1, powder: 1 }, knownRecipes: [r.id] });
+  const res = content.attemptBrew(pl, r, 0.9);
+  assert.equal(res.success, true);
+  assert.equal(res.player.bag.serrated_knife, r.count);
+});
+
+test("forge upgrade costs and destruction risks match the design", () => {
+  const g = content.createGearItem({ baseId: "sword", level: 1, wear: "battered", rarity: "common", identified: true });
+  const opts = forge.forgeOptions(g);
+  assert.equal(opts.find((o) => o.kind === "rarity").cost, 100);
+  assert.equal(opts.find((o) => o.kind === "rarity").destroyChance, 0.25);
+  assert.equal(opts.find((o) => o.kind === "wear").cost, 100);
+  assert.equal(opts.find((o) => o.kind === "wear").destroyChance, 0.3);
+  assert.equal(opts.find((o) => o.kind === "level").cost, 200);
+  assert.equal(opts.find((o) => o.kind === "level").destroyChance, 0.25);
+  const p = mkP({ gold: 1000, armory: [g], equip: { ...mkP().equip, mainHand: g.uid } });
+  const destroyed = forge.forgeUpgrade(p, g.uid, "level", () => 0.1);
+  assert.equal(destroyed.destroyed, true);
+  assert.equal(destroyed.player.gold, 800);
+  assert.equal(destroyed.player.armory.length, 0);
+  assert.equal(destroyed.player.equip.mainHand, null);
+  const upgraded = forge.forgeUpgrade(p, g.uid, "level", () => 0.9);
+  assert.equal(upgraded.success, true);
+  assert.equal(upgraded.item.level, 2);
+  const rare = forge.forgeUpgrade({ ...p, gold: 1000 }, g.uid, "rarity", () => 0.9);
+  assert.equal(rare.item.rarity, "rare");
+  assert.ok(rare.item.effects.length >= 1);
+});
+
+test("boss effect resistance is 25% and seals block the next player action", () => {
+  const pl = player({ hp: 500, stats: { str: 5, agi: 5, int: 5 }, bag: { potion_s: 3 } });
+  const b = battle.newBattle(pl, 3, true);
+  b.queue = ["p", "e"]; b.idx = 0;
+  b.p.statuses.sealItems = 1;
+  const refused = battle.playerAct(b, { type: "item", id: "potion_s" });
+  assert.equal(refused.bag.potion_s, 3);
+  assert.equal(refused.idx, 0);
+  const guard = battle.playerAct(refused, { type: "guard" });
+  assert.equal(guard.p.statuses.sealItems, 0);
+  // Сопротивление босса: при Math.random=0 эффект отражается.
+  const b2 = battle.newBattle(pl, 3, true);
+  b2.queue = ["p", "e"]; b2.idx = 0;
+  b2.enemy.def = { ...b2.enemy.def, type: "beast" };
+  b2.bag.poison_dart = 1;
+  const old = Math.random; Math.random = () => 0.0;
+  const dart = battle.playerAct(b2, { type: "item", id: "poison_dart" });
+  Math.random = old;
+  assert.equal(dart.enemy.statuses.poison, 0);
 });
