@@ -454,6 +454,7 @@ export const EXTRA_REAGENTS: string[] = [
   "fang", // ингредиент монстра
   "gland", // ингредиент монстра
   "ember", // ингредиент монстра
+  "parchment", "magic_ink", "scrap_metal", "vial",
 ];
 
 export const EXTRA_ITEMS: ItemDef[] = [
@@ -474,6 +475,31 @@ export const EXTRA_ITEMS: ItemDef[] = [
     desc: "Разрывается от волнения. Ведёт себя как живая." },
   { id: "ember", name: "Уголь с дна", kind: "reagent", price: 60, reagentCat: "monster",
     desc: "Не остывает. Обжигает на втором метре снаружи." },
+  { id: "parchment", name: "Пергамент", kind: "reagent", price: 24, reagentCat: "cloth",
+    desc: "Выделанная кожа, готовая принять заклинание. Основа любого свитка." },
+  { id: "magic_ink", name: "Магические чернила", kind: "reagent", price: 48, reagentCat: "mineral",
+    desc: "Мерцают в темноте. Без них свиток останется просто бумагой." },
+  { id: "scrap_metal", name: "Металлолом", kind: "reagent", price: 22, reagentCat: "mineral",
+    desc: "Обломки клинков и лат. Из них собирают боеприпасы." },
+  { id: "vial", name: "Фляга", kind: "reagent", price: 18, reagentCat: "mineral",
+    desc: "Пустая стеклянная фляга. Нужна для любого зелья." },
+
+  /* специальные предметы */
+  { id: "sapper_kit", name: "Снаряжение сапёра", kind: "special", price: 85, level: 2, minFloor: 2,
+    use: { type: "special_kit" },
+    desc: "Позволяет обезвредить ловушку. Шанс растёт от Интеллекта. Тратится при попытке в любом случае." },
+  { id: "lockpicks", name: "Отмычки", kind: "special", price: 55, level: 1, minFloor: 1,
+    use: { type: "special_lockpick" },
+    desc: "Шанс открыть запертую дверь без ключа. Зависит от Ловкости. Тратятся при попытке в любом случае." },
+  { id: "tattered_map", name: "Потрёпанная карта", kind: "special", price: 120, level: 2, minFloor: 2,
+    use: { type: "special_map" },
+    desc: "Используется на карте лабиринта: показывает сундуки, босса и события до конца этажа." },
+  { id: "water_skin", name: "Бурдюк с водой", kind: "special", price: 40, level: 1, minFloor: 1,
+    use: { type: "special_water" },
+    desc: "Снимает горение на карте в Огненных недрах." },
+  { id: "field_torch", name: "Факел", kind: "special", price: 35, level: 1, minFloor: 1,
+    use: { type: "special_torch", rounds: 5 },
+    desc: "+1 к видимости на 5 ходов по карте. В Тёмном подземелье на это время снимает штраф мрака." },
 
   /* припасы: новая вариативность */
   { id: "potion_haste", name: "Зелье скорости", kind: "potion", price: 110,
@@ -526,6 +552,11 @@ export const EXTRA_RECIPES: Recipe[] = [
   { id: "r28", out: "bomb_flash", count: 1, need: ["powder", "silk", "cloth"], intReq: 3, price: 80, station: "workshop" },
   { id: "r13", out: "potion_stone", count: 1, need: ["root", "ember", "bone"], intReq: 5, price: 105 },
   { id: "r14", out: "scroll_snare", count: 1, need: ["silk", "root"], intReq: 4, price: 90 },
+  { id: "r29", out: "sapper_kit", count: 1, need: ["scrap_metal", "cloth", "powder"], intReq: 3, price: 70, station: "workshop" },
+  { id: "r30", out: "lockpicks", count: 1, need: ["scrap_metal", "fang"], intReq: 2, price: 45, station: "workshop" },
+  { id: "r31", out: "tattered_map", count: 1, need: ["parchment", "magic_ink", "cloth"], intReq: 3, price: 95, station: "workshop" },
+  { id: "r32", out: "water_skin", count: 1, need: ["vial", "herb"], intReq: 1, price: 30, station: "workshop" },
+  { id: "r33", out: "field_torch", count: 1, need: ["cloth", "fire", "scrap_metal"], intReq: 1, price: 28, station: "workshop" }
 ];
 
 /* ═══════════════  СОБЫТИЯ КАРТЫ  ═══════════════ */

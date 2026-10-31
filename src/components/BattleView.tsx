@@ -20,6 +20,7 @@ import { FoePortrait } from "./FoeArt";
 import { ItemArt } from "./ItemArt";
 import { Btn, Meter, Tag } from "./ui";
 import { BiomeRule, BiomeTag, biomeStyle } from "./BiomeLabel";
+import { isBattleCurse } from "../game/traps";
 
 /** Римская нумерация для строк инициативы. */
 function roman(n: number): string {
@@ -88,7 +89,7 @@ export function BattleView({
       now: `${r.dmgMin}–${r.dmgMax}`,
       badge:
         b.p.statuses.curse > 0
-          ? { text: `−30% Проклятие (${b.p.statuses.curse} р.)`, tone: "rubric" }
+          ? { text: `−${b.p.statuses.cursePower ?? 30}% Проклятие (${isBattleCurse(b.p.statuses.curse) ? "до конца боя" : `${b.p.statuses.curse} р.`})`, tone: "rubric" }
           : b.p.statuses.rage > 0
           ? { text: `+50% Ярость (${b.p.statuses.rage} р.)`, tone: "flame" }
           : undefined,
@@ -357,7 +358,7 @@ export function BattleView({
                   <p className="font-mono text-[0.84rem] text-mute">
                     статусы:{" "}
                     {b.p.statuses.rage > 0 ? `ярость ${b.p.statuses.rage} · ` : ""}
-                    {b.p.statuses.curse > 0 ? `проклятие ${b.p.statuses.curse} · ` : ""}
+                    {b.p.statuses.curse > 0 ? `проклятие ${isBattleCurse(b.p.statuses.curse) ? "до конца боя" : b.p.statuses.curse} · ` : ""}
                     {b.p.statuses.wound > 0 ? `рана ${b.p.statuses.wound} · ` : ""}
                     {b.p.statuses.poison > 0 ? `яд ${b.p.statuses.poison} · ` : ""}
                     {b.p.statuses.haste > 0 ? `скорость ${b.p.statuses.haste} · ` : ""}
@@ -523,10 +524,10 @@ export function BattleView({
                   </button>
                 </div>
                 <div className="grid max-h-56 gap-2 overflow-y-auto pr-1">
-                  {Object.entries(b.bag).filter(([id]) => ITEMS[id]?.use).length === 0 && (
+                  {Object.entries(b.bag).filter(([id]) => ITEMS[id]?.use && ITEMS[id]?.kind !== "special" && ITEMS[id]?.kind !== "reagent").length === 0 && (
                     <p className="text-sm italic text-mute">Рюкзак пуст: зелья, свитки и метательное оружие продаются в магазине.</p>
                   )}
-                  {Object.entries(b.bag).filter(([id]) => ITEMS[id]?.use).map(([id, n]) => {
+                  {Object.entries(b.bag).filter(([id]) => ITEMS[id]?.use && ITEMS[id]?.kind !== "special" && ITEMS[id]?.kind !== "reagent").map(([id, n]) => {
                     const def = ITEMS[id];
                     const u = def.use!;
                     const req = consumableIntReq(def, b.p.intDiscount);

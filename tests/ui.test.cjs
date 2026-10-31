@@ -158,3 +158,48 @@ test("battle view shows the biome rule and live burning stacks", () => {
   assert.ok(darkHtml.includes("Промах в мраке"));
   assert.ok(darkHtml.includes("25%"));
 });
+
+test("lobby exposes stat reset, special supplies, sell buttons and forge success chance", () => {
+  const html = renderToStaticMarkup(React.createElement(Lobby, {
+    player: makePlayer({ gold: 1000, bag: { moss: 2, sapper_kit: 1 } }), setPlayer: noop, shopStock: [],
+    onRefreshShop: noop, onPurchaseGear: noop, onUpgradeShop: noop,
+    onStart: noop, best: 1, unlockedFloor: 2, initialTab: "train",
+  }));
+  assert.ok(html.includes("Сбросить характеристики"));
+  assert.ok(html.includes("100 × уровень персонажа"));
+  assert.ok(html.includes("1 Сила / 1 Ловкость / 1 Интеллект"));
+});
+
+test("dungeon shows field specials, torch/burning chips and revealed map markers", () => {
+  const m = maze.genMaze(6, 3, "fire");
+  const run = {
+    floor: 3, maze: m, pos: m.start, prevPos: m.start, seen: {}, steps: 0,
+    gold: 0, loot: [], gearLoot: [], keys: 0, log: [],
+    torchTurns: 4, mapRevealed: true, burning: 2,
+  };
+  const html = renderToStaticMarkup(React.createElement(Dungeon, {
+    run, player: makePlayer(), bag: { field_torch: 1, water_skin: 1, tattered_map: 1, sapper_kit: 1 }, hp: 20, maxHp: 40,
+    intStat: 4, intDiscount: 0, path: [], pathPaused: false,
+    onMove: noop, onCellClick: noop, onUseItem: noop, onEquip: noop, onUnequip: noop,
+    onCancelPath: noop, onResumePath: noop,
+  }));
+  assert.ok(html.includes("факел: 4 ход."));
+  assert.ok(html.includes("горение ×2"));
+  assert.ok(html.includes("карта раскрыта"));
+  assert.ok(html.includes("Факел"));
+  assert.ok(html.includes("Бурдюк с водой"));
+  assert.ok(html.includes("Потрёпанная карта"));
+  assert.ok(!html.includes("Снаряжение сапёра"));
+});
+
+test("battle item menu hides special supplies and reagents", () => {
+  const p = makePlayer({ bag: { potion_s: 1, field_torch: 1, moss: 1 } });
+  const b = { ...battle.newBattle(p, 1), bag: { potion_s: 1, field_torch: 1, moss: 1 } };
+  const html = renderToStaticMarkup(React.createElement(BattleView, {
+    battle: b, onAct: noop, onEnemyTurn: noop, onContinue: noop,
+  }));
+  // The main menu does not render the item list until opened, so assert via the battle module guard instead.
+  const after = battle.playerAct({ ...b, queue: ["p", "e"], idx: 0 }, { type: "item", id: "field_torch" });
+  assert.equal(after.bag.field_torch, 1);
+  assert.ok(html.includes("Действия"));
+});

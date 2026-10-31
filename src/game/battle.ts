@@ -29,6 +29,8 @@ import {
   type WeaponSkillDef,
 } from "./content";
 import { SLOT_ORDER } from "./types";
+import { enemyLevelMult } from "./enemyScaling";
+import { isBattleCurse } from "./traps";
 import {
   FIRE_BURN_STEP,
   ICE_TURN_DAMAGE,
@@ -74,6 +76,9 @@ export interface LogLine {
 
 export interface BattleState {
   floor: number;
+  /** Активный факел с карты: снимает штраф мрака на время действия. */
+  torchTurns?: number;
+
   /** Правило среды текущего этажа. */
   biome: BiomeId;
   isBoss: boolean;
@@ -136,6 +141,7 @@ export interface BattleState {
     statuses: {
       wound: number;
       curse: number;
+      cursePower?: number;
       poison: number;
       rage: number;
       sundered: number;
@@ -477,8 +483,8 @@ export function spawnEnemy(floor: number, isBoss = false, rng: () => number = Ma
   const level = isBoss ? floor : rollMonsterLevel(floor, rng);
   const meta = THREAT_META[threat];
 
-  // Каждый новый уровень монстра усиливает характеристики в 1.5 раза (кроме ходов).
-  const levelMult = Math.pow(1.5, level - 1);
+  // Шаг усиления падает на 0.05 за уровень, но не ниже ×1.05 (кроме ходов).
+  const levelMult = enemyLevelMult(level);
   const hpMult = levelMult * (isBoss ? 1 : meta.hpMult);
   const atkMult = levelMult * (isBoss ? 1 : meta.atkMult);
 
@@ -640,7 +646,7 @@ function flash(b: BattleState, target: "p" | "e", kind: "hit" | "guard" | "miss"
   b.flash = { id: ++flashSeq, target, kind, amount };
 }
 
-export function newBattle(pl: Player, floor: number, isBoss = false, biome: BiomeId = "classic"): BattleState {
+export function newBattle(pl: Player, floor: number, isBoss = false, biome: BiomeId = "classic", torchTurns = 0, initialBurning = 0): BattleState {
   const d = derived(pl);
   const s = spawnEnemy(floor, isBoss);
   const def = s.def;
@@ -651,6 +657,7 @@ export function newBattle(pl: Player, floor: number, isBoss = false, biome: Biom
   const b: BattleState = {
     floor,
     biome: normalizeBiome(biome),
+    torchTurns: Math.max(0, torchTurns),
     isBoss,
     enemy: {
       def,
@@ -704,6 +711,7 @@ export function newBattle(pl: Player, floor: number, isBoss = false, biome: Biom
       statuses: {
         wound: pl.statuses.wound,
         curse: pl.statuses.curse,
+        cursePower: pl.statuses.cursePower,
         poison: pl.statuses.poison,
         rage: 0,
         sundered: 0,
@@ -719,7 +727,7 @@ export function newBattle(pl: Player, floor: number, isBoss = false, biome: Biom
         tempArmor: 0,
         dodgeNext: 0,
         shadowStep: 0,
-        burning: 0,
+        burning: normalizeBiome(biome) === "fire" ? Math.max(0, initialBurning) : 0,
         sealItems: 0,
         sealSkills: 0,
         sealAttack: 0,
@@ -892,7 +900,7 @@ function calcWeaponRoll(b: BattleState, mult = 1, bonusFlat = 0, opts: { skill?:
 
   d *= damageMult;
   if (b.p.statuses.rage > 0) d = Math.round(d * 1.5);
-  if (b.p.statuses.curse > 0) d = Math.round(d * 0.7);
+  if (b.p.statuses.curse > 0) d = Math.round(d * (1 - (b.p.statuses.cursePower ?? 30) / 100));
   if (hasPassive(b, "relentless") && b.p.hp < b.p.maxHp * 0.35) d = Math.round(d * 1.5);
   if (hasLeg(b, "executioner") && b.enemy.hp <= b.enemy.maxHp * 0.5) d = Math.round(d * (1 + legPower(b, "executioner", "damage") / 100));
 
@@ -948,7 +956,7 @@ function hitEnemy(
   note = "",
   strike = kind === "phys",
 ): number {
-  const darkMiss = biomeMissChance(b.biome);
+  const darkMiss = (b.torchTurns ?? 0) > 0 ? 0 : biomeMissChance(b.biome);
   if (strike && darkMiss > 0 && Math.random() < darkMiss) {
     flash(b, "e", "miss", 0);
     push(b, `Мрак скрывает цель: удар проходит мимо.${note}`, "sys");
@@ -989,7 +997,7 @@ function hitEnemy(
 
 /** false означает, что враг промахнулся: побочные эффекты атаки тоже не срабатывают. */
 function incoming(b: BattleState, raw: number, kind: "phys" | "magic", src: string, strike = kind === "phys"): boolean {
-  const darkMiss = biomeMissChance(b.biome);
+  const darkMiss = (b.torchTurns ?? 0) > 0 ? 0 : biomeMissChance(b.biome);
   if (strike && darkMiss > 0 && Math.random() < darkMiss) {
     flash(b, "p", "miss", 0);
     push(b, `Мрак скрывает тебя: ${src} — промах.`, "sys");
@@ -1209,7 +1217,7 @@ function advance(b: BattleState) {
     const prevPoison = b.p.statuses.poison;
 
     b.p.statuses.wound = Math.max(0, b.p.statuses.wound - 1);
-    b.p.statuses.curse = Math.max(0, b.p.statuses.curse - 1);
+    if (!isBattleCurse(b.p.statuses.curse)) b.p.statuses.curse = Math.max(0, b.p.statuses.curse - 1);
     b.p.statuses.poison = Math.max(0, b.p.statuses.poison - 1);
     b.p.statuses.rage = Math.max(0, b.p.statuses.rage - 1);
     b.p.statuses.ironTonic = Math.max(0, b.p.statuses.ironTonic - 1);
@@ -1529,6 +1537,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
         const heal = healPlayer(b, Math.round((epicMagnitude(sk.id, "base", skLevel) + epicMagnitude(sk.id, "scale", skLevel) * b.p.stats.int) * spellPowerMult));
         b.p.statuses.wound = 0;
         b.p.statuses.curse = 0;
+        b.p.statuses.cursePower = 0;
         b.p.statuses.poison = 0;
         b.p.guard = true;
         flash(b, "p", "heal", heal);
@@ -1561,6 +1570,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
     case "item": {
       const def = ITEMS[a.id];
       if (!def?.use) return err("Этим нельзя воспользоваться.");
+      if (def.kind === "special" || def.kind === "reagent") return err("Этот предмет используется только на карте.");
       if (!b.bag[a.id]) return err(`«${def.name}» закончился.`);
       const u = def.use;
       const req = consumableIntReq(def, b.p.intDiscount);
@@ -1585,7 +1595,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
           let dmg = Math.round(itemPower * scrollMult);
           if (u.vs && b.enemy.def.type === u.vs) dmg = Math.round(dmg * 2);
           if (b.p.statuses.rage > 0) dmg = Math.round(dmg * 1.5);
-          if (b.p.statuses.curse > 0) dmg = Math.round(dmg * 0.7);
+          if (b.p.statuses.curse > 0) dmg = Math.round(dmg * (1 - (b.p.statuses.cursePower ?? 30) / 100));
           const dealt = hitEnemy(b, dmg, u.vs ? "true" : "magic", ` [${def.name}]${u.vs && b.enemy.def.type === u.vs ? " · вдвойне против такого рода!" : ""}`);
           applyVamp(b, dealt, 0, def.kind === "scroll" ? "scroll" : "consumable");
           break;
@@ -1609,6 +1619,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
         case "cleanse": {
           b.p.statuses.wound = 0;
           b.p.statuses.curse = 0;
+        b.p.statuses.cursePower = 0;
           b.p.statuses.poison = 0;
           const amt = healPlayer(b, Math.max(1, Math.round(itemPower)), def.kind === "potion");
           push(b, `${def.name}: раны, проклятие и яд сняты (+${amt} ОЗ).`, "p");
@@ -1862,6 +1873,7 @@ export function enemyStep(b0: BattleState): BattleState {
       const landed = incoming(b, Math.round(base * 0.7 * chill), "magic", `${e.def.name} шепчет анафему`);
       if (landed && b.p.hp > 0 && Math.random() > resistChance) {
         b.p.statuses.curse = Math.max(b.p.statuses.curse, 3);
+        b.p.statuses.cursePower = Math.max(b.p.statuses.cursePower ?? 0, 30);
         push(b, "Проклятие висит 3 раунда: твой урон снижен на 30%.", "e");
       } else if (landed && b.p.hp > 0) {
         push(b, "Стойкость отбрасывает проклятие.", "p");
@@ -1930,6 +1942,7 @@ export function enemyStep(b0: BattleState): BattleState {
       const landed = incoming(b, Math.round(base * 0.6 * chill), "magic", `${e.def.name} рычит тебе в лицо`);
       if (landed && b.p.hp > 0 && Math.random() > resistChance) {
         b.p.statuses.curse = Math.max(b.p.statuses.curse, 2);
+        b.p.statuses.cursePower = Math.max(b.p.statuses.cursePower ?? 0, 30);
         e.guard = true;
         flash(b, "e", "guard", 0);
         push(b, "Проклятие на 2 раунда, а враг успевает закрыться: он в Защите.", "e");
@@ -2073,10 +2086,10 @@ export function combatReadout(b: BattleState): CombatReadout {
     dmgMods.push({
       id: "curse",
       label: "Проклятие",
-      mult: 0.7,
+      mult: 1 - (b.p.statuses.cursePower ?? 30) / 100,
       good: false,
-      rounds: b.p.statuses.curse,
-      detail: "Снижает ваш урон на 30%: анафема висит на тебе.",
+      rounds: isBattleCurse(b.p.statuses.curse) ? undefined : b.p.statuses.curse,
+      detail: `Снижает ваш урон на ${b.p.statuses.cursePower ?? 30}%${isBattleCurse(b.p.statuses.curse) ? " до конца боя" : ""}.`,
     });
   if (b.p.passives.includes("relentless") && b.p.hp < b.p.maxHp * 0.35)
     dmgMods.push({
@@ -2263,7 +2276,7 @@ export function combatReadout(b: BattleState): CombatReadout {
 
   return {
     biome: b.biome,
-    missChance: biomeMissChance(b.biome),
+    missChance: (b.torchTurns ?? 0) > 0 ? 0 : biomeMissChance(b.biome),
     baseMin,
     baseMax,
     dmgMin: rawMin,

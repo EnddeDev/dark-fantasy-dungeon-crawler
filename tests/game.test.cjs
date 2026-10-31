@@ -311,7 +311,7 @@ test("recipe must be purchased, repeated ingredients are counted, failure consum
   assert.ok(r);
   const novice = player({
     stats: { str: 1, agi: 1, int: 4 },
-    bag: { moss: 2, tear: 1 },
+    bag: { moss: 2, tear: 1, vial: 1 },
   });
   assert.equal(content.attemptBrew(novice, r, 0.5), null);
   assert.equal(content.hasIngredients({ moss: 1, tear: 1 }, r.need), false);
@@ -323,7 +323,7 @@ test("recipe must be purchased, repeated ingredients are counted, failure consum
   const brewed = content.attemptBrew(learned, r, 0.5);
   assert.equal(brewed.success, true);
   assert.equal(brewed.player.bag.potion_l, 1);
-  assert.deepEqual(learned.bag, { moss: 2, tear: 1 });
+  assert.deepEqual(learned.bag, { moss: 2, tear: 1, vial: 1 });
 });
 
 test("undead resist poison and fear, smoke negates attacks and their debuffs", () => {
@@ -833,6 +833,8 @@ test("every gear base has an explicit logical weight class and affinity", () => 
     amulet: ["light", "int"], seal: ["light", "int"], soulstone: ["light", "int"], icon: ["light", "int"], tooth: ["light", "agi"],
     ring_stone: ["light", "str"], ring_band: ["light", "agi"], ring_edge: ["light", "agi"], ring_ward: ["light", "int"], ring_venom: ["light", "agi"],
   };
+  const starterMod = loadGameModule("shopStarters");
+  for (const base of starterMod.SHOP_STARTER_GEAR) expected[base.id] = [base.gearClass, base.stat];
   assert.deepEqual(Object.keys(content.GEAR_BASES).sort(), Object.keys(expected).sort(), "аудит должен покрывать все базы");
   for (const [id, [cls, stat]] of Object.entries(expected)) {
     const base = content.GEAR_BASES[id];
@@ -1481,15 +1483,21 @@ test("supplies have levels tied to minimum drop floor and new statuses work", ()
   assert.ok(mk("wither_dust").enemy.statuses.wither > 0);
 });
 
-test("workshop recipes craft throwables and alchemy stays separate", () => {
+test("workshop recipes craft throwables and special supplies, alchemy stays separate", () => {
   const workshop = content.RECIPES.filter((r) => r.station === "workshop");
   assert.ok(workshop.length >= 6);
-  for (const r of workshop) assert.equal(content.ITEMS[r.out].kind, "throwable");
+  for (const r of workshop) assert.ok(["throwable", "special"].includes(content.ITEMS[r.out].kind));
   const r = workshop.find((x) => x.out === "serrated_knife");
-  const pl = mkP({ stats: { str: 1, agi: 5, int: 5 }, bag: { fang: 1, powder: 1 }, knownRecipes: [r.id] });
+  const pl = mkP({ stats: { str: 1, agi: 5, int: 5 }, bag: { fang: 1, powder: 1, scrap_metal: 1 }, knownRecipes: [r.id] });
   const res = content.attemptBrew(pl, r, 0.9);
   assert.equal(res.success, true);
   assert.equal(res.player.bag.serrated_knife, r.count);
+  const kit = workshop.find((x) => x.out === "sapper_kit");
+  assert.ok(kit);
+  const kitPl = mkP({ stats: { str: 1, agi: 1, int: 5 }, bag: { scrap_metal: 1, cloth: 1, powder: 1 }, knownRecipes: [kit.id] });
+  const kitRes = content.attemptBrew(kitPl, kit, 0.9);
+  assert.equal(kitRes.success, true);
+  assert.equal(kitRes.player.bag.sapper_kit, kit.count);
 });
 
 test("forge upgrade costs and destruction risks match the design", () => {
@@ -1501,13 +1509,23 @@ test("forge upgrade costs and destruction risks match the design", () => {
   assert.equal(opts.find((o) => o.kind === "wear").destroyChance, 0.3);
   assert.equal(opts.find((o) => o.kind === "level").cost, 200);
   assert.equal(opts.find((o) => o.kind === "level").destroyChance, 0.25);
+  assert.equal(opts.find((o) => o.kind === "level").successChance, 0.1);
+  assert.equal(forge.levelUpgradeChance(1), 0.1);
+  assert.equal(forge.levelUpgradeChance(3), 0.2);
+  assert.equal(forge.levelUpgradeChance(10), 0.55);
   const p = mkP({ gold: 1000, armory: [g], equip: { ...mkP().equip, mainHand: g.uid } });
-  const destroyed = forge.forgeUpgrade(p, g.uid, "level", () => 0.1);
+  let rolls = [0.9, 0.1];
+  const destroyed = forge.forgeUpgrade(p, g.uid, "level", () => rolls.shift() ?? 0.9);
   assert.equal(destroyed.destroyed, true);
   assert.equal(destroyed.player.gold, 800);
   assert.equal(destroyed.player.armory.length, 0);
   assert.equal(destroyed.player.equip.mainHand, null);
-  const upgraded = forge.forgeUpgrade(p, g.uid, "level", () => 0.9);
+  rolls = [0.9, 0.9];
+  const failed = forge.forgeUpgrade(p, g.uid, "level", () => rolls.shift() ?? 0.9);
+  assert.equal(failed.success, false);
+  assert.equal(failed.destroyed, false);
+  assert.equal(failed.player.armory.length, 1);
+  const upgraded = forge.forgeUpgrade(p, g.uid, "level", () => 0.05);
   assert.equal(upgraded.success, true);
   assert.equal(upgraded.item.level, 2);
   const rare = forge.forgeUpgrade({ ...p, gold: 1000 }, g.uid, "rarity", () => 0.9);

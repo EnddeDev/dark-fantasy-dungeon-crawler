@@ -19,6 +19,7 @@ import { statMilestoneById } from "../game/statMilestones";
 import { combatReadout, derived, equippedList, type BattleState } from "../game/battle";
 import type { Player, Run } from "../game/types";
 import { Btn, Meter, Pips } from "./ui";
+import { isBattleCurse, trapBypassChance, trapDisarmChance } from "../game/traps";
 
 type EffectEntry = {
   id: string;
@@ -93,7 +94,8 @@ export function Rail({
   const armor = readout?.armor ?? d.armor;
   const ap = readout?.ap ?? d.ap;
   const resist = readout?.resist ?? Math.min(0.75, player.stats.str * 0.06 + (player.passives.includes("stone_skin") ? 0.15 : 0));
-  const trapBonus = player.stats.agi * 5 + player.stats.int * 2 + (player.passives.includes("light_step") ? 30 : 0) + d.rareAffixes.filter((id) => id === "swift").length * 12;
+  const trapBypass = trapBypassChance(player.stats, (player.passives.includes("light_step") ? 0.3 : 0) + d.rareAffixes.filter((id) => id === "swift").length * 0.12);
+  const trapDisarm = trapDisarmChance(player.stats, (player.passives.includes("light_step") ? 0.3 : 0) + d.rareAffixes.filter((id) => id === "swift").length * 0.12);
   const xpNeed = xpForNextLevel(player.level);
   const statuses = battle ? battle.p.statuses : player.statuses;
   const worn = equippedList(player).filter((item) => item.identified);
@@ -183,7 +185,7 @@ export function Rail({
     : [
         ...(statuses.wound > 0 && !d.legendaryPassives.includes("titan_heart") ? [{ id: "wound", title: "Кровотечение", detail: `На каждом шаге отнимает ${2 + (run?.floor ?? 1)} здоровья.`, badge: `Осталось: ${statuses.wound}`, negative: true }] : []),
         ...(statuses.poison > 0 && !d.legendaryPassives.includes("titan_heart") ? [{ id: "poison", title: "Отравление", detail: `На каждом шаге отнимает ${3 + (run?.floor ?? 1)} здоровья.`, badge: `Осталось: ${statuses.poison}`, negative: true }] : []),
-        ...(statuses.curse > 0 ? [{ id: "curse", title: "Проклятие", detail: "В бою наносимый урон снижен на 30%.", badge: `Осталось: ${statuses.curse}`, negative: true }] : []),
+        ...(statuses.curse > 0 ? [{ id: "curse", title: "Проклятие", detail: `В бою наносимый урон снижен на ${statuses.cursePower ?? 30}%.`, badge: isBattleCurse(statuses.curse) ? "До конца боя" : `Осталось: ${statuses.curse}`, negative: true }] : []),
       ];
   if (battle && battle.p.statuses.haste > 0) current.push({
     id: "haste", title: "Ускорение", detail: "+1 ход в каждом раунде, пока действует зелье.", badge: `Раундов: ${battle.p.statuses.haste}`,
@@ -311,7 +313,8 @@ export function Rail({
 
               <SheetSection title="Исследования и ловушки">
                 <dl className="space-y-2 text-[0.97rem]">
-                  <div className="flex justify-between gap-3"><dt className="text-mute">Бонус к обезвреживанию</dt><dd className="font-mono tab text-verd">+{trapBonus} п.п.</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-mute">Обход ловушки</dt><dd className="font-mono tab text-verd">{Math.round(trapBypass * 100)}%</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-mute">Обезвреживание</dt><dd className="font-mono tab text-verd">{Math.round(trapDisarm * 100)}%</dd></div>
                   <div className="flex justify-between gap-3"><dt className="text-mute">Снижение требований ИНТ</dt><dd className="font-mono tab text-parch">−{d.intDiscount}</dd></div>
                   <div className="flex justify-between gap-3"><dt className="text-mute">Изучено рецептов</dt><dd className="font-mono tab text-parch">{player.knownRecipes.length}</dd></div>
                 </dl>

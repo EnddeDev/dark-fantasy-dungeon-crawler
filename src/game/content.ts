@@ -1,3 +1,4 @@
+import { SHOP_STARTER_GEAR } from "./shopStarters";
 import {
   EXTRA_BOSSES,
   EXTRA_ENEMIES,
@@ -979,6 +980,7 @@ export const GEAR_BASES: Record<string, GearBaseDef> = normalizeGearBases([
   ...Object.values(CORE_GEAR_BASES),
   ...EXTRA_GEAR,
   ...ARCHETYPE_GEAR,
+  ...SHOP_STARTER_GEAR,
 ]);
 
 /* ─────────────  ВАРИАНТЫ ПРИЁМОВ ОРУЖИЯ  ───────────── */
@@ -1334,13 +1336,15 @@ export function createGearItem(opts: {
   level?: number;
   rarityWeights?: Record<RarityTier, number>;
   skillId?: string;
+  rng?: () => number;
 }): GearItem {
+  const rng = opts.rng ?? Math.random;
   const base = GEAR_BASES[opts.baseId] ?? GEAR_BASES.knife;
 
   const wear: WearTier =
     opts.wear ??
     (() => {
-      const r = Math.random();
+      const r = rng();
       if (r < 0.32) return "battered";
       if (r < 0.76) return "worn";
       return "new";
@@ -1394,9 +1398,9 @@ export function createGearItem(opts: {
 
   if (rarity === "epic" || rarity === "legendary") {
     /* Выбор между двумя дополнительными эффектами и боевым приёмом */
-    if (hasTechnique && (rarity === "legendary" || Math.random() < 0.5)) {
+    if (hasTechnique && (rarity === "legendary" || rng() < 0.5)) {
       epicSkill =
-        base.preferredEpic && Math.random() < 0.6
+        base.preferredEpic && rng() < 0.6
           ? base.preferredEpic
           : pick(ALL_EPIC_IDS);
     }
@@ -1404,13 +1408,13 @@ export function createGearItem(opts: {
 
   if (rarity !== "common") {
     const rest = [...pool];
-    effects.push(rest.splice(Math.floor(Math.random() * rest.length), 1)[0]);
+    effects.push(rest.splice(Math.floor(rng() * rest.length), 1)[0]);
     if (rarity === "epic" || rarity === "legendary") {
       if (epicSkill) {
         /* Один боевой приём вместо двух эффектов */
       } else {
         for (let i = 0; i < 2 && rest.length; i++) {
-          effects.push(rest.splice(Math.floor(Math.random() * rest.length), 1)[0]);
+          effects.push(rest.splice(Math.floor(rng() * rest.length), 1)[0]);
         }
       }
     }
@@ -1425,7 +1429,7 @@ export function createGearItem(opts: {
       : undefined;
 
   return {
-    uid: `g_${Date.now().toString(36)}_${++gearSeq}_${Math.random().toString(36).slice(2, 8)}`,
+    uid: `g_${Date.now().toString(36)}_${++gearSeq}_${rng().toString(36).slice(2, 8)}`,
     wearMult,
     effects,
     passive,
@@ -1455,62 +1459,50 @@ export function createGearItem(opts: {
  * Уровень 1: изношенность 5/25/70, редкость 80/15/5/0.
  * Уровень 10: изношенность 40/60/0, редкость 40/25/20/15.
  */
+export const SHOP_OFFERS_PER_SLOT = 6;
+
+/**
+ * Ассортимент лавки: не меньше 6 вариантов на каждый слот, только уровни ≤ уровня лавки.
+ * Каждый вызов заново выбирает модели, изношенность, редкость и свойства — не перемешивает старый список.
+ */
 export function rollShopStock(shopLevel: number, floor = 1, rng: () => number = Math.random): GearItem[] {
   const lvl = Math.max(1, Math.min(SHOP_MAX_LEVEL, shopLevel));
   const pool = Object.values(GEAR_BASES).filter((b) => (b.level ?? 1) <= lvl);
-  if (!pool.length) return [];
   const wearTable = shopWearTable(lvl);
   const rarityTable = shopRarityTable(lvl);
-
-  /* Пробежка 1: лучший предмет каждой ячейки — лавка покрывает все слоты.
-     Пробежка 2: второй предмет там, где есть выбор. Добор — случайные. */
   const bySlot = new Map<Slot, GearBaseDef[]>();
   for (const b of pool) {
     const list = bySlot.get(b.slot) ?? [];
     list.push(b);
     bySlot.set(b.slot, list);
   }
-
-  const seen = new Set<string>();
-  const chosen: GearBaseDef[] = [];
-  const sortedBySlot = [...bySlot.values()].map((list) =>
-    [...list].sort((a, b) => (b.level ?? 1) - (a.level ?? 1)),
-  );
-
-  for (const list of sortedBySlot) {
-    const b = list[0];
-    if (!b || seen.has(b.id)) continue;
-    seen.add(b.id);
-    chosen.push(b);
+  const out: GearItem[] = [];
+  for (const list of bySlot.values()) {
+    const shuffled = [...list];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    for (let i = 0; i < SHOP_OFFERS_PER_SLOT; i++) {
+      const b = shuffled[i % shuffled.length];
+      if (!b) continue;
+      out.push(createGearItem({
+        baseId: b.id,
+        level: b.level ?? 1,
+        wear: rollFromTable(wearTable, rng),
+        rarityWeights: rarityTable,
+        floor: Math.max(1, floor),
+        identified: false,
+        rng,
+      }));
+    }
   }
-  for (const list of sortedBySlot) {
-    if (chosen.length >= 15) break;
-    const b = list[1];
-    if (!b || seen.has(b.id)) continue;
-    seen.add(b.id);
-    chosen.push(b);
-  }
-  const rest = pool.filter((b) => !seen.has(b.id));
-  for (const b of rest) {
-    if (chosen.length >= 18) break;
-    if (rng() < 0.75) chosen.push(b);
-  }
-  /* Порядок витрины не подсказывает, где дешёвая вещь. */
-  for (let i = chosen.length - 1; i > 0; i--) {
+  // Порядок витрины случайный.
+  for (let i = out.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
-    [chosen[i], chosen[j]] = [chosen[j], chosen[i]];
+    [out[i], out[j]] = [out[j], out[i]];
   }
-
-  return chosen.map((b) =>
-    createGearItem({
-      baseId: b.id,
-      level: b.level ?? 1,
-      wear: rollFromTable(wearTable, rng),
-      rarityWeights: rarityTable,
-      floor: Math.max(1, floor),
-      identified: false,
-    }),
-  );
+  return out;
 }
 
 /* ─────────────  СЛОТЫ СНАРЯЖЕНИЯ: руки, броня, кольца  ───────────── */
@@ -1597,7 +1589,7 @@ export function unequipSlot(player: Player, slot: Slot): Player {
 
 /* ─────────────  РАСХОДНИКИ, СВИТКИ И РЕАГЕНТЫ (БЕЗ МАНЫ)  ───────────── */
 
-export type ItemKind = "potion" | "scroll" | "reagent" | "throwable";
+export type ItemKind = "potion" | "scroll" | "reagent" | "throwable" | "special";
 
 export type ReagentCat = "mineral" | "plant" | "cloth" | "monster";
 
@@ -1618,7 +1610,8 @@ export interface ItemDef {
       | "throw" | "poison" | "smoke" | "explosion" | "fear"
       | "haste" | "terror" | "stun_enemy" | "acid" | "stone"
       | "iron_tonic" | "blood_rage" | "quickblade" | "pact_elixir" | "scroll_creation"
-      | "bleed" | "blight" | "wither";
+      | "bleed" | "blight" | "wither"
+      | "special_kit" | "special_lockpick" | "special_map" | "special_water" | "special_torch";
     power?: number;
     scale?: number;
     /** Характеристика масштабирования: зелья без множителя, урон зелий и свитки — ИНТ, метательное — ЛОВ. */
@@ -1686,15 +1679,26 @@ export const SUPPLY_LEVELS: Record<string, number> = {
   bomb_flash: 3, iron_tonic: 4, blood_rage: 4, quickblade_oil: 4,
   pact_elixir: 5, scroll_creation: 5, serrated_knife: 2, frost_bomb: 3,
   blight_powder: 4, wither_dust: 5,
+  sapper_kit: 2, lockpicks: 1, tattered_map: 2, water_skin: 1, field_torch: 1,
+  parchment: 1, magic_ink: 2, scrap_metal: 1, vial: 1,
+  moss: 1, bone: 1, fire: 1, tear: 3, powder: 2, cloth: 2, root: 1, herb: 1,
+  silk: 3, fang: 2, gland: 3, ember: 3,
 };
 for (const it of Object.values(ITEMS)) {
-  if (it.use && it.level == null) {
-    it.level = SUPPLY_LEVELS[it.id] ?? 1;
-    it.minFloor = it.level;
-  }
+  if (it.level == null) it.level = SUPPLY_LEVELS[it.id] ?? 1;
+  if (it.minFloor == null) it.minFloor = it.level;
 }
 export function supplyLevel(id: string): number {
   return ITEMS[id]?.level ?? SUPPLY_LEVELS[id] ?? 1;
+}
+
+/** Припасы и реагенты можно купить, только если их уровень не выше уровня лавки. */
+export function canBuySupply(id: string, shopLevel: number): boolean {
+  return supplyLevel(id) <= Math.max(1, Math.floor(shopLevel));
+}
+
+export function supplySellPrice(def: ItemDef): number {
+  return Math.max(1, Math.round(((def.price ?? 0) * 0.45) / 5) * 5);
 }
 
 /** Только свитки требуют Интеллекта; зелья и метательные расходники доступны без него. */
@@ -1710,6 +1714,7 @@ export function consumableIntReq(def: ItemDef, intDiscount = 0): number {
 export function consumableScaleStat(def: ItemDef): StatKey | null {
   const u = def.use;
   if (!u) return null;
+  if (def.kind === "special" || def.kind === "reagent") return null;
   if (def.kind === "scroll") return "int";
   if (def.kind === "potion") return u.type === "damage" || u.type === "acid" ? "int" : null;
   return "agi";
@@ -1759,6 +1764,16 @@ export const RECIPES: Recipe[] = [
   { id: "r19", out: "pact_elixir", count: 1, need: ["tear", "ember", "cloth"], intReq: 5, price: 120 },
   { id: "r20", out: "scroll_creation", count: 1, need: ["cloth", "tear", "bone"], intReq: 6, price: 140 },
 ];
+
+// Новые реагенты обязательны для своих категорий: пергамент+чернила для свитков,
+// фляга для зелий, металлолом для боеприпасов.
+for (const recipe of RECIPES) {
+  const out = ITEMS[recipe.out];
+  if (!out) continue;
+  if (out.kind === "scroll") recipe.need.push("parchment", "magic_ink");
+  else if (out.kind === "potion") recipe.need.push("vial");
+  else if (out.kind === "throwable") recipe.need.push("scrap_metal");
+}
 
 export const BREW_FAILURE_CHANCE = 0.2;
 
@@ -2261,6 +2276,7 @@ const SUPPLY_POOL = [
   "frost_bomb",
   "blight_powder",
   "wither_dust",
+  "sapper_kit", "lockpicks", "tattered_map", "water_skin", "field_torch",
 ];
 
 function pickGearBase(level: number): string {

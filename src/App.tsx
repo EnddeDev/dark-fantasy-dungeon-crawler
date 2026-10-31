@@ -32,8 +32,11 @@ import {
   consumableIntReq,
   consumablePower,
 } from "./game/content";
+import { lockpickChance } from "./game/traps";
 import { MAP_EVENTS, mapEventById, SHOP_MAX_LEVEL, shopUpgradeCost, type MapEffect } from "./game/world";
 import { rollStepEvent } from "./game/events";
+import { applyTrapOutcome, isBattleCurse, makeTrap, resolveTrap, rollTrapKind, TRAP_META, type TrapAction } from "./game/traps";
+import { fireBurnDamage } from "./game/biomes";
 import { cellIdx, findPath, genMaze, mazeSizeForFloor, wallBetween } from "./game/maze";
 import { BIOMES, biomeHealingAmount, biomeVision, mazeBiome } from "./game/biomes";
 import { normalizeStatMilestones } from "./game/statMilestones";
@@ -203,7 +206,7 @@ function readSavedPlayer(): Player {
           bag,
           armory,
           equip,
-          statuses: { ...saved.statuses, poison: saved.statuses?.poison ?? 0 },
+          statuses: { ...saved.statuses, poison: saved.statuses?.poison ?? 0, cursePower: saved.statuses?.cursePower ?? 0 },
           knownRecipes,
           shopLevel: Math.max(1, Math.min(SHOP_MAX_LEVEL, Number(saved.shopLevel) || 1)),
           archetype: saved.archetype ?? null,
@@ -340,7 +343,7 @@ export default function App() {
       ...p,
       hp: b.p.hp,
       bag: b.bag,
-      statuses: { wound: b.p.statuses.wound, curse: b.p.statuses.curse, poison: b.p.statuses.poison },
+      statuses: { wound: b.p.statuses.wound, curse: isBattleCurse(b.p.statuses.curse) ? 0 : b.p.statuses.curse, poison: b.p.statuses.poison, cursePower: isBattleCurse(b.p.statuses.curse) ? 0 : b.p.statuses.cursePower },
     }));
     if (!r) {
       setBattle(null);
@@ -385,6 +388,7 @@ export default function App() {
         });
       })(),
       gearLoot: r.gearLoot.filter((g) => !droppedGearUids.has(g.uid)),
+      burning: b.biome === "fire" ? b.p.statuses.burning : 0,
       log: [
         ...r.log,
         `Побег из боя: потеряно ${lostGold} зол., ${droppedItems.length} припасов и ${droppedGear.length} снар.`,
@@ -458,6 +462,9 @@ export default function App() {
       gearLoot: [],
       keys: 0,
       steps: 0,
+      torchTurns: 0,
+      mapRevealed: false,
+      burning: 0,
       log: [`Спускаетесь на этаж ${floor}: ${BIOMES[mazeBiome(maze)].name}. Факел освещает круг радиусом ${biomeVision(mazeBiome(maze))}, но стены и запертые двери блокируют свет.`],
     });
     if (floor > best) {
@@ -516,6 +523,9 @@ export default function App() {
     };
     let hp = player.hp;
     const statuses = { ...player.statuses };
+    let stepBag = { ...player.bag };
+    const biome = mazeBiome(m);
+    if ((r.torchTurns ?? 0) > 0) r.torchTurns = (r.torchTurns ?? 0) - 1;
 
     /* негативные эффекты тикают на каждом шаге */
     if (statuses.wound > 0 && !d.legendaryPassives.includes("titan_heart")) {
@@ -524,12 +534,18 @@ export default function App() {
       statuses.wound -= 1;
       r.log.push(`Кровотечение: −${dmg} здоровья.`);
     }
-    if (statuses.curse > 0) statuses.curse -= 1;
+    if (statuses.curse > 0 && !isBattleCurse(statuses.curse)) statuses.curse -= 1;
     if (statuses.poison > 0 && !d.legendaryPassives.includes("titan_heart")) {
       const poisonDmg = 3 + r.floor;
       hp -= poisonDmg;
       statuses.poison -= 1;
       r.log.push(`Яд в крови: −${poisonDmg} здоровья.`);
+    }
+
+    if (biome === "fire" && (r.burning ?? 0) > 0) {
+      const burn = fireBurnDamage(r.burning ?? 0);
+      hp -= burn;
+      r.log.push(`Горение на карте: −${burn} здоровья (×${r.burning}). Бурдюк с водой снимет его.`);
     }
 
     if (hp <= 0) {
@@ -538,12 +554,27 @@ export default function App() {
       return;
     }
 
+    /* Новая клетка: независимые 5% на 1–3 реагента. */
+    if (!knownPath && Math.random() < 0.05) {
+      const count = randInt(1, 3);
+      const found: string[] = [];
+      for (let i = 0; i < count; i++) found.push(pick(REAGENTS));
+      r = { ...r, loot: [...r.loot, ...found] };
+      r.log.push(`Под камнями найдены реагенты: ${found.map((id) => ITEMS[id].name).join(", ")}.`);
+      found.forEach((id) => (stepBag[id] = (stepBag[id] ?? 0) + 1));
+      setPlayer((p) => {
+        const bag = { ...p.bag };
+        found.forEach((id) => (bag[id] = (bag[id] ?? 0) + 1));
+        return { ...p, bag };
+      });
+    }
+
     /* Клетка Босса перед лестницей */
     if (m.boss.x === nx && m.boss.y === ny && !m.bossDefeated) {
       r.log.push("Перед лестницей встаёт Страж яруса!");
       setPlayer((p) => ({ ...p, hp, statuses }));
       setRun(r);
-      setBattle(newBattle({ ...player, hp, statuses }, r.floor, true, mazeBiome(r.maze)));
+      setBattle(newBattle({ ...player, hp, statuses, bag: stepBag }, r.floor, true, mazeBiome(r.maze), r.torchTurns ?? 0, r.burning ?? 0));
       setScreen("battle");
       return;
     }
@@ -553,7 +584,7 @@ export default function App() {
       if (!m.bossDefeated) {
         setPlayer((p) => ({ ...p, hp, statuses }));
         setRun(r);
-        setBattle(newBattle({ ...player, hp, statuses }, r.floor, true, mazeBiome(r.maze)));
+        setBattle(newBattle({ ...player, hp, statuses, bag: stepBag }, r.floor, true, mazeBiome(r.maze), r.torchTurns ?? 0, r.burning ?? 0));
         setScreen("battle");
         return;
       }
@@ -664,24 +695,25 @@ export default function App() {
       return;
     }
     if (event === "trap") {
-      const baseDmg = 6 + r.floor * 4;
-      let dmg = baseDmg * (1 - player.stats.str * 0.04);
-      if (has("stone_skin")) dmg *= 0.75;
       const swiftBonus = d.rareAffixes.filter((x) => x === "swift").length * 0.12;
-      const chance = Math.min(
-        0.9,
-        0.22 + player.stats.agi * 0.05 + player.stats.int * 0.02 + (has("light_step") ? 0.3 : 0) + swiftBonus,
-      );
+      const bypassBonus = (has("light_step") ? 0.3 : 0) + swiftBonus;
+      const trap = makeTrap({
+        kind: rollTrapKind(),
+        floor: r.floor,
+        stats: player.stats,
+        bypassBonus,
+        stoneSkin: has("stone_skin"),
+      });
       setPlayer((p) => ({ ...p, hp, statuses }));
       setRun(r);
-      setModal({ kind: "trap", dmg: Math.max(1, Math.round(dmg)), chance });
+      setModal({ kind: "trap", trap });
       return;
     }
 
     /* Бой со случайным существом */
     setPlayer((p) => ({ ...p, hp, statuses }));
     setRun(r);
-    setBattle(newBattle({ ...player, hp, statuses }, r.floor, false, mazeBiome(r.maze)));
+    setBattle(newBattle({ ...player, hp, statuses, bag: stepBag }, r.floor, false, mazeBiome(r.maze), r.torchTurns ?? 0, r.burning ?? 0));
     setScreen("battle");
   };
 
@@ -701,13 +733,7 @@ export default function App() {
     }
     const id = cellIdx(nx, ny, run.maze.size);
     if (run.maze.doors.includes(id) && !run.maze.openedDoors.includes(id)) {
-      if (run.keys > 0) setModal({ kind: "door", x: nx, y: ny });
-      else
-        setModal({
-          kind: "note",
-          title: "Закрытая дверь",
-          body: "Замок заперт наглухо. Без ключа здесь не пройти и не увидеть, что скрыто за порогом.",
-        });
+      setModal({ kind: "door", x: nx, y: ny });
       return;
     }
     stepInto(nx, ny);
@@ -828,24 +854,56 @@ export default function App() {
     setModal({ kind: "event", eventId, result: { title: ev.name, good: choice.goodText, bad: choice.badText } });
   };
 
-  const takeTrap = (disarm: boolean) => {
-    if (!modal || modal.kind !== "trap") return;
+  const takeTrap = (action: TrapAction) => {
+    if (!modal || modal.kind !== "trap" || !run) return;
+    const trap = modal.trap;
+    const hasKit = (player.bag.sapper_kit ?? 0) > 0;
+    if (action === "disarm" && !hasKit) return;
+    const outcome = resolveTrap(trap, action, player.stats, hasKit, run.floor);
     setModal(null);
-    const trapXp = 2 + (run?.floor ?? 1);
-    if (disarm && Math.random() < modal.chance) {
-      setPlayer((p) => grantXp(p, trapXp).player);
-      logRun(`Механизм ловушки обезврежен (+${trapXp} XP).`);
-      return;
-    }
-    const dmg = disarm ? Math.round(modal.dmg * 1.35) : modal.dmg;
-    const hp = player.hp - dmg;
-    logRun(`Ловушка сработала: −${dmg} здоровья.`);
+    const hp = player.hp - outcome.damage;
+    const statuses = applyTrapOutcome(player.statuses, trap, outcome);
+    logRun(`${outcome.message}${outcome.damage > 0 ? ` −${outcome.damage} здоровья.` : ""}${outcome.xp > 0 ? ` +${outcome.xp} XP.` : ""}`);
     if (hp <= 0) {
-      setPlayer((p) => ({ ...p, hp: 0 }));
+      setPlayer((p) => ({ ...p, hp: 0, statuses }));
       die("Ловушка сработала быстрее, чем ты успел отскочить.");
       return;
     }
-    setPlayer((p) => ({ ...p, hp }));
+    setPlayer((p) => {
+      const bag = { ...p.bag };
+      if (outcome.usedKit) {
+        bag.sapper_kit = (bag.sapper_kit ?? 0) - 1;
+        if (bag.sapper_kit <= 0) delete bag.sapper_kit;
+      }
+      const next = { ...p, hp, statuses, bag };
+      return outcome.xp > 0 ? grantXp(next, outcome.xp).player : next;
+    });
+  };
+
+  const pickDoor = (x: number, y: number) => {
+    if (!run || (player.bag.lockpicks ?? 0) <= 0) return;
+    const success = Math.random() < lockpickChance(player.stats.agi);
+    setPlayer((p) => {
+      const bag: Record<string, number> = { ...p.bag, lockpicks: (p.bag.lockpicks ?? 0) - 1 };
+      if (bag.lockpicks <= 0) delete bag.lockpicks;
+      return { ...p, bag };
+    });
+    if (!success) {
+      logRun("Отмычка сломалась в замке. Дверь осталась запертой.");
+      setModal({ kind: "note", title: "Отмычка сломалась", body: "Замок не поддался. Отмычка потрачена, но дверь всё ещё можно открыть ключом или другой отмычкой." });
+      return;
+    }
+    const id = cellIdx(x, y, run.maze.size);
+    const next: Run = {
+      ...run,
+      maze: { ...run.maze, openedDoors: [...run.maze.openedDoors, id] },
+      log: [...run.log, "Отмычка щёлкнула. Дверь открыта без ключа."],
+    };
+    setRun(next);
+    setModal(null);
+    stepInto(x, y, next);
+    setPath((p) => (p[0]?.x === x && p[0]?.y === y ? p.slice(1) : p));
+    setPathPaused(true);
   };
 
   const openDoor = (x: number, y: number) => {
@@ -890,9 +948,27 @@ export default function App() {
     } else if (u.type === "cleanse") {
       statuses.wound = 0;
       statuses.curse = 0;
+      statuses.cursePower = 0;
       statuses.poison = 0;
       hp = Math.min(d.maxHp, hp + 8);
       msg = `${def.name}: раны, проклятие и яд сняты (+8 ОЗ).`;
+    } else if (u.type === "special_map") {
+      if (run.mapRevealed) {
+        setModal({ kind: "note", title: "Карта уже раскрыта", body: "Сундуки, босс и события этого этажа уже отмечены." });
+        return;
+      }
+      setRun((r) => (r ? { ...r, mapRevealed: true, log: [...r.log, "Потрёпанная карта раскрыла сундуки, босса и события."] } : r));
+      msg = "Потрёпанная карта: сундуки, босс и события отмечены до конца этажа.";
+    } else if (u.type === "special_water") {
+      if (mazeBiome(run.maze) !== "fire" || (run.burning ?? 0) <= 0) {
+        setModal({ kind: "note", title: "Горения нет", body: "Бурдюк с водой нужен, когда на карте в Огненных недрах осталось горение." });
+        return;
+      }
+      setRun((r) => (r ? { ...r, burning: 0, log: [...r.log, "Бурдюк с водой погасил горение на карте."] } : r));
+      msg = "Бурдюк с водой: горение на карте снято.";
+    } else if (u.type === "special_torch") {
+      setRun((r) => (r ? { ...r, torchTurns: (u.rounds ?? 5) + 1, log: [...r.log, "Факел разгорелся: +1 видимость на 5 ходов по карте."] } : r));
+      msg = "Факел: +1 к видимости на 5 ходов по карте. Штраф мрака снят, пока он горит.";
     } else {
       return;
     }
@@ -917,6 +993,9 @@ export default function App() {
       prevPos: { ...maze.start },
       seen: { [`${maze.start.x},${maze.start.y}`]: true },
       keys: 0,
+      torchTurns: 0,
+      mapRevealed: false,
+      burning: 0,
       log: [...run.log, `Спуск на этаж ${nf}: ${BIOMES[mazeBiome(maze)].name}. ${BIOMES[mazeBiome(maze)].effect}`],
     });
     setPlayer((p) => {
@@ -943,7 +1022,7 @@ export default function App() {
       bag,
       armory: [...b.loot.gear, ...player.armory],
       kills: player.kills + 1,
-      statuses: { wound: b.p.statuses.wound, curse: b.p.statuses.curse, poison: b.p.statuses.poison },
+      statuses: { wound: b.p.statuses.wound, curse: isBattleCurse(b.p.statuses.curse) ? 0 : b.p.statuses.curse, poison: b.p.statuses.poison, cursePower: isBattleCurse(b.p.statuses.curse) ? 0 : b.p.statuses.cursePower },
     };
     const { player: updated, levelsGained } = grantXp(withLoot, b.loot.xp);
     setPlayer(updated);
@@ -965,6 +1044,7 @@ export default function App() {
         gold: r.gold + b.loot.gold,
         loot: [...r.loot, ...b.loot.items],
         gearLoot: [...r.gearLoot, ...b.loot.gear],
+        burning: b.biome === "fire" ? b.p.statuses.burning : 0,
         log: [
           ...r.log,
           `Победа над ${b.enemy.def.name}: +${b.loot.gold} зол., +${earnedXp} XP.${lvlNote}${b.isBoss ? ` Открыт этаж ${b.floor + 1}.` : ""}`,
@@ -1043,45 +1123,43 @@ export default function App() {
           </Modal>
         );
 
-      case "trap":
+      case "trap": {
+        const trap = modal.trap;
+        const hasKit = (player.bag.sapper_kit ?? 0) > 0;
+        const prep = Math.max(0.1, 1 - player.stats.str * 0.1);
         return (
           <Modal
-            title="Ловушка"
-            sub="Пластина под сапогом ушла вниз со щелчком"
+            title={TRAP_META[trap.kind].name}
+            sub={TRAP_META[trap.kind].desc}
             actions={
               <>
-                <Btn
-                  tone="verd"
-                  onClick={() => {
-                    close();
-                    takeTrap(true);
-                  }}
-                >
-                  Обезвредить · {Math.round(modal.chance * 100)}%
+                <Btn tone="flame" onClick={() => takeTrap("prepare")}>
+                  Подготовиться и принять · −{Math.round((1 - prep) * 100)}%
                 </Btn>
-                <Btn
-                  tone="danger"
-                  onClick={() => {
-                    close();
-                    takeTrap(false);
-                  }}
-                >
-                  Принять удар · {modal.dmg}
+                <Btn tone="verd" onClick={() => takeTrap("bypass")}>
+                  Обойти · {Math.round(trap.bypassChance * 100)}%
+                </Btn>
+                <Btn tone="ghost" disabled={!hasKit} onClick={() => takeTrap("disarm")}>
+                  Обезвредить · {Math.round(trap.disarmChance * 100)}%{hasKit ? "" : " (нужен набор)"}
                 </Btn>
               </>
             }
           >
             <p>
-              Можно перехватить механизм на лету (дает опыт при успехе) или принять удар на себя. Ловкость и
-              Интеллект повышают шанс обезвреживания, а Сила снижает урон.
+              Подготовка снижает урон и длительность эффекта на 10% за каждое очко Силы. Обход зависит от Ловкости;
+              при провале последствия удваиваются. Обезвреживание требует снаряжения сапёра, растёт от Интеллекта
+              и тратит набор в любом случае.
             </p>
             <p className="mt-3 flex flex-wrap gap-2">
-              <Tag tone="rubric">урон {modal.dmg}</Tag>
-              <Tag tone="mute">при срыве: {Math.round(modal.dmg * 1.35)}</Tag>
-              <Tag tone="flame">СИЛ {player.stats.str}</Tag>
+              {trap.damage > 0 && <Tag tone="rubric">урон {trap.damage}</Tag>}
+              {trap.rounds > 0 && <Tag tone="rubric">эффект {trap.rounds} хода</Tag>}
+              {trap.cursePower > 0 && <Tag tone="rubric">проклятие −{trap.cursePower}% урона до конца боя</Tag>}
+              <Tag tone="mute">при срыве: ×2</Tag>
+              <Tag tone="flame">набор сапёра: {player.bag.sapper_kit ?? 0}</Tag>
             </p>
           </Modal>
         );
+      }
 
       case "door":
         return (
@@ -1094,12 +1172,15 @@ export default function App() {
                 <Btn tone="verd" disabled={(run?.keys ?? 0) === 0} onClick={() => openDoor(modal.x, modal.y)}>
                   Использовать ключ ({run?.keys ?? 0})
                 </Btn>
+                <Btn tone="flame" disabled={(player.bag.lockpicks ?? 0) === 0} onClick={() => pickDoor(modal.x, modal.y)}>
+                  Отмычка · {Math.round(lockpickChance(player.stats.agi) * 100)}% ({player.bag.lockpicks ?? 0})
+                </Btn>
               </>
             }
           >
             <p>
-              Ключей в связке: <b className="text-verd">{run?.keys ?? 0}</b>. Открытая дверь остаётся распахнутой до
-              конца этажа и пропускает свет факела дальше.
+              Ключей в связке: <b className="text-verd">{run?.keys ?? 0}</b>. Отмычек: <b className="text-flame">{player.bag.lockpicks ?? 0}</b>.
+              Отмычка тратится при попытке в любом случае; шанс зависит от Ловкости. Открытая дверь остаётся распахнутой до конца этажа.
             </p>
           </Modal>
         );
