@@ -128,7 +128,7 @@ export interface Player {
   archetype?: ArchetypeId | null;
   /** Выборы на рубежах характеристик 5/10. */
   statMilestones?: StatMilestoneChoices;
-  statuses: { wound: number; curse: number; poison: number };
+  statuses: { wound: number; curse: number; poison: number; cursePower?: number };
   kills: number;
   /** Уровень лавки 1…10: задаёт шансы изношенности, редкости и ассортимент. */
   shopLevel: number;
@@ -183,11 +183,17 @@ export interface Run {
   keys: number;
   steps: number;
   log: string[];
+  /** Факел: оставшиеся ходы по карте (+1 видимость, снимает штраф мрака). */
+  torchTurns?: number;
+  /** Потрёпанная карта раскрыла сундуки, босса и события до конца этажа. */
+  mapRevealed?: boolean;
+  /** Горение, оставшееся на карте в Огненных недрах. */
+  burning?: number;
 }
 
 export type ModalState =
   | { kind: "intro" }
-  | { kind: "trap"; dmg: number; chance: number }
+  | { kind: "trap"; trap: import("./traps").TrapState }
   | { kind: "door"; x: number; y: number }
   | { kind: "chest"; gold: number; items: string[]; gear: GearItem[]; xp: number }
   | { kind: "key" }

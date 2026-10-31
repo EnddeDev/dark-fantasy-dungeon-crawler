@@ -106,3 +106,27 @@ test("guide explains the five labyrinth biomes and their exact spawn chances", (
   assert.ok(html.includes("Видимость 2 клетки"));
   assert.ok(html.includes("горение усиливается на 2 ОЗ"));
 });
+
+test("guide documents reset, declining enemy scaling, traps, specials and new reagents", () => {
+  assert.ok(html.includes("100 × текущий уровень героя"));
+  assert.ok(html.includes("1/1/1"));
+  assert.ok(html.includes("1.50"));
+  assert.ok(html.includes("1.45"));
+  assert.ok(html.includes("1.05"));
+  assert.ok(html.includes("Подготовиться и принять"));
+  assert.ok(html.includes("Обойти"));
+  assert.ok(html.includes("Обезвредить"));
+  assert.ok(html.includes("снаряжения сапёра"));
+  assert.ok(html.includes("Отмычки"));
+  assert.ok(html.includes("Потрёпанная карта"));
+  assert.ok(html.includes("Бурдюк с водой"));
+  assert.ok(html.includes("Факел"));
+  assert.ok(html.includes("пергамент"));
+  assert.ok(html.includes("магические чернила"));
+  assert.ok(html.includes("металлолом"));
+  assert.ok(html.includes("фляга"));
+  assert.ok(html.includes("10% + 5% × (текущий уровень предмета − 1)"));
+  assert.ok(html.includes("5%"));
+  assert.ok(html.includes("1–3 реагента"));
+  assert.ok(html.includes("6 вариантов"));
+});

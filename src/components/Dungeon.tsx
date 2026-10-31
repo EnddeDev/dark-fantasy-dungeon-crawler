@@ -50,14 +50,15 @@ export function Dungeon({
   const m = run.maze;
   const biome = mazeBiome(m);
   const colors = BIOME_MAP_COLORS[biome];
-  const radius = biomeVision(biome, TORCH);
+  const torchActive = (run.torchTurns ?? 0) > 0;
+  const radius = torchActive ? TORCH + 1 : biomeVision(biome, TORCH);
   const S = m.size;
   const W = S * CS;
   const [openSlot, setOpenSlot] = useState<Slot | null>(null);
   const [detailUid, setDetailUid] = useState<string | null>(null);
 
   /* 0 — темнота, 1 — луч факела, 2 — уже пройденные клетки */
-  const vis = useMemo(() => computeVisibility(m, run.pos, run.seen), [m, run.pos, run.seen]);
+  const vis = useMemo(() => computeVisibility(m, run.pos, run.seen, run.torchTurns ?? 0), [m, run.pos, run.seen, run.torchTurns]);
   const visAt = (x: number, y: number) => (x < 0 || y < 0 || x >= S || y >= S ? 0 : vis[y][x]);
 
   const wallPath = useMemo(() => {
@@ -109,7 +110,7 @@ export function Dungeon({
 
   const fieldConsumables = Object.entries(bag).filter(([id]) => {
     const t = ITEMS[id]?.use?.type;
-    return t === "heal" || t === "cleanse";
+    return t === "heal" || t === "cleanse" || t === "special_map" || t === "special_water" || t === "special_torch";
   });
 
   const equippedUid = openSlot ? player.equip[openSlot] : null;
@@ -135,6 +136,9 @@ export function Dungeon({
           <span className="tab">шагов: <span className="text-parch">{run.steps}</span></span>
           <span className="tab">добыча: <span className="text-flame">{run.gold}</span></span>
           <span className="tab text-verd">ключи: {run.keys}</span>
+          {torchActive && <span className="tab text-flame">факел: {run.torchTurns} ход.</span>}
+          {(run.burning ?? 0) > 0 && <span className="tab text-rubric">горение ×{run.burning}</span>}
+          {run.mapRevealed && <span className="tab text-flame">карта раскрыта</span>}
           <span className="flex items-center gap-2">
             <span className="sc text-rubric">здоровье</span>
             <span className="inline-block w-20 sm:w-32">
@@ -399,6 +403,36 @@ export function Dungeon({
               <path d={wallPath} stroke={colors.wall} strokeWidth="4.5" strokeLinecap="square" fill="none" />
               <path d={wallPath} stroke={colors.wallEdge} strokeWidth="1.8" strokeLinecap="square" fill="none" />
               <path d={wallPath} stroke={colors.wallLight} strokeWidth="0.8" strokeLinecap="square" fill="none" opacity="0.9" />
+
+              {/* Потрёпанная карта: метки поверх тумана, даже вне видимости */}
+              {run.mapRevealed && (
+                <g opacity="0.9">
+                  {m.chests.filter((i) => !m.openedChests.includes(i) && !visAt(i % S, Math.floor(i / S))).map((i) => {
+                    const { cx, cy } = center(i);
+                    return (
+                      <g key={`rc${i}`} transform={`translate(${cx} ${cy})`}>
+                        <circle r="13" fill="none" stroke="#e0a33c" strokeWidth="1.6" strokeDasharray="4 3" />
+                        <rect x="-8" y="-3" width="16" height="10" fill="#c98b2e" stroke={colors.wallShadow} strokeWidth="1.5" />
+                      </g>
+                    );
+                  })}
+                  {!m.bossDefeated && !visAt(m.boss.x, m.boss.y) && (
+                    <g transform={`translate(${m.boss.x * CS + CS / 2} ${m.boss.y * CS + CS / 2})`}>
+                      <circle r="13" fill="none" stroke="#a52a2a" strokeWidth="1.8" strokeDasharray="4 3" />
+                      <path d="M-6 -8h12v8a6 6 0 0 1-12 0z" fill="#a52a2a" />
+                    </g>
+                  )}
+                  {m.events.filter((i) => !m.usedEvents.includes(i) && !visAt(i % S, Math.floor(i / S))).map((i) => {
+                    const { cx, cy } = center(i);
+                    return (
+                      <g key={`re${i}`} transform={`translate(${cx} ${cy})`}>
+                        <circle r="12" fill="none" stroke="#5aa9e6" strokeWidth="1.6" strokeDasharray="4 3" />
+                        <text textAnchor="middle" dy="5" fontSize="15" fill="#5aa9e6">?</text>
+                      </g>
+                    );
+                  })}
+                </g>
+              )}
 
               {/* маршрут, выбранный мышью */}
               {routeD && (
@@ -671,14 +705,20 @@ export function Dungeon({
                           ? `нужен ИНТ ${req}`
                           : def.use?.type === "heal"
                             ? `+${biomeHealingAmount(biome, consumablePower(def, player.stats), def.kind === "potion")} здоровья`
-                            : `снять раны, проклятие и яд (+${biomeHealingAmount(biome, def.use?.power ?? 8, def.kind === "potion")} ОЗ)`}
+                            : def.use?.type === "cleanse"
+                              ? `снять раны, проклятие и яд (+${biomeHealingAmount(biome, def.use?.power ?? 8, def.kind === "potion")} ОЗ)`
+                              : def.use?.type === "special_map"
+                                ? "отметить сундуки, босса и события"
+                                : def.use?.type === "special_water"
+                                  ? "снять горение на карте"
+                                  : `+1 видимость на ${def.use?.rounds ?? 5} ходов`}
                       </span>
                     </span>
                   </button>
                 );
               })}
               {fieldConsumables.length === 0 && (
-                <span className="text-sm italic text-mute">Целебных зелий и свитков исцеления не осталось.</span>
+                <span className="text-sm italic text-mute">Целебных зелий, свитков исцеления и полевых спец. предметов не осталось.</span>
               )}
             </div>
           </div>

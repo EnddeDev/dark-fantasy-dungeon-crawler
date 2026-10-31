@@ -556,9 +556,10 @@ export function computeVisibility(
   m: Maze,
   pos: Cell,
   seen: Record<string, boolean>,
+  torchTurns = 0,
 ): number[][] {
   const s = m.size;
-  const radius = biomeVision(mazeBiome(m), TORCH);
+  const radius = torchTurns > 0 ? TORCH + 1 : biomeVision(mazeBiome(m), TORCH);
   const out: number[][] = Array.from({ length: s }, (_, y) =>
     Array.from({ length: s }, (_, x) => (seen[`${x},${y}`] ? 2 : 0)),
   );

@@ -42,6 +42,17 @@ const GLYPHS: Record<string, string> = {
   icon: `<path d="M14 8 h20 v30 l-10 4 -10-4 z" /><path d="M24 14 c4 4 4 10 0 14 c-4-4-4-10 0-14 z" />`,
   soulstone: `<circle cx="24" cy="24" r="14" /><path d="M24 10 c6 6 6 22 0 28 c-6-6-6-22 0-28 z" />`,
 
+  /* ── спец. предметы и реагенты ── */
+  sapper_kit: `<path d="M10 16h28v22H10z" /><path d="M18 16v-4h12v4" /><path d="M16 24h16M24 20v8" /><path d="M32 30l5 5" />`,
+  lockpicks: `<path d="M12 36L30 18" /><path d="M30 18l4-4 3 3-4 4z" /><path d="M18 38L36 20" /><path d="M36 20l3-3" /><path d="M10 40h8" />`,
+  tattered_map: `<path d="M10 12l10-4 10 4 8-3v27l-8 3-10-4-10 4z" /><path d="M20 8v27M30 12v27" /><path d="M14 20l4 3 5-6 6 5" />`,
+  water_skin: `<path d="M20 8h8v6c6 3 9 9 9 16a13 13 0 0 1-26 0c0-7 3-13 9-16z" /><path d="M18 30c2 3 10 3 12 0" />`,
+  field_torch: `<path d="M22 20h4v22h-4z" /><path d="M24 6c6 6 6 10 0 14-6-4-6-10 0-14z" /><path d="M18 22h12" />`,
+  parchment: `<path d="M14 8h20v32H14z" /><path d="M14 8c-4 0-4 6 0 6M34 40c4 0 4-6 0-6" /><path d="M18 18h12M18 24h12M18 30h8" />`,
+  magic_ink: `<path d="M18 10h12v8l4 6v16H14V24l4-6z" /><path d="M18 10h12" /><path d="M20 28c2 3 6 3 8 0" />`,
+  scrap_metal: `<path d="M10 30l8-14 8 6 6-10 8 18-10 8-12-4z" /><path d="M18 16l4 12M32 12l-4 16" />`,
+  vial: `<path d="M20 8h8v10l5 8v14H15V26l5-8z" /><path d="M18 8h12" /><path d="M17 30h14" />`,
+
   /* ── доспехи ── */
   rag: `<path d="M16 13 l8-5 8 5 6 11 -7 4 v16 h-14 v-16 l-7-4 z" /><path d="M20 20 l4 6 4-6" />`,
   mail: `<path d="M14 13 l10-5 10 5 4 13 -6 3 v13 h-16 v-13 l-6-3 z" /><circle cx="18" cy="18" r="1.6" /><circle cx="24" cy="17" r="1.6" /><circle cx="30" cy="18" r="1.6" /><circle cx="21" cy="24" r="1.6" /><circle cx="27" cy="24" r="1.6" /><circle cx="24" cy="31" r="1.6" />`,

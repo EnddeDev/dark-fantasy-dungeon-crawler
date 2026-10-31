@@ -22,6 +22,8 @@ import {
   BREW_FAILURE_CHANCE,
   consumableIntReq,
   consumableScaleLabel,
+  canBuySupply,
+  supplySellPrice,
   equipItem,
   identifyReqs,
   slotsForItem,
@@ -56,6 +58,7 @@ import type { ArchetypeId } from "../game/archetypes";
 import { canChooseStatMilestone, chooseStatMilestone, chosenStatMilestone, statMilestoneOptions, type StatMilestoneTier } from "../game/statMilestones";
 import { SHOP_MAX_LEVEL, shopRarityTable, shopUpgradeCost, shopWearTable } from "../game/world";
 import { forgeOptions, forgeUpgrade, type ForgeUpgradeKind } from "../game/forge";
+import { resetStats, statResetCost, totalStatPoints } from "../game/progression";
 import { WEAR_RANGE } from "../game/types";
 import { Guide } from "./Guide";
 import { Bestiary } from "./Bestiary";
@@ -67,8 +70,8 @@ import { Btn, Meter, Modal, Panel, Pips, Tag } from "./ui";
 
 type Tab = "train" | "armory" | "shop" | "brew" | "workshop" | "forge" | "bestiary" | "guide";
 type ShopSection = "equipment" | "supplies" | "reagents" | "recipes";
-type SupplyGroup = "potion" | "throwable" | "scroll";
-type RecipeGroup = "potion" | "throwable" | "scroll";
+type SupplyGroup = "potion" | "throwable" | "scroll" | "special";
+type RecipeGroup = "potion" | "throwable" | "scroll" | "special";
 /** Всплывающая подсказка о припасе / реагенте / рецепте. */
 type InfoTip = { kind: "item" | "recipe"; id: string } | null;
 
@@ -76,16 +79,18 @@ const SUPPLY_GROUPS: { id: SupplyGroup; label: string }[] = [
   { id: "potion", label: "Зелья" },
   { id: "throwable", label: "Расходники" },
   { id: "scroll", label: "Свитки" },
+  { id: "special", label: "Спец. предметы" },
 ];
 
 const RECIPE_GROUPS: { id: RecipeGroup; label: string }[] = [
   { id: "potion", label: "Зелья" },
   { id: "throwable", label: "Расходники" },
   { id: "scroll", label: "Свитки" },
+  { id: "special", label: "Спец. предметы" },
 ];
 
 function groupOfKind(kind: string): SupplyGroup {
-  return kind === "scroll" ? "scroll" : kind === "throwable" ? "throwable" : "potion";
+  return kind === "scroll" ? "scroll" : kind === "throwable" ? "throwable" : kind === "special" ? "special" : "potion";
 }
 
 function intReqLabel(def: ItemDef, discount: number): string {
@@ -169,6 +174,16 @@ function effectSummary(def: ItemDef): { what: string; when: string } {
       return { what: "Враг вынужден держать защиту и не атакует.", when: `Действует ${u.rounds} хода.` };
     case "stun_enemy":
       return { what: "Враг теряет ходы в следующем раунде.", when: `Отнимает ${u.rounds} хода. Интеллект не нужен.` };
+    case "special_kit":
+      return { what: "Позволяет обезвредить ловушку; шанс растёт от Интеллекта.", when: "Тратится при попытке в любом случае." };
+    case "special_lockpick":
+      return { what: "Шанс открыть запертую дверь без ключа; зависит от Ловкости.", when: "Тратится при попытке в любом случае." };
+    case "special_map":
+      return { what: "Показывает сундуки, босса и события на карте этажа.", when: "Используется на карте. Действует до конца этажа." };
+    case "special_water":
+      return { what: "Снимает горение на карте в Огненных недрах.", when: "Используется на карте, когда есть горение." };
+    case "special_torch":
+      return { what: "+1 к видимости; в Тёмном подземелье снимает штраф мрака.", when: `Действует ${u.rounds ?? 5} ходов по карте.` };
     default:
       return { what: def.desc, when: "Мгновенно." };
   }
@@ -257,6 +272,7 @@ export function Lobby({
   const [chosenSlot, setChosenSlot] = useState<Slot | null>(null);
   const [forgeUid, setForgeUid] = useState<string | null>(null);
   const [forgeConfirm, setForgeConfirm] = useState<{ uid: string; kind: ForgeUpgradeKind } | null>(null);
+  const [resetConfirm, setResetConfirm] = useState(false);
 
   const d = derived(player);
   const say = (t: string) => {
@@ -303,16 +319,37 @@ export function Lobby({
     say("Усиление рубежа записано в лист");
   };
 
-  /* Покупка расходников/свитков */
+  /* Покупка расходников/свитков/реагентов: уровень предмета не выше уровня лавки. */
   const buyConsumable = (def: ItemDef) => {
     const price = def.price ?? 0;
-    if (player.gold < price) return;
+    if (player.gold < price || !canBuySupply(def.id, player.shopLevel)) return;
     setPlayer((p) => ({
       ...p,
       gold: p.gold - price,
       bag: { ...p.bag, [def.id]: (p.bag[def.id] ?? 0) + 1 },
     }));
     say(`Куплено: ${def.name}`);
+  };
+
+  const sellSupply = (def: ItemDef) => {
+    const have = player.bag[def.id] ?? 0;
+    if (have <= 0) return;
+    const price = supplySellPrice(def);
+    setPlayer((p) => {
+      const bag = { ...p.bag, [def.id]: (p.bag[def.id] ?? 0) - 1 };
+      if (bag[def.id] <= 0) delete bag[def.id];
+      return { ...p, gold: p.gold + price, bag };
+    });
+    say(`Продано: ${def.name} за ${price} зол.`);
+  };
+
+  const confirmResetStats = () => {
+    const res = resetStats(player);
+    if (!res) return;
+    setPlayer(() => res.player);
+    setResetConfirm(false);
+    setPick(null);
+    say(`Характеристики сброшены. Возвращено ${res.refunded} очк., потрачено ${res.cost} зол.${res.removedSlots.length ? ` Снято снаряжение: ${res.removedSlots.length}.` : ""}`);
   };
 
   /* Если Интеллект позволяет — предметы в арсенале исследуются сами */
@@ -724,6 +761,22 @@ export function Lobby({
                     />
                   </Panel>
 
+                  <Panel className="p-4" title="Перераспределение характеристик">
+                    <p className="text-[0.98rem] leading-snug text-parch/85">
+                      Полный сброс до <b className="text-flamehi">1 Сила / 1 Ловкость / 1 Интеллект</b>.
+                      Все очки за уровни вернутся свободными; выбранные рубежи сбросятся.
+                      Стоимость: <b className="text-flamehi">{statResetCost(player.level)} зол.</b> (100 × уровень персонажа).
+                    </p>
+                    <Btn
+                      className="mt-3"
+                      tone={player.gold >= statResetCost(player.level) ? "danger" : "ghost"}
+                      disabled={player.gold < statResetCost(player.level)}
+                      onClick={() => setResetConfirm(true)}
+                    >
+                      Сбросить характеристики · {statResetCost(player.level)} зол.
+                    </Btn>
+                  </Panel>
+
                   <Panel className="p-4" title="Архетип" right={<span className="font-mono text-sm tab text-flame">{player.archetype ? ARCHETYPES[player.archetype].name : "не выбран"}</span>}>
                     <p className="text-[1rem] leading-relaxed text-parch/85">
                       На <b>5 уровне</b> выбери основной архетип. Усиления архетипов открываются на <b>рубежах характеристик 5 и 10</b>:
@@ -1010,7 +1063,8 @@ export function Lobby({
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                       {shopSupplies.map((def) => {
                         const have = player.bag[def.id] ?? 0;
-                        const can = player.gold >= (def.price ?? 0);
+                        const levelOk = canBuySupply(def.id, player.shopLevel);
+                        const can = player.gold >= (def.price ?? 0) && levelOk;
                         const intReq = consumableIntReq(def, d.intDiscount);
                         const info = effectSummary(def);
                         return (
@@ -1034,8 +1088,9 @@ export function Lobby({
                                     <Tag tone={player.stats.int >= intReq ? "verd" : "rubric"}>ИНТ {intReq}</Tag>
                                   )}
                                   <Tag tone="mute">
-                                    {def.kind === "scroll" ? "свиток" : def.kind === "throwable" ? "расходник" : "зелье"}
+                                    {def.kind === "scroll" ? "свиток" : def.kind === "throwable" ? "расходник" : def.kind === "special" ? "спец. предмет" : "зелье"}
                                   </Tag>
+                                  {!levelOk && <Tag tone="rubric">лавка ур. {def.level ?? 1}</Tag>}
                                 </div>
                               </div>
                             </div>
@@ -1047,9 +1102,16 @@ export function Lobby({
                               <span className="font-mono text-sm tab text-flamehi">
                                 {def.price} зол.{have > 0 && <span className="ml-2 text-mute">в сумке: {have}</span>}
                               </span>
-                              <Btn tone={can ? "flame" : "ghost"} disabled={!can} onClick={() => buyConsumable(def)}>
-                                Купить
-                              </Btn>
+                              <div className="flex gap-2">
+                                {have > 0 && (
+                                  <Btn tone="ghost" onClick={() => sellSupply(def)}>
+                                    Продать 1 · {supplySellPrice(def)} зол.
+                                  </Btn>
+                                )}
+                                <Btn tone={can ? "flame" : "ghost"} disabled={!can} onClick={() => buyConsumable(def)}>
+                                  {levelOk ? "Купить" : `Нужна лавка ур. ${def.level ?? 1}`}
+                                </Btn>
+                              </div>
                             </div>
                           </Panel>
                         );
@@ -1069,7 +1131,8 @@ export function Lobby({
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                       {shopReagents.map((def) => {
                         const have = player.bag[def.id] ?? 0;
-                        const can = player.gold >= (def.price ?? 0);
+                        const levelOk = canBuySupply(def.id, player.shopLevel);
+                        const can = player.gold >= (def.price ?? 0) && levelOk;
                         const cat = def.reagentCat ?? "plant";
                         const catLabel =
                           cat === "mineral" ? "минерал" : cat === "cloth" ? "ткань" : cat === "monster" ? "часть твари" : "растение";
@@ -1083,6 +1146,8 @@ export function Lobby({
                                 </h4>
                                 <div className="mt-1 flex flex-wrap justify-end gap-1">
                                   <Tag tone="verd">{catLabel}</Tag>
+                                  <Tag tone="mute">ур. {def.level ?? 1}</Tag>
+                                  {!levelOk && <Tag tone="rubric">лавка ур. {def.level ?? 1}</Tag>}
                                 </div>
                               </div>
                             </div>
@@ -1091,9 +1156,16 @@ export function Lobby({
                               <span className="font-mono text-sm tab text-flamehi">
                                 {def.price} зол.{have > 0 && <span className="ml-2 text-mute">в сумке: {have}</span>}
                               </span>
-                              <Btn tone={can ? "flame" : "ghost"} disabled={!can} onClick={() => buyConsumable(def)}>
-                                Купить
-                              </Btn>
+                              <div className="flex gap-2">
+                                {have > 0 && (
+                                  <Btn tone="ghost" onClick={() => sellSupply(def)}>
+                                    Продать 1 · {supplySellPrice(def)} зол.
+                                  </Btn>
+                                )}
+                                <Btn tone={can ? "flame" : "ghost"} disabled={!can} onClick={() => buyConsumable(def)}>
+                                  {levelOk ? "Купить" : `Нужна лавка ур. ${def.level ?? 1}`}
+                                </Btn>
+                              </div>
                             </div>
                           </Panel>
                         );
@@ -1282,6 +1354,7 @@ export function Lobby({
                                 <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[0.84rem]">
                                   <Tag tone="flame">{opt.cost} зол.</Tag>
                                   <Tag tone="rubric">риск уничтожения {Math.round(opt.destroyChance * 100)}%</Tag>
+                                  {opt.successChance !== undefined && <Tag tone="verd">шанс успеха {Math.round(opt.successChance * 100)}%</Tag>}
                                   {!opt.available && <Tag tone="mute">предел</Tag>}
                                 </div>
                                 <Btn
@@ -1380,6 +1453,26 @@ export function Lobby({
         </div>
       )}
 
+      {resetConfirm && (
+        <Modal
+          title="Сбросить характеристики?"
+          onClose={() => setResetConfirm(false)}
+          actions={
+            <div className="flex justify-end gap-2">
+              <Btn tone="ghost" onClick={() => setResetConfirm(false)}>Отмена</Btn>
+              <Btn tone="danger" onClick={confirmResetStats}>Сбросить · {statResetCost(player.level)} зол.</Btn>
+            </div>
+          }
+        >
+          <div className="space-y-2 text-[1rem] leading-relaxed text-parch/90">
+            <p>Сила, Ловкость и Интеллект станут <b className="text-flamehi">1/1/1</b>.</p>
+            <p>Свободных очков после сброса: <b className="text-verd">{totalStatPoints(player.level)}</b>.</p>
+            <p>Выбранные рубежи 5/10 сбросятся. Снаряжение, которое герой больше не может носить, будет снято.</p>
+            <p>Стоимость: <b className="text-rubric">{statResetCost(player.level)} зол.</b></p>
+          </div>
+        </Modal>
+      )}
+
       {forgeConfirm && (
         <Modal
           title="Подтвердить улучшение"
@@ -1408,7 +1501,10 @@ export function Lobby({
             return (
               <div className="space-y-2 text-[1rem] leading-relaxed text-parch/90">
                 <p>Улучшение «{opt.label.toLowerCase()}» стоит <b className="text-flamehi">{opt.cost} зол.</b></p>
-                <p>Шанс уничтожения предмета: <b className="text-rubric">{Math.round(opt.destroyChance * 100)}%</b>. Золото списывается даже при неудаче.</p>
+                {opt.successChance !== undefined && (
+                  <p>Шанс повышения: <b className="text-verd">{Math.round(opt.successChance * 100)}%</b> (10% + 5% за каждый текущий уровень сверх первого).</p>
+                )}
+                <p>Риск уничтожения при провале: <b className="text-rubric">{Math.round(opt.destroyChance * 100)}%</b>. Золото списывается даже при неудаче.</p>
               </div>
             );
           })()}
