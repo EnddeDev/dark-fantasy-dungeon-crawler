@@ -24,8 +24,8 @@ import {
   RARITY_META,
   REAGENTS,
   STAT_META,
-  TECHNIQUE_POOL,
   WEAPON_TECHNIQUES,
+  techniquePoolFor,
   WEAR_META,
   epicSkillDesc,
   statPointCost,
@@ -172,10 +172,12 @@ function GuideSection({
 const TECHNIQUE_GROUPS = Object.values(GEAR_BASES)
   .filter((b) => b.weaponSkill)
   .map((b) => {
-    const ids = TECHNIQUE_POOL[b.id] ?? [b.weaponSkill!.id];
+    const stat = b.stat ?? (b.gearClass === "heavy" ? "str" : b.gearClass === "light" ? "int" : "agi");
+    const ids = techniquePoolFor(b.id, stat);
     return {
       id: b.id,
       weapon: b.name,
+      stat: STAT_META[stat].short,
       magic: b.weaponType === "staff" || b.weaponType === "wand",
       signature: b.weaponSkill!.id,
       skills: ids.map((id) => WEAPON_TECHNIQUES[id]).filter((sk) => Boolean(sk)),
@@ -551,10 +553,10 @@ export function Guide({
       <GuideSection id="guide-techniques" step="04" title="Приёмы оружия">
         <p>
           У оружия есть боевой приём, но он не закреплён за моделью намертво: у большинства клинков в
-          линейке по три приёма, и предмет попадается с любым из них. Две «Рапиры дуэлянта» могут прийти
-          с разными приёмами — смотри строку приёма в описании вещи. Всего приёмов оружия
-          <b className="text-parch"> {TECHNIQUE_TOTAL}</b>; у редких моделей приём только один, зато он
-          и самый тяжёлый.
+          линейке по два-три приёма, и предмет попадается с любым из них. Две «Рапиры дуэлянта» могут
+          прийти с разными приёмами — смотри строку приёма в описании вещи. Всего приёмов оружия
+          <b className="text-parch"> {TECHNIQUE_TOTAL}</b>; у некоторых моделей приём только один, зато
+          он и самый тяжёлый.
         </p>
         <p>
           Множитель в описании — сила приёма для предмета 1 уровня: с уровнем растут и урон, и требование
@@ -562,14 +564,18 @@ export function Guide({
           Интеллекта приём не применить: кнопка в бою подскажет «нужен ИНТ N». Зато пока ИНТ хватает,
           обычные удары этим оружием получают пассивную прибавку из строки «При ИНТ ≥ …». Приёмы посоха
           и волшебной палочки бьют магией: броню они обходят, но встречают сопротивление магии. Откат
-          считается в раундах.
+          считается в раундах. Приём всегда считает от той характеристики, которую требует предмет:
+          клинок на СИЛ получает только силовые приёмы, посох на ИНТ — только на ИНТ, и так у всех.
         </p>
         <div className="grid gap-3 lg:grid-cols-2">
           {TECHNIQUE_GROUPS.map((g) => (
             <div key={g.id} className="border border-line bg-black/30 p-4">
               <h5 className="flex flex-wrap items-baseline justify-between gap-2 font-display text-[1.08rem] uppercase tracking-[0.08em] text-flamehi">
                 {g.weapon}
-                {g.magic && <span className="text-[0.85rem] tracking-normal text-flamedim">магия</span>}
+                <span className="text-[0.85rem] tracking-normal text-flamedim">
+                  {g.stat}
+                  {g.magic && " · магия"}
+                </span>
               </h5>
               <ul className="mt-2 space-y-2 text-[0.96rem] leading-snug">
                 {g.skills.map((sk) => (
