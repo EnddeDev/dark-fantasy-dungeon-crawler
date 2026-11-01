@@ -16,6 +16,7 @@ import { FoePortrait } from "./FoeArt";
 import { RARITY_TEXT } from "./ui";
 
 const THREATS: Threat[] = ["normal", "horror", "catastrophe"];
+const pct = (v: number) => `${Math.round(v * 10) / 10}%`;
 const LOOT_LABELS = [
   ["nothing", "Ничего", Package],
   ["gold", "Золото", Coins],
@@ -175,13 +176,13 @@ export function Bestiary() {
             <div className="sc mb-2">Босс и сундук</div>
             <div className="space-y-1.5 font-mono text-[0.86rem] text-parch/85">
               {([
-                ["Босс", BOSS_RARITY_WEIGHTS, "50% редкое · 10% эпическое · 1% легендарное"],
-                ["Сундук", CHEST_RARITY_WEIGHTS, "30% редкое · 5% эпическое · 0.5% легендарное"],
-              ] as const).map(([name, w, note]) => (
+                ["Босс", BOSS_RARITY_WEIGHTS],
+                ["Сундук", CHEST_RARITY_WEIGHTS],
+              ] as const).map(([name, w]) => (
                 <div key={name} className="grid gap-x-3 sm:grid-cols-[64px_1fr]">
                   <span className="text-flamehi">{name}</span>
                   <span className="text-mute">
-                    обычное {Math.round(w.common * 10) / 10}% · {note}
+                    обычное {pct(w.common)} · редкое {pct(w.rare)} · эпическое {pct(w.epic)} · легендарное {pct(w.legendary)}
                   </span>
                 </div>
               ))}
