@@ -2652,25 +2652,42 @@ export function lootCategoryForRoll(table: LootTable, roll: number): keyof LootT
   return "gear";
 }
 
-/** Веса редкости: 60/30/8/2, усиленные угрозой и уровнем монстра. */
-export function rarityWeightsFor(threat: Threat, levelDelta: number): Record<RarityTier, number> {
-  const w: Record<RarityTier, number> = { ...BASE_RARITY_WEIGHTS };
-  if (threat === "horror") {
-    w.rare += 8;
-    w.epic += 4;
-    w.legendary += 2;
-  } else if (threat === "catastrophe") {
-    w.rare += 12;
-    w.epic += 8;
-    w.legendary += 4;
-  }
-  if (levelDelta !== 0) {
-    w.rare += levelDelta * 2;
-    w.epic += levelDelta;
-    w.legendary += levelDelta * 0.5;
-  }
-  w.common = Math.max(1, w.common - (w.rare - 30) - (w.epic - 8) - (w.legendary - 2));
-  return w;
+/**
+ * Качество добычи с монстров: шансы на ступень при условии, что предмет вообще выпал.
+ * Легендарного у обычных тварей нет вовсе, эпическое — только у ужаса и катастрофы.
+ */
+export const MONSTER_RARITY_WEIGHTS: Record<Threat, Record<RarityTier, number>> = {
+  normal: { common: 95, rare: 5, epic: 0, legendary: 0 },
+  horror: { common: 84, rare: 15, epic: 1, legendary: 0 },
+  catastrophe: { common: 70, rare: 25, epic: 5, legendary: 0 },
+};
+
+/** Босс: 39% обычное, 50% редкое, 10% эпическое, 1% легендарное. */
+export const BOSS_RARITY_WEIGHTS: Record<RarityTier, number> = {
+  common: 39,
+  rare: 50,
+  epic: 10,
+  legendary: 1,
+};
+
+/** Сундуки и события карты: между обычной тварью и боссом. Легендарка — 0.5%. */
+export const CHEST_RARITY_WEIGHTS: Record<RarityTier, number> = {
+  common: 64.5,
+  rare: 30,
+  epic: 5,
+  legendary: 0.5,
+};
+
+export function rarityWeightsFor(threat: Threat): Record<RarityTier, number> {
+  return { ...MONSTER_RARITY_WEIGHTS[threat] };
+}
+
+/**
+ * Изношенность находки в подземелье: нового там не бывает.
+ * 75% изношенное (×0.75), 25% ношенное (×1.0).
+ */
+export function rollDungeonWear(rng: () => number = Math.random): WearTier {
+  return rng() < 0.75 ? "battered" : "worn";
 }
 
 const SUPPLY_POOL = [
@@ -2704,13 +2721,13 @@ const SUPPLY_POOL = [
   "sapper_kit", "lockpicks", "tattered_map", "water_skin", "field_torch",
 ];
 
-function pickGearBase(level: number): string {
+function pickGearBase(level: number, rng: () => number = Math.random): string {
   const pool = Object.values(GEAR_BASES).filter((b) => b.minFloor <= level + 1);
   const usable = pool.length ? pool : Object.values(GEAR_BASES);
   // Чем глубже, тем реже попадает простая сталь.
   const weighted = usable.map((b) => ({ b, w: 1 + b.minFloor * 0.6 }));
   const total = weighted.reduce((s, x) => s + x.w, 0);
-  let r = Math.random() * total;
+  let r = rng() * total;
   for (const { b, w } of weighted) {
     r -= w;
     if (r <= 0) return b.id;
@@ -2745,11 +2762,17 @@ export function rollEnemyLoot(
     return out;
   }
 
+  /* Уровень вещи равен уровню монстра, с которого она выпала.
+     Нового в подземелье не бывает: 75% изношенное, 25% ношенное. */
+  const itemLevel = clampGearLevel(Math.max(1, Math.floor(level)));
   out.gear.push(
     createGearItem({
-      baseId: pickGearBase(level),
+      baseId: pickGearBase(level, rng),
+      level: itemLevel,
       floor: level,
-      rarityWeights: rarityWeightsFor(threat, level - floor),
+      wear: rollDungeonWear(rng),
+      rarityWeights: rarityWeightsFor(threat),
+      rng,
     }),
   );
   return out;

@@ -6,6 +6,8 @@ import {
   GEAR_BASES,
   ITEMS,
   REAGENTS,
+  BOSS_RARITY_WEIGHTS,
+  CHEST_RARITY_WEIGHTS,
   THREAT_META,
   consumableIntReq,
   consumablePower,
@@ -14,6 +16,7 @@ import {
   isImmuneTo,
   pick,
   randInt,
+  rollDungeonWear,
   rollEnemyLoot,
   rollMonsterLevel,
   rollThreat,
@@ -740,21 +743,28 @@ export function rollConsumableLoot(floor: number, count: number): string[] {
   return out;
 }
 
-export function rollGearDrop(floor: number, guaranteedRarePlus = false): GearItem {
+/**
+ * Снаряжение из подземелья: сундук, событие карты или трофей босса.
+ * Качество берётся из переданной таблицы (сундук / босс), изношенность — подземная:
+ * нового не бывает, 75% изношенное и 25% ношенное.
+ * Уровень вещи равен уровню монстра; у сундука остаётся уровнем модели.
+ */
+export function rollGearDrop(
+  floor: number,
+  weights: Record<GearItem["rarity"], number> = CHEST_RARITY_WEIGHTS,
+  monsterLevel?: number,
+  rng: () => number = Math.random,
+): GearItem {
   const pool = Object.values(GEAR_BASES).filter((g) => g.minFloor <= floor + 1);
-  const base = pick(pool.length ? pool : Object.values(GEAR_BASES));
-  let rarity: GearItem["rarity"] | undefined;
-  if (guaranteedRarePlus) {
-    const r = Math.random();
-    if (r < 0.22 + floor * 0.04) rarity = "legendary";
-    else if (r < 0.62) rarity = "epic";
-    else rarity = "rare";
-  }
+  const base = pick(pool.length ? pool : Object.values(GEAR_BASES), rng);
   return createGearItem({
     baseId: base.id,
     floor,
-    rarity,
+    level: monsterLevel === undefined ? undefined : Math.max(1, Math.min(10, Math.floor(monsterLevel))),
+    rarityWeights: weights,
+    wear: rollDungeonWear(rng),
     identified: false,
+    rng,
   });
 }
 
@@ -1426,8 +1436,8 @@ function gainLoot(b: BattleState) {
     // Боссы сохраняют прежний щедрый дроп: золото, припасы и гарантированный трофей.
     const gold = randInt(e.gold[0], e.gold[1]);
     const items = rollConsumableLoot(b.floor, 2);
-    // Как и раньше: босс оставляет гарантированный трофей не ниже редкого качества.
-    const gear: GearItem[] = [rollGearDrop(b.floor, true)];
+    // Босс — единственный, кто может оставить легендарное: 50/10/1.
+    const gear: GearItem[] = [rollGearDrop(b.floor, BOSS_RARITY_WEIGHTS, e.level)];
     b.loot = { gold, items, gear, xp: enemyXpFor(b) };
     return;
   }

@@ -34,20 +34,22 @@ export function shopWearTable(level: number): Record<WearTier, number> {
   };
 }
 
-/** Редкость по уровню лавки: L1 → 80 / 15 / 5 / 0, L10 → 40 / 25 / 20 / 15. */
+/**
+ * Редкость по уровню лавки.
+ * L1: обычное 90%, редкое 10%, эпического и легендарного нет.
+ * Эпическое появляется с 3 уровня (3%), легендарное — с 4 (1%).
+ * L10: обычное 26%, редкое 50%, эпическое 17%, легендарное 7%.
+ */
 export function shopRarityTable(level: number): Record<RarityTier, number> {
-  const t = levelT(level);
-  const cm = lerp(80, 40, t);
-  const rr = lerp(15, 25, t);
-  const ep = lerp(5, 20, t);
-  const lg = lerp(0, 15, t);
-  const total = cm + rr + ep + lg;
-  return {
-    common: (cm / total) * 100,
-    rare: (rr / total) * 100,
-    epic: (ep / total) * 100,
-    legendary: (lg / total) * 100,
-  };
+  const l = Math.max(1, Math.min(SHOP_MAX_LEVEL, Math.floor(level)));
+  /* Редкое растёт ровно с 10% до 50% к десятому уровню. */
+  const rare = 10 + ((l - 1) * 40) / 9;
+  /* Эпическое: 0 до 3 уровня, 3% на третьем, дальше +2 п.п. до 17%. */
+  const epic = l < 3 ? 0 : 3 + (l - 3) * 2;
+  /* Легендарное: 0 до 4 уровня, 1% на четвёртом, дальше +1 п.п. до 7%. */
+  const legendary = l < 4 ? 0 : 1 + (l - 4);
+  const common = 100 - rare - epic - legendary;
+  return { common, rare, epic, legendary };
 }
 
 export function shopWeight<T extends string>(table: Record<T, number>): Record<T, number> {
