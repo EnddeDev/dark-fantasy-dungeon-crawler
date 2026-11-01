@@ -260,11 +260,16 @@ export class DungeonController {
       msg = `${def.name}: раны, проклятие и яд сняты (+8 ОЗ).`;
     } else if (u.type === "special_map") {
       if (run.mapRevealed) {
-        this.model.setModal({ kind: "note", title: "Карта уже раскрыта", body: "Сундуки, босс и события этого этажа уже отмечены." });
+        this.model.setModal({ kind: "note", title: "Карта уже раскрыта", body: "Сундуки, босс, события, монстры и ловушки этого этажа уже отмечены." });
         return;
       }
-      nextRun = { ...run, mapRevealed: true, log: [...run.log, "Потрёпанная карта раскрыла сундуки, босса и события."] };
-      msg = "Потрёпанная карта: сундуки, босс и события отмечены до конца этажа.";
+      nextRun = {
+        ...run,
+        mapRevealed: true,
+        revealedTraps: [...new Set([...(run.revealedTraps ?? []), ...run.maze.traps])],
+        log: [...run.log, "Потрёпанная карта раскрыла сундуки, босса, события, монстров и ловушки."],
+      };
+      msg = "Потрёпанная карта: сундуки, босс, события, монстры и ловушки отмечены до конца этажа.";
     } else if (u.type === "special_water") {
       if (mazeBiome(run.maze) !== "fire" || (run.burning ?? 0) <= 0) {
         this.model.setModal({ kind: "note", title: "Горения нет", body: "Бурдюк с водой нужен, когда на карте в Огненных недрах осталось горение." });
@@ -288,6 +293,26 @@ export class DungeonController {
       })(),
     });
     this.model.logRun(msg);
+  }
+
+  /**
+   * Интеллект помогает заметить ловушку заранее: шанс падает с расстоянием.
+   * На карте показываются только замеченные ловушки, поэтому обычно они скрыты.
+   */
+  private spotTraps(m: Run["maze"], run: Run, skip: number): number[] {
+    const int = this.state.player.stats.int;
+    const known = new Set([...(run.revealedTraps ?? []), ...(run.sprungTraps ?? [])]);
+    const found: number[] = [];
+    for (const t of m.traps) {
+      if (known.has(t) || t === skip) continue;
+      const tx = t % m.size;
+      const ty = Math.floor(t / m.size);
+      const distance = Math.max(Math.abs(tx - run.pos.x), Math.abs(ty - run.pos.y));
+      if (distance > 2) continue;
+      const chance = Math.min(0.9, 0.12 + int * 0.12 - (distance - 1) * 0.25);
+      if (Math.random() < chance) found.push(t);
+    }
+    return found;
   }
 
   private stepInto(nx: number, ny: number, base?: Run): void {
@@ -369,8 +394,19 @@ export class DungeonController {
 
     const commitPlayer = () => this.model.setPlayer({ ...player, hp, statuses, bag: stepBag });
 
+    const noticed = this.spotTraps(m, r, idx);
+    if (noticed.length) {
+      r = { ...r, revealedTraps: [...new Set([...(r.revealedTraps ?? []), ...noticed])] };
+      r.log.push(
+        noticed.length === 1
+          ? "Краем глаза замечена ловушка неподалёку."
+          : `Замечены ловушки неподалёку: ${noticed.length}.`,
+      );
+    }
+
     if (m.boss.x === nx && m.boss.y === ny && !m.bossDefeated) {
       r.log.push("Перед лестницей встаёт Страж яруса!");
+      r = { ...r, battleCell: null };
       commitPlayer();
       this.model.setRun(r);
       this.model.setBattle(newBattle({ ...player, hp, statuses, bag: stepBag }, r.floor, true, mazeBiome(r.maze), r.torchTurns ?? 0, r.burning ?? 0));
@@ -380,6 +416,7 @@ export class DungeonController {
 
     if (m.stairs.x === nx && m.stairs.y === ny) {
       if (!m.bossDefeated) {
+        r = { ...r, battleCell: null };
         commitPlayer();
         this.model.setRun(r);
         this.model.setBattle(newBattle({ ...player, hp, statuses, bag: stepBag }, r.floor, true, mazeBiome(r.maze), r.torchTurns ?? 0, r.burning ?? 0));
@@ -441,19 +478,33 @@ export class DungeonController {
       return;
     }
 
-    const event = rollStepEvent(knownPath);
-    if (event === "quiet") {
-      r.log.push(
-        knownPath
-          ? "Знакомый коридор. Ты помнишь, где потрескался камень."
-          : Math.random() < 0.5
-          ? "Тишина. Только капли воды да чей-то скрип вдали."
-          : "Пустой коридор. Пламя факела тянется на три шага вперёд.",
-      );
+    /* Ловушки и монстры стоят на карте заранее: шаг в их клетку запускает событие. */
+    if (m.traps.includes(idx) && !(r.sprungTraps ?? []).includes(idx)) {
+      const swiftBonus = d.rareAffixes.filter((x) => x === "swift").length * 0.12;
+      const bypassBonus = (has("light_step") ? 0.3 : 0) + swiftBonus;
+      const trap = makeTrap({ kind: rollTrapKind(), floor: r.floor, stats: player.stats, bypassBonus, stoneSkin: has("stone_skin") });
+      r = {
+        ...r,
+        revealedTraps: [...new Set([...(r.revealedTraps ?? []), idx])],
+        sprungTraps: [...(r.sprungTraps ?? []), idx],
+        log: [...r.log, "Под ногой щёлкает механизм ловушки."],
+      };
       commitPlayer();
       this.model.setRun(r);
+      this.model.setModal({ kind: "trap", trap });
       return;
     }
+
+    if (m.monsters.includes(idx) && !(r.clearedMonsters ?? []).includes(idx)) {
+      r = { ...r, battleCell: idx, log: [...r.log, "Из темноты наперерез выходит обитатель этажа."] };
+      commitPlayer();
+      this.model.setRun(r);
+      this.model.setBattle(newBattle({ ...player, hp, statuses, bag: stepBag }, r.floor, false, biome, r.torchTurns ?? 0, r.burning ?? 0));
+      this.model.setScreen("battle");
+      return;
+    }
+
+    const event = rollStepEvent(knownPath);
     if (event === "find") {
       if (Math.random() < 0.5) {
         const foundGold = randInt(5 + r.floor * 2, 12 + r.floor * 4);
@@ -470,19 +521,14 @@ export class DungeonController {
       this.model.setRun(r);
       return;
     }
-    if (event === "trap") {
-      const swiftBonus = d.rareAffixes.filter((x) => x === "swift").length * 0.12;
-      const bypassBonus = (has("light_step") ? 0.3 : 0) + swiftBonus;
-      const trap = makeTrap({ kind: rollTrapKind(), floor: r.floor, stats: player.stats, bypassBonus, stoneSkin: has("stone_skin") });
-      commitPlayer();
-      this.model.setRun(r);
-      this.model.setModal({ kind: "trap", trap });
-      return;
-    }
-
+    r.log.push(
+      knownPath
+        ? "Знакомый коридор. Ты помнишь, где потрескался камень."
+        : Math.random() < 0.5
+        ? "Тишина. Только капли воды да чей-то скрип вдали."
+        : "Пустой коридор. Пламя факела тянется на три шага вперёд.",
+    );
     commitPlayer();
     this.model.setRun(r);
-    this.model.setBattle(newBattle({ ...player, hp, statuses, bag: stepBag }, r.floor, false, mazeBiome(r.maze), r.torchTurns ?? 0, r.burning ?? 0));
-    this.model.setScreen("battle");
   }
 }

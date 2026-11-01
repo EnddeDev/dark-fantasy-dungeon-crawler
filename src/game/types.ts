@@ -174,6 +174,10 @@ export interface Maze {
   /** Клетки-события с выбором: видны на карте до подхода. */
   events: number[];
   usedEvents: number[];
+  /** Постоянные обитатели карты: 1 монстр на 8 клеток, виден в свете факела. */
+  monsters: number[];
+  /** Ловушки: 1 на 16 клеток, обычно скрыты до момента обнаружения. */
+  traps: number[];
   /** Комнаты, разбавляющие коридоры: залы, крипты, галереи, пилоны. */
   rooms: { x: number; y: number; w: number; h: number; kind: string; name: string; pillars: [number, number][] }[];
   dist: number[][];
@@ -197,6 +201,14 @@ export interface Run {
   mapRevealed?: boolean;
   /** Горение, оставшееся на карте в Огненных недрах. */
   burning?: number;
+  /** Клетка монстра, который начал текущий бой (null — босс или событие). */
+  battleCell?: number | null;
+  /** Монстры, побеждённые на этом этаже: их клетки больше не опасны. */
+  clearedMonsters?: number[];
+  /** Ловушки, которые игрок уже заметил: только они видны на карте. */
+  revealedTraps?: number[];
+  /** Сработавшие ловушки: повторно не срабатывают. */
+  sprungTraps?: number[];
 }
 
 export type ModalState =

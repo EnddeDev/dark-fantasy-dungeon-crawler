@@ -27,12 +27,20 @@ export function ModalView({ game, state }: { game: GameController; state: GameSt
               <b className="text-flame">{BIOMES[biome].name}:</b> {BIOMES[biome].description}
             </li>
             <li>
+              <b className="text-flame">План этажа:</b> {run ? `${run.maze.size}×${run.maze.size}` : "8×8"} — каждый
+              следующий ярус просторнее, вплоть до 16×16.
+            </li>
+            <li>
               <b className="text-flame">Туман и стены:</b> открыты только пройденные клетки и круг радиусом{" "}
               <b>{biomeVision(biome)}</b>; стены, углы и запертые двери блокируют свет.
             </li>
             <li>
-              <b className="text-flame">Новая клетка:</b> 60% тихо, 10% ловушка, 20% бой и 10% небольшая находка.
-              Повторный путь: 90% ничего, 10% бой.
+              <b className="text-flame">Обитатели карты:</b> один монстр на восемь клеток и одна ловушка на
+              шестнадцать. Монстры стоят на своих местах и видны, пока их освещает факел; ловушки обычно скрыты,
+              но Интеллект помогает заметить их в двух шагах.
+            </li>
+            <li>
+              <b className="text-flame">Пустая клетка:</b> 10% небольшая находка, знакомый путь — тишина.
             </li>
             <li>
               <b className="text-rubric">Страж перед лестницей:</b> спуск на следующий ярус охраняет Босс со

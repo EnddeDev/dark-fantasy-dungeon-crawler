@@ -61,9 +61,13 @@ export class BattleController {
     const nextRun = run ? (() => {
       const maze = b.isBoss ? { ...run.maze, bossDefeated: true } : run.maze;
       const lvlNote = levelsGained > 0 ? ` Повышен уровень (+${levelsGained * 2} очк. хар.)!` : "";
+      const monsterCell = run.battleCell ?? null;
       return {
         ...run,
         maze,
+        battleCell: null,
+        clearedMonsters:
+          monsterCell === null ? run.clearedMonsters ?? [] : [...(run.clearedMonsters ?? []), monsterCell],
         gold: run.gold + b.loot.gold,
         loot: [...run.loot, ...b.loot.items],
         gearLoot: [...run.gearLoot, ...b.loot.gear],
@@ -127,7 +131,8 @@ export class BattleController {
     const remaining = { ...droppedCounts };
     const nextRun = {
       ...run,
-      pos: b.isBoss ? run.prevPos : run.pos,
+      pos: run.prevPos,
+      battleCell: null,
       gold: run.gold - lostGold,
       loot: run.loot.filter((id) => {
         if ((remaining[id] ?? 0) > 0) {
@@ -138,7 +143,11 @@ export class BattleController {
       }),
       gearLoot: run.gearLoot.filter((g) => !droppedGearUids.has(g.uid)),
       burning: b.biome === "fire" ? b.p.statuses.burning : 0,
-      log: [...run.log, `Побег из боя: потеряно ${lostGold} зол., ${droppedItems.length} припасов и ${droppedGear.length} снар.`],
+      log: [
+        ...run.log,
+        `Побег из боя: потеряно ${lostGold} зол., ${droppedItems.length} припасов и ${droppedGear.length} снар.` +
+          (b.isBoss ? "" : " Ты отступил на шаг назад — тварь осталась на месте."),
+      ],
     };
 
     this.model.update({

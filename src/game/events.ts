@@ -1,14 +1,11 @@
-export type StepEvent = "quiet" | "trap" | "fight" | "find";
+export type StepEvent = "quiet" | "find";
 
-/** На известной клетке 10% бой, остальные 90% — ничего. Новая клетка сохраняет прежнюю таблицу. */
+/**
+ * Пустая клетка больше не бросает кубик на бой или ловушку: монстры и ловушки
+ * стоят на карте с самого начала. Здесь остаётся только мелкая находка —
+ * 10% на ещё не пройденной клетке и никогда на знакомом пути.
+ */
 export function rollStepEvent(known: boolean, roll = Math.random()): StepEvent {
-  if (known) {
-    return roll < 0.9 ? "quiet" : "fight";
-  }
-
-  if (roll < 0.6) return "quiet";
-  if (roll < 0.7) return "trap";
-  if (roll < 0.9) return "fight";
-  // Недостающие до 100% 10%: небольшая находка, а не дополнительная ловушка.
-  return "find";
+  if (known) return "quiet";
+  return roll < 0.9 ? "quiet" : "find";
 }
