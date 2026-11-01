@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Footprints, Hammer, Info, X } from "lucide-react";
+import { Backpack, Footprints, Hammer, Info, X } from "lucide-react";
 import { GEAR_BASES, ITEMS, canWear, consumableIntReq, consumablePower, gearStatReqLabel, slotsForItem, wearRequirementNote } from "../game/content";
 import { TORCH, computeVisibility, openDirs } from "../game/maze";
 import { BIOMES, BIOME_MAP_COLORS, biomeHealingAmount, biomeVision, mazeBiome } from "../game/biomes";
@@ -8,7 +8,7 @@ import type { GearItem, Player, Run, Slot } from "../game/types";
 import { SLOT_META, SLOT_ORDER } from "../game/types";
 import { ItemArt } from "./ItemArt";
 import { GearNote } from "./GearNote";
-import { Btn, Meter } from "./ui";
+import { Btn, Modal, Tag } from "./ui";
 
 const CS = 34;
 
@@ -16,8 +16,6 @@ export function Dungeon({
   run,
   player,
   bag,
-  hp,
-  maxHp,
   intStat,
   intDiscount,
   path,
@@ -33,8 +31,6 @@ export function Dungeon({
   run: Run;
   player: Player;
   bag: Record<string, number>;
-  hp: number;
-  maxHp: number;
   intStat: number;
   intDiscount: number;
   path: { x: number; y: number }[];
@@ -56,6 +52,7 @@ export function Dungeon({
   const W = S * CS;
   const [openSlot, setOpenSlot] = useState<Slot | null>(null);
   const [detailUid, setDetailUid] = useState<string | null>(null);
+  const [bagOpen, setBagOpen] = useState(false);
 
   /* 0 — темнота, 1 — луч факела, 2 — уже пройденные клетки */
   const vis = useMemo(() => computeVisibility(m, run.pos, run.seen, run.torchTurns ?? 0), [m, run.pos, run.seen, run.torchTurns]);
@@ -113,6 +110,12 @@ export function Dungeon({
     return t === "heal" || t === "cleanse" || t === "special_map" || t === "special_water" || t === "special_torch";
   });
 
+  /* Рюкзак: припасы и реагенты из сумки, снаряжение из арсенала. */
+  const wornUids = new Set(Object.values(player.equip).filter((uid): uid is string => !!uid));
+  const bagEntries = Object.entries(bag).filter(([, n]) => n > 0);
+  const suppliesBag = bagEntries.filter(([id]) => ITEMS[id] && ITEMS[id].kind !== "reagent");
+  const reagentsBag = bagEntries.filter(([id]) => ITEMS[id]?.kind === "reagent");
+
   const equippedUid = openSlot ? player.equip[openSlot] : null;
   const candidates: GearItem[] = openSlot
     ? player.armory.filter((g) => slotsForItem(g).includes(openSlot))
@@ -139,13 +142,15 @@ export function Dungeon({
           {torchActive && <span className="tab text-flame">факел: {run.torchTurns} ход.</span>}
           {(run.burning ?? 0) > 0 && <span className="tab text-rubric">горение ×{run.burning}</span>}
           {run.mapRevealed && <span className="tab text-flame">карта раскрыта</span>}
-          <span className="flex items-center gap-2">
-            <span className="sc text-rubric">здоровье</span>
-            <span className="inline-block w-20 sm:w-32">
-              <Meter value={hp} max={maxHp} tone="rubric" />
-            </span>
-            <span className="tab text-parch">{hp}/{maxHp}</span>
-          </span>
+          {/* Здоровье и негативные эффекты переехали в левую панель над опытом. */}
+          <button
+            type="button"
+            onClick={() => setBagOpen(true)}
+            className="flex items-center gap-1.5 border border-line px-2.5 py-1.5 font-display text-[0.86rem] uppercase tracking-[0.1em] text-parch transition-colors hover:border-flame hover:text-flamehi"
+            title="Рюкзак: припасы, реагенты и снаряжение"
+          >
+            <Backpack size={14} aria-hidden /> Рюкзак
+          </button>
         </div>
       </header>
       {biome !== "classic" && (
@@ -765,14 +770,82 @@ export function Dungeon({
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Btn onClick={() => onMove(0, -1)}>Север</Btn>
-            <Btn onClick={() => onMove(1, 0)}>Восток</Btn>
-            <Btn onClick={() => onMove(0, 1)}>Юг</Btn>
-            <Btn onClick={() => onMove(-1, 0)}>Запад</Btn>
-          </div>
         </div>
       </div>
+
+      {bagOpen && (
+        <Modal
+          title="Рюкзак"
+          sub="Что взято в подземелье"
+          onClose={() => setBagOpen(false)}
+          actions={<Btn onClick={() => setBagOpen(false)}>Закрыть</Btn>}
+        >
+          <div className="space-y-5">
+            <section aria-label="Снаряжение в рюкзаке">
+              <div className="sc mb-2 text-[0.86rem] text-flamedim">Снаряжение · {player.armory.length}</div>
+              {player.armory.length === 0 ? (
+                <p className="text-sm italic text-mute">Арсенал пуст.</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {player.armory.map((g) => {
+                    const worn = wornUids.has(g.uid);
+                    return (
+                      <li key={g.uid}>
+                        <button
+                          type="button"
+                          onClick={() => { setBagOpen(false); inspectGear(g.uid); }}
+                          className="flex w-full items-center gap-2 border border-line bg-black/20 px-2.5 py-1.5 text-left transition-colors hover:border-flame hover:bg-flame/10"
+                        >
+                          <ItemArt id={g.baseId} name={stName(g)} size={28} framed={false} />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-display text-[0.95rem] uppercase tracking-[0.04em] text-parch">{stName(g)}</span>
+                            <span className="block font-mono text-[0.8rem] text-mute">
+                              {gearStatReqLabel(g)} · ур. {g.level ?? 1}{g.identified ? "" : " · не исследовано"}
+                            </span>
+                          </span>
+                          {worn && <Tag tone="verd">надето</Tag>}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+
+            <section aria-label="Припасы в рюкзаке">
+              <div className="sc mb-2 text-[0.86rem] text-flamedim">Припасы</div>
+              {suppliesBag.length === 0 ? (
+                <p className="text-sm italic text-mute">Припасов нет.</p>
+              ) : (
+                <ul className="space-y-1">
+                  {suppliesBag.map(([id, n]) => (
+                    <li key={id} className="flex items-baseline justify-between gap-2 border border-line bg-black/20 px-2.5 py-1.5">
+                      <span className="min-w-0 truncate text-[0.96rem] text-parch">{ITEMS[id]?.name ?? id}</span>
+                      <span className="font-mono text-[0.88rem] text-flame">×{n}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <section aria-label="Реагенты в рюкзаке">
+              <div className="sc mb-2 text-[0.86rem] text-flamedim">Реагенты</div>
+              {reagentsBag.length === 0 ? (
+                <p className="text-sm italic text-mute">Реагентов нет.</p>
+              ) : (
+                <ul className="space-y-1">
+                  {reagentsBag.map(([id, n]) => (
+                    <li key={id} className="flex items-baseline justify-between gap-2 border border-line bg-black/20 px-2.5 py-1.5">
+                      <span className="min-w-0 truncate text-[0.96rem] text-parch">{ITEMS[id]?.name ?? id}</span>
+                      <span className="font-mono text-[0.88rem] text-verd">×{n}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
+        </Modal>
+      )}
 
       {detailItem && <GearNote item={detailItem} player={player} onClose={() => setDetailUid(null)} />}
     </div>

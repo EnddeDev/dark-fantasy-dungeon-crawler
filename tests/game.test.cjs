@@ -786,33 +786,43 @@ test("gear cannot be worn above player level, and only with the required stat", 
   assert.match(content.wearRequirementNote(sword, poor), /требует/);
 });
 
-test("rarity gives effects by required stat: rare 1, epic more, legendary passive", () => {
-  const statOf = (g) => content.gearStatReq(g).stat;
+test("rarity adds effects: weapons start with their type set, accessories always have one", () => {
+  const countFor = (kind, weaponType) => (rarity) =>
+    gearEffects.effectCountForGear({ kind, rarity, weaponType });
+  const swordCount = countFor("weapon", "sword");
+  const spearCount = countFor("weapon", "spear");
+  const ringCount = countFor("accessory");
+  const plateCount = countFor("armor");
+  assert.equal(swordCount("common"), 1);
+  assert.equal(spearCount("common"), 2);
+  assert.equal(ringCount("common"), 1, "аксессуар обязан дать свойство даже на обычной редкости");
+  assert.equal(plateCount("common"), 0);
   for (const rarity of ["common", "rare", "epic", "legendary"]) {
-    for (let i = 0; i < 60; i++) {
-      const g = content.createGearItem({ baseId: "sword", rarity, identified: true, wear: "worn" });
-      const n = (g.effects ?? []).length;
-      if (rarity === "common") assert.equal(n, 0, "обычное без бафов");
-      else if (rarity === "rare") assert.equal(n, 1, "редкое ровно 1 эффект");
-      else {
-        // эпическое/легендарное: свойство редкого + (2 доп. эффекта ИЛИ 1 боевой приём)
-        const hasTech = !!g.epicSkill;
-        if (hasTech) assert.equal(n, 1, `${rarity}: приём вместо 2 эффектов, эффектов ${n}`);
-        else assert.equal(n, 3, `${rarity}: свойство + 2 эффекта, а не ${n}`);
+    for (let i = 0; i < 40; i++) {
+      for (const [baseId, expected] of [
+        ["sword", swordCount(rarity)],
+        ["spear", spearCount(rarity)],
+        ["ring_stone", ringCount(rarity)],
+        ["plate", plateCount(rarity)],
+      ]) {
+        const g = content.createGearItem({ baseId, rarity, identified: true, wear: "worn" });
+        const pool = gearEffects.effectPoolForGear({
+          kind: content.gearKindFor(g),
+          weaponType: content.weaponTypeFor(g),
+          gearClass: content.gearClassFor(g),
+          stat: content.gearAffinity(g),
+          requiresNothing: content.gearRequiresNothing(g),
+        });
+        const n = (g.effects ?? []).length;
+        /* Свойств не больше, чем есть в пуле вида. */
+        assert.equal(n, Math.min(expected, pool.length), `${baseId}/${rarity}: свойств ${n}, ожидалось ${expected}`);
+        for (const e of g.effects) assert.ok(pool.includes(e), `${baseId}: ${e} вне пула`);
+        assert.equal(new Set(g.effects).size, n, `${baseId}: свойства не повторяются`);
       }
-      if (rarity === "epic" || rarity === "legendary") {
-        assert.ok(
-          g.epicSkill || (g.effects ?? []).length === 3,
-          "эпическое даёт приём или два эффекта сверх редкого",
-        );
-      }
-      if (rarity === "legendary") assert.ok(g.passive);
-      else assert.equal(g.passive, undefined);
-      const stat = statOf(g);
-      for (const e of g.effects ?? []) {
-        assert.equal(gearEffects.GEAR_EFFECTS[e].stat, stat, "эффект должен относиться к характеристике требования");
-      }
-      if (g.passive) assert.equal(gearEffects.GEAR_PASSIVES[g.passive].stat, stat);
+      const legendary = content.createGearItem({ baseId: "sword", rarity: "legendary", identified: true, wear: "worn" });
+      assert.ok(legendary.passive, "легендарное оружие получает пассивку");
+      const epic = content.createGearItem({ baseId: "sword", rarity: "epic", identified: true, wear: "worn" });
+      assert.equal(epic.passive, undefined);
     }
   }
 });
@@ -843,34 +853,151 @@ test("legendary passive scales the character as described", () => {
 
 /* ─────────────  АУДИТ КЛАССОВ, ХАРАКТЕРИСТИК И РАСХОДНИКОВ  ───────────── */
 
-test("every gear base has an explicit logical weight class and affinity", () => {
+test("every gear base declares its kind, weight class and affinity", () => {
+  /* Аудит: явный список ожидаемых типов. Новые базы обязаны попасть сюда. */
   const expected = {
-    knife: ["light", "agi"], dagger: ["light", "agi"], rapier: ["light", "agi"],
-    bulwark_mace: ["medium", "str"], barbarian_greataxe: ["heavy", "str"], blood_hide: ["medium", "str"],
-    assassin_stiletto: ["light", "agi"], ninja_kusarigama: ["light", "agi"], warlock_scepter: ["light", "int"], sage_censer: ["light", "int"],
-    staff: ["light", "int"], abyss: ["medium", "int"],
-    sword: ["medium", "str"], spear: ["medium", "agi"],
-    axe: ["heavy", "str"], hammer: ["heavy", "str"], greatsword: ["heavy", "str"], warhammer2: ["heavy", "str"],
-    rag: ["medium", "str"], mail: ["medium", "str"], coif: ["medium", "str"], helm: ["medium", "str"],
-    shroud: ["light", "int"], plate: ["heavy", "str"], greathelm: ["heavy", "str"], crown_husk: ["heavy", "str"],
-    shield_round: ["medium", "str"], shield_tower: ["heavy", "str"], buckler: ["light", "agi"],
-    boots: ["light", "agi"], shoes: ["light", "agi"], strider_boots: ["light", "agi"], greaves: ["heavy", "str"],
-    wraps: ["light", "agi"], vambraces: ["heavy", "str"], runed_bracers: ["light", "int"],
-    amulet: ["light", "int"], seal: ["light", "int"], soulstone: ["light", "int"], icon: ["light", "int"], tooth: ["light", "agi"],
-    ring_stone: ["light", "str"], ring_band: ["light", "agi"], ring_edge: ["light", "agi"], ring_ward: ["light", "int"], ring_venom: ["light", "agi"],
+    knife: ["weapon", "light", "agi", "dagger"],
+    rapier: ["weapon", "light", "agi", "rapier"],
+    sword: ["weapon", "medium", "str", "sword"],
+    staff: ["weapon", "medium", "int", "staff"],
+    axe: ["weapon", "medium", "str", "axe"],
+    hammer: ["weapon", "medium", "str", "hammer"],
+    abyss: ["weapon", "medium", "int", "sword"],
+    rag: ["armor", "medium", "str", "-"],
+    mail: ["armor", "medium", "str", "-"],
+    shroud: ["armor", "light", "int", "-"],
+    plate: ["armor", "heavy", "str", "-"],
+    amulet: ["accessory", "light", "int", "-"],
+    ring_stone: ["accessory", "light", "str", "-"],
+    boots: ["armor", "light", "agi", "-"],
+    seal: ["accessory", "light", "int", "-"],
+    greatsword: ["weapon", "heavy", "str", "greatsword"],
+    spear: ["weapon", "medium", "agi", "spear"],
+    warhammer2: ["weapon", "heavy", "str", "warhammer"],
+    dagger: ["weapon", "light", "agi", "dagger"],
+    shield_round: ["armor", "medium", "str", "-"],
+    shield_tower: ["armor", "heavy", "str", "-"],
+    buckler: ["armor", "light", "agi", "-"],
+    coif: ["armor", "medium", "str", "-"],
+    helm: ["armor", "medium", "str", "-"],
+    greathelm: ["armor", "heavy", "str", "-"],
+    crown_husk: ["armor", "heavy", "str", "-"],
+    shoes: ["armor", "light", "agi", "-"],
+    greaves: ["armor", "heavy", "str", "-"],
+    strider_boots: ["armor", "light", "agi", "-"],
+    wraps: ["armor", "light", "agi", "-"],
+    vambraces: ["armor", "heavy", "str", "-"],
+    runed_bracers: ["armor", "light", "int", "-"],
+    ring_band: ["accessory", "light", "agi", "-"],
+    ring_edge: ["accessory", "light", "agi", "-"],
+    ring_ward: ["accessory", "light", "int", "-"],
+    ring_venom: ["accessory", "light", "agi", "-"],
+    tooth: ["accessory", "light", "agi", "-"],
+    icon: ["accessory", "light", "int", "-"],
+    soulstone: ["accessory", "light", "int", "-"],
+    focus_rune: ["accessory", "light", "int", "-"],
+    wand_ash: ["weapon", "light", "int", "wand"],
+    bulwark_mace: ["weapon", "medium", "str", "hammer"],
+    barbarian_greataxe: ["weapon", "heavy", "str", "greataxe"],
+    blood_hide: ["armor", "medium", "str", "-"],
+    assassin_stiletto: ["weapon", "light", "agi", "dagger"],
+    ninja_kusarigama: ["weapon", "light", "agi", "dagger"],
+    warlock_scepter: ["weapon", "light", "int", "wand"],
+    sage_censer: ["weapon", "light", "int", "wand"],
+    start_mace: ["weapon", "medium", "str", "hammer"],
+    start_wand: ["weapon", "light", "int", "wand"],
+    start_offknife: ["weapon", "light", "agi", "dagger"],
+    start_smallshield: ["armor", "medium", "str", "-"],
+    start_focus: ["accessory", "light", "int", "-"],
+    start_hood: ["armor", "light", "agi", "-"],
+    start_cap: ["armor", "medium", "str", "-"],
+    start_circlet: ["armor", "light", "int", "-"],
+    start_leatherhelm: ["armor", "medium", "agi", "-"],
+    start_ironskull: ["armor", "heavy", "str", "-"],
+    start_jacket: ["armor", "medium", "str", "-"],
+    start_leather: ["armor", "medium", "agi", "-"],
+    start_robe: ["armor", "light", "int", "-"],
+    start_hide: ["armor", "heavy", "str", "-"],
+    start_sandals: ["armor", "light", "agi", "-"],
+    start_workboots: ["armor", "medium", "str", "-"],
+    start_softshoes: ["armor", "light", "int", "-"],
+    start_ironboots: ["armor", "heavy", "str", "-"],
+    start_trailboots: ["armor", "medium", "agi", "-"],
+    start_cuffs: ["armor", "light", "agi", "-"],
+    start_ironcuffs: ["armor", "heavy", "str", "-"],
+    start_runecuffs: ["armor", "light", "int", "-"],
+    start_chainwrists: ["armor", "medium", "str", "-"],
+    start_straps: ["armor", "medium", "agi", "-"],
+    start_copperring: ["accessory", "light", "str", "-"],
+    start_silverring: ["accessory", "light", "int", "-"],
+    start_bonering: ["accessory", "light", "agi", "-"],
+    start_ironring: ["accessory", "light", "str", "-"],
+    start_glassring: ["accessory", "light", "int", "-"],
+    start_pendant: ["accessory", "light", "str", "-"],
+    start_feather: ["accessory", "light", "agi", "-"],
+    start_bead: ["accessory", "light", "int", "-"],
+    start_claw: ["accessory", "light", "str", "-"],
   };
-  const starterMod = loadGameModule("shopStarters");
-  for (const base of starterMod.SHOP_STARTER_GEAR) expected[base.id] = [base.gearClass, base.stat];
   assert.deepEqual(Object.keys(content.GEAR_BASES).sort(), Object.keys(expected).sort(), "аудит должен покрывать все базы");
-  for (const [id, [cls, stat]] of Object.entries(expected)) {
+  for (const [id, [kind, cls, stat, type]] of Object.entries(expected)) {
     const base = content.GEAR_BASES[id];
+    assert.equal(content.gearKindOfBase(base), kind, `${id}: тип`);
     assert.equal(base.gearClass, cls, `${id}: вес`);
     assert.equal(base.stat, stat, `${id}: характеристика`);
     const item = content.createGearItem({ baseId: id, level: 1, wear: "worn", rarity: "common", identified: true });
-    assert.equal(item.gearClass, cls);
-    assert.equal(content.gearClassFor(item), cls);
+    assert.equal(content.gearKindFor(item), kind, `${id}: тип предмета`);
+    assert.equal(content.weaponTypeFor(item), type === "-" ? null : type, `${id}: вид оружия`);
     assert.equal(content.gearAffinity(item), stat);
-    assert.equal(content.gearStatReq(item).stat, stat);
+    if (kind === "accessory") {
+      assert.equal(content.gearClassLabel(item), "Аксессуар", `${id}: у аксессуара нет веса в подписи`);
+      assert.equal(content.gearRequirement(item).stat, stat, `${id}: аксессуар требует характеристику`);
+    } else {
+      assert.equal(content.gearStatReq(item).stat, stat);
+    }
+    if (kind === "weapon") {
+      assert.equal(content.canItemHaveArmor(base), false, `${id}: оружие не даёт брони`);
+      assert.equal(content.slotsForItem(item)[0], "mainHand", `${id}: оружие живёт в правой руке`);
+    } else {
+      assert.equal(base.dmg, undefined, `${id}: броня и аксессуары не дают урон`);
+    }
+    const st = content.scaledGearStats(item);
+    if (kind === "weapon") {
+      assert.ok(st.dmg, `${id}: урон у оружия`);
+      assert.equal(st.hp, 0, `${id}: оружие не даёт ОЗ`);
+      assert.equal(st.armor, 0, `${id}: оружие не даёт брони`);
+      assert.equal(st.evade, 0, `${id}: оружие не даёт уклонения`);
+    } else {
+      assert.equal(st.dmg, undefined, `${id}: нет урона у брони/аксессуара`);
+    }
+  }
+});
+
+test("weapon types fix weight, hand and effect count", () => {
+  const meta = content.WEAPON_TYPE_META;
+  for (const [type, def] of Object.entries(meta)) {
+    if (def.hands === 2 && def.id !== "spear") assert.equal(def.gearClass, "heavy", `${type}: двуручное всегда тяжёлое`);
+    if (def.hands === 1) assert.ok(def.gearClass !== "heavy", `${type}: одноручное — среднее или лёгкое`);
+    assert.ok(def.minEffects >= 1);
+  }
+  assert.equal(meta.spear.minEffects, 2, "у копья два свойства");
+  assert.equal(meta.staff.minEffects, 2, "у посоха два свойства");
+  assert.ok(meta.staff.magic && meta.wand.magic, "приёмы посоха и палочки магические");
+  assert.ok(!meta.sword.magic && !meta.axe.magic);
+  for (const type of ["dagger", "rapier", "sword", "spear", "axe", "hammer", "greatsword", "greataxe", "warhammer", "staff", "wand"]) {
+    assert.ok(Object.values(content.GEAR_BASES).some((b) => content.gearKindOfBase(b) === "weapon" && b.weaponType === type), `${type}: нет ни одной базы`);
+  }
+  // Только правая рука: меч, молот, посох. Любая рука: кинжал, рапира, топор, палочка.
+  const anyHand = ["dagger", "rapier", "axe", "wand"];
+  const rightOnly = ["sword", "hammer", "staff"];
+  for (const type of anyHand) {
+    const base = Object.values(content.GEAR_BASES).find((b) => b.weaponType === type);
+    const item = content.createGearItem({ baseId: base.id, wear: "worn", rarity: "common", identified: true });
+    assert.deepEqual(content.slotsForItem(item).sort(), ["mainHand", "offHand"].sort(), `${type}: любая рука`);
+  }
+  for (const type of rightOnly) {
+    const base = Object.values(content.GEAR_BASES).find((b) => b.weaponType === type);
+    const item = content.createGearItem({ baseId: base.id, wear: "worn", rarity: "common", identified: true });
+    assert.deepEqual(content.slotsForItem(item), ["mainHand"], `${type}: только правая рука`);
   }
 });
 
@@ -1036,13 +1163,29 @@ test("magical scroll bonuses do not amplify non-scroll consumables", () => {
   }
 });
 
-test("rarity effects and legendary passives follow gear affinity, not weight class", () => {
-  for (const baseId of ["knife", "rapier", "dagger", "staff", "sword", "plate", "ring_stone", "shroud"]) {
+test("rarity effects come from the pool of the item's own type", () => {
+  for (const baseId of ["knife", "rapier", "dagger", "staff", "sword", "plate", "ring_stone", "shroud", "spear", "wand_ash"]) {
     for (let i = 0; i < 40; i++) {
       const g = content.createGearItem({ baseId, rarity: "legendary", wear: "worn", identified: true });
-      const stat = content.gearAffinity(g);
-      for (const e of g.effects) assert.equal(gearEffects.GEAR_EFFECTS[e].stat, stat, `${baseId}/${e}`);
-      if (g.passive) assert.equal(gearEffects.GEAR_PASSIVES[g.passive].stat, stat, baseId);
+      const kind = content.gearKindFor(g);
+      const weaponType = content.weaponTypeFor(g);
+      const pool = gearEffects.effectPoolForGear({
+        kind,
+        weaponType,
+        gearClass: content.gearClassFor(g),
+        stat: content.gearAffinity(g),
+        requiresNothing: content.gearRequiresNothing(g),
+      });
+      for (const e of g.effects) assert.ok(pool.includes(e), `${baseId}/${e} вне пула ${kind}`);
+      if (kind === "accessory") assert.ok(pool.includes(g.effects[0]), `${baseId}: пул аксессуара по характеристике`);
+      if (kind === "accessory" && content.gearAffinity(g) === "agi") {
+        assert.ok(pool.some((id) => id === "evade"), "ловкий аксессуар умеет уклоняться");
+      }
+      if (kind === "accessory" && content.gearAffinity(g) === "int") {
+        const st = content.scaledGearStats(g);
+        assert.ok(st.hp > 0, "умный аксессуар даёт здоровье");
+      }
+      if (g.passive) assert.equal(gearEffects.GEAR_PASSIVES[g.passive].stat, content.gearAffinity(g), baseId);
     }
   }
 });
@@ -1090,7 +1233,7 @@ test("six archetypes: two per stat, milestones at 5 and 10", () => {
   }
 });
 
-test("archetype gear rolls archetype effects and legendary passive", () => {
+test("archetype gear keeps its legendary passive and type pool", () => {
   for (const [baseId, arch] of [
     ["bulwark_mace", "bulwark"], ["barbarian_greataxe", "barbarian"], ["assassin_stiletto", "assassin"],
     ["ninja_kusarigama", "ninja"], ["warlock_scepter", "warlock"], ["sage_censer", "sage"],
@@ -1098,9 +1241,14 @@ test("archetype gear rolls archetype effects and legendary passive", () => {
     const g = content.createGearItem({ baseId, rarity: "legendary", wear: "new", identified: true, level: 5 });
     assert.equal(content.GEAR_BASES[baseId].archetype, arch);
     assert.ok(g.effects.length >= 1);
-    for (const ef of g.effects) {
-      assert.ok(gearEffects.effectPoolFor(content.GEAR_BASES[baseId].stat, arch).includes(ef), `${baseId}/${ef}`);
-    }
+    const pool = gearEffects.effectPoolForGear({
+      kind: content.gearKindFor(g),
+      weaponType: content.weaponTypeFor(g),
+      gearClass: content.gearClassFor(g),
+      stat: content.gearAffinity(g),
+      requiresNothing: content.gearRequiresNothing(g),
+    });
+    for (const ef of g.effects) assert.ok(pool.includes(ef), `${baseId}/${ef}`);
     assert.equal(g.passive, gearEffects.archetypePassive(arch));
   }
 });
@@ -1313,29 +1461,66 @@ test("pathfinding accepts unseen targets and returns a walkable route", () => {
   assert.deepEqual(prev, target);
 });
 
-test("item stat rolls are universal: HP 10+0…15, armor 2+0…3, heavy armor doubled, no weapon armor or base evade", () => {
-  const plate = content.GEAR_BASES.plate;
-  const mail = content.GEAR_BASES.mail;
-  const sword = content.GEAR_BASES.sword;
-  const shield = content.GEAR_BASES.shield_tower;
-  assert.equal(content.canItemHaveArmor(plate), true);
-  assert.equal(content.canItemHaveArmor(sword), false);
-  assert.equal(content.canItemHaveArmor(shield), true);
-  const heavy = content.rollItemStatRolls(plate, "heavy", () => 0);
-  const light = content.rollItemStatRolls(mail, "light", () => 0);
-  assert.deepEqual(heavy, { hp: 10, armor: 4 });
-  assert.deepEqual(light, { hp: 10, armor: 2 });
-  const max = content.rollItemStatRolls(plate, "heavy", () => 0.999);
-  assert.deepEqual(max, { hp: 25, armor: 10 });
+test("armor and accessories give defense by weight and stat; weapons give none", () => {
+  const rolls = (id, how = () => 0) => {
+    const base = content.GEAR_BASES[id];
+    return content.rollItemStatRolls(base, base.gearClass ?? "medium", how);
+  };
+  /* Оружие не даёт ни здоровья, ни брони, ни уклонения. */
+  for (const id of ["knife", "sword", "spear", "greatsword", "staff", "wand_ash"]) {
+    const base = content.GEAR_BASES[id];
+    assert.deepEqual(content.rollItemStatRolls(base, base.gearClass, () => 0.5), { hp: 0, armor: 0, evade: 0 }, `${id}: оружие без защиты`);
+    const item = content.createGearItem({ baseId: id, level: 1, wear: "worn", rarity: "common", identified: true, rng: () => 0.5 });
+    const st = content.scaledGearStats(item);
+    assert.equal(st.hp, 0, `${id}: без ОЗ`);
+    assert.equal(st.armor, 0, `${id}: без брони`);
+    assert.equal(st.evade, 0, `${id}: без уклонения`);
+    assert.ok(st.dmg, `${id}: зато с уроном`);
+  }
 
-  const g = content.createGearItem({ baseId: "plate", level: 1, wear: "worn", rarity: "common", identified: true, rng: () => 0 });
-  g.wearMult = 1;
-  assert.deepEqual(g.statRolls, { hp: 10, armor: 4 });
-  assert.equal(content.scaledGearStats(g).evade, 0);
-  assert.equal(content.scaledGearStats({ ...g, level: 2 }).hp, 15);
-  assert.equal(content.scaledGearStats({ ...g, level: 3 }).hp, 23);
-  const weapon = content.createGearItem({ baseId: "sword", level: 1, wear: "worn", rarity: "common", identified: true, rng: () => 0 });
-  assert.equal(content.scaledGearStats(weapon).armor, 0);
+  /* Тяжёлая броня: требуют СИЛ, много брони и немного здоровья. */
+  const heavy = rolls("plate");
+  const mediumStr = rolls("mail");
+  assert.ok(heavy.armor > mediumStr.armor, "тяжёлая броня крепче средней");
+  assert.equal(heavy.evade, 0, "тяжёлая броня не уклоняется");
+  assert.equal(content.gearRequirement(content.createGearItem({ baseId: "plate", identified: true })).stat, "str");
+
+  /* Средняя броня: СИЛ → броня, ЛОВ → уклонение. */
+  const mediumAgi = rolls("start_leather");
+  assert.ok(mediumAgi.evade > 0, "средняя ловкая броня даёт уклонение");
+  assert.ok(mediumStr.armor > mediumAgi.armor, "силовая средняя крепче ловкой");
+
+  /* Лёгкая броня: здоровье и уклонение; с ИНТ здоровья больше. */
+  const lightInt = rolls("start_robe");
+  const lightFree = rolls("start_hood");
+  assert.ok(lightInt.hp > lightFree.hp, "лёгкая броня с ИНТ даёт больше здоровья");
+  assert.ok(lightInt.evade > 0 && lightFree.evade > 0, "лёгкая броня уклоняется");
+  assert.equal(lightInt.armor, 0, "лёгкая броня почти не защищает");
+  const free = content.createGearItem({ baseId: "start_hood", identified: true, level: 1 });
+  assert.equal(content.gearRequiresNothing(free), true, "лёгкая броня может не иметь требований");
+  assert.equal(content.gearRequirement(free).stat, null);
+  assert.equal(content.gearStatReqLabel(free), "без требований");
+  const intLight = content.createGearItem({ baseId: "start_robe", identified: true, level: 1 });
+  assert.equal(content.gearRequirement(intLight).stat, "int", "лёгкая с ИНТ требует ИНТ");
+
+  /* Аксессуары: СИЛ → защита и немного ОЗ, ЛОВ → уклонение, ИНТ → здоровье. */
+  const strAcc = rolls("ring_stone");
+  assert.ok(strAcc.armor > 0 && strAcc.hp > 0, "силовой аксессуар даёт защиту и ОЗ");
+  const agiAcc = rolls("ring_band");
+  assert.ok(agiAcc.evade > 0, "ловкий аксессуар даёт уклонение");
+  assert.equal(agiAcc.armor, 0);
+  const intAcc = rolls("amulet");
+  assert.ok(intAcc.hp > 0, "умный аксессуар даёт здоровье");
+  assert.equal(intAcc.armor, 0);
+  assert.equal(intAcc.evade, 0);
+
+  /* Уклонение из брони доходит до персонажа. */
+  const base = { ...mkP(), level: 10, stats: { str: 10, agi: 10, int: 10 } };
+  const plain = battle.derived(base);
+  const robe = content.createGearItem({ baseId: "start_robe", level: 1, wear: "worn", rarity: "common", identified: true });
+  const geared = battle.derived({ ...base, armory: [robe], equip: { ...base.equip, body: robe.uid } });
+  assert.ok(geared.evade > plain.evade, "лёгкая броня добавляет уклонение в бою");
+  assert.ok(geared.maxHp > plain.maxHp, "лёгкая броня добавляет здоровье");
 });
 
 test("item level scales stats, effects, techniques and legendary passives by +20% ceil", () => {
@@ -1473,9 +1658,60 @@ test("acceleration gear gives 0/1/2/3 extra actions by level 1/3/7/10 every roun
   assert.equal(r2.ap, 8);
 });
 
+test("weapon effects bleed, poison and sunder trigger on a plain hit", () => {
+  const weapon = content.createGearItem({ baseId: "knife", level: 1, wear: "worn", rarity: "rare", identified: true });
+  weapon.effects = ["bleed", "poison_damage", "sunder"];
+  weapon.effectRolls = { bleed: 100, poison_damage: 100, sunder: 100 };
+  const p = { ...mkP({ level: 10, stats: { str: 3, agi: 3, int: 3 }, hp: 300 }), armory: [weapon], equip: { ...mkP().equip, mainHand: weapon.uid } };
+  const b = battle.newBattle(p, 1);
+  b.queue = ["p", "e"];
+  b.idx = 0;
+  b.enemy.hp = 5000; b.enemy.maxHp = 5000; b.enemy.armor = 10;
+  b.enemy.effects = []; b.enemy.effectPower = {};
+  b.enemy.def = { ...b.enemy.def, type: "beast" };
+  b.enemy.moves = ["attack"];
+  const old = Math.random;
+  Math.random = () => 0; // шансы свойств срабатывают, крит не мешает
+  const after = battle.playerAct(b, { type: "attack" });
+  Math.random = old;
+  assert.ok(after.enemy.statuses.bleed > 0, "кровотечение наложено");
+  assert.ok(after.enemy.statuses.poison > 0, "яд наложен");
+  assert.ok(after.enemy.armor < 10, `броня расколота: ${after.enemy.armor}`);
+});
+
+test("staff and wand techniques are magic, steel techniques are not", () => {
+  const magicIds = ["staff", "wand_ash", "warlock_scepter", "sage_censer"];
+  for (const baseId of magicIds) {
+    const item = content.createGearItem({ baseId, level: 3, wear: "worn", rarity: "common", identified: true });
+    const ws = content.weaponSkillFor(item);
+    assert.equal(ws.magic, true, `${baseId}: приём магический`);
+  }
+  for (const baseId of ["sword", "knife", "axe", "greatsword", "spear"]) {
+    const item = content.createGearItem({ baseId, level: 3, wear: "worn", rarity: "common", identified: true });
+    const ws = content.weaponSkillFor(item);
+    assert.ok(!ws.magic, `${baseId}: приём не магический`);
+  }
+});
+
+test("migration gives accessories and spears their minimum effects", () => {
+  const ring = content.createGearItem({ baseId: "ring_band", rarity: "common", level: 1, wear: "worn", identified: true });
+  const legacyRing = { ...ring, effects: [], effectRolls: {}, statRolls: undefined };
+  const migratedRing = content.migrateGearItem(legacyRing);
+  assert.equal(migratedRing.effects.length, 1, "аксессуар после миграции получает свойство");
+  assert.ok(migratedRing.statRolls, "характеристики пересчитаны");
+  assert.equal(migratedRing.kind, "accessory");
+
+  const spear = content.createGearItem({ baseId: "spear", rarity: "common", level: 1, wear: "worn", identified: true });
+  const migratedSpear = content.migrateGearItem({ ...spear, effects: [], effectRolls: {} });
+  assert.ok(migratedSpear.effects.length >= 2, "у копья минимум два свойства");
+});
+
 test("multi-hit technique deals normal attacks without the flat technique bonus", () => {
   const g = content.createGearItem({ baseId: "barbarian_greataxe", skillId: "rage_sweep", level: 1, wear: "new", rarity: "common", identified: true });
   g.dmgRoll = [10, 10];
+  /* Свойства оружия здесь не проверяются: убираем их, чтобы считать только удары. */
+  g.effects = [];
+  g.effectRolls = {};
   const p = { ...mkP({ level: 10, stats: { str: 1, agi: 10, int: 4 }, hp: 500 }), armory: [g], equip: { ...mkP().equip, mainHand: g.uid } };
   const b = battle.newBattle(p, 1);
   b.queue = ["p", "e"]; b.idx = 0;

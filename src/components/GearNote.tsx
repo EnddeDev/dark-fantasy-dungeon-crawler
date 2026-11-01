@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import { Check, Eye, Lock, Sparkles, Sword } from "lucide-react";
 import {
   EPIC_SKILLS,
-  GEAR_CLASS_META,
   LEGENDARY_PASSIVES,
   RARITY_META,
   RARE_AFFIXES,
@@ -11,8 +10,8 @@ import {
   WEAR_RANGE,
   gearBuyPrice,
   gearSellPrice,
-  gearClassFor,
-  gearStatReq,
+  gearClassLabel,
+  gearRequirement,
   identifyReqs,
   scaledGearStats,
   slotsForItem,
@@ -68,7 +67,7 @@ export function GearNote({
   const archetype = st.base.archetype ? ARCHETYPES[st.base.archetype] : null;
   const d = derived(player);
   const level = item.level ?? 1;
-  const req = gearStatReq(item);
+  const req = gearRequirement(item);
   const research = identifyReqs(item);
   const researchInt = Math.max(1, research.int - d.intDiscount);
   const range = WEAR_RANGE[item.wear];
@@ -81,7 +80,7 @@ export function GearNote({
   const skill = st.skill;
   const skillInt = skill ? Math.max(1, skill.intReq - d.intDiscount) : 0;
   const skillOpen = !!skill && player.stats.int >= skillInt;
-  const statOk = player.stats[req.stat] >= req.value;
+  const statOk = !req.stat || player.stats[req.stat] >= req.value;
   const levelOk = player.level >= level;
   const spread = Math.round((item.statMult - 1) * 100);
   const avg = (range?: [number, number]) => range ? (range[0] + range[1]) / 2 : 0;
@@ -104,7 +103,7 @@ export function GearNote({
           <ItemArt id={item.baseId} name={st.base.name} size={76} rarity={item.identified ? item.rarity : undefined} />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap gap-1.5">
-              <Tag>{GEAR_CLASS_META[gearClassFor(item)].name}</Tag>
+              <Tag>{gearClassLabel(item)}</Tag>
               <Tag>Уровень {level}</Tag>
               <Tag tone={item.wear === "new" ? "verd" : item.wear === "battered" ? "rubric" : "mute"}>{WEAR_META[item.wear].name}</Tag>
               {item.identified ? (
@@ -119,7 +118,11 @@ export function GearNote({
 
         <DetailSection title="Требования и ячейки">
           <div className="flex flex-wrap gap-2">
-            <Tag tone={statOk ? "verd" : "rubric"}>{STAT_META[req.stat].name}: {player.stats[req.stat]}/{req.value} {statOk ? "✓" : "✗"}</Tag>
+            <Tag tone={statOk ? "verd" : "rubric"}>
+              {req.stat
+                ? `${STAT_META[req.stat].name}: ${player.stats[req.stat]}/${req.value} ${statOk ? "✓" : "✗"}`
+                : `Без требований к характеристикам ${statOk ? "✓" : "✗"}`}
+            </Tag>
             <Tag tone={levelOk ? "verd" : "rubric"}>Уровень персонажа: {player.level}/{level} {levelOk ? "✓" : "✗"}</Tag>
           </div>
           <p className="mt-2 text-[0.96rem] leading-relaxed text-mute">

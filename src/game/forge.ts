@@ -3,8 +3,8 @@
  * Каждая попытка стоит золота и может уничтожить предмет.
  */
 import type { GearItem, Player, RarityTier, WearTier } from "./types";
-import { GEAR_BASES, LEGENDARY_PASSIVES, gearAffinity } from "./content";
-import { GEAR_PASSIVES, archetypePassive, effectPoolFor, passivePoolFor } from "./gearEffects";
+import { GEAR_BASES, LEGENDARY_PASSIVES, gearAffinity, gearKindOfBase } from "./content";
+import { GEAR_PASSIVES, archetypePassive, effectCountForGear, effectPoolForGear, passivePoolFor } from "./gearEffects";
 import { clampGearLevel, MAX_GEAR_LEVEL, rollEffectBase } from "./gearScaling";
 import type { GearEffectId, GearPassiveId } from "./gearEffects";
 import type { LegendaryPassiveId } from "./types";
@@ -93,18 +93,23 @@ export function upgradeRarity(item: GearItem, rng: () => number = Math.random): 
   const base = GEAR_BASES[item.baseId];
   const stat = base?.stat ?? gearAffinity(item);
   const arch = base?.archetype ?? null;
-  const out: GearItem = { ...item, rarity: next, identified: true };
+  const kind = gearKindOfBase(base);
+  const weaponType = base?.weaponType;
+  const out: GearItem = { ...item, rarity: next, identified: true, kind };
 
   const have = out.effects ?? [];
-  const pool = effectPoolFor(stat, arch).filter((id) => id !== "ap" || (out.level ?? 1) >= 3);
-  if (next === "rare") {
-    out.effects = [...have, ...pickUnique(pool, Math.max(0, 1 - have.length), rng, have)] as GearEffectId[];
-  }
-  if (next === "epic" || next === "legendary") {
-    const target = out.epicSkill ? 1 : have.length ? 3 : 2;
-    const need = Math.max(0, target - have.length);
-    out.effects = [...have, ...pickUnique(pool, need, rng, have)] as GearEffectId[];
-  }
+  const pool = effectPoolForGear({
+    kind,
+    weaponType,
+    gearClass: base?.gearClass ?? item.gearClass,
+    stat,
+    requiresNothing: base?.noReq === true,
+    archetype: arch,
+  }).filter((id) => id !== "ap" || (out.level ?? 1) >= 3);
+  /* Новое качество обязано дать положенное число свойств: аксессуар — минимум одно. */
+  const target = effectCountForGear({ kind, rarity: next, weaponType });
+  const need = Math.max(0, target - have.length);
+  out.effects = [...have, ...pickUnique(pool, need, rng, have)] as GearEffectId[];
   out.effectRolls = { ...(out.effectRolls ?? {}) };
   for (const id of out.effects ?? []) {
     if (out.effectRolls[id] == null) out.effectRolls[id] = rollEffectBase(id, rng);

@@ -461,6 +461,9 @@ export function Lobby({
 
   const wornUids = new Set(SLOT_ORDER.map((slot) => player.equip[slot]).filter((uid): uid is string => !!uid));
   const inventoryItems = player.armory.filter((item) => !wornUids.has(item.uid));
+  const bagEntries = Object.entries(player.bag ?? {}).filter(([, n]) => n > 0);
+  const bagSupplies = bagEntries.filter(([id]) => ITEMS[id] && ITEMS[id].kind !== "reagent");
+  const bagReagents = bagEntries.filter(([id]) => ITEMS[id]?.kind === "reagent");
   const slotCandidates = chosenSlot ? inventoryItems.filter((item) => slotsForItem(item).includes(chosenSlot)) : inventoryItems;
   const visibleInventory = filterGear(slotCandidates);
   const twoHanded = player.armory.find((item) => item.uid === player.equip.mainHand && GEAR_BASES[item.baseId]?.hands === 2);
@@ -774,6 +777,51 @@ export function Lobby({
                       {(gearQuery || gearSlot !== "all" || gearRarity !== "all" || onlyUnknown || chosenSlot) && <Btn onClick={resetGearFilters}>Сбросить фильтры</Btn>}
                     </div>
                   )}
+                </section>
+
+                {/* В арсенале видно, какие припасы и реагенты лежат в сумке. */}
+                <section aria-label="Припасы и реагенты" className="min-w-0 border border-line bg-black/20 p-3 min-[1200px]:col-span-2">
+                  <div className="mb-3 flex flex-wrap items-end justify-between gap-3 border-b border-line pb-3">
+                    <div>
+                      <span className="sc text-flamedim">Сумка</span>
+                      <h3 className="mt-1 font-display text-xl uppercase tracking-[0.08em] text-flamehi">Припасы и реагенты</h3>
+                    </div>
+                    <span className="font-mono text-[0.92rem] text-mute">
+                      припасов: {bagSupplies.length} · реагентов: {bagReagents.length}
+                    </span>
+                  </div>
+                  <div className="grid gap-4 min-[900px]:grid-cols-2">
+                    <div>
+                      <div className="sc mb-2 text-[0.86rem] text-verd">Припасы</div>
+                      {bagSupplies.length === 0 ? (
+                        <p className="text-sm italic text-mute">Припасов нет: зелья, свитки и метательное покупаются в лавке.</p>
+                      ) : (
+                        <ul className="space-y-1">
+                          {bagSupplies.map(([id, n]) => (
+                            <li key={id} className="flex items-baseline justify-between gap-2 border border-line bg-black/20 px-2.5 py-1.5">
+                              <span className="min-w-0 truncate text-[0.96rem] text-parch">{ITEMS[id]?.name ?? id}</span>
+                              <span className="font-mono text-[0.88rem] text-flame">×{n}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <div>
+                      <div className="sc mb-2 text-[0.86rem] text-verd">Реагенты</div>
+                      {bagReagents.length === 0 ? (
+                        <p className="text-sm italic text-mute">Реагентов нет: они нужны для варки и ковки.</p>
+                      ) : (
+                        <ul className="space-y-1">
+                          {bagReagents.map(([id, n]) => (
+                            <li key={id} className="flex items-baseline justify-between gap-2 border border-line bg-black/20 px-2.5 py-1.5">
+                              <span className="min-w-0 truncate text-[0.96rem] text-parch">{ITEMS[id]?.name ?? id}</span>
+                              <span className="font-mono text-[0.88rem] text-verd">×{n}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
                 </section>
               </div>
             )}

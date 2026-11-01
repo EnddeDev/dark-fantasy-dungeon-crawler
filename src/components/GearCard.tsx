@@ -1,14 +1,13 @@
 import { Check, Coins, Info, Plus } from "lucide-react";
 import {
-  GEAR_CLASS_META,
   RARITY_META,
   WEAR_META,
   STAT_META,
   canWear,
   gearBuyPrice,
   gearSellPrice,
-  gearClassFor,
-  gearStatReq,
+  gearClassLabel,
+  gearRequirement,
   gearStatReqLabel,
   scaledGearStats,
   slotsForItem,
@@ -56,7 +55,7 @@ export function GearCard({
   const rarity = RARITY_META[item.rarity];
   const possibleSlots = slotsForItem(item);
   const allowed = preferredSlot && possibleSlots.includes(preferredSlot) ? [preferredSlot] : possibleSlots;
-  const req = gearStatReq(item);
+  const req = gearRequirement(item);
   const wearable = canWear(item, player);
   const equipped = mode === "equipped";
   const buyPrice = gearBuyPrice(item);
@@ -88,7 +87,7 @@ export function GearCard({
             {st.base.name}
           </h4>
           <p className="mt-1 text-[0.9rem] leading-snug text-mute">
-            {GEAR_CLASS_META[gearClassFor(item)].name} · ур. {item.level ?? 1}{archetype ? ` · ${archetype.name}` : ""}
+            {gearClassLabel(item)} · ур. {item.level ?? 1}{archetype ? ` · ${archetype.name}` : ""}
             {effectiveHands(item) === 2 ? " · обе руки" : canTwoHandGrip(item) ? " · хват: одной/двумя" : ""}
           </p>
         </div>
@@ -124,7 +123,9 @@ export function GearCard({
 
       {!wearable && mode === "inventory" && (
         <p className="mt-2 text-[0.9rem] leading-snug text-rubric">
-          Нужно: {STAT_META[req.stat].short} {req.value} и уровень {item.level ?? 1}.
+          {req.stat
+            ? `Нужно: ${STAT_META[req.stat].short} ${req.value} и уровень ${item.level ?? 1}.`
+            : `Нужен уровень ${item.level ?? 1}.`}
         </p>
       )}
 

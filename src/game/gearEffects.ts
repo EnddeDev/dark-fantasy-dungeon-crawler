@@ -1,6 +1,7 @@
 /**
  * Эффекты качества снаряжения и легендарные пассивки.
- * Пулы привязаны к характеристике и архетипу предмета.
+ * Пулы привязаны к типу предмета: у оружия — по виду клинка, у брони — по весу,
+ * у аксессуаров — по требуемой характеристике.
  */
 import type { ArchetypeId } from "./archetypes";
 import type { StatKey } from "./types";
@@ -19,6 +20,8 @@ export type GearEffectId =
   | "skill_damage" | "skill_cd" | "skill_vamp" | "status_duration" | "skill_scale"
   // ИНТ / Мудрец
   | "scroll_damage" | "scroll_scale" | "scroll_vamp" | "scroll_save" | "scroll_create"
+  // Оружейные свойства: яд, кровотечение, раскол
+  | "poison_damage" | "bleed" | "sunder"
   // Новый набор свойств предметов
   | "magic_vamp" | "fortify" | "magic_resist" | "rage" | "wisdom" | "might" | "precision";
 
@@ -71,13 +74,105 @@ export const GEAR_EFFECTS: Record<GearEffectId, GearEffectDef> = {
   wisdom: { id: "wisdom", stat: "int", name: "Мудрость", desc: "Усиливает урон, зависящий от Интеллекта.", detail: "+5% к множителю от Интеллекта" },
   might: { id: "might", stat: "str", name: "Мощь", desc: "Сила усиливает физический удар.", detail: "+5% к множителю от Силы" },
   precision: { id: "precision", stat: "agi", name: "Точность", desc: "Усиливает урон, зависящий от Ловкости.", detail: "+5% к множителю от Ловкости" },
+  poison_damage: { id: "poison_damage", stat: "agi", name: "Урон от яда", desc: "Удары отравляют противника.", detail: "+30% шанс отравить врага на 3 раунда" },
+  bleed: { id: "bleed", stat: "str", name: "Кровотечение", desc: "Удары открывают кровь.", detail: "+35% шанс вызвать кровотечение на 3 раунда" },
+  sunder: { id: "sunder", stat: "str", name: "Раскол", desc: "Удар ломает броню противника.", detail: "+30% шанс расколоть броню врага" },
 };
 
 /** Только эти свойства выпадают на новых предметах. Остальные id — совместимость старых сохранений. */
 export const ACTIVE_GEAR_EFFECTS: GearEffectId[] = [
   "vamp", "magic_vamp", "crit_chance", "crit_mult", "regen", "fortify", "magic_resist",
   "armor_damage", "rage", "ap", "wisdom", "might", "precision", "thorns",
+  "evade", "counter", "resist", "poison_damage", "bleed", "sunder",
 ];
+
+/* ─────────────  ПУЛЫ СВОЙСТВ ПО ТИПУ ПРЕДМЕТА  ───────────── */
+
+/**
+ * Пул свойств оружия по виду клинка. Наборы заданы правилами мира:
+ * кинжал травит и режет, рапира уклоняется и контратакует, топор — ярость и кровь.
+ */
+export const WEAPON_EFFECT_POOLS: Record<string, GearEffectId[]> = {
+  dagger: ["crit_chance", "crit_mult", "poison_damage", "bleed", "precision"],
+  rapier: ["evade", "counter", "precision", "sunder"],
+  spear: ["crit_chance", "crit_mult", "counter"],
+  sword: ["counter", "sunder", "might", "precision", "armor_damage"],
+  axe: ["bleed", "rage", "vamp", "might"],
+  hammer: ["might", "armor_damage", "fortify", "resist"],
+  greatsword: ["might", "armor_damage", "fortify", "resist", "rage", "regen"],
+  greataxe: ["rage", "vamp", "might", "sunder", "regen", "fortify", "crit_chance"],
+  warhammer: ["rage", "might", "sunder", "regen", "fortify", "crit_chance", "armor_damage"],
+  staff: ["magic_vamp", "regen", "magic_resist", "wisdom"],
+  wand: ["magic_vamp", "regen", "magic_resist", "wisdom"],
+};
+
+/** Пул свойств брони по весу и требуемой характеристике. */
+export const ARMOR_EFFECT_POOLS: Record<"heavy" | "medium" | "light", Record<string, GearEffectId[]>> = {
+  heavy: {
+    str: ["fortify", "thorns", "resist", "regen", "rage"],
+    agi: ["fortify", "thorns", "resist"],
+    int: ["fortify", "thorns", "resist"],
+  },
+  medium: {
+    str: ["fortify", "armor_damage", "might", "thorns"],
+    agi: ["evade", "counter", "precision", "crit_chance"],
+    int: ["regen", "wisdom", "magic_resist"],
+  },
+  light: {
+    str: ["regen", "thorns", "resist"],
+    agi: ["evade", "counter", "precision"],
+    int: ["regen", "wisdom", "magic_resist", "magic_vamp"],
+    none: ["regen", "thorns", "resist", "fortify"],
+  },
+};
+
+/** Пул свойств аксессуара: всегда по требуемой характеристике. */
+export const ACCESSORY_EFFECT_POOLS: Record<StatKey, GearEffectId[]> = {
+  str: ["fortify", "might", "thorns", "armor_damage", "resist"],
+  agi: ["evade", "precision", "crit_chance", "counter", "vamp"],
+  int: ["regen", "wisdom", "magic_resist", "magic_vamp", "ap"],
+};
+
+export interface GearPoolQuery {
+  kind: "weapon" | "armor" | "accessory";
+  /** Вид оружия: dagger, rapier, spear, sword, axe, hammer, greatsword, greataxe, warhammer, staff, wand. */
+  weaponType?: string | null;
+  gearClass?: "light" | "medium" | "heavy";
+  stat: StatKey;
+  /** Лёгкая броня без требования. */
+  requiresNothing?: boolean;
+  archetype?: ArchetypeId | null;
+}
+
+/** Пул свойств предмета по его типу и требованию. */
+export function effectPoolForGear(q: GearPoolQuery): GearEffectId[] {
+  if (q.kind === "weapon") {
+    const pool = WEAPON_EFFECT_POOLS[q.weaponType ?? "sword"] ?? WEAPON_EFFECT_POOLS.sword;
+    return pool.filter((id) => ACTIVE_GEAR_EFFECTS.includes(id));
+  }
+  if (q.kind === "accessory") {
+    return ACCESSORY_EFFECT_POOLS[q.stat].filter((id) => ACTIVE_GEAR_EFFECTS.includes(id));
+  }
+  const cls = q.gearClass ?? "medium";
+  const pool = ARMOR_EFFECT_POOLS[cls][q.requiresNothing ? "none" : q.stat] ?? ARMOR_EFFECT_POOLS[cls].str;
+  return pool.filter((id) => ACTIVE_GEAR_EFFECTS.includes(id));
+}
+
+/**
+ * Сколько свойств выпадает на предмет.
+ * Аксессуар всегда даёт хотя бы одно свойство, копьё и посох — всегда два.
+ */
+export function effectCountForGear(q: {
+  kind: "weapon" | "armor" | "accessory";
+  rarity: "common" | "rare" | "epic" | "legendary";
+  weaponType?: string | null;
+}): number {
+  const bonus = q.rarity === "rare" ? 1 : q.rarity === "epic" || q.rarity === "legendary" ? 2 : 0;
+  if (q.kind === "armor") return bonus;
+  if (q.kind === "accessory") return 1 + bonus;
+  const base = q.weaponType === "spear" || q.weaponType === "staff" ? 2 : 1;
+  return base + bonus;
+}
 
 export type GearPassiveId =
   | "heavy_blow" | "fortress" | "dance" | "precision" | "spell_echo" | "time_warp"
@@ -146,6 +241,9 @@ export function effectDetail(id: GearEffectId, level = 1, rolledBase?: number): 
     case "magic_vamp": return `+${n}% лечения от магического урона`;
     case "fortify": return `+${n}% сопротивления физическому урону`;
     case "magic_resist": return `+${n}% снижения магического урона`;
+    case "poison_damage": return `+${n}% шанс отравить врага на 3 раунда`;
+    case "bleed": return `+${n}% шанс вызвать кровотечение на 3 раунда`;
+    case "sunder": return `+${n}% шанс расколоть броню врага`;
     case "rage": return `+${n}% урона за каждые 10% недостающего здоровья`;
     case "wisdom": return `+${n}% к множителю от Интеллекта`;
     case "might": return `+${n}% к множителю от Силы`;
@@ -192,6 +290,11 @@ const ARCHETYPE_PASSIVES: Record<ArchetypeId, GearPassiveId> = {
 export function effectPoolFor(stat: StatKey, archetype?: ArchetypeId | null): GearEffectId[] {
   if (archetype) return ARCHETYPE_EFFECTS[archetype].filter((id) => ACTIVE_GEAR_EFFECTS.includes(id));
   return ACTIVE_GEAR_EFFECTS.filter((id) => GEAR_EFFECTS[id].stat === stat);
+}
+
+/** Пулы аксессуаров по характеристике: открыты интерфейсу и тестам. */
+export function accessoryPool(stat: StatKey): GearEffectId[] {
+  return ACCESSORY_EFFECT_POOLS[stat].filter((id) => ACTIVE_GEAR_EFFECTS.includes(id));
 }
 
 export function passivePoolFor(stat: StatKey, archetype?: ArchetypeId | null): GearPassiveId[] {

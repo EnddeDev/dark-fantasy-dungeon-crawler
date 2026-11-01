@@ -63,6 +63,10 @@ const ATLAS_MAP: Record<string, AtlasCell> = {
   icon: { col: 5, row: 1, filter: "contrast(1.35) brightness(0.9) sepia(0.3)" },
   soulstone: { col: 5, row: 1, filter: "hue-rotate(265deg) saturate(2.2) brightness(1.1)" },
   seal: { col: 2, row: 2 },
+  /* Фокусы и реагентные палочки: те же полотна атласа с собственной тонировкой. */
+  focus_rune: { col: 4, row: 1, filter: "hue-rotate(205deg) saturate(1.9) brightness(1.1)" },
+  start_focus: { col: 4, row: 1, filter: "hue-rotate(180deg) saturate(1.5)" },
+  wand_ash: { col: 3, row: 0, filter: "sepia(0.55) brightness(0.95) contrast(1.2)" },
 
   // ── ЗЕЛЬЯ И МЕТАТЕЛЬНОЕ ОРУЖИЕ ──
   potion_s: { col: 3, row: 2 },

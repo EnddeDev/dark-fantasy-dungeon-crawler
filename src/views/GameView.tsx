@@ -45,8 +45,6 @@ export function GameView({
             run={run}
             player={player}
             bag={player.bag}
-            hp={player.hp}
-            maxHp={d.maxHp}
             intStat={player.stats.int}
             intDiscount={d.intDiscount}
             path={path}
