@@ -31,7 +31,9 @@ import {
   scaledGearStats,
   consumableIntReq,
   consumablePower,
+  migrateGearItem,
 } from "./game/content";
+import { CHILL_HEAL_MULT, magicTickDamage, statusTickDamage } from "./game/statusEffects";
 import { lockpickChance } from "./game/traps";
 import { MAP_EVENTS, mapEventById, SHOP_MAX_LEVEL, shopUpgradeCost, type MapEffect } from "./game/world";
 import { rollStepEvent } from "./game/events";
@@ -131,7 +133,7 @@ function makeInitial(): Player {
       amulet: null,
     },
     passives: [],
-    statuses: { wound: 0, curse: 0, poison: 0 },
+    statuses: { wound: 0, curse: 0, poison: 0, chill: 0, fear: 0, wither: 0, burn: 0 },
     kills: 0,
     shopLevel: 1,
   };
@@ -168,13 +170,13 @@ function readSavedPlayer(): Player {
           .filter((g) => !(isOldStarterRapier && g.baseId === "rapier"))
           .map((g) => {
             const base = GEAR_BASES[g.baseId];
-            return {
+            return migrateGearItem({
               ...g,
               statMult: g.statMult ?? 1,
               level: g.level ?? Math.max(1, Math.min(SHOP_MAX_LEVEL, base?.level ?? base?.minFloor ?? 1)),
               slot: (base?.slot ?? g.slot) as Slot,
               gearClass: base?.gearClass ?? g.gearClass,
-            };
+            });
           });
         const owned = new Set(armory.map((g) => g.uid));
 
@@ -206,7 +208,15 @@ function readSavedPlayer(): Player {
           bag,
           armory,
           equip,
-          statuses: { ...saved.statuses, poison: saved.statuses?.poison ?? 0, cursePower: saved.statuses?.cursePower ?? 0 },
+          statuses: {
+            ...saved.statuses,
+            poison: saved.statuses?.poison ?? 0,
+            cursePower: saved.statuses?.cursePower ?? 0,
+            chill: saved.statuses?.chill ?? 0,
+            fear: saved.statuses?.fear ?? 0,
+            wither: saved.statuses?.wither ?? 0,
+            burn: saved.statuses?.burn ?? 0,
+          },
           knownRecipes,
           shopLevel: Math.max(1, Math.min(SHOP_MAX_LEVEL, Number(saved.shopLevel) || 1)),
           archetype: saved.archetype ?? null,
@@ -343,7 +353,16 @@ export default function App() {
       ...p,
       hp: b.p.hp,
       bag: b.bag,
-      statuses: { wound: b.p.statuses.wound, curse: isBattleCurse(b.p.statuses.curse) ? 0 : b.p.statuses.curse, poison: b.p.statuses.poison, cursePower: isBattleCurse(b.p.statuses.curse) ? 0 : b.p.statuses.cursePower },
+      statuses: {
+        wound: b.p.statuses.wound,
+        curse: isBattleCurse(b.p.statuses.curse) ? 0 : b.p.statuses.curse,
+        poison: b.p.statuses.poison,
+        cursePower: isBattleCurse(b.p.statuses.curse) ? 0 : b.p.statuses.cursePower,
+        chill: b.p.statuses.chill,
+        fear: b.p.statuses.fear,
+        wither: b.p.statuses.wither,
+        burn: b.p.statuses.burn,
+      },
     }));
     if (!r) {
       setBattle(null);
@@ -450,7 +469,7 @@ export default function App() {
   const startRun = (floor: number) => {
     if (!Number.isInteger(floor) || floor < 1 || floor > unlockedFloor) return;
     const maze = genMaze(mazeSizeForFloor(floor), floor);
-    setPlayer((p) => ({ ...p, hp: derived(p).maxHp, statuses: { wound: 0, curse: 0, poison: 0 } }));
+    setPlayer((p) => ({ ...p, hp: derived(p).maxHp, statuses: { wound: 0, curse: 0, poison: 0, chill: 0, fear: 0, wither: 0, burn: 0 } }));
     setRun({
       floor,
       maze,
@@ -495,7 +514,7 @@ export default function App() {
       SLOT_ORDER.forEach((slot) => {
         if (equip[slot] && lostGearUids.has(equip[slot]!)) equip[slot] = null;
       });
-      const nextP = { ...p, bag, armory, equip, statuses: { wound: 0, curse: 0, poison: 0 } };
+      const nextP = { ...p, bag, armory, equip, statuses: { wound: 0, curse: 0, poison: 0, chill: 0, fear: 0, wither: 0, burn: 0 } };
       return { ...nextP, hp: derived(nextP).maxHp };
     });
     setRun(null);
@@ -529,18 +548,36 @@ export default function App() {
 
     /* негативные эффекты тикают на каждом шаге */
     if (statuses.wound > 0 && !d.legendaryPassives.includes("titan_heart")) {
-      const dmg = 2 + r.floor;
+      const dmg = statusTickDamage(d.maxHp, "bleed");
       hp -= dmg;
       statuses.wound -= 1;
-      r.log.push(`Кровотечение: −${dmg} здоровья.`);
+      r.log.push(`Кровотечение: −${dmg} здоровья (5% макс. ОЗ).`);
     }
-    if (statuses.curse > 0 && !isBattleCurse(statuses.curse)) statuses.curse -= 1;
+    if (statuses.curse > 0 && !isBattleCurse(statuses.curse)) {
+      const dmg = magicTickDamage(d.maxHp, "curse", d.magicResist);
+      hp -= dmg;
+      statuses.curse -= 1;
+      r.log.push(`Проклятие: −${dmg} здоровья.`);
+    }
     if (statuses.poison > 0 && !d.legendaryPassives.includes("titan_heart")) {
-      const poisonDmg = 3 + r.floor;
+      const poisonDmg = statusTickDamage(d.maxHp, "poison");
       hp -= poisonDmg;
       statuses.poison -= 1;
-      r.log.push(`Яд в крови: −${poisonDmg} здоровья.`);
+      r.log.push(`Яд в крови: −${poisonDmg} здоровья (4% макс. ОЗ).`);
     }
+    if ((statuses.burn ?? 0) > 0) {
+      const dmg = statusTickDamage(d.maxHp, "burn");
+      hp -= dmg;
+      statuses.burn = (statuses.burn ?? 0) - 1;
+      r.log.push(`Горение: −${dmg} здоровья (5% макс. ОЗ).`);
+    }
+    if ((statuses.chill ?? 0) > 0) {
+      const dmg = magicTickDamage(d.maxHp, "chill", d.magicResist);
+      hp -= dmg;
+      statuses.chill = (statuses.chill ?? 0) - 1;
+      r.log.push(`Обморожение: −${dmg} здоровья, лечение −50%.`);
+    }
+    if ((statuses.wither ?? 0) > 0) statuses.wither = (statuses.wither ?? 0) - 1;
 
     if (biome === "fire" && (r.burning ?? 0) > 0) {
       const burn = fireBurnDamage(r.burning ?? 0);
@@ -941,10 +978,17 @@ export default function App() {
     const statuses = { ...player.statuses };
     let msg = "";
     if (u.type === "heal") {
-      const amt = biomeHealingAmount(mazeBiome(run.maze), consumablePower(def, player.stats), def.kind === "potion");
-      hp = Math.min(d.maxHp, hp + amt);
-      if (def.kind === "scroll") statuses.wound = 0;
-      msg = `${def.name}: +${amt} здоровья.`;
+      const rawAmt = biomeHealingAmount(mazeBiome(run.maze), consumablePower(def, player.stats), def.kind === "potion");
+      if ((statuses.wither ?? 0) > 0) {
+        const dmg = Math.max(1, Math.round(rawAmt * (1 - d.magicResist)));
+        hp = Math.max(0, hp - dmg);
+        msg = `${def.name}: увядание обращает лечение в ${dmg} магического урона.`;
+      } else {
+        const amt = Math.round(rawAmt * ((statuses.chill ?? 0) > 0 ? CHILL_HEAL_MULT : 1));
+        hp = Math.min(d.maxHp, hp + amt);
+        if (def.kind === "scroll") statuses.wound = 0;
+        msg = `${def.name}: +${amt} здоровья.`;
+      }
     } else if (u.type === "cleanse") {
       statuses.wound = 0;
       statuses.curse = 0;
@@ -1022,7 +1066,16 @@ export default function App() {
       bag,
       armory: [...b.loot.gear, ...player.armory],
       kills: player.kills + 1,
-      statuses: { wound: b.p.statuses.wound, curse: isBattleCurse(b.p.statuses.curse) ? 0 : b.p.statuses.curse, poison: b.p.statuses.poison, cursePower: isBattleCurse(b.p.statuses.curse) ? 0 : b.p.statuses.cursePower },
+      statuses: {
+        wound: b.p.statuses.wound,
+        curse: isBattleCurse(b.p.statuses.curse) ? 0 : b.p.statuses.curse,
+        poison: b.p.statuses.poison,
+        cursePower: isBattleCurse(b.p.statuses.curse) ? 0 : b.p.statuses.cursePower,
+        chill: b.p.statuses.chill,
+        fear: b.p.statuses.fear,
+        wither: b.p.statuses.wither,
+        burn: b.p.statuses.burn,
+      },
     };
     const { player: updated, levelsGained } = grantXp(withLoot, b.loot.xp);
     setPlayer(updated);
@@ -1065,7 +1118,7 @@ export default function App() {
         ...p,
         gold: p.gold + r.gold,
         hp: d.maxHp,
-        statuses: { wound: 0, curse: 0, poison: 0 },
+        statuses: { wound: 0, curse: 0, poison: 0, chill: 0, fear: 0, wither: 0, burn: 0 },
       };
     });
     setPath([]);

@@ -18,7 +18,9 @@ export type GearEffectId =
   // ИНТ / Колдун
   | "skill_damage" | "skill_cd" | "skill_vamp" | "status_duration" | "skill_scale"
   // ИНТ / Мудрец
-  | "scroll_damage" | "scroll_scale" | "scroll_vamp" | "scroll_save" | "scroll_create";
+  | "scroll_damage" | "scroll_scale" | "scroll_vamp" | "scroll_save" | "scroll_create"
+  // Новый набор свойств предметов
+  | "magic_vamp" | "fortify" | "magic_resist" | "rage" | "wisdom" | "might" | "precision";
 
 export interface GearEffectDef {
   id: GearEffectId;
@@ -31,10 +33,10 @@ export interface GearEffectDef {
 export const GEAR_EFFECTS: Record<GearEffectId, GearEffectDef> = {
   damage_resist: { id: "damage_resist", stat: "str", name: "Сопротивление урону", desc: "Весь получаемый урон снижен.", detail: "−2 урона за каждый входящий удар" },
   thorns: { id: "thorns", stat: "str", name: "Шипы", desc: "Атакующий ранит сам себя.", detail: "+4 урона врагу за каждый его удар по тебе" },
-  regen: { id: "regen", stat: "str", name: "Регенерация", desc: "Затягивает раны в бою.", detail: "+3 здоровья в конце каждого раунда" },
+  regen: { id: "regen", stat: "str", name: "Регенерация", desc: "Затягивает раны в бою.", detail: "+4 здоровья в конце каждого раунда" },
   resist: { id: "resist", stat: "str", name: "Стойкость", desc: "Реже поддаётся негативным эффектам.", detail: "+10% сопротивления эффектам" },
   guard_bonus: { id: "guard_bonus", stat: "str", name: "Глухая оборона", desc: "Защита держит удар крепче.", detail: "Защита снижает входящий урон ещё на 15%" },
-  armor_damage: { id: "armor_damage", stat: "str", name: "Тяжесть лат", desc: "Броня превращается в удар.", detail: "+25% брони к урону оружия и приёмов" },
+  armor_damage: { id: "armor_damage", stat: "str", name: "Наступление", desc: "Часть защиты превращается в урон.", detail: "+8% брони к урону оружия" },
   stun_chance: { id: "stun_chance", stat: "str", name: "Шанс оглушения", desc: "Удары могут лишить врага хода.", detail: "+8% шанс оглушить врага на 1 ход" },
   vamp_str: { id: "vamp_str", stat: "str", name: "Кровавый вампиризм", desc: "Урон оружием возвращает здоровье.", detail: "+8% лечения от урона оружием и приёмами" },
   missing_hp_damage: { id: "missing_hp_damage", stat: "str", name: "Боль берсерка", desc: "Раны злят и усиливают удар.", detail: "+6% урона за каждые 10% недостающего здоровья (до 60%)" },
@@ -43,9 +45,9 @@ export const GEAR_EFFECTS: Record<GearEffectId, GearEffectDef> = {
   evade: { id: "evade", stat: "agi", name: "Уклонение", desc: "Шанс полного промаха врага.", detail: "+3% к уклонению" },
   counter: { id: "counter", stat: "agi", name: "Контратака", desc: "Быстрый выпад после своего удара.", detail: "+12% шанс нанести второй удар подряд" },
   crit_chance: { id: "crit_chance", stat: "agi", name: "Шанс крита", desc: "Вероятность критического удара.", detail: "+5% к шансу критического удара" },
-  crit_mult: { id: "crit_mult", stat: "agi", name: "Сила крита", desc: "Критический удар становится жестче.", detail: "+30% к множителю критического урона" },
-  vamp: { id: "vamp", stat: "agi", name: "Вампиризм", desc: "Часть урона возвращается здоровьем.", detail: "+8% лечения от нанесённого урона" },
-  ap: { id: "ap", stat: "agi", name: "Лишний ход", desc: "Дополнительные ходы только в первом раунде.", detail: "+1 ход в первом раунде" },
+  crit_mult: { id: "crit_mult", stat: "agi", name: "Критический урон", desc: "Критический удар становится жестче.", detail: "+10% к множителю критического урона" },
+  vamp: { id: "vamp", stat: "agi", name: "Вампиризм", desc: "Физический урон возвращает здоровье.", detail: "+5% лечения от физического урона" },
+  ap: { id: "ap", stat: "agi", name: "Ускорение", desc: "Дополнительные ходы в каждом раунде.", detail: "+1 ход в раунд с 3 уровня" },
   first_strike: { id: "first_strike", stat: "agi", name: "Первый удар", desc: "Начало боя смертельно.", detail: "+20% урона в первые 2 раунда" },
   consumable_damage: { id: "consumable_damage", stat: "agi", name: "Алхимический удар", desc: "Расходники бьют сильнее.", detail: "+15% урона расходников" },
   consumable_scale: { id: "consumable_scale", stat: "agi", name: "Точная доза", desc: "ЛОВ сильнее влияет на расходники.", detail: "+0.25×ЛОВ к масштабу расходников" },
@@ -62,7 +64,20 @@ export const GEAR_EFFECTS: Record<GearEffectId, GearEffectDef> = {
   scroll_vamp: { id: "scroll_vamp", stat: "int", name: "Вампиризм свитков", desc: "Свитки лечат уроном.", detail: "+10% лечения от урона свитков" },
   scroll_save: { id: "scroll_save", stat: "int", name: "Бережный почерк", desc: "Свиток может не истлеть.", detail: "+12% шанс не потратить свиток" },
   scroll_create: { id: "scroll_create", stat: "int", name: "Сотворение свитков", desc: "Приёмы чаще рождают свитки.", detail: "+1 свиток при создании приёмом" },
+  magic_vamp: { id: "magic_vamp", stat: "int", name: "Магический вампиризм", desc: "Магический урон возвращает здоровье.", detail: "+5% лечения от магического урона" },
+  fortify: { id: "fortify", stat: "str", name: "Укрепление", desc: "Снижает физический урон.", detail: "+5% сопротивления физическому урону" },
+  magic_resist: { id: "magic_resist", stat: "int", name: "Магическое сопротивление", desc: "Снижает магический урон.", detail: "+5% снижения магического урона" },
+  rage: { id: "rage", stat: "str", name: "Ярость", desc: "Недостающее здоровье усиливает урон.", detail: "+10% урона за каждые 10% недостающего здоровья" },
+  wisdom: { id: "wisdom", stat: "int", name: "Мудрость", desc: "Усиливает урон, зависящий от Интеллекта.", detail: "+5% к множителю от Интеллекта" },
+  might: { id: "might", stat: "str", name: "Мощь", desc: "Сила усиливает физический удар.", detail: "+5% к множителю от Силы" },
+  precision: { id: "precision", stat: "agi", name: "Точность", desc: "Усиливает урон, зависящий от Ловкости.", detail: "+5% к множителю от Ловкости" },
 };
+
+/** Только эти свойства выпадают на новых предметах. Остальные id — совместимость старых сохранений. */
+export const ACTIVE_GEAR_EFFECTS: GearEffectId[] = [
+  "vamp", "magic_vamp", "crit_chance", "crit_mult", "regen", "fortify", "magic_resist",
+  "armor_damage", "rage", "ap", "wisdom", "might", "precision", "thorns",
+];
 
 export type GearPassiveId =
   | "heavy_blow" | "fortress" | "dance" | "precision" | "spell_echo" | "time_warp"
@@ -92,15 +107,15 @@ export const GEAR_PASSIVES: Record<GearPassiveId, GearPassiveDef> = {
 };
 
 /** Описание эффекта с учётом уровня предмета. */
-export function effectDetail(id: GearEffectId, level = 1): string {
-  const n = effectMagnitude(id, level);
+export function effectDetail(id: GearEffectId, level = 1, rolledBase?: number): string {
+  const n = effectMagnitude(id, level, rolledBase);
   switch (id) {
     case "damage_resist": return `−${n} урона за каждый входящий удар`;
     case "thorns": return `+${n} урона врагу за каждый его удар по тебе`;
     case "regen": return `+${n} здоровья в конце каждого раунда`;
     case "resist": return `+${n}% сопротивления эффектам`;
     case "guard_bonus": return `Защита снижает входящий урон ещё на ${n}%`;
-    case "armor_damage": return `+${n}% брони к урону оружия и приёмов`;
+    case "armor_damage": return `+${n}% брони к урону оружия`;
     case "stun_chance": return `+${n}% шанс оглушить врага на 1 ход`;
     case "vamp_str": return `+${n}% лечения от урона оружием и приёмами`;
     case "missing_hp_damage": return `+${n}% урона за каждые 10% недостающего здоровья (до ${n * 10}%)`;
@@ -110,8 +125,8 @@ export function effectDetail(id: GearEffectId, level = 1): string {
     case "counter": return `+${n}% шанс нанести второй удар подряд`;
     case "crit_chance": return `+${n}% к шансу критического удара`;
     case "crit_mult": return `+${n}% к множителю критического урона`;
-    case "vamp": return `+${n}% лечения от нанесённого урона`;
-    case "ap": return `+${n} ход только в первом раунде`;
+    case "vamp": return `+${n}% лечения от физического урона`;
+    case "ap": return n > 0 ? `+${n} ход в каждом раунде` : "Ускорение пробуждается с 3 уровня предмета";
     case "first_strike": return `+${n}% урона в первые 2 раунда`;
     case "consumable_damage": return `+${n}% урона расходников`;
     case "consumable_scale": return `+${n}×ЛОВ к масштабу расходников`;
@@ -128,6 +143,13 @@ export function effectDetail(id: GearEffectId, level = 1): string {
     case "scroll_vamp": return `+${n}% лечения от урона свитков`;
     case "scroll_save": return `+${n}% шанс не потратить свиток`;
     case "scroll_create": return `+${n} свиток при создании приёмом`;
+    case "magic_vamp": return `+${n}% лечения от магического урона`;
+    case "fortify": return `+${n}% сопротивления физическому урону`;
+    case "magic_resist": return `+${n}% снижения магического урона`;
+    case "rage": return `+${n}% урона за каждые 10% недостающего здоровья`;
+    case "wisdom": return `+${n}% к множителю от Интеллекта`;
+    case "might": return `+${n}% к множителю от Силы`;
+    case "precision": return `+${n}% к множителю от Ловкости`;
   }
 }
 
@@ -150,12 +172,12 @@ export function passiveDetail(id: GearPassiveId, level = 1): string {
 }
 
 const ARCHETYPE_EFFECTS: Record<ArchetypeId, GearEffectId[]> = {
-  bulwark: ["damage_resist", "thorns", "regen", "resist", "guard_bonus", "armor_damage"],
-  barbarian: ["regen", "resist", "stun_chance", "vamp_str", "missing_hp_damage", "enemy_missing_damage", "two_hand_damage"],
-  assassin: ["evade", "counter", "crit_chance", "crit_mult", "vamp", "ap", "first_strike"],
-  ninja: ["evade", "ap", "consumable_damage", "consumable_scale", "consumable_vamp", "debuff_damage", "dodge_action"],
-  warlock: ["skill_damage", "skill_cd", "skill_vamp", "status_duration", "skill_scale"],
-  sage: ["scroll_damage", "scroll_scale", "scroll_vamp", "scroll_save", "scroll_create", "ap"],
+  bulwark: ["fortify", "thorns", "regen", "armor_damage", "might", "magic_resist"],
+  barbarian: ["rage", "vamp", "might", "thorns", "regen", "fortify"],
+  assassin: ["crit_chance", "crit_mult", "vamp", "ap", "precision", "might"],
+  ninja: ["ap", "precision", "crit_chance", "vamp", "magic_vamp", "thorns"],
+  warlock: ["wisdom", "magic_vamp", "magic_resist", "rage", "might", "regen"],
+  sage: ["wisdom", "magic_resist", "regen", "magic_vamp", "ap", "fortify"],
 };
 
 const ARCHETYPE_PASSIVES: Record<ArchetypeId, GearPassiveId> = {
@@ -168,8 +190,8 @@ const ARCHETYPE_PASSIVES: Record<ArchetypeId, GearPassiveId> = {
 };
 
 export function effectPoolFor(stat: StatKey, archetype?: ArchetypeId | null): GearEffectId[] {
-  if (archetype) return ARCHETYPE_EFFECTS[archetype].filter((id) => GEAR_EFFECTS[id].stat === stat);
-  return (Object.values(GEAR_EFFECTS) as GearEffectDef[]).filter((e) => e.stat === stat).map((e) => e.id);
+  if (archetype) return ARCHETYPE_EFFECTS[archetype].filter((id) => ACTIVE_GEAR_EFFECTS.includes(id));
+  return ACTIVE_GEAR_EFFECTS.filter((id) => GEAR_EFFECTS[id].stat === stat);
 }
 
 export function passivePoolFor(stat: StatKey, archetype?: ArchetypeId | null): GearPassiveId[] {

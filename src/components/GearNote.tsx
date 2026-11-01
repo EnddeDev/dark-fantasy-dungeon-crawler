@@ -204,7 +204,7 @@ export function GearNote({
                 return effect ? (
                   <div key={`${id}-${index}`} className="border-l-2 border-verd/60 pl-3">
                     <h4 className="font-display text-[1.08rem] uppercase tracking-[0.04em] text-verd">{effect.name}</h4>
-                    <p className="mt-1 text-[0.98rem] leading-relaxed text-parch/85">{effectDetail(id, level)}</p>
+                    <p className="mt-1 text-[0.98rem] leading-relaxed text-parch/85">{effectDetail(id, level, item.effectRolls?.[id])}</p>
                   </div>
                 ) : null;
               })}

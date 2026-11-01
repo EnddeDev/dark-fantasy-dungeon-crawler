@@ -99,7 +99,7 @@ test("swamp halves non-potion healing for both sides but leaves potions intact",
   const scroll = combat("swamp", { bag: { scroll_heal: 1 } });
   scroll.queue = ["p", "e"]; scroll.idx = 0; scroll.p.hp = 1;
   const afterScroll = battle.playerAct(scroll, { type: "item", id: "scroll_heal" });
-  assert.equal(afterScroll.p.hp, 25); // (32 + 4×ИНТ) / 2
+  assert.equal(afterScroll.p.hp, 17); // 32 / 2
 
   const regen = combat("swamp");
   regen.queue = ["p", "e"]; regen.idx = 0;
@@ -134,8 +134,8 @@ test("ice costs the player 3 HP per own turn and weakens physical strikes by 25%
     s.p.hit = [100, 100]; s.p.stats.str = 1; s.p.critChance = 0;
     return withRandom(0.99, () => battle.playerAct(s, { type: "attack" }));
   };
-  assert.equal(5000 - strike("classic").enemy.hp, 100);
-  assert.equal(5000 - strike("ice").enemy.hp, 75);
+  assert.equal(5000 - strike("classic").enemy.hp, 103); // 100 + (2 + СИЛ)
+  assert.equal(5000 - strike("ice").enemy.hp, 77);
 
   const enemyStrike = (biome) => {
     const s = combat(biome);
@@ -173,6 +173,7 @@ test("fire stacks burning separately on each combatant at the start of their own
   assert.equal(b.p.statuses.burning, 1); // первый ход игрока уже начался
   b.p.hp = 100; b.p.armor = 999;
   b.enemy.hp = 1000; b.enemy.maxHp = 1000; b.enemy.statuses.burning = 0;
+  b.enemy.effects = []; b.enemy.effectPower = {}; b.enemy.passive = null;
   b.enemy.moves = ["guard"]; b.enemy.def = { ...b.enemy.def, moves: ["guard"] };
   b.queue = ["p", "e", "p", "e", "p", "e"]; b.idx = 0;
 

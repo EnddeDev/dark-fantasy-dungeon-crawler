@@ -407,7 +407,7 @@ test("throwing weapons are consumable, explosions pierce armor and living target
   assert.equal(thrown.bag.throwing_knife, undefined);
 
   const blast = battle.playerAct(freshBattle(), { type: "item", id: "blast_bomb" });
-  assert.ok(999 - blast.enemy.hp >= 24);
+  assert.ok(999 - blast.enemy.hp >= 8); // 7 + 1.5×ЛОВ(1), округление
   assert.equal(blast.bag.blast_bomb, undefined);
 
   let afraid = battle.playerAct(freshBattle(), { type: "item", id: "fear_vial" });
@@ -443,6 +443,7 @@ test("combat readout shows live numbers for curses, rage and guard", () => {
   assert.ok(cursed.dmgMods.some((m) => m.id === "curse" && m.rounds === 3));
 
   b0.p.statuses.curse = 0;
+  b0.p.hp = 100; // ярость считается от недостающего ОЗ
   b0.p.statuses.rage = 5;
   const raging = battle.combatReadout(b0);
   assert.ok(raging.dmgMin > clean.dmgMin, "ярость должна поднимать урон в сводке");
@@ -529,7 +530,7 @@ test("every creature and item can be fought to a terminal state", () => {
           b = battle.enemyStep(b);
         }
       }
-      assert.ok(b.round > 1, `бой с ${def.name} не сдвинулся`);
+      assert.ok(b.over || b.round > 1, `бой с ${def.name} не сдвинулся`);
     }
   }
 
@@ -555,12 +556,15 @@ test("haste, terror, stone skin and acid change the fight as described", () => {
     b.enemy.def = { ...b.enemy.def, type: "beast", moves: ["attack"] };
     b.enemy.moves = ["attack"];
     b.enemy.passive = null;
-    b.enemy.statuses = { chill: 0, bleed: 0, poison: 0, fear: 0, stunAp: 0 };
+    b.enemy.effects = [];
+    b.enemy.effectPower = {};
+    b.enemy.statuses = { chill: 0, bleed: 0, poison: 0, fear: 0, stunAp: 0, blight: 0, wither: 0, burning: 0, burn: 0, curse: 0, cursePower: 30, sundered: 0 };
     b.enemy.atk = [24, 24]; // фиксированный урон, чтобы эффекты сравнивались честно
     b.p.hp = 400;
     b.p.maxHp = 400;
     b.p.evade = 0;
     b.p.armor = 0;
+    b.p.chanceLayers.evade = { stats: [], items: [], effects: [] };
     b.p.statuses.smoke = 0;
     b.p.statuses.stunAp = 0;
     return b;
@@ -922,29 +926,30 @@ test("healing and support potions have fixed power without a stat multiplier", (
   }
 });
 
-test("damaging potions and scrolls scale from Intelligence; throwables stay on Agility", () => {
+test("damaging consumables scale from Agility; damage scrolls scale from Intelligence", () => {
   const low = { str: 1, agi: 10, int: 1 };
   const high = { str: 1, agi: 1, int: 10 };
-  for (const id of ["acid_vial", "holy_water", "scroll_spark", "scroll_fire", "scroll_heal", "scroll_frost", "scroll_bolt"]) {
+  for (const id of ["scroll_spark", "scroll_fire", "scroll_frost", "scroll_bolt"]) {
     const def = content.ITEMS[id];
     assert.equal(content.consumableScaleStat(def), "int", id);
     assert.ok(content.consumablePower(def, high) > content.consumablePower(def, low), id);
     assert.ok(content.consumableScaleLabel(def).includes("×ИНТ"), id);
     assert.ok(def.desc.includes("×ИНТ"), id);
   }
-  for (const id of ["throwing_knife", "poison_dart", "blast_bomb", "serrated_knife", "frost_bomb", "blight_powder", "wither_dust"]) {
+  for (const id of ["acid_vial", "holy_water", "throwing_knife", "poison_dart", "blast_bomb", "serrated_knife", "frost_bomb", "blight_powder", "wither_dust"]) {
     const def = content.ITEMS[id];
-    assert.equal(def.kind, "throwable", id);
     assert.equal(content.consumableScaleStat(def), "agi", id);
     assert.ok(content.consumablePower(def, low) > content.consumablePower(def, high), id);
     assert.ok(content.consumableScaleLabel(def).includes("×ЛОВ"), id);
   }
+  assert.equal(content.consumableScaleStat(content.ITEMS.scroll_heal), null);
+  assert.equal(content.consumablePower(content.ITEMS.scroll_heal, high), 32);
   assert.equal(content.ITEMS.acid_vial.kind, "potion");
   assert.equal(content.ITEMS.holy_water.kind, "potion");
   assert.equal(content.ITEMS.fear_vial.kind, "potion");
 });
 
-test("battle consumable damage uses INT for spells and AGI for throwables", () => {
+test("battle consumable damage uses AGI for consumables and INT for damage scrolls", () => {
   const mk = (stats, bag) => {
     const pl = player({ hp: 500, stats, bag });
     const b = battle.newBattle(pl, 1);
@@ -957,13 +962,13 @@ test("battle consumable damage uses INT for spells and AGI for throwables", () =
   };
   const rnd = Math.random; Math.random = () => 0.99;
   try {
-    for (const id of ["throwing_knife", "poison_dart", "blast_bomb", "serrated_knife", "frost_bomb"]) {
+    for (const id of ["acid_vial", "holy_water", "throwing_knife", "poison_dart", "blast_bomb", "serrated_knife", "frost_bomb"]) {
       const agi = battle.playerAct(mk({ str: 1, agi: 8, int: 1 }, { [id]: 1 }), { type: "item", id });
       const int = battle.playerAct(mk({ str: 1, agi: 2, int: 10 }, { [id]: 1 }), { type: "item", id });
       assert.ok(5000 - agi.enemy.hp > 5000 - int.enemy.hp, `${id}: ЛОВ должна давать больше урона`);
       assert.equal(agi.bag[id], undefined);
     }
-    for (const id of ["acid_vial", "holy_water", "scroll_spark", "scroll_fire", "scroll_frost", "scroll_bolt"]) {
+    for (const id of ["scroll_spark", "scroll_fire", "scroll_frost", "scroll_bolt"]) {
       const int = battle.playerAct(mk({ str: 1, agi: 1, int: 10 }, { [id]: 1 }), { type: "item", id });
       const agi = battle.playerAct(mk({ str: 1, agi: 10, int: 10 }, { [id]: 1 }), { type: "item", id });
       const low = battle.playerAct(mk({ str: 1, agi: 10, int: 6 }, { [id]: 1 }), { type: "item", id });
@@ -998,6 +1003,7 @@ test("magical scroll bonuses do not amplify non-scroll consumables", () => {
     b.enemy.hp = 5000; b.enemy.maxHp = 5000; b.enemy.armor = 6;
     b.enemy.def = { ...b.enemy.def, type: "beast", moves: ["attack"] };
     b.enemy.moves = ["attack"]; b.enemy.passive = null;
+    b.enemy.effects = []; b.enemy.effectPower = {};
     b.p.hp = 500; b.p.maxHp = 500; b.p.evade = 0;
     return b;
   };
@@ -1285,24 +1291,29 @@ test("pathfinding accepts unseen targets and returns a walkable route", () => {
   assert.deepEqual(prev, target);
 });
 
-test("gear class ordering: armor H>M>L, HP L>H>M, evade M>L>H", () => {
-  const trios = [
-    ["shroud", "mail", "plate"],
-    ["buckler", "shield_round", "shield_tower"],
-    ["knife", "sword", "axe"],
-  ];
-  for (const [light, medium, heavy] of trios) {
-    const mk = (id) => {
-      const g = content.createGearItem({ baseId: id, level: 1, wear: "worn", rarity: "common", identified: true });
-      g.wearMult = 1;
-      g.statMult = 1;
-      return content.scaledGearStats(g);
-    };
-    const L = mk(light), M = mk(medium), H = mk(heavy);
-    assert.ok(H.armor > M.armor && M.armor > L.armor, `${light}/${medium}/${heavy}: броня`);
-    assert.ok(L.hp > H.hp && H.hp > M.hp, `${light}/${medium}/${heavy}: ОЗ`);
-    assert.ok(M.evade > L.evade && L.evade > H.evade, `${light}/${medium}/${heavy}: уклонение`);
-  }
+test("item stat rolls are universal: HP 10+0…15, armor 2+0…3, heavy armor doubled, no weapon armor or base evade", () => {
+  const plate = content.GEAR_BASES.plate;
+  const mail = content.GEAR_BASES.mail;
+  const sword = content.GEAR_BASES.sword;
+  const shield = content.GEAR_BASES.shield_tower;
+  assert.equal(content.canItemHaveArmor(plate), true);
+  assert.equal(content.canItemHaveArmor(sword), false);
+  assert.equal(content.canItemHaveArmor(shield), true);
+  const heavy = content.rollItemStatRolls(plate, "heavy", () => 0);
+  const light = content.rollItemStatRolls(mail, "light", () => 0);
+  assert.deepEqual(heavy, { hp: 10, armor: 4 });
+  assert.deepEqual(light, { hp: 10, armor: 2 });
+  const max = content.rollItemStatRolls(plate, "heavy", () => 0.999);
+  assert.deepEqual(max, { hp: 25, armor: 10 });
+
+  const g = content.createGearItem({ baseId: "plate", level: 1, wear: "worn", rarity: "common", identified: true, rng: () => 0 });
+  g.wearMult = 1;
+  assert.deepEqual(g.statRolls, { hp: 10, armor: 4 });
+  assert.equal(content.scaledGearStats(g).evade, 0);
+  assert.equal(content.scaledGearStats({ ...g, level: 2 }).hp, 15);
+  assert.equal(content.scaledGearStats({ ...g, level: 3 }).hp, 23);
+  const weapon = content.createGearItem({ baseId: "sword", level: 1, wear: "worn", rarity: "common", identified: true, rng: () => 0 });
+  assert.equal(content.scaledGearStats(weapon).armor, 0);
 });
 
 test("item level scales stats, effects, techniques and legendary passives by +20% ceil", () => {
@@ -1416,31 +1427,28 @@ test("monster stats multiply by 1.5 per level, AP excluded; boss level equals fl
   assert.ok(boss.moves.some((m) => m.startsWith("seal_")));
 });
 
-test("extra-turn gear is gated to level 3+, capped 1/2/3 and lasts one round", () => {
-  const mkAp = (level, rarity) => {
-    const g = content.createGearItem({ baseId: "ring_band", level, rarity, wear: "new", identified: true });
+test("acceleration gear gives 0/1/2/3 extra actions by level 1/3/7/10 every round", () => {
+  const mkAp = (level) => {
+    const g = content.createGearItem({ baseId: "ring_band", level, rarity: "rare", wear: "new", identified: true });
     g.effects = ["ap"];
     g.passive = undefined;
     g.legendaryPassive = undefined;
     return g;
   };
-  assert.equal(battle.gearExtraAp(mkAp(2, "legendary")), 0);
-  assert.equal(battle.gearExtraAp(mkAp(3, "rare")), 1);
-  assert.equal(battle.gearExtraAp(mkAp(5, "epic")), 1);
-  assert.equal(battle.gearExtraAp(mkAp(6, "rare")), 2);
-  assert.equal(battle.gearExtraAp(mkAp(10, "epic")), 2);
-  assert.equal(battle.gearExtraAp(mkAp(10, "legendary")), 3);
-  const g = mkAp(10, "legendary");
+  for (const [level, expected] of [[1, 0], [2, 0], [3, 1], [5, 1], [6, 1], [7, 2], [9, 2], [10, 3]]) {
+    assert.equal(battle.gearExtraAp(mkAp(level)), expected, `уровень ${level}`);
+  }
+  const g = mkAp(10);
   const p = { ...mkP({ level: 10, stats: { str: 5, agi: 5, int: 5 } }), armory: [g], equip: { ...mkP().equip, ring1: g.uid } };
   const d = battle.derived(p);
-  assert.equal(d.firstRoundApBonus, 3);
-  assert.equal(d.ap, 2 + Math.floor(5 / 2));
+  assert.equal(d.firstRoundApBonus, 0);
+  assert.equal(d.ap, 5 + 3);
   const b = battle.newBattle(p, 1);
-  assert.equal(b.p.firstRoundApBonus, 3);
   const r1 = battle.combatReadout(b);
   b.round = 2;
   const r2 = battle.combatReadout(b);
-  assert.equal(r1.ap, r2.ap + 3);
+  assert.equal(r1.ap, 8);
+  assert.equal(r2.ap, 8);
 });
 
 test("multi-hit technique deals normal attacks without the flat technique bonus", () => {
@@ -1455,8 +1463,8 @@ test("multi-hit technique deals normal attacks without the flat technique bonus"
   const after = battle.playerAct(b, { type: "weapon_skill" });
   Math.random = old;
   const dealt = 5000 - after.enemy.hp;
-  // Два обычных удара ровно по броску оружия, без +2.4×СИЛ.
-  const normal = b.p.hit[0] + Math.floor(b.p.stats.str * 0.8);
+  // Два обычных удара: бросок оружия + (2 + СИЛ), без бонуса приёма.
+  const normal = b.p.hit[0] + 2 + b.p.stats.str;
   assert.equal(dealt, normal * 2, `ожидалось два обычных удара без бонуса, получено ${dealt}`);
 });
 

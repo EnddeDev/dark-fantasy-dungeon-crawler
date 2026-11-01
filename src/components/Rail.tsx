@@ -93,7 +93,7 @@ export function Rail({
   const damage: [number, number] = readout ? [readout.dmgMin, readout.dmgMax] : [d.hit[0] + flatDamage, d.hit[1] + flatDamage];
   const armor = readout?.armor ?? d.armor;
   const ap = readout?.ap ?? d.ap;
-  const resist = readout?.resist ?? Math.min(0.75, player.stats.str * 0.06 + (player.passives.includes("stone_skin") ? 0.15 : 0));
+  const resist = readout?.resist ?? d.tenacity;
   const trapBypass = trapBypassChance(player.stats, (player.passives.includes("light_step") ? 0.3 : 0) + d.rareAffixes.filter((id) => id === "swift").length * 0.12);
   const trapDisarm = trapDisarmChance(player.stats, (player.passives.includes("light_step") ? 0.3 : 0) + d.rareAffixes.filter((id) => id === "swift").length * 0.12);
   const xpNeed = xpForNextLevel(player.level);
@@ -153,7 +153,7 @@ export function Rail({
     const source = item.baseId;
     item.effects.forEach((id) => {
       const effect = GEAR_EFFECTS[id];
-      if (effect) addGearEffect(`effect-${id}`, effect.name, effectDetail(id, item.level ?? 1), source);
+      if (effect) addGearEffect(`effect-${id}`, effect.name, effectDetail(id, item.level ?? 1, item.effectRolls?.[id]), source);
     });
     if (item.passive) {
       const passive = GEAR_PASSIVES[item.passive];
@@ -300,10 +300,12 @@ export function Rail({
                   <Metric label="Архетип" value={arch ? arch.name : "не выбран"} note={arch ? `${arch.short} · рубежи 5/10` : "Откроется на 5 уровне"} />
             <Metric label="Урон оружия" value={`${damage[0]}–${damage[1]}`} note={battle ? "До брони противника" : `Включая +${flatDamage} от силы и пассивных умений`} />
                   <Metric label="Броня" value={String(armor)} note={`Снаряжение: +${d.armorBonus}`} />
-                  <Metric label="Уклонение" value={percent(d.evade)} note="Предел — 65%" />
-                  <Metric label="Критический удар" value={percent(d.critChance)} note="Базовый множитель ×2" />
-                  <Metric label="Ходы за раунд" value={String(ap)} note={player.passives.includes("first_blood") ? "+1 в первом раунде" : undefined} />
-                  <Metric label="Стойкость" value={percent(resist)} note="Сопротивление эффектам" />
+                  <Metric label="Уклонение" value={percent(readout?.evade ?? d.evade)} note="Предел — 99%" />
+                  <Metric label="Критический удар" value={percent(readout?.crit ?? d.critChance)} note={`Множитель ×${(readout?.critDamage ?? d.critDamage).toFixed(2)}`} />
+                  <Metric label="Ходы за раунд" value={String(ap)} note="Ловкость + ускорение предметов" />
+                  <Metric label="Стойкость" value={percent(resist)} note="Сопротивление эффектам, предел 99%" />
+                  <Metric label="Маг. сопротивление" value={percent(readout?.magicResist ?? d.magicResist)} note="Снижение магического урона" />
+                  <Metric label="Укрепление" value={percent(readout?.fortify ?? d.fortify)} note="Снижение физического урона" />
                   {readout && <>
                     <Metric label="Урон по врагу" value={`${readout.effMin}–${readout.effMax}`} note="После его брони и защиты" />
                     <Metric label="Входящий урон" value={`${readout.inMin}–${readout.inMax}`} note="После вашей брони и эффектов" />
