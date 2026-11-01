@@ -48,7 +48,7 @@ test("guide core sections are characteristics, gear quality/wear, then combat ru
   assert.match(html, /id="guide-stats-title"[^>]*>Характеристики</);
   assert.match(html, /id="guide-gear-title"[^>]*>Снаряжение: качество и износ</);
   assert.match(html, /id="guide-combat-title"[^>]*>Правила боя</);
-  assert.match(html, /2 свободных очка/);
+  assert.match(html, /3 свободных очка/);
   assert.match(html, /3 очка/);
   assert.match(html, /×1\.25/);
   assert.match(html, /×1\.00/);
@@ -58,7 +58,7 @@ test("guide core sections are characteristics, gear quality/wear, then combat ru
 
 test("guide codifies the new stat formulas and probability rule", () => {
   assert.doesNotMatch(html, /Уклонение даёт не Ловкость/);
-  assert.ok(html.includes("Здоровье: 10 × СИЛ"));
+  assert.ok(html.includes("Здоровье: 10 + 10 × (СИЛ − 1)"));
   assert.ok(html.includes("Урон оружием: 2 + 1 × СИЛ"));
   assert.ok(html.includes("Стойкость: 5% за каждое очко"));
   assert.ok(html.includes("Ход: 1 за каждое очко ЛОВ"));

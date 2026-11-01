@@ -44,6 +44,8 @@ test("chances multiply in layer order and never reach 100%", () => {
 });
 
 test("stat formulas count the full characteristic value including the starting point", () => {
+  /* Здоровье не пропадает без Силы: 0 и 1 очко дают по 10 ОЗ. */
+  assert.equal(formulas.statHealth(0), 10);
   assert.equal(formulas.statHealth(1), 10);
   assert.equal(formulas.statHealth(10), 100);
   assert.equal(formulas.statDamage(1), 3);

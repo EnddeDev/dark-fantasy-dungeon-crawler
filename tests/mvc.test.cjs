@@ -206,6 +206,40 @@ test("MVC: a monster on the map starts a battle and victory clears its cell", ()
   assert.equal(after.run.maze.monsters.includes(cell), true, "расстановка этажа остаётся неизменной");
 });
 
+test("MVC: every trap is visible from the first step of the floor", () => {
+  const game = makeGame();
+  game.enterLobby("train");
+  game.startRun(1);
+  const started = game.model.getSnapshot();
+  assert.deepEqual(
+    [...(started.run.revealedTraps ?? [])].sort((a, b) => a - b),
+    [...started.run.maze.traps].sort((a, b) => a - b),
+    "на старте этажа видны все ловушки",
+  );
+  assert.ok(started.run.maze.traps.length > 0);
+
+  /* Даже если бежать по этажу, список остаётся полным — скрытых ловушек нет. */
+  game.closeModal();
+  const run = started.run;
+  const [dx, dy] = cleanStep(run);
+  game.dungeon.move(dx, dy);
+  const moved = game.model.getSnapshot();
+  assert.deepEqual(
+    [...(moved.run.revealedTraps ?? [])].sort((a, b) => a - b),
+    [...moved.run.maze.traps].sort((a, b) => a - b),
+  );
+
+  /* Спуск на новый этаж тоже открывает все ловушки сразу. */
+  game.model.updateRun((r) => ({ ...r, maze: { ...r.maze, bossDefeated: true } }));
+  game.descend();
+  const descended = game.model.getSnapshot();
+  assert.deepEqual(
+    [...(descended.run.revealedTraps ?? [])].sort((a, b) => a - b),
+    [...descended.run.maze.traps].sort((a, b) => a - b),
+    "после спуска все ловушки этажа отмечены",
+  );
+});
+
 test("MVC: a trap cell opens the trap choice and is never rolled at random", () => {
   const game = makeGame();
   game.enterLobby("train");

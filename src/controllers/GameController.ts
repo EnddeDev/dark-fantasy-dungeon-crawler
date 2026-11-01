@@ -93,11 +93,12 @@ export class GameController {
         burning: 0,
         battleCell: null,
         clearedMonsters: [],
-        revealedTraps: [],
+        /* Ловушки видны сразу: на карте не остаётся скрытых механизмов. */
+        revealedTraps: [...maze.traps],
         sprungTraps: [],
         log: [
           `Спускаетесь на этаж ${floor}: ${BIOMES[mazeBiome(maze)].name}. Факел освещает круг радиусом ${biomeVision(mazeBiome(maze))}, но стены и запертые двери блокируют свет.`,
-          `На ${maze.size}×${maze.size} карте: ${maze.monsters.length} монстров и ${maze.traps.length} ловушек. Монстры видны в свете факела, ловушки обычно скрыты.`,
+          `На ${maze.size}×${maze.size} карте: ${maze.monsters.length} монстров и ${maze.traps.length} ловушек. Все ловушки отмечены на карте с самого начала.`,
         ],
       },
       best: nextBest,
@@ -162,6 +163,8 @@ export class GameController {
         keys: 0,
         torchTurns: 0,
         mapRevealed: false,
+        revealedTraps: [...maze.traps],
+        sprungTraps: [],
         burning: 0,
         log: [...run.log, `Спуск на этаж ${nf}: ${BIOMES[mazeBiome(maze)].name}. ${BIOMES[mazeBiome(maze)].effect}`],
       },
