@@ -2280,17 +2280,42 @@ test("каждый приём оружия выпадает вместе с пр
   assert.equal(Object.keys(techniques).length, 44);
 });
 
+test("приём всегда считает от той характеристики, которую требует предмет", () => {
+  for (const base of Object.values(content.GEAR_BASES)) {
+    if (!base.weaponSkill) continue;
+    for (let i = 0; i < 80; i++) {
+      const item = content.createGearItem({
+        baseId: base.id,
+        rarity: ["common", "rare", "epic", "legendary"][i % 4],
+        level: base.level ?? 1,
+        wear: "worn",
+        identified: true,
+      });
+      const want = content.gearStatReq(item).stat;
+      const skill = content.weaponSkillFor(item);
+      assert.equal(skill.scaleStat, want, `${base.id}: приём «${skill.name}» считает от ${skill.scaleStat}, а предмет требует ${want}`);
+    }
+  }
+});
+
 test("альтернативные приёмы линейки выдаются наравне с родным", () => {
-  const pools = content.TECHNIQUE_POOL;
-  for (const [baseId, pool] of Object.entries(pools)) {
-    assert.equal(pool.length, 3, `${baseId}: в линейке три приёма`);
+  for (const base of Object.values(content.GEAR_BASES)) {
+    if (!base.weaponSkill) continue;
+    const stat = base.stat ?? (base.gearClass === "heavy" ? "str" : base.gearClass === "light" ? "int" : "agi");
+    const pool = content.techniquePoolFor(base.id, stat);
+    assert.ok(pool.length >= 1, `${base.id}: пустая линейка`);
+    for (const id of pool) {
+      assert.equal(content.WEAPON_TECHNIQUES[id].scaleStat, stat, `${base.id}/${id}: чужая характеристика в линейке`);
+    }
     const counts = Object.fromEntries(pool.map((id) => [id, 0]));
     for (let i = 0; i < 300; i++) {
-      const item = content.createGearItem({ baseId, rarity: "rare", wear: "worn", identified: true });
+      const item = content.createGearItem({ baseId: base.id, rarity: "rare", wear: "worn", identified: true });
+      assert.ok(counts[item.skillId] !== undefined, `${base.id}: вне линейки ${item.skillId}`);
       counts[item.skillId] += 1;
     }
+    const share = Math.floor(300 / pool.length / 3);
     for (const id of pool) {
-      assert.ok(counts[id] > 40, `${baseId}/${id}: выпал ${counts[id]} раз из 300`);
+      assert.ok(counts[id] > share, `${base.id}/${id}: выпал ${counts[id]} раз из 300`);
     }
   }
 });
@@ -2313,4 +2338,16 @@ test("выбранный приём переживает миграцию сох
   /* чужой линейке приём не подсунуть */
   const mismatch = content.createGearItem({ baseId: "sword", skillId: "quick_cut", rarity: "rare", wear: "worn", identified: true });
   assert.ok(content.TECHNIQUE_POOL.sword.includes(mismatch.skillId));
+});
+
+test("старый приём чужой характеристики меняется при миграции", () => {
+  const broken = { ...content.createGearItem({ baseId: "abyss", wear: "worn", rarity: "rare", identified: true }), skillId: "shadow_rend" };
+  const fixed = content.migrateGearItem(broken);
+  const stat = content.gearStatReq(fixed).stat;
+  assert.equal(stat, "int");
+  assert.ok(content.TECHNIQUE_POOL.abyss.includes(fixed.skillId), `остался чужой приём ${fixed.skillId}`);
+  assert.equal(content.weaponSkillFor(fixed).scaleStat, "int");
+  /* родной приём своей характеристики миграция не трогает */
+  const own = { ...content.createGearItem({ baseId: "abyss", wear: "worn", rarity: "rare", identified: true }), skillId: "void_reap" };
+  assert.equal(content.migrateGearItem(own).skillId, "void_reap");
 });

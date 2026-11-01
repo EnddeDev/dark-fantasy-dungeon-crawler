@@ -1369,6 +1369,10 @@ export const WEAPON_TECHNIQUES: Record<string, WeaponSkillDef> = Object.fromEntr
   ...ARCHETYPE_TECHNIQUES.map((s) => [s.id, s]),
 ]);
 
+/**
+ * Линейки приёмов по моделям. В линейке только приёмы с одним множителем —
+ * тем самым, что требуется предмету: клинок на СИЛ не получит приём на ЛОВ.
+ */
 export const TECHNIQUE_POOL: Record<string, string[]> = {
   knife: ["artery_cut", "quick_cut", "venom_edge"],
   rapier: ["fencing", "disarming_thrust", "duelist_guard"],
@@ -1376,7 +1380,9 @@ export const TECHNIQUE_POOL: Record<string, string[]> = {
   staff: ["arcane_pulse", "ember_strike", "warding_strike"],
   axe: ["bone_cleave", "reckless_swing", "rending_axe"],
   hammer: ["verdict_bell", "crushing_blow", "bulwark_smash"],
-  abyss: ["void_reap", "shadow_rend", "soul_drink"],
+  abyss: ["void_reap", "pact_drain", "soul_reprise"],
+  greatsword: ["cleave_double", "soul_drink"],
+  dagger: ["offhand_riposte", "shadow_rend"],
   bulwark_mace: ["bulwark_answer", "bulwark_wall", "bulwark_verdict"],
   barbarian_greataxe: ["blood_reckoning", "rage_sweep", "skull_split"],
   assassin_stiletto: ["death_mark", "twin_fangs", "opening_strike"],
@@ -1384,6 +1390,19 @@ export const TECHNIQUE_POOL: Record<string, string[]> = {
   warlock_scepter: ["pact_drain", "curse_brand", "soul_reprise"],
   sage_censer: ["word_creation", "warding_word", "scroll_tempest"],
 };
+
+/**
+ * Приёмы, которые может получить предмет: из линейки берутся только те,
+ * чей множитель совпадает с характеристикой, которую предмет требует.
+ * Если подходящих нет — остаётся родной приём модели.
+ */
+export function techniquePoolFor(baseId: string, stat: StatKey): string[] {
+  const base = GEAR_BASES[baseId];
+  if (!base?.weaponSkill) return [];
+  const pool = TECHNIQUE_POOL[baseId] ?? [base.weaponSkill.id];
+  const fits = pool.filter((id) => WEAPON_TECHNIQUES[id]?.scaleStat === stat);
+  return fits.length ? fits : [base.weaponSkill.id];
+}
 
 export function weaponSkillFor(item: GearItem | null | undefined): WeaponSkillDef | null {
   if (!item) return null;
@@ -1664,8 +1683,8 @@ export function createGearItem(opts: {
     effects.push(rest.splice(Math.floor(rng() * rest.length), 1)[0]);
   }
 
-  /* Приём есть у каждой модели оружия: у одних линейка из трёх, у других один родной. */
-  const techniquePool = TECHNIQUE_POOL[base.id] ?? (base.weaponSkill ? [base.weaponSkill.id] : []);
+  /* Приём есть у каждой модели оружия; в линейку попадают только приёмы «своей» характеристики. */
+  const techniquePool = techniquePoolFor(base.id, reqStat);
   const hasTechnique = techniquePool.length > 0;
   let epicSkill: EpicSkillId | undefined;
 
@@ -1738,6 +1757,11 @@ export function migrateGearItem(item: GearItem): GearItem {
   const rng = seededRng(item.uid || item.baseId);
   const statRolls = item.statRolls ?? rollItemStatRolls(base, gearClass, rng);
   const reqStat = base.stat ?? gearAffinity(item);
+  /* Приём старого сохранения мог остаться от чужой характеристики — переводим на свою. */
+  const techniquePool = techniquePoolFor(base.id, reqStat);
+  const skillId = techniquePool.length
+    ? (item.skillId && techniquePool.includes(item.skillId) ? item.skillId : pick(techniquePool, rng))
+    : item.skillId;
   const pool = effectPoolForGear({
     kind,
     weaponType,
@@ -1774,6 +1798,7 @@ export function migrateGearItem(item: GearItem): GearItem {
     ...item,
     kind,
     weaponType,
+    skillId,
     slot: base.slot ?? item.slot,
     gearClass,
     statRolls,
