@@ -1243,7 +1243,9 @@ function hitEnemy(
   b.enemy.hp -= d;
   flash(b, "e", "hit", d);
   push(b, `${b.enemy.def.name} получает ${d} урона.${note}`, "p");
-  const thorns = buffsBlocked(b) ? 0 : eEffect(b, "thorns");
+  /* Шипы врага ранят только того, кто бьёт вплотную: обычная атака, второй
+     удар, контратака и физические приёмы. Магия и «чистый» урон их не будят. */
+  const thorns = !buffsBlocked(b) && kind === "phys" ? eEffect(b, "thorns") : 0;
   if (thorns > 0 && b.p.hp > 0) {
     b.p.hp -= thorns;
     push(b, `Шипы противника ранят тебя: −${thorns} ОЗ.`, "e");
@@ -1360,10 +1362,9 @@ function incoming(
     push(b, "Яд врага попал в кровь: отравление на 2 раунда.", "e");
   }
 
-  /* Шипы */
-  const thorns = rarePower(b, "thorns", "damage") + effectPower(b, "thorns") +
-    passivePower(b, "bulwark_wall", "thorns") +
-    (hasPassive(b, "arch_bulwark_10") ? 6 : 0);
+  /* Шипы отвечают только на физическую атаку: магический выпад тварь
+     проводит на расстоянии и не накалывается. */
+  const thorns = kind === "phys" ? playerThorns(b) : 0;
   if (thorns > 0 && b.enemy.hp > 0) {
     b.enemy.hp = Math.max(1, b.enemy.hp - thorns);
     push(b, `Шипы возвращают ${b.enemy.def.name} ${thorns} урона.`, "p");
@@ -2261,7 +2262,7 @@ function enemyTurnsLeft(b: BattleState): number {
   return n;
 }
 
-/** Шипы героя: удар по нему ранит самого нападающего. */
+/** Шипы героя: физический удар по нему ранит самого нападающего. */
 function playerThorns(b: BattleState): number {
   return (
     rarePower(b, "thorns", "damage") +
@@ -2275,7 +2276,7 @@ function playerThorns(b: BattleState): number {
  * Решение монстра на его ход. Приоритеты:
  * 1. Мало ОЗ — лечащий приём (похищение жизни) либо защитная стойка.
  * 2. Промах на прошлом ходу — приём; при наличии магии именно магический удар.
- * 3. У героя шипы, а приёма нет — защита.
+ * 3. У героя шипы: бьёт магией, а на последнем ходу раунда — защита.
  * 4. Последний ход раунда: ходов больше — атака или приём, ходов меньше — защита.
  * 5. Обычная атака бьёт слабо — приёмы на негативные эффекты.
  * 6. Иначе — обычный случайный выбор из доступных приёмов.
@@ -2313,9 +2314,13 @@ export function chooseEnemyMove(b: BattleState): EnemyMove {
     if (has("heavy")) return "heavy";
   }
 
-  /* 3. Шипы у героя, а приёма для обхода нет — защита. */
-  if (playerThorns(b) > 0 && turnsLeft === 1 && !debuffs.length) {
-    return buffsBlocked(b) ? insteadOfGuard() : "guard";
+  /* 3. У героя шипы: вплотную бить накладно, поэтому при наличии магии тварь
+     бьёт магией, а на последнем ходу раунда без дебаффов держит стойку. */
+  if (playerThorns(b) > 0) {
+    if (magics.length) return pick(magics);
+    if (turnsLeft === 1 && !debuffs.length) {
+      return buffsBlocked(b) ? insteadOfGuard() : "guard";
+    }
   }
 
   /* 4. Последний ход раунда: кто быстрее, тот и распоряжается концовкой. */

@@ -2513,3 +2513,87 @@ test("обереги возвращаются через два раунда, с
   assert.equal(powderHit.enemy.hp, powder.enemy.hp, "прах не наносит урона");
   Math.random = rnd;
 });
+
+/* ─────────────  ШИПЫ: ТОЛЬКО ПРОТИВ ФИЗИКИ  ───────────── */
+
+/** Бой с техникой указанного вида у героя и шипами у врага. */
+function thornsBattle(skillId, baseId) {
+  const b = withTechnique(skillId, baseId);
+  b.enemy.effectPower = { ...(b.enemy.effectPower ?? {}), thorns: 7 };
+  b.enemy.effects = [...(b.enemy.effects ?? []), "thorns"];
+  b.enemy.hp = 5000;
+  b.enemy.maxHp = 5000;
+  b.p.hp = b.p.maxHp;
+  b.p.gearEffects = [];
+  b.p.effectPower = {};
+  return b;
+}
+
+function applyWithoutLuck(b, act) {
+  const rnd = Math.random;
+  Math.random = () => 0.5;
+  try {
+    return act();
+  } finally {
+    Math.random = rnd;
+  }
+}
+
+test("шипы врага ранят за физический приём, но не за магический", () => {
+  /* «Сокрушение оберега» — приём меча, бьёт физикой. */
+  const physical = thornsBattle("ward_shatter", "sword");
+  const afterPhys = applyWithoutLuck(physical, () => battle.playerAct(physical, { type: "weapon_skill" }));
+  assert.ok(afterPhys.p.hp < physical.p.hp, "физический приём задел шипы");
+  assert.ok(afterPhys.log.some((l) => l.text.includes("Шипы противника")), "нет сообщения о шипах врага");
+
+  /* «Развеивание чар» — приём посоха, урон магический. */
+  const magic = thornsBattle("ward_unravel", "staff");
+  const afterMagic = applyWithoutLuck(magic, () => battle.playerAct(magic, { type: "weapon_skill" }));
+  assert.equal(afterMagic.p.hp, magic.p.hp, "магический приём шипы не задевает");
+  assert.ok(!afterMagic.log.some((l) => l.text.includes("Шипы противника")), "шипы сработали на магию");
+});
+
+test("шипы врага молчат на свиток и магический урон", () => {
+  const b = thornsBattle("ward_shatter", "sword");
+  b.bag = { scroll_fire: 2 };
+  const after = applyWithoutLuck(b, () => battle.playerAct(b, { type: "item", id: "scroll_fire" }));
+  assert.ok(after.enemy.hp < b.enemy.hp, "свиток нанёс урон");
+  assert.equal(after.p.hp, b.p.hp, "свиток не будит шипы");
+});
+
+test("шипы героя отвечают на физическую атаку врага, но не на магию", () => {
+  const strike = freshBattle(mkP({ level: 5, stats: { str: 6, agi: 2, int: 2 }, hp: 200 }), 1);
+  strike.enemy.def = { ...strike.enemy.def, race: "none", type: "strong" };
+  strike.enemy.moves = ["attack"];
+  strike.enemy.effectPower = {};
+  strike.p.effectPower = { thorns: 9 };
+  strike.p.hp = 300;
+  strike.enemy.hp = 5000;
+  strike.enemy.maxHp = 5000;
+  /* Два хода твари в очереди: ИИ не уходит в защиту на последнем ходу раунда. */
+  const hit = applyWithoutLuck(strike, () => battle.enemyStep({ ...strike, queue: ["e", "e", "p"], idx: 0 }));
+  assert.ok(hit.enemy.hp < strike.enemy.hp, "физический удар врага наткнулся на шипы");
+  assert.ok(hit.log.some((l) => l.text.includes("Шипы возвращают")), "нет сообщения о шипах героя");
+
+  const spell = freshBattle(mkP({ level: 5, stats: { str: 6, agi: 2, int: 2 }, hp: 200 }), 1);
+  spell.enemy.def = { ...spell.enemy.def, race: "none", type: "strong" };
+  spell.enemy.moves = ["curse"];
+  spell.enemy.effectPower = {};
+  spell.p.effectPower = { thorns: 9 };
+  spell.p.hp = 300;
+  spell.enemy.hp = 5000;
+  spell.enemy.maxHp = 5000;
+  const cursed = applyWithoutLuck(spell, () => battle.enemyStep({ ...spell, queue: ["e", "e", "p"], idx: 0 }));
+  assert.equal(cursed.enemy.hp, spell.enemy.hp, "магический выпад врага шипы не отражают");
+  assert.ok(!cursed.log.some((l) => l.text.includes("Шипы возвращают")), "шипы сработали на магию врага");
+});
+
+test("враг с магией выбирает её, когда у героя шипы", () => {
+  const b = freshBattle(mkP({ level: 5, stats: { str: 6, agi: 2, int: 2 }, hp: 200 }), 1);
+  b.enemy.moves = ["attack", "curse"];
+  b.enemy.effectPower = {};
+  b.p.effectPower = { thorns: 9 };
+  b.p.hp = 300;
+  const move = battle.chooseEnemyMove(b);
+  assert.equal(move, "curse", `при шипах тварь бьёт магией, а выбрала ${move}`);
+});
