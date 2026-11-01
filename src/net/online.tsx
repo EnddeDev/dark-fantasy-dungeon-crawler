@@ -6,6 +6,10 @@ export type OnlineStatus = "checking" | "offline" | "guest" | "online";
 
 export interface OnlineSession {
   status: OnlineStatus;
+  /** Открыт экран входа (в том числе когда сервер недоступен). */
+  authOpen: boolean;
+  /** Сервер не ответил: показываем объяснение вместо формы. */
+  retry: () => Promise<void>;
   api: ApiClient;
   profile: OnlineProfile | null;
   error: string | null;
@@ -15,6 +19,7 @@ export interface OnlineSession {
   logout: () => Promise<void>;
   goOffline: () => void;
   openAuth: () => void;
+  closeAuth: () => void;
   clearError: () => void;
   reload: () => Promise<void>;
 }
@@ -31,6 +36,7 @@ export function OnlineProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<OnlineProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
 
   const reload = useCallback(async () => {
     if (!api.getToken()) {
@@ -52,6 +58,18 @@ export function OnlineProvider({ children }: { children: ReactNode }) {
       }
     }
   }, [api]);
+
+  /** Повторная проверка сервера: кнопка «Повторить» на экране входа. */
+  const retry = useCallback(async () => {
+    setStatus("checking");
+    setError(null);
+    try {
+      await api.health();
+      await reload();
+    } catch {
+      setStatus("offline");
+    }
+  }, [api, reload]);
 
   useEffect(() => {
     let alive = true;
@@ -79,8 +97,11 @@ export function OnlineProvider({ children }: { children: ReactNode }) {
         const full = await api.me();
         setProfile(full.profile);
         setStatus("online");
+        setAuthOpen(false);
         return true;
       } catch (err) {
+        // Сетевая ошибка означает, что сервера нет: форму входа прячем за объяснением.
+        if (err instanceof ApiError && err.status === 0) setStatus("offline");
         setError(err instanceof Error ? err.message : "Не удалось войти");
         return false;
       } finally {
@@ -104,14 +125,27 @@ export function OnlineProvider({ children }: { children: ReactNode }) {
     setStatus("guest");
   }, [api]);
 
-  const goOffline = useCallback(() => setStatus("offline"), []);
+  const goOffline = useCallback(() => {
+    setAuthOpen(false);
+    setStatus("offline");
+  }, []);
+  const closeAuth = useCallback(() => setAuthOpen(false), []);
+  /** Открываем вход и сразу перепроверяем сервер, если он был недоступен. */
   const openAuth = useCallback(() => {
-    if (!api.getToken()) setStatus("guest");
+    setAuthOpen(true);
+    if (!api.getToken()) {
+      setStatus((cur) => {
+        if (cur === "checking") return cur;
+        return cur === "offline" ? cur : "guest";
+      });
+    }
   }, [api]);
   const clearError = useCallback(() => setError(null), []);
 
   const value: OnlineSession = {
     status,
+    authOpen,
+    retry,
     api,
     profile,
     error,
@@ -121,6 +155,7 @@ export function OnlineProvider({ children }: { children: ReactNode }) {
     logout,
     goOffline,
     openAuth,
+    closeAuth,
     clearError,
     reload,
   };
