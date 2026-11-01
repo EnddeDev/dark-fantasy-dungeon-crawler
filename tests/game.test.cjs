@@ -2208,3 +2208,50 @@ test("beasts are immune to light and vampires burn in it", () => {
   const plainLoss = 300 - battle.playerAct(plain, { type: "item", id: "holy_water" }).enemy.hp;
   assert.ok(lightLoss > plainLoss, `свет жжёт вампира сильнее: ${plainLoss} → ${lightLoss}`);
 });
+
+/* ─────────────  ПОРЯДОК ХОДОВ И ПЕЧАТИ  ───────────── */
+
+test("turn queue spreads enemy turns evenly across the round", () => {
+  const show = (p, e) => battle.buildQueue(p, e).map((s) => (s === "p" ? "5" : "2")).join("");
+  /* Пример из правил: пять ходов против двух — 5525525, а не 5552525. */
+  assert.equal(show(5, 2), "5525525");
+  assert.equal(show(2, 5), "2252252");
+  assert.equal(show(3, 1), "5525");
+  assert.equal(show(1, 1), "52");
+  assert.equal(show(2, 2), "5252");
+  assert.equal(show(3, 5), "25225252");
+  assert.equal(show(2, 1), "525");
+
+  /* Число ходов всегда совпадает, а враг не копится в конце раунда. */
+  for (let p = 1; p <= 10; p++) {
+    for (let e = 1; e <= 10; e++) {
+      const q = battle.buildQueue(p, e);
+      assert.equal(q.filter((s) => s === "p").length, p, `${p}/${e}: ходы героя`);
+      assert.equal(q.filter((s) => s === "e").length, e, `${p}/${e}: ходы врага`);
+      assert.equal(q.length, p + e);
+      const lastTwo = q.slice(-2).join("");
+      assert.ok(!(p > e && lastTwo === "ee"), `${p}/${e}: враг не должен добирать ходы в конце`);
+    }
+  }
+});
+
+test("seals belong to bosses and catastrophes only", () => {
+  const seals = battle.SEAL_MOVES;
+  assert.equal(seals.length, 3);
+  assert.equal(battle.mayHaveSeals(false, "normal"), false);
+  assert.equal(battle.mayHaveSeals(false, "horror"), false);
+  assert.equal(battle.mayHaveSeals(false, "catastrophe"), true);
+  assert.equal(battle.mayHaveSeals(true, "catastrophe"), true);
+
+  for (let i = 0; i < 1500; i++) {
+    const threat = content.threatForRoll((i % 100) / 100);
+    const s = battle.spawnEnemy(1 + (i % 8), false);
+    const count = s.moves.filter((m) => seals.includes(m)).length;
+    assert.equal(count, battle.mayHaveSeals(false, s.threat) ? 1 : 0, `${s.def.id} (${s.threat}): печатей ${count}`);
+    assert.ok(threat);
+  }
+  for (let i = 0; i < 300; i++) {
+    const boss = battle.spawnEnemy(1 + (i % 8), true);
+    assert.equal(boss.moves.filter((m) => seals.includes(m)).length, 1, `${boss.def.id}: у босса ровно одна печать`);
+  }
+});
