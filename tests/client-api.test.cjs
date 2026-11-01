@@ -147,7 +147,9 @@ test("auth screen explains an unavailable server instead of showing a failing fo
     React.createElement(OnlineProvider, null, React.createElement(AuthView)),
   );
   assert.ok(html.includes("Повторить подключение"), "есть кнопка повторной проверки");
-  assert.ok(html.includes("сборка r20"), "видна метка сборки — по ней отличить кэш от свежей версии");
+  /* Метку читаем из исходника, чтобы её плановое обновление не ломало тест. */
+  const buildId = fs.readFileSync(path.resolve("src/version.ts"), "utf8").match(/BUILD_ID = "([^"]+)"/)[1];
+  assert.ok(html.includes(`сборка ${buildId}`), "видна метка сборки — по ней отличить кэш от свежей версии");
   assert.ok(html.includes("API: /api"), "видно, какой адрес API использует клиент");
   assert.ok(html.includes("Играть без аккаунта"), "можно уйти в соло-режим");
   assert.ok(html.includes("GitHub Pages"), "объяснение про статический хостинг");
