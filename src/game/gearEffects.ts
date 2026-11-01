@@ -35,7 +35,7 @@ export interface GearEffectDef {
 
 export const GEAR_EFFECTS: Record<GearEffectId, GearEffectDef> = {
   damage_resist: { id: "damage_resist", stat: "str", name: "Сопротивление урону", desc: "Весь получаемый урон снижен.", detail: "−2 урона за каждый входящий удар" },
-  thorns: { id: "thorns", stat: "str", name: "Шипы", desc: "Атакующий ранит сам себя.", detail: "+4 урона врагу за каждый его удар по тебе" },
+  thorns: { id: "thorns", stat: "str", name: "Шипы", desc: "Атакующий вплотную ранит сам себя.", detail: "+4 урона врагу за каждую его физическую атаку по тебе (магия и чистый урон шипы не задевают)" },
   regen: { id: "regen", stat: "str", name: "Регенерация", desc: "Затягивает раны в бою.", detail: "+4 здоровья в конце каждого раунда" },
   resist: { id: "resist", stat: "str", name: "Стойкость", desc: "Реже поддаётся негативным эффектам.", detail: "+10% сопротивления эффектам" },
   guard_bonus: { id: "guard_bonus", stat: "str", name: "Глухая оборона", desc: "Защита держит удар крепче.", detail: "Защита снижает входящий урон ещё на 15%" },
@@ -199,7 +199,7 @@ export const GEAR_PASSIVES: Record<GearPassiveId, GearPassiveDef> = {
   precision: { id: "precision", stat: "agi", name: "Точность", desc: "Критические удары почти неизбежны.", detail: "+25% к шансу критического удара" },
   spell_echo: { id: "spell_echo", stat: "int", name: "Эхо заклинаний", desc: "Свиток может сработать дважды.", detail: "+20% шанс повторного применения свитка" },
   time_warp: { id: "time_warp", stat: "int", name: "Искажение времени", desc: "Негативные эффекты почти вечны.", detail: "+2 раунда к длительности наложенных эффектов" },
-  bulwark_wall: { id: "bulwark_wall", stat: "str", name: "Живая стена", desc: "Бастион превращает бой в осаду.", detail: "+4 регенерации, +6 шипов, защита снижает урон ещё на 20%" },
+  bulwark_wall: { id: "bulwark_wall", stat: "str", name: "Живая стена", desc: "Бастион превращает бой в осаду.", detail: "+4 регенерации, +6 шипов против физических атак, защита снижает урон ещё на 20%" },
   barbarian_rage: { id: "barbarian_rage", stat: "str", name: "Ярость мясника", desc: "Варвар живёт, пока бьёт.", detail: "+12% вампиризма, +20% урона при ОЗ < 50%, +15% шанс оглушения" },
   assassin_shadow: { id: "assassin_shadow", stat: "agi", name: "Тень убийцы", desc: "Первый удар решает бой.", detail: "+1 ход в первом раунде, +25% шанса крита и +50% силы крита в первые 2 раунда" },
   ninja_phantom: { id: "ninja_phantom", stat: "agi", name: "Фантом", desc: "Ниндзя исчезает между ударами.", detail: "+10% уклонения, расходники лечат на 12%, после уклонения 25% шанс +1 хода" },
@@ -212,7 +212,7 @@ export function effectDetail(id: GearEffectId, level = 1, rolledBase?: number): 
   const n = effectMagnitude(id, level, rolledBase);
   switch (id) {
     case "damage_resist": return `−${n} урона за каждый входящий удар`;
-    case "thorns": return `+${n} урона врагу за каждый его удар по тебе`;
+    case "thorns": return `+${n} урона врагу за каждую физическую атаку по тебе`;
     case "regen": return `+${n} здоровья в конце каждого раунда`;
     case "resist": return `+${n}% сопротивления эффектам`;
     case "guard_bonus": return `Защита снижает входящий урон ещё на ${n}%`;
