@@ -71,6 +71,9 @@ export const GEAR_EFFECT_BASE: Record<GearEffectId, NumericDef> = {
   might: { value: 5 },
   precision: { value: 5 },
   thorns: { value: 4 },
+  poison_damage: { value: 30 },
+  bleed: { value: 35 },
+  sunder: { value: 30 },
   // Старые id сохранены только для миграции сохранений
   damage_resist: { value: 2 },
   resist: { value: 10 },
@@ -105,12 +108,14 @@ export const GEAR_EFFECT_SPREAD: Partial<Record<GearEffectId, number>> = {
   vamp: 2, magic_vamp: 2, crit_chance: 3, crit_mult: 5, regen: 2,
   fortify: 1, magic_resist: 1, armor_damage: 2, rage: 5,
   wisdom: 1, might: 1, precision: 1, thorns: 1,
+  poison_damage: 6, bleed: 7, sunder: 6,
 };
 
 export const GEAR_EFFECT_GROWTH: Partial<Record<GearEffectId, number>> = {
   vamp: 1.5, magic_vamp: 1.5, crit_chance: 1.25, crit_mult: 1.5, regen: 1.5,
   fortify: 1.25, magic_resist: 1.25, armor_damage: 1.5, rage: 1.5,
   wisdom: 1.5, might: 1.5, precision: 1.5, thorns: 1.5,
+  poison_damage: 1.25, bleed: 1.25, sunder: 1.25,
 };
 
 export function rollEffectBase(id: GearEffectId, rng: () => number = Math.random): number {

@@ -60,15 +60,34 @@ test("lobby removes the development-rules block and the requested floor copy", (
   assert.ok(html.includes("+3 очка характеристик"));
 });
 
-test("left character panel hides the sheet label, health and free stat points", () => {
+test("left panel shows health, then negative effects, then experience", () => {
+  const player = makePlayer({ hp: 17, statuses: { wound: 2, curse: 1, poison: 0 } });
   const html = renderToStaticMarkup(React.createElement(Rail, {
-    player: makePlayer(), run: null, battle: null, onLeaveRun: noop,
+    player, run: null, battle: null, onLeaveRun: noop,
   }));
-  for (const text of ["Лист персонажа", "Здоровье", "Максимум здоровья", "Свободных очков"]) {
+  for (const text of ["Лист персонажа", "Максимум здоровья", "Свободных очков"]) {
     assert.ok(!html.includes(text), `should be removed: ${text}`);
   }
+  const health = html.indexOf("Здоровье");
+  const negative = html.indexOf("Негативные эффекты");
+  const xp = html.indexOf("Опыт");
+  assert.ok(health > -1, "здоровье живёт в левой панели");
+  assert.ok(negative > health, "негативные эффекты идут под здоровьем");
+  assert.ok(xp > negative, "опыт идёт после негативных эффектов");
+  assert.ok(html.includes("Кровотечение") && html.includes("Проклятие"));
   assert.ok(html.includes("Кошель"));
   assert.ok(html.includes("Характеристики"));
+});
+
+test("armory shows supplies and reagents from the bag", () => {
+  const player = makePlayer({ bag: { potion_s: 2, scroll_heal: 1, moss: 3 } });
+  const html = renderToStaticMarkup(React.createElement(Lobby, {
+    player, controller: {}, shopStock: [], onStart: noop, best: 1, unlockedFloor: 2, initialTab: "armory",
+  }));
+  assert.ok(html.includes("Припасы и реагенты"), "в арсенале виден блок припасов и реагентов");
+  assert.ok(html.includes("припасов: 2") && html.includes("реагентов: 1"));
+  assert.ok(html.includes(content.ITEMS.potion_s.name), "видно зелье");
+  assert.ok(html.includes(content.ITEMS.moss.name), "видно реагент");
 });
 
 test("dungeon header hides maze counts and corridor healing shows fixed/INT formulas", () => {
@@ -78,13 +97,17 @@ test("dungeon header hides maze counts and corridor healing shows fixed/INT form
     gold: 0, loot: [], gearLoot: [], keys: 0, log: [],
   };
   const html = renderToStaticMarkup(React.createElement(Dungeon, {
-    run, player: makePlayer(), bag: { potion_s: 2, scroll_heal: 1 }, hp: 20, maxHp: 40,
+    run, player: makePlayer(), bag: { potion_s: 2, scroll_heal: 1, moss: 3 },
     intStat: 4, intDiscount: 0, path: [], pathPaused: false,
     onMove: noop, onCellClick: noop, onUseItem: noop, onEquip: noop, onUnequip: noop,
     onCancelPath: noop, onResumePath: noop,
   }));
   assert.ok(!html.includes("Лабиринт"));
   assert.ok(!/Лабиринт \d+×\d+ · комнат/.test(html));
+  /* Кнопки направлений убраны, здоровье больше не в шапке карты. */
+  for (const text of ["Север", "Восток", "Юг", "Запад"]) assert.ok(!html.includes(`>${text}<`), `кнопка ${text} должна быть удалена`);
+  assert.ok(!/здоровье/i.test(html), "в шапке карты нет блока здоровья");
+  assert.ok(html.includes("Рюкзак"), "в лабиринте можно открыть рюкзак");
   assert.ok(html.includes("+28 здоровья"));
   assert.ok(html.includes("+32 здоровья")); // свиток лечения больше не масштабируется от ИНТ
 });

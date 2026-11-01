@@ -18,15 +18,25 @@ import type {
   LegendaryPassiveId,
   Player,
   RareAffixId,
+  GearKind,
   RarityTier,
   Slot,
   StatKey,
+  WeaponType,
   Threat,
   WearTier,
 } from "./types";
 import { WEAR_RANGE } from "./types";
 export { WEAR_RANGE } from "./types";
-import { ACTIVE_GEAR_EFFECTS, effectPoolFor, passivePoolFor, archetypePassive, type GearEffectId, type GearPassiveId } from "./gearEffects";
+import {
+  ACTIVE_GEAR_EFFECTS,
+  effectCountForGear,
+  effectPoolForGear,
+  passivePoolFor,
+  archetypePassive,
+  type GearEffectId,
+  type GearPassiveId,
+} from "./gearEffects";
 import {
   clampGearLevel,
   epicMagnitude,
@@ -421,6 +431,8 @@ export interface WeaponSkillDef {
     | "skill_leech" | "curse_brand" | "create_scroll" | "full_guard";
   desc: string;
   passiveNote: string;
+  /** Приём магический: урон считается магическим (посох и волшебная палочка). */
+  magic?: boolean;
 }
 
 export interface GearBaseDef {
@@ -450,8 +462,14 @@ export interface GearBaseDef {
   desc: string;
   weaponSkill?: WeaponSkillDef;
   preferredEpic?: EpicSkillId;
-  /** Боевой архетип предмета: задаёт пул эффектов и легендарную пассивку. */
+  /** Боевой архетип предмета: задаёт легендарную пассивку. */
   archetype?: ArchetypeId;
+  /** Тип снаряжения: оружие, броня или аксессуар. */
+  kind?: GearKind;
+  /** Вид оружия: кинжал, рапира, меч, копьё, топор, молот, двуручники, посох, палочка. */
+  weaponType?: WeaponType;
+  /** Лёгкая броня может не требовать характеристику вовсе. */
+  noReq?: boolean;
 }
 
 /* До введения новых слотов базы использовали «weapon»/«armor»/«trinket»;
@@ -754,6 +772,94 @@ const SLOT_FIX: Record<string, Slot> = {
 };
 const ALT_FIX: Record<string, Slot[]> = { ring_stone: ["ring1", "ring2"] };
 
+/* ─────────────  ТИПЫ СНАРЯЖЕНИЯ: ОРУЖИЕ / БРОНЯ / АКСЕССУАР  ───────────── */
+
+export interface WeaponTypeDef {
+  id: WeaponType;
+  name: string;
+  /** Двуручное оружие всегда тяжёлое, одноручное — среднее или лёгкое. */
+  gearClass: "light" | "medium" | "heavy";
+  hands: 1 | 2;
+  /** Рука для одноручного оружия: "either" — любая, "right" — только правая. */
+  hand: "either" | "right";
+  /** Сколько свойств даёт оружие этого вида (у копья и посоха — по два). */
+  minEffects: number;
+  /** Приёмы магические: урон считается магическим. */
+  magic: boolean;
+}
+
+/**
+ * Виды оружия и их правила. Вес, рука и набор свойств заданы таблицей,
+ * поэтому одинаковые клинки всегда ведут себя предсказуемо.
+ */
+export const WEAPON_TYPE_META: Record<WeaponType, WeaponTypeDef> = {
+  dagger: { id: "dagger", name: "Кинжал", gearClass: "light", hands: 1, hand: "either", minEffects: 1, magic: false },
+  rapier: { id: "rapier", name: "Рапира", gearClass: "light", hands: 1, hand: "either", minEffects: 1, magic: false },
+  sword: { id: "sword", name: "Меч", gearClass: "medium", hands: 1, hand: "right", minEffects: 1, magic: false },
+  spear: { id: "spear", name: "Копьё", gearClass: "medium", hands: 2, hand: "right", minEffects: 2, magic: false },
+  axe: { id: "axe", name: "Топор", gearClass: "medium", hands: 1, hand: "either", minEffects: 1, magic: false },
+  hammer: { id: "hammer", name: "Молот", gearClass: "medium", hands: 1, hand: "right", minEffects: 1, magic: false },
+  greatsword: { id: "greatsword", name: "Двуручный меч", gearClass: "heavy", hands: 2, hand: "right", minEffects: 1, magic: false },
+  greataxe: { id: "greataxe", name: "Двуручный топор", gearClass: "heavy", hands: 2, hand: "right", minEffects: 1, magic: false },
+  warhammer: { id: "warhammer", name: "Двуручный молот", gearClass: "heavy", hands: 2, hand: "right", minEffects: 1, magic: false },
+  staff: { id: "staff", name: "Посох", gearClass: "medium", hands: 1, hand: "right", minEffects: 2, magic: true },
+  wand: { id: "wand", name: "Волшебная палочка", gearClass: "light", hands: 1, hand: "either", minEffects: 1, magic: true },
+};
+
+/** Вид оружия для каждой базы. */
+const WEAPON_TYPE_FIX: Record<string, WeaponType> = {
+  knife: "dagger", dagger: "dagger", start_offknife: "dagger",
+  assassin_stiletto: "dagger", ninja_kusarigama: "dagger",
+  rapier: "rapier",
+  sword: "sword", abyss: "sword",
+  spear: "spear",
+  axe: "axe",
+  hammer: "hammer", bulwark_mace: "hammer", start_mace: "hammer",
+  greatsword: "greatsword",
+  barbarian_greataxe: "greataxe",
+  warhammer2: "warhammer",
+  staff: "staff",
+  wand: "wand", start_wand: "wand", wand_ash: "wand",
+  warlock_scepter: "wand", sage_censer: "wand",
+};
+
+/** Тип снаряжения для каждой базы. */
+const GEAR_KIND_FIX: Record<string, GearKind> = {
+  /* Оружие */
+  knife: "weapon", dagger: "weapon", rapier: "weapon", sword: "weapon", spear: "weapon",
+  axe: "weapon", hammer: "weapon", abyss: "weapon", staff: "weapon", greatsword: "weapon",
+  warhammer2: "weapon", bulwark_mace: "weapon", barbarian_greataxe: "weapon",
+  assassin_stiletto: "weapon", ninja_kusarigama: "weapon", warlock_scepter: "weapon",
+  sage_censer: "weapon", start_mace: "weapon", start_wand: "weapon", start_offknife: "weapon",
+  /* Броня и щиты */
+  rag: "armor", mail: "armor", shroud: "armor", plate: "armor", blood_hide: "armor",
+  coif: "armor", helm: "armor", greathelm: "armor", crown_husk: "armor",
+  shoes: "armor", boots: "armor", strider_boots: "armor", greaves: "armor",
+  wraps: "armor", vambraces: "armor", runed_bracers: "armor",
+  shield_round: "armor", shield_tower: "armor", buckler: "armor",
+  start_hood: "armor", start_cap: "armor", start_circlet: "armor", start_leatherhelm: "armor",
+  start_ironskull: "armor", start_jacket: "armor", start_leather: "armor", start_robe: "armor",
+  start_hide: "armor", start_sandals: "armor", start_workboots: "armor", start_softshoes: "armor",
+  start_ironboots: "armor", start_trailboots: "armor", start_cuffs: "armor",
+  start_ironcuffs: "armor", start_runecuffs: "armor", start_chainwrists: "armor",
+  start_straps: "armor", start_smallshield: "armor",
+  /* Аксессуары: кольца, обереги и фокусы (фокус — в левую руку) */
+  amulet: "accessory", seal: "accessory", soulstone: "accessory", icon: "accessory",
+  tooth: "accessory", ring_stone: "accessory", ring_band: "accessory", ring_edge: "accessory",
+  ring_ward: "accessory", ring_venom: "accessory",
+  start_copperring: "accessory", start_silverring: "accessory", start_bonering: "accessory",
+  start_ironring: "accessory", start_glassring: "accessory", start_pendant: "accessory",
+  start_feather: "accessory", start_bead: "accessory", start_claw: "accessory",
+  start_focus: "accessory", focus_rune: "accessory",
+};
+
+/** Аксессуары без требований не бывает: они всегда дают что-то по характеристике. */
+export const GEAR_KIND_META: Record<GearKind, { name: string; desc: string }> = {
+  weapon: { name: "Оружие", desc: "Даёт урон и свойства, но не защиту, здоровье и уклонение." },
+  armor: { name: "Броня", desc: "Даёт защиту, здоровье и уклонение, но не урон." },
+  accessory: { name: "Аксессуар", desc: "Кольца, обереги и фокусы: всегда одно свойство и бонус по требуемой характеристике." },
+};
+
 /**
  * Вес и габарит снаряжения. Класс не навязывает характеристику:
  * лёгкий нож и рапира используют Ловкость, лёгкий посох — Интеллект.
@@ -823,26 +929,48 @@ function normalizeGearBases(list: LegacyGear[]): Record<string, GearBaseDef> {
   for (const raw of list) {
     const level = raw.level ?? Math.max(1, Math.min(SHOP_MAX_LEVEL, raw.minFloor ?? 1));
     const slot = SLOT_FIX[raw.id] ?? raw.slot;
+    /* Тип предмета: оружие, броня или аксессуар. Вид оружия задаёт вес и руку. */
+    const kind: GearKind = raw.kind ?? GEAR_KIND_FIX[raw.id] ?? (raw.dmg ? "weapon" : "armor");
+    const weaponType: WeaponType | undefined =
+      kind === "weapon" ? raw.weaponType ?? WEAPON_TYPE_FIX[raw.id] ?? "sword" : undefined;
+    const weaponMeta = weaponType ? WEAPON_TYPE_META[weaponType] : null;
     /* И вес, и характеристика берутся из явных таблиц; запасной путь нужен только неизвестным базам. */
-    const gearClass: "light" | "medium" | "heavy" =
-      raw.gearClass ?? GEAR_CLASS_FIX[raw.id] ?? "medium";
+    const gearClass: "light" | "medium" | "heavy" = weaponMeta
+      ? weaponMeta.gearClass
+      : kind === "accessory"
+        ? "light"
+        : raw.gearClass ?? GEAR_CLASS_FIX[raw.id] ?? "medium";
     const stat: StatKey =
       raw.stat ?? GEAR_STAT_FIX[raw.id] ?? raw.weaponSkill?.scaleStat ??
       (gearClass === "heavy" ? "str" : gearClass === "light" ? "int" : "agi");
     const hasClassTemplate = SLOT_DEFENSE_SCALE[slot] !== undefined;
-    const defense = hasClassTemplate ? classDefense(slot, gearClass) : null;
-    const isWeapon = !!raw.dmg;
-    const hands = gearClass === "medium" && slot === "mainHand" && isWeapon ? 1 : raw.hands;
+    const defense = kind === "weapon" ? null : hasClassTemplate ? classDefense(slot, gearClass) : null;
+    const hands = weaponMeta ? weaponMeta.hands : raw.hands;
+    /* Лёгкая броня без ИНТ может не требовать характеристику вовсе. */
+    const noReq = raw.noReq ?? (kind === "armor" && gearClass === "light" && stat !== "int");
+    const accessoryStats =
+      kind === "accessory"
+        ? stat === "str"
+          ? { armor: 1, hp: 4, evade: 0 }
+          : stat === "agi"
+            ? { armor: 0, hp: 0, evade: 0.05 }
+            : { armor: 0, hp: 10, evade: 0 }
+        : null;
     out[raw.id] = {
       ...raw,
       level,
+      kind,
+      weaponType,
+      noReq,
       slot,
       gearClass,
       stat,
       hands,
-      armor: defense ? defense.armor : raw.armor,
-      hp: defense ? defense.hp : raw.hp,
-      evade: defense ? defense.evade : raw.evade,
+      /* Оружие не даёт защиту, здоровье и уклонение: только урон и свойства. */
+      armor: kind === "weapon" ? 0 : accessoryStats ? accessoryStats.armor : defense ? defense.armor : raw.armor,
+      hp: kind === "weapon" ? 0 : accessoryStats ? accessoryStats.hp : defense ? defense.hp : raw.hp,
+      evade: kind === "weapon" ? 0 : accessoryStats ? accessoryStats.evade : defense ? defense.evade : raw.evade,
+      dmg: kind === "weapon" ? raw.dmg : undefined,
       altSlots: raw.altSlots ?? ALT_FIX[raw.id],
       minFloor: raw.minFloor ?? level,
     };
@@ -874,6 +1002,53 @@ export function gearClassFor(item: GearItem): "light" | "medium" | "heavy" {
   return GEAR_BASES[item.baseId]?.gearClass ?? item.gearClass ?? "medium";
 }
 
+/** Тип снаряжения по базе: оружие, броня или аксессуар. */
+export function gearKindOfBase(base: GearBaseDef | undefined): GearKind {
+  if (!base) return "armor";
+  return base.kind ?? GEAR_KIND_FIX[base.id] ?? (base.dmg ? "weapon" : "armor");
+}
+
+export function gearKindFor(item: GearItem): GearKind {
+  if (item.kind) return item.kind;
+  return gearKindOfBase(GEAR_BASES[item.baseId]);
+}
+
+/** Вид оружия: только у предметов типа «оружие». */
+export function weaponTypeFor(item: GearItem): WeaponType | null {
+  if (gearKindFor(item) !== "weapon") return null;
+  return item.weaponType ?? GEAR_BASES[item.baseId]?.weaponType ?? "sword";
+}
+
+export function weaponMetaFor(item: GearItem): WeaponTypeDef | null {
+  const type = weaponTypeFor(item);
+  return type ? WEAPON_TYPE_META[type] : null;
+}
+
+/** Двуручное оружие занимает обе руки и всегда относится к тяжёлым. */
+export function isTwoHandedWeapon(item: GearItem): boolean {
+  const meta = weaponMetaFor(item);
+  return !!meta && meta.hands === 2;
+}
+
+/** Подпись типа в карточке: у аксессуаров веса нет. */
+export function gearClassLabel(item: GearItem): string {
+  const kind = gearKindFor(item);
+  if (kind === "accessory") return GEAR_KIND_META.accessory.name;
+  const cls = GEAR_CLASS_META[gearClassFor(item)].name;
+  if (kind === "weapon") {
+    const type = weaponTypeFor(item);
+    return `${type ? WEAPON_TYPE_META[type].name : GEAR_KIND_META.weapon.name} · ${cls.toLowerCase()}`;
+  }
+  return cls;
+}
+
+/** Броня лёгкого веса может не требовать характеристику вовсе. */
+export function gearRequiresNothing(item: GearItem): boolean {
+  const base = GEAR_BASES[item.baseId];
+  if (!base) return false;
+  return gearKindOfBase(base) === "armor" && base.noReq === true;
+}
+
 /** Характеристика предмета не выводится из веса: лёгкий нож остаётся ловким. */
 export function gearAffinity(item: GearItem): StatKey {
   const base = GEAR_BASES[item.baseId];
@@ -888,31 +1063,40 @@ export function gearStatReq(item: GearItem): { stat: StatKey; value: number } {
   return { stat: gearAffinity(item), value: Math.max(1, Math.min(10, 1 + level)) };
 }
 
-/** Строка требования для карточки предмета: «СИЛ 4» и т.п. */
+/** Требование к надеванию: характеристика (может отсутствовать) и её значение. */
+export function gearRequirement(item: GearItem): { stat: StatKey | null; value: number } {
+  if (gearRequiresNothing(item)) return { stat: null, value: 0 };
+  const req = gearStatReq(item);
+  return { stat: req.stat, value: req.value };
+}
+
+/** Строка требования для карточки предмета: «СИЛ 4» или «без требований». */
 export function gearStatReqLabel(item: GearItem): string {
-  const { stat, value } = gearStatReq(item);
-  return `${STAT_META[stat].short} ${value}`;
+  const { stat, value } = gearRequirement(item);
+  return stat ? `${STAT_META[stat].short} ${value}` : "без требований";
 }
 
 /**
  * Надеть можно, если уровень предмета не выше уровня персонажа
- * и характеристика требования набрана.
+ * и характеристика требования (если она есть) набрана.
  */
 export function canWear(item: GearItem, player: Player): boolean {
   if ((item.level ?? 1) > player.level) return false;
-  const { stat, value } = gearStatReq(item);
+  const { stat, value } = gearRequirement(item);
+  if (!stat) return true;
   return (player.stats[stat] ?? 0) >= value;
 }
 
 /** Причина отказа — для сообщения интерфейсу. */
 export function wearRequirementNote(item: GearItem, player: Player): string {
-  const clsName = GEAR_CLASS_META[gearClassFor(item)].name.toLowerCase();
+  const label = gearClassLabel(item);
   if ((item.level ?? 1) > player.level) {
-    return `${clsName} снаряжение ${item.level ?? 1}-го уровня: нужен персонаж ${item.level ?? 1}-го уровня.`;
+    return `${label} ${item.level ?? 1}-го уровня: нужен персонаж ${item.level ?? 1}-го уровня.`;
   }
-  const { stat, value } = gearStatReq(item);
+  const { stat, value } = gearRequirement(item);
+  if (!stat) return `${label} можно надеть без требований к характеристикам.`;
   const have = player.stats[stat] ?? 0;
-  return `${clsName} снаряжение требует ${STAT_META[stat].short} ${value}, у тебя ${have}.`;
+  return `${label} требует ${STAT_META[stat].short} ${value}, у тебя ${have}.`;
 }
 
 /** Вариативный множитель приёма по характеристике, а не по весу предмета. */
@@ -1203,7 +1387,17 @@ export function weaponSkillFor(item: GearItem | null | undefined): WeaponSkillDe
   const desc = raw.desc.replace(/(\d+(?:\.\d+)?)×(?:ЛОВ|СИЛ|ИНТ)/g, `${scaleMult}×${short}`);
   const passiveBonus = scaleMultByLevel(baseMult * 0.35, level);
   const passiveNote = `При ИНТ ≥ ${intReq} обычные удары получают +${passiveBonus.toFixed(2)}×${short} к урону.`;
-  return { ...raw, level, scaleStat, scaleMult, intReq, desc, passiveNote };
+  /* Посох и волшебная палочка бьют приёмами магией, а не сталью. */
+  const magic = weaponTypeOfBase(item) === "staff" || weaponTypeOfBase(item) === "wand";
+  return { ...raw, level, scaleStat, scaleMult, intReq, desc, passiveNote, magic };
+}
+
+/** Вид оружия предмета: нужен, чтобы отметить магические приёмы. */
+function weaponTypeOfBase(item: GearItem): WeaponType | null {
+  const base = GEAR_BASES[item.baseId];
+  if (!base) return null;
+  if (gearKindOfBase(base) !== "weapon") return null;
+  return base.weaponType ?? null;
 }
 
 let gearSeq = 100;
@@ -1214,8 +1408,10 @@ export function gearLevelMult(item: GearItem): number {
 }
 
 export function canTwoHandGrip(item: GearItem): boolean {
-  const base = GEAR_BASES[item.baseId];
-  return !!base?.dmg && base.slot === "mainHand" && gearClassFor(item) === "medium";
+  const meta = weaponMetaFor(item);
+  if (!meta) return false;
+  /* Среднее одноручное оружие можно взять двумя руками; магические посохи и палочки — нет. */
+  return meta.hands === 1 && meta.gearClass === "medium" && !meta.magic;
 }
 
 export function effectiveHands(item: GearItem): 1 | 2 {
@@ -1223,32 +1419,59 @@ export function effectiveHands(item: GearItem): 1 | 2 {
   return (GEAR_BASES[item.baseId]?.hands ?? 1) >= 2 ? 2 : 1;
 }
 
-export const ITEM_HP_BASE = 10;
-export const ITEM_HP_SPREAD = 15;
-export const ITEM_ARMOR_BASE = 2;
-export const ITEM_ARMOR_SPREAD = 3;
+/** Профиль характеристик брони и аксессуаров по слоту: тело и щит — эталон, кольцо — мельче. */
+const SLOT_ITEM_SCALE: Partial<Record<Slot, number>> = {
+  head: 0.7, body: 1, feet: 0.7, wrists: 0.6, offHand: 1,
+  ring1: 0.6, ring2: 0.6, amulet: 0.9,
+};
 
+/** Оружие не даёт ни здоровья, ни брони, ни уклонения — у него остаётся только урон. */
 export function canItemHaveArmor(base: GearBaseDef): boolean {
-  if (base.shield) return true;
-  return !base.dmg;
+  return gearKindOfBase(base) !== "weapon";
 }
 
-export function rollItemStatRolls(base: GearBaseDef, gearClass: "light" | "medium" | "heavy", rng: () => number = Math.random) {
-  const hp = ITEM_HP_BASE + Math.floor(rng() * (ITEM_HP_SPREAD + 1));
-  let armor = 0;
-  if (canItemHaveArmor(base)) {
-    armor = ITEM_ARMOR_BASE + Math.floor(rng() * (ITEM_ARMOR_SPREAD + 1));
-    if (gearClass === "heavy") armor *= 2;
+/**
+ * Базовые броски характеристик предмета до уровня и состояния.
+ * Оружие — чистый урон; броня — защита/здоровье/уклонение по весу и характеристике;
+ * аксессуары — бонус строго по требуемой характеристике (СИЛ → защита, ЛОВ → уклонение, ИНТ → здоровье).
+ */
+export function rollItemStatRolls(
+  base: GearBaseDef,
+  gearClass: "light" | "medium" | "heavy",
+  rng: () => number = Math.random,
+): { hp: number; armor: number; evade: number } {
+  const kind = gearKindOfBase(base);
+  const k = SLOT_ITEM_SCALE[base.slot] ?? 0.6;
+  const roll = (lo: number, spread: number) => lo + Math.floor(rng() * (spread + 1));
+  const at = (value: number, min = 1) => Math.max(min, Math.round(value * k));
+  if (kind === "weapon") return { hp: 0, armor: 0, evade: 0 };
+
+  const stat = base.stat ?? "str";
+  if (kind === "accessory") {
+    if (stat === "str") return { hp: at(roll(3, 4)), armor: at(roll(1, 2)), evade: 0 };
+    if (stat === "agi") return { hp: 0, armor: 0, evade: roll(4, 5) };
+    return { hp: at(roll(9, 8), 2), armor: 0, evade: 0 };
   }
-  return { hp, armor };
+
+  const cls = base.gearClass ?? gearClass;
+  if (cls === "heavy") return { hp: at(roll(4, 4)), armor: at(roll(4, 3) * 2), evade: 0 };
+  if (cls === "medium") {
+    if (stat === "agi") return { hp: at(roll(2, 3)), armor: at(roll(1, 2)), evade: roll(4, 5) };
+    return { hp: at(roll(3, 3)), armor: at(roll(3, 3)), evade: 0 };
+  }
+  /* Лёгкая броня: здоровье и уклонение; с требованием ИНТ здоровья больше. */
+  if (stat === "int") return { hp: at(roll(13, 7), 2), armor: 0, evade: roll(5, 5) };
+  return { hp: at(roll(9, 5), 2), armor: 0, evade: roll(6, 6) };
 }
 
 export function scaledGearStats(item: GearItem) {
   const base = GEAR_BASES[item.baseId] ?? GEAR_BASES.knife;
+  const kind = gearKindOfBase(base);
   const m = item.wearMult ?? WEAR_META[item.wear].mult;
   const level = clampGearLevel(item.level);
   const roll = item.dmgRoll ?? base.dmg;
-  let dmg: [number, number] | undefined = roll
+  /* Урон бывает только у оружия. */
+  let dmg: [number, number] | undefined = kind === "weapon" && roll
     ? [
         Math.max(1, scaleGearStatByLevel(Math.ceil(roll[0] * m), level)),
         Math.max(2, scaleGearStatByLevel(Math.ceil(roll[1] * m), level)),
@@ -1259,11 +1482,12 @@ export function scaledGearStats(item: GearItem) {
   }
   const cls = gearClassFor(item);
   const rolls = item.statRolls ?? rollItemStatRolls(base, cls, () => 0.5);
-  const armor = canItemHaveArmor(base) ? scaleGearStatByLevel(Math.ceil(rolls.armor * m), level) : 0;
-  const hp = scaleGearStatByLevel(Math.ceil(rolls.hp * m), level);
-  // Уклонение больше не является базовым свойством предметов: только характеристики, эффекты и пассивы.
-  const evade = 0;
-  return { base, dmg, armor, hp, evade, skill: weaponSkillFor(item), level, wearMult: m };
+  /* Оружие не даёт защиту, здоровье и уклонение — только свойства. */
+  const armor = kind === "weapon" ? 0 : scaleGearStatByLevel(Math.ceil(rolls.armor * m), level);
+  const hp = kind === "weapon" ? 0 : scaleGearStatByLevel(Math.ceil(rolls.hp * m), level);
+  const evadePp = kind === "weapon" ? 0 : scaleGearStatByLevel(Math.ceil((rolls.evade ?? 0) * m), level);
+  const evade = Math.min(0.5, evadePp / 100);
+  return { base, kind, dmg, armor, hp, evade, evadePp, skill: weaponSkillFor(item), level, wearMult: m };
 }
 
 /** Требования исследования предмета растут вместе с его уровнем. */
@@ -1389,37 +1613,33 @@ export function createGearItem(opts: {
   const wearMult = rollWearMult(wear, rng);
   const statRolls = rollItemStatRolls(base, gearClass, rng);
 
-  /* Качество: обычное — без бафов;
-     редкое — 1 уникальный эффект по характеристике требования;
-     эпическое — свойство редкого + (2 доп. эффекта ИЛИ 1 боевой приём);
-     легендарное — всё выше + пассивная способность по той же характеристике. */
-  const pool = effectPoolFor(reqStat, base.archetype).filter((id) => id !== "ap" || itemLevelForAp >= 3);
+  /* Свойства по типу предмета: оружие — пул вида клинка, броня — пул веса,
+     аксессуары — пул требуемой характеристики (и всегда хотя бы одно свойство).
+     Редкость добавляет свойства: обычное — базовый набор, редкое +1, эпическое и легендарное +2. */
+  const kind = gearKindOfBase(base);
+  const weaponType = kind === "weapon" ? base.weaponType ?? "sword" : undefined;
+  const pool = effectPoolForGear({
+    kind,
+    weaponType,
+    gearClass,
+    stat: reqStat,
+    requiresNothing: base.noReq === true,
+    archetype: base.archetype,
+  }).filter((id) => id !== "ap" || itemLevelForAp >= 3);
   const effects: GearEffectId[] = [];
+  const effectCount = Math.min(pool.length, effectCountForGear({ kind, rarity, weaponType }));
+  const rest = [...pool];
+  for (let i = 0; i < effectCount && rest.length; i++) {
+    effects.push(rest.splice(Math.floor(rng() * rest.length), 1)[0]);
+  }
 
   const hasTechnique = !!(TECHNIQUE_POOL[base.id] ?? []).length;
   let epicSkill: EpicSkillId | undefined;
 
-  if (rarity === "epic" || rarity === "legendary") {
-    /* Выбор между двумя дополнительными эффектами и боевым приёмом */
-    if (hasTechnique && (rarity === "legendary" || rng() < 0.5)) {
-      epicSkill =
-        base.preferredEpic && rng() < 0.6
-          ? base.preferredEpic
-          : pick(ALL_EPIC_IDS, rng);
-    }
-  }
-
-  if (rarity !== "common") {
-    const rest = [...pool];
-    effects.push(rest.splice(Math.floor(rng() * rest.length), 1)[0]);
-    if (rarity === "epic" || rarity === "legendary") {
-      if (epicSkill) {
-        /* Один боевой приём вместо двух эффектов */
-      } else {
-        for (let i = 0; i < 2 && rest.length; i++) {
-          effects.push(rest.splice(Math.floor(rng() * rest.length), 1)[0]);
-        }
-      }
+  if ((rarity === "epic" || rarity === "legendary") && hasTechnique) {
+    /* Эпический и легендарный предмет получают боевой приём вдобавок к свойствам. */
+    if (rarity === "legendary" || rng() < 0.5) {
+      epicSkill = base.preferredEpic && rng() < 0.6 ? base.preferredEpic : pick(ALL_EPIC_IDS, rng);
     }
   }
 
@@ -1442,6 +1662,8 @@ export function createGearItem(opts: {
     statRolls,
     passive,
     baseId: base.id,
+    kind,
+    weaponType,
     slot: base.slot,
     level: opts.level ?? base.level ?? 1,
     gearClass: base.gearClass ?? "medium",
@@ -1478,16 +1700,31 @@ function seededRng(seed: string): () => number {
 export function migrateGearItem(item: GearItem): GearItem {
   const base = GEAR_BASES[item.baseId] ?? GEAR_BASES.knife;
   const gearClass = base.gearClass ?? item.gearClass ?? "medium";
+  const kind = gearKindOfBase(base);
+  const weaponType = kind === "weapon" ? base.weaponType ?? "sword" : undefined;
   const rng = seededRng(item.uid || item.baseId);
   const statRolls = item.statRolls ?? rollItemStatRolls(base, gearClass, rng);
-  const reqStat = gearAffinity(item);
-  const pool = effectPoolFor(reqStat, base.archetype).filter((id) => id !== "ap" || (item.level ?? 1) >= 3);
+  const reqStat = base.stat ?? gearAffinity(item);
+  const pool = effectPoolForGear({
+    kind,
+    weaponType,
+    gearClass,
+    stat: reqStat,
+    requiresNothing: base.noReq === true,
+    archetype: base.archetype,
+  }).filter((id) => id !== "ap" || (item.level ?? 1) >= 3);
   const effects: GearEffectId[] = [];
   for (const id of item.effects ?? []) {
     if (ACTIVE_GEAR_EFFECTS.includes(id) && !effects.includes(id)) effects.push(id);
   }
-  const legacyCount = (item.effects ?? []).length + (item.rareAffix ? 1 : 0);
-  while (effects.length < Math.min(3, legacyCount)) {
+  /* Старые предметы догоняют новый минимум свойств: аксессуар — одно, копьё и посох — два. */
+  const minEffects = effectCountForGear({
+    kind,
+    rarity: item.rarity ?? "common",
+    weaponType,
+  });
+  const legacyCount = Math.max((item.effects ?? []).length + (item.rareAffix ? 1 : 0), minEffects);
+  while (effects.length < Math.min(4, legacyCount)) {
     const avail = pool.filter((id) => !effects.includes(id));
     if (!avail.length) break;
     effects.push(avail[Math.floor(rng() * avail.length)]);
@@ -1498,6 +1735,8 @@ export function migrateGearItem(item: GearItem): GearItem {
   }
   return {
     ...item,
+    kind,
+    weaponType,
     slot: base.slot ?? item.slot,
     gearClass,
     statRolls,
@@ -1564,12 +1803,13 @@ export function rollShopStock(shopLevel: number, floor = 1, rng: () => number = 
 export function slotsForItem(item: GearItem): Slot[] {
   const base = GEAR_BASES[item.baseId];
   if (!base) return [item.slot];
-  if (base.altSlots) return base.altSlots;
-  /* Лёгкое оружие можно взять в любую руку. */
-  if (base.dmg && gearClassFor(item) === "light" && (base.slot === "mainHand" || base.slot === "offHand")) {
-    return base.slot === "mainHand" ? ["mainHand", "offHand"] : ["offHand", "mainHand"];
-  }
-  return [base.slot];
+  const kind = gearKindOfBase(base);
+  if (kind !== "weapon") return base.altSlots ?? [base.slot];
+  const meta = weaponMetaFor(item);
+  if (!meta) return [base.slot];
+  /* Двуручное оружие — только правая рука, одноручное «в любую руку» — обе. */
+  if (meta.hands === 2) return ["mainHand"];
+  return meta.hand === "either" ? ["mainHand", "offHand"] : ["mainHand"];
 }
 
 export interface EquipResult {

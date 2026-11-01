@@ -103,8 +103,10 @@ test("new gear effects roll base spread and grow compound with ceil each level",
 
 test("created and migrated items carry the new stat/effect rolls", () => {
   const item = content.createGearItem({ baseId: "plate", level: 3, rarity: "epic", wear: "worn", identified: true, rng: () => 0.4 });
-  assert.ok(item.statRolls.hp >= 10 && item.statRolls.hp <= 25);
-  assert.ok(item.statRolls.armor >= 4 && item.statRolls.armor <= 10);
+  assert.ok(item.statRolls.hp >= 1 && item.statRolls.hp <= 10, `ОЗ брони: ${item.statRolls.hp}`);
+  assert.ok(item.statRolls.armor >= 4 && item.statRolls.armor <= 14, `броня: ${item.statRolls.armor}`);
+  const weapon = content.createGearItem({ baseId: "sword", level: 3, rarity: "epic", wear: "worn", identified: true, rng: () => 0.4 });
+  assert.deepEqual(weapon.statRolls, { hp: 0, armor: 0, evade: 0 }, "оружие не даёт защитных характеристик");
   for (const id of item.effects) assert.ok(item.effectRolls[id] != null);
 
   const legacy = {

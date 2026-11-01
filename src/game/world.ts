@@ -251,6 +251,28 @@ export const EXTRA_GEAR: GearBaseDef[] = [
     desc: "Тёплый, пока ты жив.",
     preferredEpic: "fireball",
   }),
+
+  /* ── ФОКУСЫ: аксессуар для левой руки, поэтому конкурирует со щитом ── */
+  G({
+    id: "focus_rune", name: "Рунный фокус", slot: "offHand", stat: "int",
+    hp: 12, price: 240, level: 2, minFloor: 2, idIntReq: 3, idGoldCost: 55,
+    desc: "Камень с прорезью: в неё смотрят, чтобы увидеть чужую мысль.",
+    preferredEpic: "frost_nova",
+  }),
+
+  /* ── ВОЛШЕБНАЯ ПАЛОЧКА ── */
+  G({
+    id: "wand_ash", name: "Пепельная палочка", slot: "mainHand", stat: "int",
+    dmg: [6, 10], price: 300, level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 65,
+    desc: "Обгоревший кончик всё ещё держит искру.",
+    preferredEpic: "fireball",
+    weaponSkill: {
+      id: "ash_spark", name: "Пепельная искра", intReq: 3, cooldown: 2,
+      scaleStat: "int", scaleMult: 2.2, effect: "chill",
+      desc: "Взмах палочки: урон оружия + 2.2×ИНТ магией сквозь броню и озноб на 2 раунда.",
+      passiveNote: "При ИНТ ≥ 3 обычные удары палочкой получают +0.8×ИНТ.",
+    },
+  }),
 ];
 
 /* ═══════════════  БЕСТИАРИЙ: 3 ЯРУСА  ═══════════════ */

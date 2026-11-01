@@ -194,6 +194,11 @@ export function Rail({
     current.push({ id: "titan-immunity", title: "Сердце колосса", detail: "Иммунитет к периодическому урону от кровотечения и яда." });
   }
 
+  const hpNow = battle ? battle.p.hp : player.hp;
+  const hpMax = battle ? battle.p.maxHp : d.maxHp;
+  /* Короткий список для панели над опытом: только то, что вредит. */
+  const negativeEffects = current.filter((entry) => entry.negative);
+
   const activeCount = current.length;
   const unknownCount = equippedList(player).filter((item) => !item.identified).length;
   const activeEffects = activeCount + learned.length + gearEntries.length;
@@ -233,6 +238,31 @@ export function Rail({
               <h2 className="font-title text-[1.85rem] leading-tight text-flamehi">{player.name}</h2>
               <span className="font-mono text-sm text-flame">Ур. {player.level}/{MAX_LEVEL}</span>
             </div>
+            {/* Порядок по правилам экрана: здоровье, под ним негативные эффекты, затем опыт. */}
+            <div className="mt-3" aria-label="Здоровье">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-[0.94rem] text-mute">Здоровье</span>
+                <span className="font-mono text-[0.92rem] tab text-parch">
+                  {hpNow} / {hpMax}
+                </span>
+              </div>
+              <Meter value={hpNow} max={hpMax} tone="rubric" className="mt-1 h-2" ticks={8} />
+            </div>
+
+            {negativeEffects.length > 0 && (
+              <div className="mt-3" aria-label="Негативные эффекты">
+                <div className="sc mb-1.5 text-[0.84rem] text-rubric">Негативные эффекты</div>
+                <ul className="space-y-1">
+                  {negativeEffects.map((entry) => (
+                    <li key={entry.id} className="flex items-baseline justify-between gap-2 border-l-2 border-rubric/70 bg-black/20 py-1 pl-2 pr-1.5">
+                      <span className="font-display text-[0.95rem] uppercase tracking-[0.04em] text-rubric">{entry.title}</span>
+                      {entry.badge && <span className="font-mono text-[0.82rem] text-mute">{entry.badge}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <div className="mt-3 grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1.5">
               <span className="mt-1 text-[0.94rem] text-mute">Опыт</span>
               <span className="mt-1 font-mono text-[0.92rem] tab text-parch">

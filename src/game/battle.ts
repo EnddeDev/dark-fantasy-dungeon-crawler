@@ -376,6 +376,8 @@ export function derived(pl: Player): DerivedStats {
 
   const chanceLayers = emptyChanceLayers();
   chanceLayers.evade.stats.push(statEvasion(pl.stats.agi));
+  /* Уклонение от брони и аксессуаров: лёгкая броня и ловкие украшения. */
+  if (evadeBonus > 0) chanceLayers.evade.items.push(evadeBonus);
   chanceLayers.crit.stats.push(statCritChance(pl.stats.agi));
   chanceLayers.tenacity.stats.push(statTenacity(pl.stats.str));
   chanceLayers.magicResist.stats.push(statMagicResist(pl.stats.int));
@@ -908,6 +910,27 @@ function applyEnemyStatus(b: BattleState, key: "chill" | "bleed" | "poison" | "f
   }
   b.enemy.statuses[key] = Math.max(b.enemy.statuses[key], statusRounds(b, rounds));
 }
+/** Свойства оружия, которые срабатывают прямо от удара: кровотечение, яд, раскол. */
+function weaponHitEffects(b: BattleState) {
+  if (b.enemy.hp <= 0) return;
+  const chanceOf = (id: GearEffectId) => Math.min(0.95, effectPower(b, id) / 100);
+  const bleedChance = chanceOf("bleed");
+  if (bleedChance > 0 && Math.random() < bleedChance) {
+    applyEnemyStatus(b, "bleed", 3);
+    if (b.enemy.statuses.bleed > 0) push(b, `${b.enemy.def.name} истекает кровью от раны.`, "p");
+  }
+  const poisonChance = chanceOf("poison_damage");
+  if (b.enemy.hp > 0 && poisonChance > 0 && Math.random() < poisonChance) {
+    applyEnemyStatus(b, "poison", 3);
+    if (b.enemy.statuses.poison > 0) push(b, `Яд с клинка разъедает ${b.enemy.def.name}.`, "p");
+  }
+  const sunderChance = chanceOf("sunder");
+  if (b.enemy.hp > 0 && sunderChance > 0 && b.enemy.armor > 0 && !bossResists(b) && Math.random() < sunderChance) {
+    b.enemy.armor = Math.max(0, b.enemy.armor - 1);
+    push(b, `Раскол: броня ${b.enemy.def.name} треснула (осталось ${b.enemy.armor}).`, "p");
+  }
+}
+
 function healEnemy(b: BattleState, amount: number): number {
   if (b.enemy.statuses.wither > 0) {
     const dmg = Math.max(1, Math.round(amount * (1 - eChance(b, "magic_resist"))));
@@ -1511,6 +1534,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
       const dealt = hitEnemy(b, d, "phys", crit ? " Критический удар!" : "");
       applyVamp(b, dealt, 0, "weapon");
       b.p.firstAttackDone = true;
+      weaponHitEffects(b);
       if (crit && hasPassive(b, "arch_assassin_10")) {
         const heal = healPlayer(b, Math.max(1, Math.round(dealt * 0.15)));
         if (heal > 0) push(b, `Тень смерти: крит возвращает +${heal} здоровья.`, "p");
@@ -1550,15 +1574,17 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
       if (eff === "debuff_damage") bonus = Math.round(bonus * (1 + Math.min(4, enemyDebuffCount(b)) * techValue(ws, 0.10, 100)));
       if (eff === "first_strike" && b.round <= 2) bonus = Math.round(bonus * techValue(ws, 2, 100));
       const trueDamage = eff === "pierce" || eff === "chill" || eff === "leech" || eff === "skill_leech";
+      const magicSkill = !!ws.magic;
       const hits = eff === "double_attack" ? scaleIntegerByLevel(2, ws.level ?? 1) : 1;
       let dealtTotal = 0;
       for (let i = 0; i < hits; i++) {
         //.Multi-hit: каждый удар — отдельная обычная атака без бонуса приёма.
         const isMulti = eff === "double_attack";
         const { d, crit } = calcWeaponRoll(b, 1, isMulti ? 0 : bonus, { skill: !isMulti, multi: isMulti, forceCrit: !isMulti && eff === "guaranteed_crit" && b.round <= 2 });
-        const dealt = hitEnemy(b, d, isMulti ? "phys" : trueDamage ? "true" : "phys", ` [Приём: ${ws.name}${crit ? ", КРИТ!" : ""}${hits > 1 ? ` ${i + 1}/${hits}` : ""}]`, true);
+        const hitKind: "phys" | "magic" | "true" = trueDamage ? "true" : magicSkill ? "magic" : "phys";
+        const dealt = hitEnemy(b, d, hitKind, ` [Приём: ${ws.name}${crit ? ", КРИТ!" : ""}${hits > 1 ? ` ${i + 1}/${hits}` : ""}]`, true);
         dealtTotal += dealt;
-        applyVamp(b, dealt, 0, "weapon");
+        applyVamp(b, dealt, 0, "weapon", hitKind === "true" ? "phys" : hitKind);
         if (crit && hasPassive(b, "arch_assassin_10")) {
           healPlayer(b, Math.max(1, Math.round(dealt * 0.15)));
         }

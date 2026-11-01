@@ -106,11 +106,14 @@ test("guide keeps the current combat and crafting numbers", () => {
   assert.match(html, /шанс успеха 80%/);
 });
 
-test("guide lists item stat rolls, all 14 positive effects and all 9 negative effects", () => {
-  assert.ok(html.includes("здоровье 10 + разброс 0…15"));
-  assert.ok(html.includes("защита 2 + разброс 0…3"));
-  assert.ok(html.includes("тяжёлое снаряжение удваивает сумму"));
-  assert.ok(html.includes("Защита не может быть у оружия, кроме щитов"));
+test("guide lists gear types, item stat rules, all positive effects and all negative effects", () => {
+  assert.ok(html.includes("Оружие"), "гид объясняет тип «оружие»");
+  assert.ok(html.includes("ни здоровья, ни защиты"), "оружие не даёт защитных характеристик");
+  assert.ok(html.includes("Тяжёлая требует СИЛ"), "тяжёлая броня требует СИЛ");
+  assert.ok(html.includes("СИЛ даёт защиту и немного здоровья"), "аксессуары дают бонус по характеристике");
+  assert.ok(html.includes("Свойство у аксессуара есть"), "у аксессуара всегда есть свойство");
+  assert.ok(html.includes("только в правую"), "меч, молот и посох — только правая рука");
+  assert.ok(html.includes("магическими"), "приёмы посоха и палочки магические");
   for (const name of ["Вампиризм", "Магический вампиризм", "Шанс крита", "Критический урон", "Регенерация", "Укрепление", "Магическое сопротивление", "Наступление", "Ярость", "Ускорение", "Мудрость", "Мощь", "Точность", "Шипы"]) {
     assert.ok(html.includes(name), name);
   }

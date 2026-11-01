@@ -57,6 +57,17 @@ export type RarityTier = "common" | "rare" | "epic" | "legendary";
 /** Вес/габарит снаряжения. Характеристика задаётся отдельно: лёгкий нож — ЛОВ, посох — ИНТ. */
 export type GearClass = "light" | "medium" | "heavy";
 
+/**
+ * Три типа снаряжения: оружие, броня и аксессуары.
+ * Оружие не даёт здоровья, брони и уклонения; броня и аксессуары не дают урона.
+ */
+export type GearKind = "weapon" | "armor" | "accessory";
+
+/** Вид оружия: от него зависят вес, рука, число свойств и их пул. */
+export type WeaponType =
+  | "dagger" | "rapier" | "sword" | "spear" | "axe" | "hammer"
+  | "greatsword" | "greataxe" | "warhammer" | "staff" | "wand";
+
 import type { GearEffectId, GearPassiveId } from "./gearEffects";
 
 export type RareAffixId = "vamp" | "crit" | "thorns" | "regen" | "pierce" | "swift" | "might";
@@ -74,8 +85,12 @@ export interface GearItem {
   slot: Slot;
   /** Уровень предмета 1…10: выше уровня персонажа надеть нельзя. */
   level: number;
-  /** Класс снаряжения: лёгкое / среднее / тяжёлое. */
+  /** Класс снаряжения: лёгкое / среднее / тяжёлое (у аксессуаров не выводится). */
   gearClass: GearClass;
+  /** Тип снаряжения. У старых сохранений может отсутствовать — выводится из базы. */
+  kind?: GearKind;
+  /** Вид оружия (только для kind === "weapon"). */
+  weaponType?: WeaponType;
   wear: WearTier;
   rarity: RarityTier;
   identified: boolean;
@@ -88,8 +103,8 @@ export interface GearItem {
   dmgRoll?: [number, number];
   /** Разброс параметров брони и украшений: 0.9 … 1.1 (только совместимость). */
   statMult: number;
-  /** Базовые броски ОЗ/брони до изношенности и уровня. */
-  statRolls?: { hp: number; armor: number };
+  /** Базовые броски ОЗ/брони/уклонения до изношенности и уровня. */
+  statRolls?: { hp: number; armor: number; evade?: number };
   /** Базовые значения свойств этого экземпляра до уровня. */
   effectRolls?: Partial<Record<GearEffectId, number>>;
   /** Конкретный приём этого экземпляра оружия (может отличаться от базового) */
