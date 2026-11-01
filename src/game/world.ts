@@ -574,7 +574,7 @@ export const EXTRA_ITEMS: ItemDef[] = [
   { id: "acid_vial", name: "Зелье кислоты", kind: "potion", price: 88, level: 2, minFloor: 2,
     use: { type: "acid", power: 12, scale: 1.5, scaleStat: "int", rounds: 2, element: "acid" },
     desc: "7 + 1.5×ЛОВ урона и снимает 3 брони врага (надолго)." },
-  { id: "holy_water", name: "Зелье святого пламени", kind: "potion", price: 105, level: 3, minFloor: 3,
+  { id: "holy_water", name: "Зелье очищающего пламени", kind: "potion", price: 105, level: 3, minFloor: 3,
     use: { type: "damage", power: 18, scale: 3, scaleStat: "int", vs: "undead", element: "light" },
     desc: "7 + 1.5×ЛОВ урона. Нежити — вдвое против обычных." },
   { id: "serrated_knife", name: "Зазубренный кинжал", kind: "throwable", price: 62, level: 2, minFloor: 2,
