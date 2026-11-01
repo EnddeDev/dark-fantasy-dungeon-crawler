@@ -109,6 +109,30 @@ test("MVC: GameController starts a run, returns to lobby and persists only safe 
   assert.ok(storage.getItem(SaveRepository.PLAYER_KEY), "lobby progress is persisted");
 });
 
+test("MVC: «Начать заново» стирает сохранения и возвращает нового героя", () => {
+  const storage = new MemoryStorage();
+  const game = new GameController(storage);
+  game.enterLobby("train");
+  game.model.updatePlayer((p) => ({ ...p, gold: 999, level: 4 }));
+  game.saveUnlockedFloor(5);
+  assert.ok(storage.getItem(SaveRepository.PLAYER_KEY));
+
+  game.restart();
+  const state = game.model.getSnapshot();
+  assert.equal(state.screen, "title");
+  assert.equal(state.run, null);
+  assert.equal(state.battle, null);
+  assert.equal(state.best, 0);
+  assert.equal(state.unlockedFloor, 1);
+  assert.equal(state.player.level, 1);
+  assert.equal(state.player.gold, PlayerFactory.createInitial().gold);
+  /* Новое сохранение пишется уже от нового героя; старый прогресс стёрт. */
+  assert.equal(storage.getItem(SaveRepository.BEST_KEY), null);
+  assert.equal(storage.getItem(SaveRepository.UNLOCKED_KEY), null);
+  const saved = JSON.parse(storage.getItem(SaveRepository.PLAYER_KEY) ?? "null");
+  if (saved) assert.equal(saved.level, 1);
+});
+
 test("MVC: BattleController applies victory loot and returns to the dungeon", () => {
   const game = makeGame();
   game.enterLobby("train");

@@ -32,17 +32,23 @@ function mkP(extra = {}) {
   };
 }
 
-test("enemy transition multipliers decay from 1.50 to 1.05 and accumulate", () => {
+test("enemy transition multipliers decay from 1.21 to 1.05 and accumulate", () => {
   assert.equal(scaling.enemyLevelStepMult(1), 1);
-  assert.equal(scaling.enemyLevelStepMult(2), 1.5);
-  assert.equal(scaling.enemyLevelStepMult(3), 1.45);
-  assert.equal(scaling.enemyLevelStepMult(4), 1.4);
+  assert.equal(scaling.enemyLevelStepMult(2), 1.21);
+  assert.equal(scaling.enemyLevelStepMult(3), 1.19);
+  assert.equal(scaling.enemyLevelStepMult(4), 1.17);
+  assert.equal(scaling.enemyLevelStepMult(10), 1.05);
   assert.equal(scaling.enemyLevelStepMult(11), 1.05);
   assert.equal(scaling.enemyLevelStepMult(30), 1.05);
   assert.equal(scaling.enemyLevelMult(1), 1);
-  assert.ok(Math.abs(scaling.enemyLevelMult(2) - 1.5) < 1e-9);
-  assert.ok(Math.abs(scaling.enemyLevelMult(3) - 1.5 * 1.45) < 1e-9);
+  assert.ok(Math.abs(scaling.enemyLevelMult(2) - 1.21) < 1e-9);
+  assert.ok(Math.abs(scaling.enemyLevelMult(3) - 1.21 * 1.19) < 1e-9);
   assert.ok(scaling.enemyLevelMult(0) < 1);
+  /* Опыт: герой 2 уровня за монстра 1 уровня получает вдвое меньше, и наоборот. */
+  assert.equal(scaling.xpLevelMult(2, 1), 0.5);
+  assert.equal(scaling.xpLevelMult(1, 2), 2);
+  assert.equal(scaling.xpLevelMult(3, 3), 1);
+  assert.equal(scaling.scaledEnemyXp(10, 2, 1), 5);
 });
 
 test("stat reset costs 100 per level, returns 1/1/1 and refunds level points", () => {
@@ -67,7 +73,7 @@ test("stat reset costs 100 per level, returns 1/1/1 and refunds level points", (
   assert.ok(res.removedSlots.includes("mainHand"));
 });
 
-test("trap preparation caps at 90%, bypass/disarm failures double effects, kit is consumed", () => {
+test("trap preparation caps at 90%, failures keep base effects, kit is spent only on success", () => {
   assert.equal(traps.prepareMultiplier(1), 0.9);
   assert.equal(traps.prepareMultiplier(9), 0.1);
   assert.equal(traps.prepareMultiplier(20), 0.1);
@@ -77,8 +83,14 @@ test("trap preparation caps at 90%, bypass/disarm failures double effects, kit i
   assert.equal(prepared.damage, Math.ceil(poison.damage * 0.8));
   assert.equal(prepared.rounds, Math.ceil(poison.rounds * 0.8));
   const failed = traps.resolveTrap(poison, "bypass", stats, false, 3, () => 0.99);
-  assert.equal(failed.damage, poison.damage * 2);
-  assert.equal(failed.rounds, poison.rounds * 2);
+  /* Провал больше не удваивает урон: срабатывает обычная сила механизма. */
+  assert.equal(failed.damage, poison.damage);
+  assert.equal(failed.rounds, poison.rounds);
+  assert.equal(failed.usedKit, false);
+  const failedDisarm = traps.resolveTrap(poison, "disarm", stats, true, 3, () => 0.99);
+  assert.equal(failedDisarm.success, false);
+  /* Неудачное обезвреживание не тратит набор сапёра. */
+  assert.equal(failedDisarm.usedKit, false);
   const disarmed = traps.resolveTrap(poison, "disarm", stats, true, 3, () => 0);
   assert.equal(disarmed.success, true);
   assert.equal(disarmed.usedKit, true);

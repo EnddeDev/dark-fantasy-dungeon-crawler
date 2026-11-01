@@ -104,7 +104,7 @@ export function resolveTrap(
   if (action === "disarm" && !hasKit) {
     return { success: false, damage: 0, rounds: 0, cursePower: 0, usedKit: false, xp: 0, message: "Нужно снаряжение сапёра." };
   }
-  const usedKit = action === "disarm";
+  /* Набор сапёра тратится только при удачном обезвреживании. */
   if (action === "prepare") {
     const m = prepareMultiplier(stats.str);
     return {
@@ -121,18 +121,18 @@ export function resolveTrap(
   const success = rng() < chance;
   if (success) {
     return {
-      success: true, damage: 0, rounds: 0, cursePower: 0, usedKit, xp,
+      success: true, damage: 0, rounds: 0, cursePower: 0, usedKit: action === "disarm", xp,
       message: action === "bypass" ? "Ты обошёл механизм стороной." : "Механизм обезврежен.",
     };
   }
   return {
     success: false,
-    damage: trap.damage * 2,
-    rounds: trap.rounds * 2,
-    cursePower: Math.min(90, trap.cursePower * 2),
-    usedKit,
+    damage: trap.damage,
+    rounds: trap.rounds,
+    cursePower: Math.min(90, trap.cursePower),
+    usedKit: false,
     xp: 0,
-    message: action === "bypass" ? "Обойти не вышло — механизм сработал вдвойне." : "Обезвредить не вышло — механизм сработал вдвойне.",
+    message: action === "bypass" ? "Обойти не вышло — механизм сработал." : "Обезвредить не вышло — механизм сработал.",
   };
 }
 

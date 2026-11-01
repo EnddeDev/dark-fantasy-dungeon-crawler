@@ -231,6 +231,7 @@ export function Lobby({
   controller,
   shopStock,
   onStart,
+  onRestart,
   best,
   unlockedFloor,
   initialTab = "train",
@@ -239,6 +240,8 @@ export function Lobby({
   controller: LobbyController;
   shopStock: GearItem[];
   onStart: (floor: number) => void;
+  /** Полный сброс прогресса — кнопка «Начать заново». */
+  onRestart: () => void;
   best: number;
   unlockedFloor: number;
   initialTab?: "train" | "guide";
@@ -246,6 +249,10 @@ export function Lobby({
   const [tab, setTab] = useState<Tab>(initialTab);
   const [shopSection, setShopSection] = useState<ShopSection>("equipment");
   const [supplyGroup, setSupplyGroup] = useState<SupplyGroup>("potion");
+  /* Сумка арсенала: припасы и реагенты в двух вкладках одной таблицы. */
+  const [bagTab, setBagTab] = useState<"supplies" | "reagents">("supplies");
+  /* «Начать заново»: подтверждение полного сброса прогресса. */
+  const [restartConfirm, setRestartConfirm] = useState(false);
   const [recipeGroup, setRecipeGroup] = useState<RecipeGroup>("potion");
   const [infoTip, setInfoTip] = useState<InfoTip>(null);
   const [selectedFloor, setSelectedFloor] = useState<number>(unlockedFloor);
@@ -588,6 +595,13 @@ export function Lobby({
                 </button>
               );
             })}
+            <button
+              type="button"
+              onClick={() => setRestartConfirm(true)}
+              className="ml-auto flex items-center gap-2 px-4 py-3 font-display text-[0.9rem] uppercase tracking-[0.16em] text-mute transition-colors hover:text-rubric"
+            >
+              Начать заново
+            </button>
           </nav>
 
           <div className="p-5 sm:p-6">
@@ -779,7 +793,7 @@ export function Lobby({
                   )}
                 </section>
 
-                {/* В арсенале видно, какие припасы и реагенты лежат в сумке. */}
+                {/* В арсенале видно, какие припасы и реагенты лежат в сумке; их можно продать. */}
                 <section aria-label="Припасы и реагенты" className="min-w-0 border border-line bg-black/20 p-3 min-[1200px]:col-span-2">
                   <div className="mb-3 flex flex-wrap items-end justify-between gap-3 border-b border-line pb-3">
                     <div>
@@ -790,38 +804,61 @@ export function Lobby({
                       припасов: {bagSupplies.length} · реагентов: {bagReagents.length}
                     </span>
                   </div>
-                  <div className="grid gap-4 min-[900px]:grid-cols-2">
-                    <div>
-                      <div className="sc mb-2 text-[0.86rem] text-verd">Припасы</div>
-                      {bagSupplies.length === 0 ? (
-                        <p className="text-sm italic text-mute">Припасов нет: зелья, свитки и метательное покупаются в лавке.</p>
-                      ) : (
-                        <ul className="space-y-1">
-                          {bagSupplies.map(([id, n]) => (
-                            <li key={id} className="flex items-baseline justify-between gap-2 border border-line bg-black/20 px-2.5 py-1.5">
-                              <span className="min-w-0 truncate text-[0.96rem] text-parch">{ITEMS[id]?.name ?? id}</span>
-                              <span className="font-mono text-[0.88rem] text-flame">×{n}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                    <div>
-                      <div className="sc mb-2 text-[0.86rem] text-verd">Реагенты</div>
-                      {bagReagents.length === 0 ? (
-                        <p className="text-sm italic text-mute">Реагентов нет: они нужны для варки и ковки.</p>
-                      ) : (
-                        <ul className="space-y-1">
-                          {bagReagents.map(([id, n]) => (
-                            <li key={id} className="flex items-baseline justify-between gap-2 border border-line bg-black/20 px-2.5 py-1.5">
-                              <span className="min-w-0 truncate text-[0.96rem] text-parch">{ITEMS[id]?.name ?? id}</span>
-                              <span className="font-mono text-[0.88rem] text-verd">×{n}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
+                  <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-line pb-2">
+                    {([
+                      ["supplies", `Припасы · ${bagSupplies.length}`],
+                      ["reagents", `Реагенты · ${bagReagents.length}`],
+                    ] as ["supplies" | "reagents", string][]).map(([id, label]) => (
+                      <Btn key={id} tone={bagTab === id ? "flame" : "ghost"} onClick={() => setBagTab(id)}>
+                        {label}
+                      </Btn>
+                    ))}
+                    <span className="ml-auto text-xs text-mute">Продажа идёт по половине цены лавки</span>
                   </div>
+                  {(() => {
+                    const rows = bagTab === "supplies" ? bagSupplies : bagReagents;
+                    const empty = bagTab === "supplies"
+                      ? "Припасов нет: зелья, свитки и метательное покупаются в лавке."
+                      : "Реагентов нет: они нужны для варки и ковки.";
+                    if (rows.length === 0) return <p className="text-sm italic text-mute">{empty}</p>;
+                    return (
+                      <div className="overflow-x-auto border border-line">
+                        <table className="w-full min-w-[420px] border-collapse text-[0.96rem]">
+                          <thead>
+                            <tr className="bg-black/40 text-left">
+                              <th className="px-3 py-2 font-display text-[0.86rem] uppercase tracking-[0.08em] text-flamedim">Название</th>
+                              <th className="px-3 py-2 text-right font-display text-[0.86rem] uppercase tracking-[0.08em] text-flamedim">Количество</th>
+                              <th className="px-3 py-2 text-right font-display text-[0.86rem] uppercase tracking-[0.08em] text-flamedim">Цена продажи</th>
+                              <th className="px-3 py-2 text-right font-display text-[0.86rem] uppercase tracking-[0.08em] text-flamedim">Действие</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.map(([id, n]) => {
+                              const def = ITEMS[id];
+                              const price = supplySellPrice(def);
+                              return (
+                                <tr key={id} className="border-t border-line hover:bg-flame/5">
+                                  <td className="px-3 py-2 text-parch">{def?.name ?? id}</td>
+                                  <td className="px-3 py-2 text-right font-mono text-flame">×{n}</td>
+                                  <td className="px-3 py-2 text-right font-mono text-verd">{price} зол.</td>
+                                  <td className="px-3 py-2 text-right">
+                                    <Btn
+                                      className="px-2.5 py-1.5 text-[0.86rem]"
+                                      tone="ghost"
+                                      disabled={price <= 0}
+                                      onClick={() => def && sellSupply(def)}
+                                    >
+                                      Продать 1
+                                    </Btn>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })()}
                 </section>
               </div>
             )}
@@ -1473,6 +1510,27 @@ export function Lobby({
               );
             })}
           </div>
+        </Modal>
+      )}
+
+      {restartConfirm && (
+        <Modal
+          title="Начать заново"
+          sub="Полный сброс прогресса"
+          onClose={() => setRestartConfirm(false)}
+          actions={
+            <>
+              <Btn onClick={() => setRestartConfirm(false)}>Отмена</Btn>
+              <Btn tone="flame" onClick={() => { setRestartConfirm(false); onRestart(); }}>
+                Стереть и начать
+              </Btn>
+            </>
+          }
+        >
+          <p className="dropcap text-[1.02rem] leading-relaxed text-parch/85">
+            Будут удалены герой, золото, снаряжение, открытые этажи и рекорд. Игра вернётся к титульному экрану с
+            новым героем 1 уровня. Отменить это действие нельзя.
+          </p>
         </Modal>
       )}
     </div>

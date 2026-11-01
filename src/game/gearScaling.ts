@@ -7,6 +7,17 @@ import type { GearEffectId, GearPassiveId } from "./gearEffects";
 import type { EpicSkillId, LegendaryPassiveId, RareAffixId } from "./types";
 
 export const GEAR_LEVEL_GROWTH = 1.2;
+/**
+ * Двуручное оружие бьёт вдвое сильнее одноручного аналога.
+ * Раньше коэффициент был ×3 — теперь базовый урон двуручников пересчитан на ×2.
+ */
+export const TWO_HAND_VS_ONE_HAND = 2;
+export const TWO_HAND_LEGACY_FACTOR = 3;
+export const TWO_HAND_DAMAGE_SCALE = TWO_HAND_VS_ONE_HAND / TWO_HAND_LEGACY_FACTOR;
+/** Дополнительных ходов от снаряжения не бывает больше трёх. */
+export const MAX_EXTRA_AP = 3;
+/** Уровень предмета, с которого может выпасть свойство дополнительного хода. */
+export const EXTRA_AP_MIN_LEVEL = 5;
 export const GEAR_STAT_GROWTH = 1.5;
 export const GEAR_EFFECT_FAST_GROWTH = 1.5;
 export const GEAR_EFFECT_SLOW_GROWTH = 1.25;
@@ -127,8 +138,10 @@ export function rollEffectBase(id: GearEffectId, rng: () => number = Math.random
 
 export function effectMagnitude(id: GearEffectId, level: number, rolledBase?: number): number {
   if (id === "ap") {
+    /* Дополнительные ходы: свойство появляется с 5 уровня и даёт не больше трёх ходов. */
     const l = clampGearLevel(level);
-    return l >= 10 ? 3 : l >= 7 ? 2 : l >= 3 ? 1 : 0;
+    if (l < EXTRA_AP_MIN_LEVEL) return 0;
+    return Math.min(MAX_EXTRA_AP, l >= 9 ? 3 : l >= 7 ? 2 : 1);
   }
   const def = GEAR_EFFECT_BASE[id];
   const base = rolledBase ?? def.value;

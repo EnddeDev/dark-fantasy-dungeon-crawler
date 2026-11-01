@@ -86,8 +86,12 @@ test("armory shows supplies and reagents from the bag", () => {
   }));
   assert.ok(html.includes("Припасы и реагенты"), "в арсенале виден блок припасов и реагентов");
   assert.ok(html.includes("припасов: 2") && html.includes("реагентов: 1"));
+  /* Сумка — таблица в две вкладки: припасы открыты по умолчанию. */
+  assert.ok(html.includes("Припасы · 2") && html.includes("Реагенты · 1"));
+  assert.ok(html.includes("<table"), "припасы показаны таблицей");
   assert.ok(html.includes(content.ITEMS.potion_s.name), "видно зелье");
-  assert.ok(html.includes(content.ITEMS.moss.name), "видно реагент");
+  assert.ok(html.includes("Продать 1"), "из арсенала можно продать припас");
+  assert.ok(html.includes("Цена продажи"));
 });
 
 test("dungeon header hides maze counts and corridor healing shows fixed/INT formulas", () => {
@@ -191,7 +195,7 @@ test("lobby exposes stat reset, special supplies and sell buttons", () => {
   assert.ok(html.includes("1 Сила / 1 Ловкость / 1 Интеллект"));
 });
 
-test("dungeon shows field specials, torch/burning chips and revealed map markers", () => {
+test("dungeon shows field specials, torch chip and revealed map markers", () => {
   const m = maze.genMaze(8, 3, "fire");
   const run = {
     floor: 3, maze: m, pos: m.start, prevPos: m.start, seen: {}, steps: 0,
@@ -205,7 +209,8 @@ test("dungeon shows field specials, torch/burning chips and revealed map markers
     onCancelPath: noop, onResumePath: noop,
   }));
   assert.ok(html.includes("факел: 4 ход."));
-  assert.ok(html.includes("горение ×2"));
+  /* Огненные недра больше не жгут на карте — счётчик горения убран. */
+  assert.ok(!html.includes("горение ×2"));
   assert.ok(html.includes("карта раскрыта"));
   assert.ok(html.includes("Факел"));
   assert.ok(html.includes("Бурдюк с водой"));

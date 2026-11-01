@@ -77,6 +77,17 @@ export class SaveRepository {
     }
   }
 
+  /** Полная очистка прогресса: режим «Начать заново». */
+  clear(): void {
+    for (const key of [SaveRepository.BEST_KEY, SaveRepository.UNLOCKED_KEY, SaveRepository.PLAYER_KEY]) {
+      try {
+        this.storage.removeItem?.(key);
+      } catch {
+        /* приватный режим */
+      }
+    }
+  }
+
   writePlayer(player: Player): void {
     try {
       this.storage.setItem(SaveRepository.PLAYER_KEY, JSON.stringify(player));

@@ -35,6 +35,7 @@ export function GameView({
             controller={game.lobby}
             shopStock={shopStock}
             onStart={(floor) => game.startRun(floor)}
+            onRestart={() => game.restart()}
             best={best}
             unlockedFloor={unlockedFloor}
             initialTab={lobbyEntry}

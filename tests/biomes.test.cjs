@@ -168,32 +168,42 @@ test("darkness adds a separate 25% miss check to physical attacks", () => {
   assert.equal(battle.combatReadout(combat("dark")).missChance, 0.25);
 });
 
-test("fire stacks burning separately on each combatant at the start of their own turn", () => {
+test("fire burns both sides only on the hero's turn", () => {
   const b = battle.newBattle(player({ hp: 100, stats: { str: 1, agi: 10, int: 1 } }), 3, false, "fire");
   assert.equal(b.p.statuses.burning, 1); // первый ход игрока уже начался
   b.p.hp = 100; b.p.armor = 999;
-  b.enemy.hp = 1000; b.enemy.maxHp = 1000; b.enemy.statuses.burning = 0;
+  b.enemy.hp = 1000; b.enemy.maxHp = 1000; b.enemy.statuses.burning = 1;
   b.enemy.effects = []; b.enemy.effectPower = {}; b.enemy.passive = null;
   b.enemy.moves = ["guard"]; b.enemy.def = { ...b.enemy.def, moves: ["guard"] };
   b.queue = ["p", "e", "p", "e", "p", "e"]; b.idx = 0;
 
+  /* Ход героя: огонь молчит до начала следующего его хода. */
   let next = battle.playerAct(b, { type: "guard" });
+  assert.equal(next.p.statuses.burning, 1);
+  assert.equal(next.p.hp, 100);
   assert.equal(next.enemy.statuses.burning, 1);
-  assert.equal(next.enemy.hp, 998);
+  assert.equal(next.enemy.hp, 1000);
+
+  /* Ход монстра: пока ходит он, огонь не тикает; но следующий ход героя
+     начинается сразу после него — и тогда горят оба. */
   next = battle.enemyStep(next);
+  assert.equal(next.enemy.guard, true);
   assert.equal(next.p.statuses.burning, 2);
   assert.equal(next.p.hp, 96);
-  next = battle.playerAct(next, { type: "guard" });
   assert.equal(next.enemy.statuses.burning, 2);
-  assert.equal(next.enemy.hp, 994);
-  next = battle.enemyStep(next);
-  assert.equal(next.p.statuses.burning, 3);
-  assert.equal(next.p.hp, 90);
+  assert.equal(next.enemy.hp, 996);
+
+  /* Ход героя не добавляет горения — только начало его следующего хода. */
+  next = battle.playerAct(next, { type: "guard" });
+  assert.equal(next.p.statuses.burning, 2);
+  assert.equal(next.p.hp, 96);
+  assert.equal(next.enemy.statuses.burning, 2);
+  assert.equal(next.enemy.hp, 996);
 
   next.bag.antidote = 1;
   next.queue = ["p", "e"]; next.idx = 0;
   const cleansed = battle.playerAct(next, { type: "item", id: "antidote" });
-  assert.equal(cleansed.p.statuses.burning, 3);
+  assert.equal(cleansed.p.statuses.burning, 2);
 });
 
 test("combat readout exposes biome damage modifiers and fire stacks", () => {

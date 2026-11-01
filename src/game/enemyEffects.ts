@@ -35,7 +35,12 @@ export function rollEnemyEffects(
 
 export function enemyEffectPower(effects: GearEffectId[], level: number): Partial<Record<GearEffectId, number>> {
   const out: Partial<Record<GearEffectId, number>> = {};
-  for (const id of effects) out[id] = (out[id] ?? 0) + effectMagnitude(id, level);
+  for (const id of effects) {
+    const value = effectMagnitude(id, level);
+    /* Дополнительные ходы не складываются — как и у героя. */
+    if (id === "ap") out[id] = Math.max(out[id] ?? 0, value);
+    else out[id] = (out[id] ?? 0) + value;
+  }
   return out;
 }
 

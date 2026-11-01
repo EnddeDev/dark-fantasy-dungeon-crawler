@@ -1,6 +1,5 @@
 import { derived, newBattle, rollConsumableLoot, rollGearDrop } from "../game/battle";
 import { biomeHealingAmount, mazeBiome } from "../game/biomes";
-import { fireBurnDamage } from "../game/biomes";
 import { GEAR_BASES, ITEMS, REAGENTS, consumableIntReq, consumablePower, equipItem, grantXp, pick, randInt, scaledGearStats, unequipSlot } from "../game/content";
 import { rollStepEvent } from "../game/events";
 import { cellIdx, findPath, wallBetween } from "../game/maze";
@@ -271,12 +270,12 @@ export class DungeonController {
       };
       msg = "Потрёпанная карта: сундуки, босс, события, монстры и ловушки отмечены до конца этажа.";
     } else if (u.type === "special_water") {
-      if (mazeBiome(run.maze) !== "fire" || (run.burning ?? 0) <= 0) {
-        this.model.setModal({ kind: "note", title: "Горения нет", body: "Бурдюк с водой нужен, когда на карте в Огненных недрах осталось горение." });
+      if (mazeBiome(run.maze) !== "fire") {
+        this.model.setModal({ kind: "note", title: "Здесь не жарко", body: "Бурдюк с водой нужен в Огненных недрах — он снимает горение перед боем." });
         return;
       }
-      nextRun = { ...run, burning: 0, log: [...run.log, "Бурдюк с водой погасил горение на карте."] };
-      msg = "Бурдюк с водой: горение на карте снято.";
+      nextRun = { ...run, burning: 0, log: [...run.log, "Бурдюк с водой смочил плащ: горение перед боем снято."] };
+      msg = "Бурдюк с водой: горение перед боем снято.";
     } else if (u.type === "special_torch") {
       nextRun = { ...run, torchTurns: (u.rounds ?? 5) + 1, log: [...run.log, "Факел разгорелся: +1 видимость на 5 ходов по карте."] };
       msg = "Факел: +1 к видимости на 5 ходов по карте. Штраф мрака снят, пока он горит.";
@@ -371,11 +370,8 @@ export class DungeonController {
     }
     if ((statuses.wither ?? 0) > 0) statuses.wither = (statuses.wither ?? 0) - 1;
 
-    if (biome === "fire" && (r.burning ?? 0) > 0) {
-      const burn = fireBurnDamage(r.burning ?? 0);
-      hp -= burn;
-      r.log.push(`Горение на карте: −${burn} здоровья (×${r.burning}). Бурдюк с водой снимет его.`);
-    }
+    /* Огненные недра больше не жгут на карте: жар работает только в бою,
+       в начале хода героя. */
 
     if (hp <= 0) {
       this.model.updatePlayer((p) => ({ ...p, hp: 0 }));
@@ -409,7 +405,7 @@ export class DungeonController {
       r = { ...r, battleCell: null };
       commitPlayer();
       this.model.setRun(r);
-      this.model.setBattle(newBattle({ ...player, hp, statuses, bag: stepBag }, r.floor, true, mazeBiome(r.maze), r.torchTurns ?? 0, r.burning ?? 0));
+      this.model.setBattle(newBattle({ ...player, hp, statuses, bag: stepBag }, r.floor, true, mazeBiome(r.maze), r.torchTurns ?? 0, 0));
       this.model.setScreen("battle");
       return;
     }
@@ -419,7 +415,7 @@ export class DungeonController {
         r = { ...r, battleCell: null };
         commitPlayer();
         this.model.setRun(r);
-        this.model.setBattle(newBattle({ ...player, hp, statuses, bag: stepBag }, r.floor, true, mazeBiome(r.maze), r.torchTurns ?? 0, r.burning ?? 0));
+        this.model.setBattle(newBattle({ ...player, hp, statuses, bag: stepBag }, r.floor, true, mazeBiome(r.maze), r.torchTurns ?? 0, 0));
         this.model.setScreen("battle");
         return;
       }
@@ -499,7 +495,7 @@ export class DungeonController {
       r = { ...r, battleCell: idx, log: [...r.log, "Из темноты наперерез выходит обитатель этажа."] };
       commitPlayer();
       this.model.setRun(r);
-      this.model.setBattle(newBattle({ ...player, hp, statuses, bag: stepBag }, r.floor, false, biome, r.torchTurns ?? 0, r.burning ?? 0));
+      this.model.setBattle(newBattle({ ...player, hp, statuses, bag: stepBag }, r.floor, false, biome, r.torchTurns ?? 0, 0));
       this.model.setScreen("battle");
       return;
     }

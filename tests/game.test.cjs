@@ -26,6 +26,14 @@ const events = loadGameModule("events");
 const battle = loadGameModule("battle");
 const gearEffects = loadGameModule("gearEffects");
 
+/** Модули вне src/game собираем тем же способом. */
+function loadModule(entry, name) {
+  const outfile = path.join(temp, `${name}.cjs`);
+  buildSync({ entryPoints: [entry], outfile, bundle: true, platform: "node", format: "cjs" });
+  return require(outfile);
+}
+const { PlayerFactory } = loadModule("src/model/PlayerFactory.ts", "player-factory");
+
 /** Базовый игрок для тестов снаряжения. */
 function mkP(extra = {}) {
   return {
@@ -1654,15 +1662,15 @@ test("monster stats multiply by 1.5 per level, AP excluded; boss level equals fl
   assert.ok(boss.moves.some((m) => m.startsWith("seal_")));
 });
 
-test("acceleration gear gives 0/1/2/3 extra actions by level 1/3/7/10 every round", () => {
+test("acceleration gear gives 0/1/2/3 extra actions by level 1/5/7/10 every round", () => {
   const mkAp = (level) => {
-    const g = content.createGearItem({ baseId: "ring_band", level, rarity: "rare", wear: "new", identified: true });
+    const g = content.createGearItem({ baseId: "ring_band", level, rarity: "epic", wear: "new", identified: true });
     g.effects = ["ap"];
     g.passive = undefined;
     g.legendaryPassive = undefined;
     return g;
   };
-  for (const [level, expected] of [[1, 0], [2, 0], [3, 1], [5, 1], [6, 1], [7, 2], [9, 2], [10, 3]]) {
+  for (const [level, expected] of [[1, 0], [2, 0], [3, 0], [4, 0], [5, 1], [6, 1], [7, 2], [8, 2], [9, 3], [10, 3]]) {
     assert.equal(battle.gearExtraAp(mkAp(level)), expected, `уровень ${level}`);
   }
   const g = mkAp(10);
@@ -1676,6 +1684,77 @@ test("acceleration gear gives 0/1/2/3 extra actions by level 1/3/7/10 every roun
   const r2 = battle.combatReadout(b);
   assert.equal(r1.ap, 8);
   assert.equal(r2.ap, 8);
+});
+
+test("hero starts with 10 health and two-handers hit twice as hard as one-handers", () => {
+  const initial = PlayerFactory.createInitial();
+  /* Герой создаётся с 10 здоровья. */
+  assert.equal(initial.hp, 10);
+  assert.ok(battle.derived(initial).maxHp >= 10);
+  const oneHand = content.createGearItem({ baseId: "sword", level: 1, wear: "new", rarity: "common", identified: true, rng: () => 0.5 });
+  const twoHand = content.createGearItem({ baseId: "greatsword", level: 1, wear: "new", rarity: "common", identified: true, rng: () => 0.5 });
+  const a = content.scaledGearStats(oneHand).dmg;
+  const b = content.scaledGearStats(twoHand).dmg;
+  /* Двуручный меч ровно вдвое сильнее меча-аналога (было втрое). */
+  assert.ok(Math.abs(b[0] / a[0] - 2) < 0.2, `мин: ${b[0]} против ${a[0]}`);
+  assert.ok(Math.abs(b[1] / a[1] - 2) < 0.2, `макс: ${b[1]} против ${a[1]}`);
+});
+
+test("enemy AI heals or guards when low, punishes misses and closes rounds by turn order", () => {
+  const base = () => {
+    const b = battle.newBattle(mkP({ level: 1, stats: { str: 1, agi: 1, int: 1 }, hp: 60 }), 1, false, "classic");
+    b.enemy.hp = 100; b.enemy.maxHp = 100;
+    b.biome = "classic";
+    b.enemy.moves = ["attack", "drain", "wound"];
+    b.enemy.def = { ...b.enemy.def, moves: ["attack", "drain", "wound"] };
+    return b;
+  };
+  /* Мало ОЗ — лечащий приём, а без него защитная стойка. */
+  const low = base();
+  low.enemy.hp = 20;
+  assert.equal(battle.chooseEnemyMove(low), "drain");
+  const lowNoHeal = base();
+  lowNoHeal.enemy.hp = 20;
+  lowNoHeal.enemy.moves = ["attack", "wound"];
+  assert.equal(battle.chooseEnemyMove(lowNoHeal), "guard");
+
+  /* Промах — следующий ход приём, при магии именно магический. */
+  const missed = base();
+  missed.enemy.lastMiss = true;
+  missed.enemy.moves = ["attack", "heavy", "wound", "terror"];
+  assert.equal(battle.chooseEnemyMove(missed), "terror");
+  const missedNoMagic = base();
+  missedNoMagic.enemy.lastMiss = true;
+  missedNoMagic.enemy.moves = ["attack", "heavy", "wound"];
+  assert.equal(battle.chooseEnemyMove(missedNoMagic), "wound");
+
+  /* Последний ход раунда: меньше ходов — защита, больше — удар или приём. */
+  const slower = base();
+  slower.queue = ["p", "p", "e"]; slower.idx = 2;
+  assert.equal(battle.chooseEnemyMove(slower), "guard");
+  const faster = base();
+  faster.queue = ["e", "e", "p"]; faster.idx = 1;
+  assert.ok(["attack", "drain", "wound"].includes(battle.chooseEnemyMove(faster)));
+
+  /* Слабый обычный удар — приёмы на негативные эффекты. */
+  const weak = base();
+  weak.p.armor = 999;
+  weak.enemy.moves = ["attack", "wound"];
+  assert.equal(battle.chooseEnemyMove(weak), "wound");
+});
+
+test("trap cells near the entrance are never placed right after a descent", () => {
+  for (let floor = 1; floor <= 6; floor++) {
+    for (let run = 0; run < 5; run++) {
+      const m = maze.genMaze(maze.mazeSizeForFloor(floor), floor);
+      for (const t of m.traps) {
+        const x = t % m.size;
+        const y = Math.floor(t / m.size);
+        const d = Math.abs(x - m.start.x) + Math.abs(y - m.start.y);
+        assert.ok(d >= 1, `ловушка не стоит на входе (этаж ${floor})`);
+      }
+    }
+  }
 });
 
 test("weapon effects bleed, poison and sunder trigger on a plain hit", () => {

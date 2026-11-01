@@ -96,7 +96,7 @@ test("new gear effects roll base spread and grow compound with ceil each level",
   assert.equal(scaling.effectMagnitude("vamp", 3, 5), 12);
   assert.equal(scaling.effectMagnitude("crit_chance", 2, 5), 7);
   assert.equal(scaling.effectMagnitude("crit_chance", 3, 5), 9);
-  for (const [level, expected] of [[1, 0], [2, 0], [3, 1], [6, 1], [7, 2], [9, 2], [10, 3]]) {
+  for (const [level, expected] of [[1, 0], [2, 0], [3, 0], [4, 0], [5, 1], [6, 1], [7, 2], [8, 2], [9, 3], [10, 3]]) {
     assert.equal(scaling.effectMagnitude("ap", level), expected);
   }
 });
