@@ -227,3 +227,37 @@ test("server: global chat is public and ordered", async () => {
   assert.deepEqual(bodies.slice(-2), ["первое", "второе"]);
   assert.equal((await api("POST", "/chat/global", a.token, { body: "" })).status, 400);
 });
+
+test("server: сохранение героя проверяется на сервере, а не принимается на слово", async () => {
+  const cheater = await account("cheat_save");
+  const me = await api("GET", "/me", cheater.token);
+  const base = me.data.profile.player;
+
+  const unknownGear = await api("PUT", "/me", cheater.token, {
+    player: { ...base, armory: [{ ...gear("x1"), baseId: "excalibur_admin" }] },
+    unlockedFloor: 1,
+    bestFloor: 1,
+  });
+  assert.equal(unknownGear.status, 400, "неизвестная база снаряжения отклонена");
+
+  const tooStrong = await api("PUT", "/me", cheater.token, {
+    player: { ...base, stats: { str: 10, agi: 10, int: 10 } },
+    unlockedFloor: 1,
+    bestFloor: 1,
+  });
+  assert.equal(tooStrong.status, 400, "характеристики сверх очков уровня отклонены");
+
+  const cleaned = await api("PUT", "/me", cheater.token, {
+    player: { ...base, gold: 99_999_999, equip: { ...base.equip, mainHand: "ghost-uid" }, hacked: true },
+    unlockedFloor: 1,
+    bestFloor: 1,
+  });
+  assert.equal(cleaned.status, 200, JSON.stringify(cleaned.data));
+
+  const after = await api("GET", "/me", cheater.token);
+  const saved = after.data.profile.player;
+  assert.equal(saved.equip.mainHand, null, "uid, которого нет в арсенале, снят");
+  assert.ok(saved.gold <= 1_000_000, `золото ограничено потолком: ${saved.gold}`);
+  assert.equal(saved.hacked, undefined, "посторонние поля не сохраняются");
+  assert.ok(saved.hp > 0 && saved.hp <= me.data.profile.player.hp + 1000);
+});

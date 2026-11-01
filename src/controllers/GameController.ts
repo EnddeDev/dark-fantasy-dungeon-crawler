@@ -124,8 +124,9 @@ export class GameController {
 
     const bag = { ...player.bag };
     lostItems.forEach((id) => {
-      bag[id] = (bag[id] ?? 0) - 1;
-      if (bag[id] <= 0) delete bag[id];
+      const left = Math.max(0, (bag[id] ?? 0) - 1);
+      if (left > 0) bag[id] = left;
+      else delete bag[id];
     });
     const armory = player.armory.filter((g) => !lostGearUids.has(g.uid));
     const equip = { ...player.equip };

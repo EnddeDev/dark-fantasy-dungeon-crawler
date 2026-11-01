@@ -3,6 +3,7 @@ import { biomeHealingAmount, mazeBiome } from "../game/biomes";
 import { GEAR_BASES, ITEMS, REAGENTS, consumableIntReq, consumablePower, equipItem, grantXp, pick, randInt, scaledGearStats, unequipSlot } from "../game/content";
 import { rollStepEvent } from "../game/events";
 import { cellIdx, findPath, wallBetween } from "../game/maze";
+import { pruneRunLoot } from "../game/runLoot";
 import { CHILL_HEAL_MULT, magicTickDamage, statusTickDamage } from "../game/statusEffects";
 import { applyTrapOutcome, isBattleCurse, lockpickChance, makeTrap, resolveTrap, rollTrapKind, type TrapAction } from "../game/traps";
 import type { GearItem, Player, Run, Slot } from "../game/types";
@@ -81,7 +82,7 @@ export class DungeonController {
     this.model.logRun(`${SLOT_META[slot].name}: снято.`);
   }
 
-  resolveEvent(eventId: string, choiceId: string): void {
+  resolveEvent(eventId: string, choiceId: string, cell?: number): void {
     const { run, player } = this.state;
     const ev = mapEventById(eventId);
     if (!ev || !run) return;
@@ -135,9 +136,14 @@ export class DungeonController {
     const withXp = xpGain > 0 ? grantXp(nextPlayer, xpGain).player : nextPlayer;
     this.model.setPlayer(withXp);
 
-    const mark = run.maze.events.find((i) => !run.maze.usedEvents.includes(i) && MAP_EVENTS[i % MAP_EVENTS.length]?.id === eventId);
+    /* Помечаем ту клетку, где герой стоит (или которую передал интерфейс):
+       раньше здесь искалась «первая неиспользованная клетка с тем же
+       событием», и при совпадении типов гасилась чужая клетка. */
+    const here = cell ?? cellIdx(run.pos.x, run.pos.y, run.maze.size);
     const merged: Run = { ...run };
-    if (mark !== undefined) merged.maze = { ...run.maze, usedEvents: [...run.maze.usedEvents, mark] };
+    if (run.maze.events.includes(here) && !run.maze.usedEvents.includes(here)) {
+      merged.maze = { ...run.maze, usedEvents: [...run.maze.usedEvents, here] };
+    }
     if (goldDelta !== 0) merged.gold = Math.max(0, run.gold + goldDelta);
     if (gainedItems.length) merged.loot = [...run.loot, ...gainedItems];
     if (gainedGear.length) merged.gearLoot = [...gainedGear, ...run.gearLoot];
@@ -148,7 +154,12 @@ export class DungeonController {
       this.game.die("Событие подземелья забрало последние силы.");
       return;
     }
-    this.model.setModal({ kind: "event", eventId, result: { title: ev.name, good: choice.goodText, bad: choice.badText } });
+    this.model.setModal({
+      kind: "event",
+      eventId,
+      cell: here,
+      result: { title: ev.name, good: choice.goodText, bad: choice.badText },
+    });
   }
 
   takeTrap(action: TrapAction): void {
@@ -162,6 +173,9 @@ export class DungeonController {
     const hp = player.hp - outcome.damage;
     const statuses = applyTrapOutcome(player.statuses, trap, outcome);
     this.model.logRun(`${outcome.message}${outcome.damage > 0 ? ` −${outcome.damage} здоровья.` : ""}${outcome.xp > 0 ? ` +${outcome.xp} XP.` : ""}`);
+    if (outcome.usedKit) {
+      this.model.updateRun((p) => (p ? { ...p, loot: pruneRunLoot(p.loot, { sapper_kit: 1 }) } : p));
+    }
     if (hp <= 0) {
       this.model.updatePlayer((p) => ({ ...p, hp: 0, statuses }));
       this.game.die("Ловушка сработала быстрее, чем ты успел отскочить.");
@@ -182,6 +196,7 @@ export class DungeonController {
     const { run, player } = this.state;
     if (!run || (player.bag.lockpicks ?? 0) <= 0) return;
     const success = Math.random() < lockpickChance(player.stats.agi);
+    this.model.updateRun((p) => (p ? { ...p, loot: pruneRunLoot(p.loot, { lockpicks: 1 }) } : p));
     this.model.updatePlayer((p) => {
       const bag: Record<string, number> = { ...p.bag, lockpicks: (p.bag.lockpicks ?? 0) - 1 };
       if (bag.lockpicks <= 0) delete bag.lockpicks;
@@ -283,7 +298,7 @@ export class DungeonController {
       return;
     }
     this.model.update({
-      run: nextRun,
+      run: { ...nextRun, loot: pruneRunLoot(nextRun.loot, { [id]: 1 }) },
       player: (() => {
         const bag = { ...player.bag };
         bag[id] = (bag[id] ?? 0) - 1;
@@ -437,7 +452,9 @@ export class DungeonController {
     }
 
     if (m.events.includes(idx) && !m.usedEvents.includes(idx)) {
-      const ev = MAP_EVENTS[idx % MAP_EVENTS.length];
+      /* Тип события случаен, а не выводится из индекса клетки: иначе два
+         события на этаже слишком часто оказываются одним и тем же. */
+      const ev = MAP_EVENTS[Math.floor(Math.random() * MAP_EVENTS.length)];
       commitPlayer();
       this.model.setRun({
         ...r,
@@ -445,7 +462,7 @@ export class DungeonController {
         log: [...r.log, `Событие: ${ev.name}.`],
       });
       this.model.setPath([]);
-      this.model.setModal({ kind: "event", eventId: ev.id });
+      this.model.setModal({ kind: "event", eventId: ev.id, cell: idx });
       return;
     }
 
