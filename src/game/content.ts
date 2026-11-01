@@ -439,7 +439,7 @@ export interface WeaponSkillDef {
     | "bleed" | "pierce" | "guard" | "chill" | "sunder" | "stun" | "leech" | "poison"
     | "armor_damage" | "guard_wall" | "missing_hp" | "enemy_missing" | "double_attack"
     | "guaranteed_crit" | "first_strike" | "debuff_damage" | "dodge_action"
-    | "skill_leech" | "curse_brand" | "create_scroll" | "full_guard";
+    | "skill_leech" | "curse_brand" | "create_scroll" | "full_guard" | "buff_break";
   desc: string;
   passiveNote: string;
   /** Приём магический: урон считается магическим (посох и волшебная палочка). */
@@ -1253,6 +1253,39 @@ const EXTRA_TECHNIQUES: WeaponSkillDef[] = [
     passiveNote: "При ИНТ ≥ 3 обычные удары мечом получают +0.6×СИЛ к урону.",
   },
   {
+    id: "ward_shatter",
+    name: "Сокрушение оберега",
+    intReq: 3,
+    cooldown: 3,
+    scaleStat: "str",
+    scaleMult: 1.9,
+    effect: "buff_break",
+    desc: "Урон оружия + 1.9×СИЛ; защита и усиления врага гаснут на 2 хода.",
+    passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.7×СИЛ.",
+  },
+  {
+    id: "ward_slice",
+    name: "Срез оберега",
+    intReq: 3,
+    cooldown: 3,
+    scaleStat: "agi",
+    scaleMult: 1.7,
+    effect: "buff_break",
+    desc: "Точный порез + 1.7×ЛОВ сквозь броню; защита и усиления врага гаснут на 2 хода.",
+    passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.6×ЛОВ.",
+  },
+  {
+    id: "ward_unravel",
+    name: "Развеивание чар",
+    intReq: 3,
+    cooldown: 3,
+    scaleStat: "int",
+    scaleMult: 1.8,
+    effect: "buff_break",
+    desc: "Разряд + 1.8×ИНТ сквозь броню; защита и усиления врага гаснут на 2 хода.",
+    passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.6×ИНТ.",
+  },
+  {
     id: "sundering_blade",
     name: "Раскол лат",
     intReq: 4,
@@ -1381,10 +1414,10 @@ export const WEAPON_TECHNIQUES: Record<string, WeaponSkillDef> = Object.fromEntr
  * тем самым, что требуется предмету: клинок на СИЛ не получит приём на ЛОВ.
  */
 export const TECHNIQUE_POOL: Record<string, string[]> = {
-  knife: ["artery_cut", "quick_cut", "venom_edge"],
+  knife: ["artery_cut", "quick_cut", "venom_edge", "ward_slice"],
   rapier: ["fencing", "disarming_thrust", "duelist_guard"],
-  sword: ["riposte_stance", "sweeping_cut", "sundering_blade"],
-  staff: ["arcane_pulse", "ember_strike", "warding_strike"],
+  sword: ["riposte_stance", "sweeping_cut", "sundering_blade", "ward_shatter"],
+  staff: ["arcane_pulse", "ember_strike", "warding_strike", "ward_unravel"],
   axe: ["bone_cleave", "reckless_swing", "rending_axe"],
   hammer: ["verdict_bell", "crushing_blow", "bulwark_smash"],
   abyss: ["void_reap", "pact_drain", "soul_reprise"],
@@ -1978,7 +2011,7 @@ export interface ItemDef {
       | "throw" | "poison" | "smoke" | "explosion" | "fear"
       | "haste" | "terror" | "stun_enemy" | "acid" | "stone"
       | "iron_tonic" | "blood_rage" | "quickblade" | "pact_elixir" | "scroll_creation"
-      | "bleed" | "blight" | "wither"
+      | "bleed" | "blight" | "wither" | "buff_break"
       | "special_kit" | "special_lockpick" | "special_map" | "special_water" | "special_torch";
     power?: number;
     scale?: number;
@@ -2048,6 +2081,7 @@ export const SUPPLY_LEVELS: Record<string, number> = {
   potion_stone: 3, scroll_terror: 3, scroll_snare: 4, acid_vial: 2, holy_water: 3,
   bomb_flash: 3, iron_tonic: 4, blood_rage: 4, quickblade_oil: 4,
   pact_elixir: 5, scroll_creation: 5, serrated_knife: 2, frost_bomb: 3,
+  scroll_dispel: 3, dispel_powder: 2,
   blight_powder: 4, wither_dust: 5,
   sapper_kit: 2, lockpicks: 1, tattered_map: 2, water_skin: 1, field_torch: 1,
   parchment: 1, magic_ink: 2, scrap_metal: 1, vial: 1,

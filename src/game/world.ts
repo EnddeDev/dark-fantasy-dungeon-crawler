@@ -595,6 +595,12 @@ export const EXTRA_ITEMS: ItemDef[] = [
   { id: "bomb_flash", name: "Световая бомба", kind: "throwable", price: 92,
     use: { type: "stun_enemy", rounds: 2 },
     desc: "Ослепляет: враг пропускает 2 следующих хода." },
+  { id: "scroll_dispel", name: "Свиток развеивания", kind: "scroll", price: 130, level: 3, minFloor: 3,
+    use: { type: "buff_break", power: 10, scale: 1, scaleStat: "int", intReq: 3, rounds: 2 },
+    desc: "10 + 1×ИНТ чистого урона и 2 хода без оберегов: защита, лечение, ярость и крепь врага гаснут. Чтение требует ИНТ 3." },
+  { id: "dispel_powder", name: "Прах отмены", kind: "throwable", price: 85, level: 2, minFloor: 2,
+    use: { type: "buff_break", rounds: 2 },
+    desc: "Горсть пепла срывает обереги врага на 2 хода: ни защиты, ни лечения, ни усилений." },
 ];
 
 export const EXTRA_RECIPES: Recipe[] = [

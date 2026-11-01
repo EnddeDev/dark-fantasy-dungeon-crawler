@@ -2277,7 +2277,7 @@ test("каждый приём оружия выпадает вместе с пр
   }
   const missing = Object.keys(techniques).filter((id) => !seen.has(id));
   assert.deepEqual(missing, [], `приёмы не выпадают: ${missing.join(", ")}`);
-  assert.equal(Object.keys(techniques).length, 44);
+  assert.equal(Object.keys(techniques).length, 47);
 });
 
 test("приём всегда считает от той характеристики, которую требует предмет", () => {
@@ -2366,4 +2366,145 @@ test("эпический приём тоже считается от харак�
     }
   }
   assert.deepEqual([...seen].sort(), Object.keys(content.EPIC_SKILLS).sort(), "эпические приёмы должны остаться достижимыми");
+});
+
+/** Игрок с оружием, у которого заранее задан приём. */
+function withTechnique(skillId, baseId = "sword") {
+  const g = content.createGearItem({ baseId, rarity: "rare", wear: "new", identified: true, level: 5, skillId });
+  const p = mkP({ level: 10, stats: { str: 8, agi: 8, int: 8 }, hp: 200 });
+  p.armory = [g];
+  p.equip = { ...p.equip, mainHand: g.uid };
+  p.hp = battle.derived(p).maxHp;
+  const b = battle.newBattle(p, 1, false, undefined, 20, false);
+  b.enemy.def = { ...b.enemy.def, race: "none", type: "strong" };
+  b.enemy.mtype = "strong";
+  b.enemy.passive = null;
+  b.enemy.effects = [];
+  b.enemy.effectPower = {};
+  b.enemy.armor = 0;
+  return b;
+}
+
+test("обереги врага срывают приём на каждую характеристику, свиток и прах", () => {
+  const breaks = Object.values(content.WEAPON_TECHNIQUES).filter((t) => t.effect === "buff_break");
+  assert.deepEqual(breaks.map((t) => t.scaleStat).sort(), ["agi", "int", "str"], "нужен приём на каждую характеристику");
+  for (const t of breaks) {
+    const owners = Object.values(content.GEAR_BASES).filter((b) => (content.TECHNIQUE_POOL[b.id] ?? []).includes(t.id));
+    assert.equal(owners.length, 1, `${t.id}: приём должен выпадать с одной моделью`);
+    const stat = owners[0].stat ?? (owners[0].gearClass === "heavy" ? "str" : owners[0].gearClass === "light" ? "int" : "agi");
+    assert.equal(stat, t.scaleStat, `${t.id}: линейка чужой характеристики`);
+    assert.equal(t.cooldown, 3);
+  }
+  const scroll = content.ITEMS.scroll_dispel;
+  const powder = content.ITEMS.dispel_powder;
+  assert.ok(scroll && powder, "свиток и расходник должны существовать");
+  assert.equal(scroll.kind, "scroll");
+  assert.equal(powder.kind, "throwable");
+  for (const def of [scroll, powder]) {
+    assert.equal(def.use.type, "buff_break");
+    assert.equal(def.use.rounds, 2, `${def.id}: обереги гаснут ровно на 2 хода`);
+    assert.ok(content.canBuySupply(def.id, 3), `${def.id}: должен появляться в лавке`);
+  }
+});
+
+test("приём срывает обереги врага на два хода", () => {
+  const rnd = Math.random;
+  const b = withTechnique("ward_shatter");
+  Math.random = () => 0.9;
+  const after = battle.playerAct(b, { type: "weapon_skill" });
+  Math.random = rnd;
+  assert.equal(after.enemy.suppressed, 2);
+  assert.equal(after.enemy.guard, false);
+  assert.ok(after.log.some((l) => l.text.includes("Обереги")), "нет сообщения о срыве оберегов");
+});
+
+test("под сорванными оберегами враг не лечится, не держит защиту и не ярится", () => {
+  const rnd = Math.random;
+  const seed = withTechnique("ward_shatter");
+
+  const damage = (suppressed) => {
+    const b = structuredClone(seed);
+    /* Запас здоровья огромный: иначе урон обрезается добиванием. */
+    b.enemy.maxHp = 5000;
+    b.enemy.hp = 5000;
+    b.enemy.guard = true;
+    if (suppressed) b.enemy.suppressed = 2;
+    Math.random = () => 0.5;
+    const before = b.enemy.hp;
+    const dealt = before - battle.playerAct(b, { type: "attack" }).enemy.hp;
+    Math.random = rnd;
+    return dealt;
+  };
+  const guarded = damage(false);
+  const broken = damage(true);
+  assert.ok(guarded > 0 && broken > guarded * 1.5, `защита должна гаснуть: ${broken} против ${guarded}`);
+
+  const heal = (suppressed) => {
+    const b = structuredClone(seed);
+    b.enemy.moves = ["drain"];
+    b.enemy.hp = Math.floor(b.enemy.maxHp * 0.5);
+    if (suppressed) b.enemy.suppressed = 2;
+    /* Очередь задаём вручную: у врага два хода, чтобы он не уходил в стойку от слабости. */
+    b.queue = ["p", "e", "p", "e"];
+    b.idx = 1;
+    Math.random = () => 0.9;
+    const after = battle.enemyStep(b);
+    Math.random = rnd;
+    return { healed: after.enemy.hp - b.enemy.hp, log: after.log.map((l) => l.text) };
+  };
+  assert.ok(heal(false).healed > 0, "без подавления вампиризм лечит");
+  const blocked = heal(true);
+  assert.equal(blocked.healed, 0, "под подавлением лечение не работает");
+  assert.ok(blocked.log.some((t) => t.includes("обереги сорваны")));
+
+  const furyDamage = (suppressed) => {
+    const b = structuredClone(seed);
+    b.enemy.def = { ...b.enemy.def, race: "dragon" };
+    b.enemy.moves = ["attack"];
+    b.enemy.atk = [10, 10];
+    b.enemy.fury = 3;
+    if (suppressed) b.enemy.suppressed = 2;
+    b.p.hp = b.p.maxHp;
+    b.queue = ["p", "e", "p", "e"];
+    b.idx = 1;
+    Math.random = () => 0.9;
+    const after = battle.enemyStep(b);
+    Math.random = rnd;
+    return b.p.hp - after.p.hp;
+  };
+  const rage = furyDamage(false);
+  const damped = furyDamage(true);
+  assert.ok(damped > 0, "под подавлением дракон всё равно бьёт");
+  assert.ok(rage > damped * 1.8, `ярость дракона тоже гаснет: ${damped} против ${rage}`);
+});
+
+test("обереги возвращаются через два раунда, свиток и прах срывают их сразу", () => {
+  const rnd = Math.random;
+  Math.random = () => 0.9;
+  let b = withTechnique("ward_shatter");
+  b.enemy.suppressed = 2;
+  const startRound = b.round;
+  let steps = 0;
+  while (b.round < startRound + 1 && steps < 40) {
+    b = b.queue[b.idx] === "p" ? battle.playerAct(b, { type: "guard" }) : battle.enemyStep(b);
+    steps++;
+  }
+  assert.equal(b.enemy.suppressed, 1, "через раунд остаётся один ход");
+  while (b.round < startRound + 2 && steps < 80) {
+    b = b.queue[b.idx] === "p" ? battle.playerAct(b, { type: "guard" }) : battle.enemyStep(b);
+    steps++;
+  }
+  assert.equal(b.enemy.suppressed, 0, "через два раунда обереги возвращаются");
+
+  const scroll = withTechnique("ward_shatter");
+  scroll.bag = { scroll_dispel: 1 };
+  const scrollHit = battle.playerAct(scroll, { type: "item", id: "scroll_dispel" });
+  assert.equal(scrollHit.enemy.suppressed, 2, "свиток срывает обереги");
+
+  const powder = withTechnique("ward_shatter");
+  powder.bag = { dispel_powder: 1 };
+  const powderHit = battle.playerAct(powder, { type: "item", id: "dispel_powder" });
+  assert.equal(powderHit.enemy.suppressed, 2, "прах срывает обереги");
+  assert.equal(powderHit.enemy.hp, powder.enemy.hp, "прах не наносит урона");
+  Math.random = rnd;
 });
