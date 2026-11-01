@@ -20,26 +20,23 @@ npm run art:check      # отчёт покрытия
 npm run art:check -- --strict  # упасть, если хотя бы одному id не хватает картины
 ```
 
-## Приоритет следующих партий
-1. Монстры без индивидуального портрета: seer, golem, slime, goblin_scout, skeleton_guard, spider_weaver, sporeling, mimic_larva, kobold, ghost_light.
-2. Далее: goblin_warrior, orc_raider, skeleton_archer, harpy, ogre_oaf, spider_hunter, mimic_chest, gargoyle, dark_priest, werewolf.
-3. Далее: iron_guardian, witch_spider, troll, vampire_lord, lich_tender, wyrmling, devourer, golem_colossus, mimic_elder, spider_queen.
-4. Далее: bone_warlord, sphinx, boss_prelate, boss_inquisitor, boss_queen, boss_lich, boss_warlord, boss_devourer, boss_sphinx.
-5. Предметы архетипов без индивидуальной картины: assassin_stiletto, iron_tonic, blood_rage, quickblade_oil.
-6. Предметы: greatsword, spear, warhammer2, dagger, shield_round, shield_tower, buckler, coif, helm, greathelm.
-7. Далее: crown_husk, shoes, greaves, strider_boots, wraps, vambraces, runed_bracers, ring_band, ring_edge, ring_ward.
-8. Далее: ring_venom, tooth, icon, soulstone, powder, cloth, root, herb, silk, fang.
-9. Далее: gland, ember, potion_haste, scroll_terror, scroll_snare, acid_vial, holy_water, potion_stone, bomb_flash.
+## Правила изображения
+- Никаких символов реальных религий и культов: ни крестов, ни нимбов, ни ликов, ни облачений.
+  Сюжеты — подземелье, ремесло, алхимия, звери и конструкты.
+- `icon` — светский артефакт: железная табличка с пустым овальным углублением.
+- `holy_water` называется «Зелье очищающего пламени»: белое пламя, никакой обрядности.
+
+## Остаток покрытия
+Все существа закрыты. У предметов без индивидуальной картины остаётся только стартовое
+снаряжение `start_*` — оно намеренно живёт на общем `items-atlas.jpg`.
 
 ## Уже добавленные индивидуальные портреты
 
-Покрытие на текущий момент: монстры 10/49, предметы 43/86.
+Покрытие на текущий момент: монстры 49/49, предметы 102/135 (все не-стартовые).
 
-- `imp`
-- `rat_swarm`
-- `rat_giant`
-- `bat_vampire`
-- `bulwark_mace`, `barbarian_greataxe`, `blood_hide`, `ninja_kusarigama`, `warlock_scepter`, `sage_censer`
-- `shadow_dust`, `pact_elixir`, `scroll_creation`
+- все 49 существ: от `imp` и `rat_swarm` до `boss_sphinx` и `boss_devourer`;
+- всё боевое снаряжение, аксессуары, реагенты, зелья, свитки и инструменты;
+- «Зелье очищающего пламени» (`holy_water`) и предметы истощения
+  (`scroll_dispel`, `dispel_powder`).
 
 После каждой партии: `npm run art:manifest`, `npm run art:check`, `npx tsc --noEmit`, `node --test tests/game.test.cjs`, `npm run build`.
