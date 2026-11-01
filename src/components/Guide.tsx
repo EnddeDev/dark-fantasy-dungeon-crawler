@@ -17,7 +17,6 @@ import {
   ARCHETYPES,
   ARCHETYPE_ORDER,
   BREW_FAILURE_CHANCE,
-  CREATURE_META,
   ENEMIES,
   GEAR_BASES,
   MAX_LEVEL,
@@ -29,6 +28,7 @@ import {
   xpForNextLevel,
 } from "../game/content";
 import { MAP_EVENTS } from "../game/world";
+import { MONSTER_RACES, MONSTER_RACE_META, MONSTER_TYPES, MONSTER_TYPE_META } from "../game/monsters";
 import { BIOMES, BIOME_ORDER, biomeChanceLabel } from "../game/biomes";
 import { BiomeIcon } from "./BiomeLabel";
 import { MAX_SIZE, MIN_SIZE, TORCH, chestCountForFloor, mazeSizeForFloor, monsterCountFor, trapCountFor } from "../game/maze";
@@ -771,10 +771,22 @@ export function Guide({
               Катастрофа (5%) — мини-босс с дополнительными приёмами и эффектами.
               Босс охраняет лестницу и оставляет гарантированный трофей не ниже редкого качества.
             </p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {Object.entries(CREATURE_META).map(([id, meta]) => (
+            <p className="text-[0.93rem] text-mute">
+              Любая тварь — это пара «тип + род». Тип задаёт профиль боя, род — иммунитеты, уязвимости и приёмы.
+            </p>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {MONSTER_TYPES.map((id) => (
                 <div key={id} className="border border-line bg-black/30 p-2 text-[0.93rem]">
-                  <b className="text-parch">{meta.name}.</b> <span className="text-mute">{meta.note}</span>
+                  <b className="text-parch">{MONSTER_TYPE_META[id].name}.</b>{" "}
+                  <span className="text-mute">{MONSTER_TYPE_META[id].note}</span>
+                </div>
+              ))}
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {MONSTER_RACES.map((id) => (
+                <div key={id} className="border border-line bg-black/30 p-2 text-[0.93rem]">
+                  <b className="text-flamehi">{MONSTER_RACE_META[id].name}.</b>{" "}
+                  <span className="text-mute">{MONSTER_RACE_META[id].note}</span>
                 </div>
               ))}
             </div>

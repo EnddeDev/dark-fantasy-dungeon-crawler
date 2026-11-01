@@ -28,6 +28,14 @@ const { MemoryStorage, SaveRepository } = load("src/model/SaveRepository.ts", "s
 const { PlayerFactory } = load("src/model/PlayerFactory.ts", "player-factory");
 const content = load("src/game/content.ts", "content");
 const battle = load("src/game/battle.ts", "battle");
+
+/** Бой с нейтральным врагом: род «никакой» и тип «сильный» не дают ни уклонения, ни иммунитетов. */
+function freshBattle(pl, floor, isBoss, biome, torchTurns, burning) {
+  const b = battle.newBattle(pl, floor, isBoss, biome, torchTurns, burning);
+  b.enemy.def = { ...b.enemy.def, race: "none", type: "strong" };
+  b.enemy.mtype = "strong";
+  return b;
+}
 const maze = load("src/game/maze.ts", "maze");
 
 function makeGame() {
@@ -155,7 +163,7 @@ test("MVC: BattleController applies victory loot and returns to the dungeon", ()
   game.enterLobby("train");
   game.startRun(1);
   const player = game.model.getSnapshot().player;
-  const b = battle.newBattle(player, 1);
+  const b = freshBattle(player, 1);
   b.over = "win";
   b.loot = { gold: 15, xp: 5, items: ["potion_s"], gear: [] };
   game.model.setBattle(b);

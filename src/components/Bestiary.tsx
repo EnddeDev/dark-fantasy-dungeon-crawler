@@ -2,7 +2,6 @@ import { useState } from "react";
 import { ChevronDown, Coins, FlaskConical, Package, Shield, Skull, Swords } from "lucide-react";
 import {
   BOSSES,
-  CREATURE_META,
   ENEMIES,
   THREAT_META,
   lootTableFor,
@@ -10,6 +9,7 @@ import {
 } from "../game/content";
 import type { Threat } from "../game/types";
 import { mazeSizeForFloor } from "../game/maze";
+import { MONSTER_RACE_META, MONSTER_TYPE_META, raceTraits } from "../game/monsters";
 import { FoePortrait } from "./FoeArt";
 import { RARITY_TEXT } from "./ui";
 
@@ -37,6 +37,10 @@ const MOVE_LABELS: Record<string, string> = {
   seal_items: "печать немоты",
   seal_skills: "печать забвения",
   seal_attack: "печать оков",
+  intimidate: "запугивание",
+  darkness: "мрак",
+  cold_touch: "холодное касание",
+  hell_force: "сила ада",
 };
 
 export function Bestiary() {
@@ -169,7 +173,10 @@ export function Bestiary() {
       </div>
 
       <section>
-        <h4 className="mb-3 font-display text-lg uppercase tracking-[0.12em] text-flamehi">Обитатели этажей</h4>
+        <h4 className="mb-1 font-display text-lg uppercase tracking-[0.12em] text-flamehi">Обитатели этажей</h4>
+        <p className="mb-3 text-[0.88rem] leading-snug text-mute">
+          Здоровье, урон и броня указаны базовыми — тип монстра (сильный, ловкий, умный) меняет их при появлении.
+        </p>
         <div className="divide-y divide-line border-y border-line">
           {ENEMIES.map((enemy) => {
             const available = enemy.minFloor <= floor;
@@ -181,14 +188,19 @@ export function Bestiary() {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <h5 className="font-display text-base uppercase tracking-[0.08em] text-flamehi">{enemy.name}</h5>
-                    <span className="font-mono text-[0.84rem] text-verd">{CREATURE_META[enemy.type].name}</span>
+                    <span className="font-mono text-[0.84rem] text-verd">
+                      {MONSTER_TYPE_META[enemy.type].name} · {MONSTER_RACE_META[enemy.race].name.toLowerCase()}
+                    </span>
                     <span className="font-mono text-[0.84rem] text-mute">с этажа {enemy.minFloor}</span>
                   </div>
                   <p className="mt-1 text-[0.92rem] italic leading-snug text-mute">{enemy.flavor}</p>
                   <p className="mt-1 font-mono text-[0.84rem] text-parch/75">
                     {[...new Set(enemy.moves)].map((mv) => MOVE_LABELS[mv] ?? mv).join(" · ")}
                   </p>
-                  <p className="mt-0.5 text-[0.84rem] text-mute">{CREATURE_META[enemy.type].note}</p>
+                  <p className="mt-0.5 text-[0.84rem] text-mute">{MONSTER_RACE_META[enemy.race].note}</p>
+                  <p className="mt-0.5 font-mono text-[0.82rem] text-parch/60">
+                    {[MONSTER_TYPE_META[enemy.type].note, ...raceTraits(enemy.race)].join(" · ")}
+                  </p>
                 </div>
                 <div className="flex flex-row gap-3 font-mono text-[0.84rem] text-mute sm:flex-col sm:items-end sm:gap-1">
                   <span className="flex items-center gap-1"><Skull size={12} aria-hidden />{enemy.hp} ОЗ</span>
@@ -214,7 +226,10 @@ export function Bestiary() {
               </span>
               <div>
                 <h5 className="font-display text-base uppercase tracking-[0.08em] text-flamehi">{boss.name}</h5>
-                <p className="font-mono text-[0.84rem] text-rubric">{boss.title} · {CREATURE_META[boss.type].name}</p>
+                <p className="font-mono text-[0.84rem] text-rubric">
+                  {boss.title} · {MONSTER_TYPE_META[boss.type].name} · {MONSTER_RACE_META[boss.race].name.toLowerCase()}
+                </p>
+                <p className="mt-0.5 text-[0.84rem] text-mute">{MONSTER_RACE_META[boss.race].note}</p>
                 <ul className="mt-1.5 space-y-0.5 text-[0.92rem] text-parch/85">
                   {boss.abilitiesDesc?.map((a) => <li key={a}>• {a}</li>)}
                 </ul>

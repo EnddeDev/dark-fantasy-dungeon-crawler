@@ -28,6 +28,14 @@ const { Rail } = load("src/components/Rail.tsx", "rail");
 const { Dungeon } = load("src/components/Dungeon.tsx", "dungeon");
 const { BattleView } = load("src/components/BattleView.tsx", "battle-view");
 const battle = load("src/game/battle.ts", "battle");
+
+/** Бой с нейтральным врагом: род «никакой» и тип «сильный» не дают ни уклонения, ни иммунитетов. */
+function freshBattle(pl, floor, isBoss, biome, torchTurns, burning) {
+  const b = battle.newBattle(pl, floor, isBoss, biome, torchTurns, burning);
+  b.enemy.def = { ...b.enemy.def, race: "none", type: "strong" };
+  b.enemy.mtype = "strong";
+  return b;
+}
 const content = load("src/game/content.ts", "content");
 const maze = load("src/game/maze.ts", "maze");
 
@@ -151,7 +159,7 @@ test("dungeon header hides maze counts and corridor healing shows fixed/INT form
 test("battle puts actions in the center and the log under the enemy on the right", () => {
   const weapon = content.createGearItem({ baseId: "sword", level: 1, wear: "worn", rarity: "common", identified: true });
   const p = makePlayer({ armory: [weapon], equip: { ...makePlayer().equip, mainHand: weapon.uid } });
-  const b = battle.newBattle(p, 1);
+  const b = freshBattle(p, 1);
   const html = renderToStaticMarkup(React.createElement(BattleView, {
     battle: b, onAct: noop, onEnemyTurn: noop, onContinue: noop,
   }));
@@ -198,7 +206,7 @@ test("dungeon map renders distinct biome palettes, textures and rules", () => {
 });
 
 test("battle view shows the biome rule and live burning stacks", () => {
-  const fire = battle.newBattle(makePlayer(), 3, false, "fire");
+  const fire = freshBattle(makePlayer(), 3, false, "fire");
   fire.p.statuses.burning = 2;
   fire.enemy.statuses.burning = 3;
   const html = renderToStaticMarkup(React.createElement(BattleView, {
@@ -209,7 +217,7 @@ test("battle view shows the biome rule and live burning stacks", () => {
   assert.ok(html.includes("Горение ×2"));
   assert.ok(html.includes("Горение врага ×3"));
 
-  const dark = battle.newBattle(makePlayer(), 3, false, "dark");
+  const dark = freshBattle(makePlayer(), 3, false, "dark");
   const darkHtml = renderToStaticMarkup(React.createElement(BattleView, {
     battle: dark, onAct: noop, onEnemyTurn: noop, onContinue: noop,
   }));
@@ -252,7 +260,7 @@ test("dungeon shows field specials, torch chip and revealed map markers", () => 
 
 test("battle item menu hides special supplies and reagents", () => {
   const p = makePlayer({ bag: { potion_s: 1, field_torch: 1, moss: 1 } });
-  const b = { ...battle.newBattle(p, 1), bag: { potion_s: 1, field_torch: 1, moss: 1 } };
+  const b = { ...freshBattle(p, 1), bag: { potion_s: 1, field_torch: 1, moss: 1 } };
   const html = renderToStaticMarkup(React.createElement(BattleView, {
     battle: b, onAct: noop, onEnemyTurn: noop, onContinue: noop,
   }));
