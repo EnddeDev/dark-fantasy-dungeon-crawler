@@ -265,26 +265,27 @@ export function Dungeon({
                 const ry = room.y * CS;
                 const rw = room.w * CS;
                 const rh = room.h * CS;
-                const patternId = biome !== "classic" ? "roomHall" :
-                  room.kind === "throne"
-                    ? "roomThrone"
-                    : room.kind === "crypt"
-                    ? "roomCrypt"
-                    : room.kind === "sanctuary"
-                    ? "roomSanctuary"
-                    : room.kind === "armory"
-                    ? "roomArmory"
-                    : room.kind === "treasury"
-                    ? "roomTreasury"
-                    : "roomHall";
-                const labelColor = biome !== "classic" ? colors.roomLabel :
-                  room.kind === "throne"
-                    ? "#f6d48a"
-                    : room.kind === "crypt"
-                    ? "#9a8672"
-                    : room.kind === "sanctuary"
-                    ? "#8fc4ae"
-                    : "#6b4f2a";
+                /* Настил и цвет подписи — по тону комнаты: видов комнат много,
+                   а узоров шесть, поэтому тон важнее конкретного названия. */
+                const tone = (room.tone ?? "plain") as "plain" | "crypt" | "throne" | "arcane" | "forge" | "store";
+                const TONE_PATTERN: Record<string, string> = {
+                  plain: "roomHall",
+                  crypt: "roomCrypt",
+                  throne: "roomThrone",
+                  arcane: "roomSanctuary",
+                  forge: "roomArmory",
+                  store: "roomTreasury",
+                };
+                const TONE_LABEL: Record<string, string> = {
+                  plain: "#6b4f2a",
+                  crypt: "#9a8672",
+                  throne: "#f6d48a",
+                  arcane: "#8fc4ae",
+                  forge: "#d8963f",
+                  store: "#c9a227",
+                };
+                const patternId = biome !== "classic" ? "roomHall" : TONE_PATTERN[tone] ?? "roomHall";
+                const labelColor = biome !== "classic" ? colors.roomLabel : TONE_LABEL[tone] ?? "#6b4f2a";
 
                 return (
                   <g key={`room${ri}`}>

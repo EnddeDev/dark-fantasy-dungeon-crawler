@@ -81,17 +81,58 @@ export function eventCountForFloor(floor: number): number {
   return floor >= 5 ? 2 : Math.random() < 0.55 ? 1 : 2;
 }
 
+/**
+ * Доля площади этажа под комнаты. Остальное — лабиринт коридоров.
+ * 0.4 комнат / 0.6 лабиринта: залы не должны съедать сам лабиринт.
+ */
+export const ROOM_AREA_SHARE = 0.4;
+/** Минимум комнат на этаж: этаж из одного зала не должен выглядеть пустым. */
+export function minRoomsFor(size: number): number {
+  return size <= 8 ? 3 : size <= 10 ? 4 : size <= 12 ? 5 : size <= 14 ? 6 : 7;
+}
+
+/** Сколько комнат максимум на этаж: 8×8 — пять, 16×16 — четырнадцать. */
+export function maxRoomsFor(size: number): number {
+  return size <= 8 ? 5 : size <= 10 ? 8 : size <= 12 ? 10 : size <= 14 ? 12 : 14;
+}
+
+/** Тон комнаты задаёт настил и цвет подписи на карте. */
+export type RoomTone = "plain" | "crypt" | "throne" | "arcane" | "forge" | "store";
+
+/**
+ * Каталог комнат: форма, колонны и тон. Чем больше разных форм, тем
+ * меньше шанс, что два зала на этаже будут одинаковыми.
+ */
 export const ROOM_KINDS = {
-  hall: { name: "Зал пепла", w: 3, h: 3, pillars: [] as [number, number][] },
-  crypt: { name: "Крипта", w: 3, h: 3, pillars: [[1, 1]] as [number, number][] },
-  rotunda: { name: "Ротонда", w: 3, h: 3, pillars: [[0, 0], [2, 0], [0, 2], [2, 2]] as [number, number][] },
-  gallery: { name: "Галерея", w: 4, h: 2, pillars: [[1, 0], [2, 1]] as [number, number][] },
-  pantry: { name: "Кладовая", w: 2, h: 2, pillars: [] as [number, number][] },
-  pillared: { name: "Пилоны", w: 3, h: 2, pillars: [[1, 0], [1, 1]] as [number, number][] },
-  throne: { name: "Тронный чертог", w: 3, h: 3, pillars: [[0, 0], [2, 0]] as [number, number][] },
-  sanctuary: { name: "Святилище", w: 3, h: 3, pillars: [[1, 1]] as [number, number][] },
-  armory: { name: "Оружейная", w: 3, h: 2, pillars: [] as [number, number][] },
-  treasury: { name: "Сокровищница", w: 2, h: 3, pillars: [] as [number, number][] },
+  /* малые залы 2×2 */
+  pantry: { name: "Кладовая", w: 2, h: 2, pillars: [] as [number, number][], tone: "store" as RoomTone },
+  well: { name: "Колодец", w: 2, h: 2, pillars: [] as [number, number][], tone: "plain" as RoomTone },
+  furnace: { name: "Горнило", w: 2, h: 2, pillars: [] as [number, number][], tone: "forge" as RoomTone },
+  /* вытянутые 3×2 и 2×3 */
+  pillared: { name: "Пилоны", w: 3, h: 2, pillars: [[1, 0], [1, 1]] as [number, number][], tone: "plain" as RoomTone },
+  armory: { name: "Оружейная", w: 3, h: 2, pillars: [] as [number, number][], tone: "store" as RoomTone },
+  forge: { name: "Кузня", w: 3, h: 2, pillars: [[2, 0]] as [number, number][], tone: "forge" as RoomTone },
+  cells: { name: "Клетки", w: 3, h: 2, pillars: [[0, 0], [2, 1]] as [number, number][], tone: "crypt" as RoomTone },
+  treasury: { name: "Сокровищница", w: 2, h: 3, pillars: [] as [number, number][], tone: "store" as RoomTone },
+  ossuary: { name: "Костехранилище", w: 2, h: 3, pillars: [[0, 1]] as [number, number][], tone: "crypt" as RoomTone },
+  workshop: { name: "Мастерская", w: 2, h: 3, pillars: [[1, 1]] as [number, number][], tone: "forge" as RoomTone },
+  /* залы 3×3 */
+  hall: { name: "Зал пепла", w: 3, h: 3, pillars: [] as [number, number][], tone: "plain" as RoomTone },
+  crypt: { name: "Крипта", w: 3, h: 3, pillars: [[1, 1]] as [number, number][], tone: "crypt" as RoomTone },
+  rotunda: { name: "Ротонда", w: 3, h: 3, pillars: [[0, 0], [2, 0], [0, 2], [2, 2]] as [number, number][], tone: "plain" as RoomTone },
+  throne: { name: "Тронный чертог", w: 3, h: 3, pillars: [[0, 0], [2, 0]] as [number, number][], tone: "throne" as RoomTone },
+  sanctuary: { name: "Святилище", w: 3, h: 3, pillars: [[1, 1]] as [number, number][], tone: "arcane" as RoomTone },
+  garden: { name: "Затопленный сад", w: 3, h: 3, pillars: [[1, 0], [1, 2]] as [number, number][], tone: "arcane" as RoomTone },
+  observatory: { name: "Обсерватория", w: 3, h: 3, pillars: [[0, 1], [2, 1]] as [number, number][], tone: "arcane" as RoomTone },
+  guardroom: { name: "Караульная", w: 3, h: 3, pillars: [[0, 0], [2, 2]] as [number, number][], tone: "store" as RoomTone },
+  /* большие залы: ими этаж и набирает 40 % площади */
+  gallery: { name: "Галерея", w: 4, h: 2, pillars: [[1, 0], [2, 1]] as [number, number][], tone: "plain" as RoomTone },
+  barracks: { name: "Казарма", w: 4, h: 2, pillars: [[1, 0], [2, 1]] as [number, number][], tone: "store" as RoomTone },
+  archive: { name: "Архив", w: 4, h: 2, pillars: [[0, 0], [3, 1]] as [number, number][], tone: "arcane" as RoomTone },
+  arena: { name: "Арена", w: 4, h: 3, pillars: [[0, 1], [3, 1]] as [number, number][], tone: "throne" as RoomTone },
+  strongroom: { name: "Хранилище", w: 4, h: 3, pillars: [[1, 1], [2, 1]] as [number, number][], tone: "store" as RoomTone },
+  great_hall: { name: "Большой зал", w: 4, h: 4, pillars: [[1, 1], [2, 2]] as [number, number][], tone: "throne" as RoomTone },
+  deep_crypt: { name: "Глубинная крипта", w: 4, h: 4, pillars: [[0, 0], [3, 3]] as [number, number][], tone: "crypt" as RoomTone },
 } as const;
 
 export type RoomKind = keyof typeof ROOM_KINDS;
@@ -104,6 +145,8 @@ export interface Room {
   h: number;
   kind: RoomKind;
   name: string;
+  /** Настил и цвет подписи на карте. */
+  tone: RoomTone;
   /** Клетки-колонны внутри комнаты (стены вокруг них закрыты). */
   pillars: [number, number][];
 }
@@ -162,59 +205,226 @@ function sealPillarIfSafe(
   return false;
 }
 
+/** Сколько клеток этажа занято комнатами (без колонн). */
+export function roomArea(rooms: { w: number; h: number }[]): number {
+  return rooms.reduce((sum, r) => sum + r.w * r.h, 0);
+}
+
+/** Доля комнат в площади этажа: 0.4 — целевые 40 %. */
+export function roomShare(rooms: { w: number; h: number }[], size: number): number {
+  return size > 0 ? roomArea(rooms) / (size * size) : 0;
+}
+
+/** Прямоугольники комнат пересекаются или стоят вплотную? */
+function overlaysRoom(
+  rooms: Room[],
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  gap = 1,
+): boolean {
+  for (const r of rooms) {
+    if (
+      x - gap < r.x + r.w &&
+      x + w + gap > r.x &&
+      y - gap < r.y + r.h &&
+      y + h + gap > r.y
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Убираем внутренние стены прямоугольника: клетки становятся одним залом. */
+function carveRect(h: boolean[][], v: boolean[][], x: number, y: number, w: number, hh: number) {
+  for (let dy = 0; dy < hh; dy++) {
+    for (let dx = 0; dx < w; dx++) {
+      if (dx < w - 1) v[y + dy][x + dx + 1] = false;
+      if (dy < hh - 1) h[y + dy + 1][x + dx] = false;
+    }
+  }
+}
+
 /**
- * Вырезаем комнаты: убираем внутренние стены прямоугольника,
- * оставляя колонны. Связность не нарушается — мы только добавляем проходы.
+ * Вырезаем комнаты: убираем внутренние стены прямоугольника, оставляя колонны.
+ * Связность не нарушается — мы только добавляем проходы.
+ *
+ * Раскладка жадно набирает 40 % площади этажа: залы идут от больших к малым,
+ * между ними остаётся стена в одну клетку, поэтому комнаты читаются как
+ * отдельные помещения, а не как один сплошной зал. Остальные 60 % —
+ * лабиринт коридоров.
  */
 function carveRooms(h: boolean[][], v: boolean[][], size: number): Room[] {
   const rooms: Room[] = [];
-  const kinds = Object.keys(ROOM_KINDS) as RoomKind[];
-  const target = size <= 6 ? (Math.random() < 0.6 ? 1 : 2) : size <= 8 ? 2 : Math.random() < 0.75 ? 3 : 2;
-  const occupied: boolean[][] = Array.from({ length: size }, () => Array(size).fill(false));
-  /* вход и его подступы оставляем коридором */
-  occupied[0][0] = true;
-  if (size > 1) { occupied[0][1] = true; occupied[1][0] = true; }
+  const target = Math.ceil(size * size * ROOM_AREA_SHARE);
+  const limit = maxRoomsFor(size);
+  const minimum = minRoomsFor(size);
 
-  for (let attempt = 0; attempt < 90 && rooms.length < target; attempt++) {
-    const kind = kinds[Math.floor(Math.random() * kinds.length)];
+  /* Вход и его подступы остаются коридором: там начинается игра. */
+  const reserved = new Set<number>([cellIdx(0, 0, size)]);
+  if (size > 1) {
+    reserved.add(cellIdx(1, 0, size));
+    reserved.add(cellIdx(0, 1, size));
+  }
+  const startX = 0;
+  const startY = 0;
+
+  /* Все формы, которые влезают на этаж. Сортируем от больших к малым:
+     именно крупные залы дают нужные 40 %, мелочь добирает остаток. */
+  const kinds = (Object.keys(ROOM_KINDS) as RoomKind[])
+    .filter((k) => ROOM_KINDS[k].w <= size && ROOM_KINDS[k].h <= size)
+    .sort((a, b) => {
+      const A = ROOM_KINDS[a];
+      const B = ROOM_KINDS[b];
+      return B.w * B.h - A.w * A.h;
+    });
+
+  /* Якоря перебираем в случайном порядке: комнаты не липнут к одному углу. */
+  const anchors: number[] = [];
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) anchors.push(y * size + x);
+  for (let i = anchors.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [anchors[i], anchors[j]] = [anchors[j], anchors[i]];
+  }
+
+  const fitsMargin = (x: number, y: number, w: number, h: number, margin: number): boolean => {
+    if (x < 0 || y < 0 || x + w > size || y + h > size) return false;
+    /* не накрываем вход */
+    for (let dy = 0; dy < h; dy++)
+      for (let dx = 0; dx < w; dx++) if (reserved.has(cellIdx(x + dx, y + dy, size))) return false;
+    /* не наезжаем на другие комнаты и держим между ними стену */
+    if (overlaysRoom(rooms, x, y, w, h, margin)) return false;
+    /* и не отрезаем стеной сам вход от карты */
+    if (x + w >= startX - 1 && x <= startX + 1 && y + h >= startY - 1 && y <= startY + 1) {
+      if (overlaysRoom(rooms, x, y, w, h, 2)) return false;
+    }
+    return true;
+  };
+  const fits = (x: number, y: number, w: number, h: number): boolean => fitsMargin(x, y, w, h, 1);
+
+  let area = 0;
+  /* Два прохода: первый набирает большие залы, второй добирает остаток
+     малыми комнатами в промежутках. */
+  for (let pass = 0; pass < 2; pass++)
+  for (const anchor of anchors) {
+    if (area >= target || rooms.length >= limit) break;
+    const ax = anchor % size;
+    const ay = Math.floor(anchor / size);
+    if (reserved.has(anchor)) continue;
+    if (rooms.some((r) => ax >= r.x - 1 && ax <= r.x + r.w && ay >= r.y - 1 && ay <= r.y + r.h)) continue;
+
+    /* Из подходящих форм берём крупную: сначала пробуем всё, что даёт
+       заметную площадь, и только под конец соглашаемся на малую. */
+    const options = kinds.filter((k) => fits(ax, ay, ROOM_KINDS[k].w, ROOM_KINDS[k].h));
+    if (!options.length) continue;
+    /* Держимся ближе к 40 %: не берём зал, который переполнит этаж,
+       если есть вариант скромнее. */
+    const slack = target + 4;
+    const inBudget = options.filter((k) => area + ROOM_KINDS[k].w * ROOM_KINDS[k].h <= slack);
+    const fitting = inBudget.length
+      ? inBudget
+      : options.slice().sort((a, b) => ROOM_KINDS[a].w * ROOM_KINDS[a].h - ROOM_KINDS[b].w * ROOM_KINDS[b].h).slice(0, 1);
+    /* Пока комнат мало, крупный зал съел бы весь этаж: сначала ставим
+       несколько средних, и только потом добираем площадь ростом. */
+    const wantBig = area + 4 < target && rooms.length >= minimum;
+    const pool = wantBig ? fitting.filter((k) => ROOM_KINDS[k].w * ROOM_KINDS[k].h >= 6) : fitting;
+    const kind = (pool.length ? pool : fitting)[Math.floor(Math.random() * (pool.length ? pool.length : fitting.length))];
     const spec = ROOM_KINDS[kind];
     const w = spec.w;
     const hh = spec.h;
-    if (w > size - 1 || hh > size - 1) continue;
-    const x = 1 + Math.floor(Math.random() * (size - w - 1));
-    const y = 1 + Math.floor(Math.random() * (size - hh - 1));
-    if (x < 0 || y < 0 || x + w > size || y + hh > size) continue;
-
-    let clash = false;
-    for (let dy = -1; dy <= hh; dy++)
-      for (let dx = -1; dx <= w; dx++) {
-        const cx = x + dx;
-        const cy = y + dy;
-        if (cx < 0 || cy < 0 || cx >= size || cy >= size) continue;
-        if (occupied[cy][cx]) clash = true;
-      }
-    if (clash) continue;
 
     /* открываем внутренности */
-    for (let dy = 0; dy < hh; dy++) {
-      for (let dx = 0; dx < w; dx++) {
-        occupied[y + dy][x + dx] = true;
-        if (dx < w - 1) v[y + dy][x + dx + 1] = false;
-        if (dy < hh - 1) h[y + dy + 1][x + dx] = false;
-      }
-    }
+    carveRect(h, v, ax, ay, w, hh);
     /* колонны снова закрыты со всех сторон */
     const sealed = new Set<number>();
     rooms.forEach((r) => r.pillars.forEach(([rx, ry]) => sealed.add(ry * size + rx)));
     const pillars: [number, number][] = [];
     for (const [ox, oy] of spec.pillars) {
-      const px = x + ox;
-      const py = y + oy;
+      const px = ax + ox;
+      const py = ay + oy;
       if (sealPillarIfSafe(h, v, size, px, py, sealed)) pillars.push([px, py]);
     }
 
-    rooms.push({ x, y, w, h: hh, kind, name: spec.name, pillars });
+    rooms.push({ x: ax, y: ay, w, h: hh, kind, name: spec.name, tone: spec.tone, pillars });
+    area += w * hh;
   }
+
+  /* Подтягиваем площадь к 40 %: если залы встали с запасом, каждый
+     расширяем на клетку в свободную сторону. Стена между комнатами (1 клетка)
+     сохраняется, поэтому залы не сливаются. */
+  for (let round = 0; round < 24 && area < target; round++) {
+    let grown = false;
+    for (let i = 0; i < rooms.length && area < target; i++) {
+      const room = rooms[i];
+      const order: [number, number][] = [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ].sort(() => Math.random() - 0.5) as [number, number][];
+      for (const [dx, dy] of order) {
+        const nx = dx === 1 ? room.x : dx === -1 ? room.x - 1 : room.x;
+        const ny = dy === 1 ? room.y : dy === -1 ? room.y - 1 : room.y;
+        const nw = room.w + (dx !== 0 ? 1 : 0);
+        const nh = room.h + (dy !== 0 ? 1 : 0);
+        if (nx < 0 || ny < 0 || nx + nw > size || ny + nh > size) continue;
+        /* вход не застраиваем */
+        let hitsStart = false;
+        for (let yy = 0; yy < nh; yy++)
+          for (let xx = 0; xx < nw; xx++)
+            if (reserved.has(cellIdx(nx + xx, ny + yy, size))) hitsStart = true;
+        if (hitsStart) continue;
+        /* одна комната не должна разрастаться в целый этаж */
+        if (nw * nh > 16) continue;
+        const others = rooms.filter((r) => r !== room);
+        if (overlaysRoom(others, nx, ny, nw, nh, 1)) continue;
+        carveRect(h, v, nx, ny, nw, nh);
+        room.x = nx;
+        room.y = ny;
+        room.w = nw;
+        room.h = nh;
+        room.pillars.forEach(([px, py]) => closeWallsAround(h, v, px, py, size));
+        area += nw * nh - (nw - (dx !== 0 ? 1 : 0)) * (nh - (dy !== 0 ? 1 : 0));
+        grown = true;
+        break;
+      }
+    }
+    if (!grown) break;
+  }
+
+  /* Добор до минимума комнат: если крупные залы встали тесно, досаживаем
+     мелкие помещения в оставшиеся щели — сначала со стеной, затем вплотную. */
+  for (const margin of [1, 0]) {
+    for (const anchor of anchors) {
+      if (rooms.length >= minimum) break;
+      const ax = anchor % size;
+      const ay = Math.floor(anchor / size);
+      if (reserved.has(anchor)) continue;
+      if (rooms.some((r) => ax >= r.x && ax < r.x + r.w && ay >= r.y && ay < r.y + r.h)) continue;
+      const pick = kinds
+        .filter((k) => fitsMargin(ax, ay, ROOM_KINDS[k].w, ROOM_KINDS[k].h, margin))
+        .sort((a, b) => ROOM_KINDS[a].w * ROOM_KINDS[a].h - ROOM_KINDS[b].w * ROOM_KINDS[b].h)[0];
+      if (!pick) continue;
+      const spec = ROOM_KINDS[pick];
+      carveRect(h, v, ax, ay, spec.w, spec.h);
+      rooms.push({ x: ax, y: ay, w: spec.w, h: spec.h, kind: pick, name: spec.name, tone: spec.tone, pillars: [] });
+      area += spec.w * spec.h;
+    }
+    if (rooms.length >= minimum) break;
+  }
+
+  /* Страховка: без комнат этаж выглядит пусто, даже если раскладка не сошлась. */
+  if (!rooms.length) {
+    const kind: RoomKind = size >= 10 ? "great_hall" : size >= 8 ? "hall" : "pantry";
+    const spec = ROOM_KINDS[kind];
+    const x = Math.max(2, Math.floor((size - spec.w) / 2));
+    const y = Math.max(2, Math.floor((size - spec.h) / 2));
+    carveRect(h, v, x, y, spec.w, spec.h);
+    rooms.push({ x, y, w: spec.w, h: spec.h, kind, name: spec.name, tone: spec.tone, pillars: [] });
+  }
+
   return rooms;
 }
 
@@ -261,8 +471,32 @@ export function genMaze(size = MIN_SIZE, floor = Math.max(1, size - 7), biome?: 
     }
   }
 
-  /* комнаты разбавляют коридоры: залы, крипты, галереи, пилоны */
-  const rooms = carveRooms(h, v, size);
+  /* комнаты разбавляют коридоры: залы, крипты, галереи, пилоны.
+     Раскладка случайна, поэтому редкие неудачные броски переигрываем:
+     этаж должен получить минимум комнат и около 40 % площади. */
+  const savedH = h.map((row) => row.slice());
+  const savedV = v.map((row) => row.slice());
+  let rooms = carveRooms(h, v, size);
+  let bestH = h.map((row) => row.slice());
+  let bestV = v.map((row) => row.slice());
+  const roomGoal = (list: Room[]) => minRoomsFor(size) - Math.min(minRoomsFor(size), list.length);
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const enough = rooms.length >= minRoomsFor(size) && roomShare(rooms, size) >= ROOM_AREA_SHARE;
+    if (enough) break;
+    for (let y = 0; y < h.length; y++) h[y] = savedH[y].slice();
+    for (let y = 0; y < v.length; y++) v[y] = savedV[y].slice();
+    const retry = carveRooms(h, v, size);
+    const better =
+      roomGoal(retry) < roomGoal(rooms) ||
+      (retry.length === rooms.length && roomShare(retry, size) > roomShare(rooms, size));
+    if (better) {
+      rooms = retry;
+      bestH = h.map((row) => row.slice());
+      bestV = v.map((row) => row.slice());
+    }
+  }
+  for (let y = 0; y < h.length; y++) h[y] = bestH[y].slice();
+  for (let y = 0; y < v.length; y++) v[y] = bestV[y].slice();
 
   const base: Maze = {
     size,
