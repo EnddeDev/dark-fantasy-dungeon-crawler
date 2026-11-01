@@ -47,8 +47,7 @@ const noop = () => {};
 
 test("lobby removes the development-rules block and the requested floor copy", () => {
   const html = renderToStaticMarkup(React.createElement(Lobby, {
-    player: makePlayer(), setPlayer: noop, shopStock: [],
-    onRefreshShop: noop, onPurchaseGear: noop, onUpgradeShop: noop,
+    player: makePlayer(), controller: {}, shopStock: [],
     onStart: noop, best: 1, unlockedFloor: 2, initialTab: "train",
   }));
   for (const text of [
@@ -159,10 +158,9 @@ test("battle view shows the biome rule and live burning stacks", () => {
   assert.ok(darkHtml.includes("25%"));
 });
 
-test("lobby exposes stat reset, special supplies, sell buttons and forge success chance", () => {
+test("lobby exposes stat reset, special supplies and sell buttons", () => {
   const html = renderToStaticMarkup(React.createElement(Lobby, {
-    player: makePlayer({ gold: 1000, bag: { moss: 2, sapper_kit: 1 } }), setPlayer: noop, shopStock: [],
-    onRefreshShop: noop, onPurchaseGear: noop, onUpgradeShop: noop,
+    player: makePlayer({ gold: 1000, bag: { moss: 2, sapper_kit: 1 } }), controller: {}, shopStock: [],
     onStart: noop, best: 1, unlockedFloor: 2, initialTab: "train",
   }));
   assert.ok(html.includes("Сбросить характеристики"));

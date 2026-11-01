@@ -355,6 +355,8 @@ test("undead resist poison and fear, smoke negates attacks and their debuffs", (
 
   let smoky = battle.playerAct(undead, { type: "item", id: "smoke_bomb" });
   assert.equal(smoky.p.statuses.smoke, 2);
+  // Детерминированность: после дыма удар должен попасть, поэтому убираем случайное уклонение.
+  smoky.p.chanceLayers.evade = { stats: [], items: [], effects: [] };
   smoky = battle.enemyStep(smoky);
   assert.equal(smoky.p.hp, 300);
   assert.equal(smoky.p.statuses.wound, 0);

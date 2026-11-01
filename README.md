@@ -19,6 +19,12 @@ npm run dev
 
 Откройте адрес, который покажет Vite (обычно `http://localhost:5173`).
 
+## Архитектура
+
+Код разделён по MVC: `src/model` хранит состояние и сохранения, `src/controllers` принимает команды,
+`src/views` и `src/components` отображают интерфейс. Доменные правила лежат в `src/game`.
+Подробнее: [docs/architecture.md](docs/architecture.md).
+
 ## Проверки и сборка
 
 ```bash
