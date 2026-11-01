@@ -593,13 +593,14 @@ export function Guide({
         <p>
           <b className="text-flamehi">Эпические приёмы</b> достаются вдобавок к обычному: легендарное оружие
           получает их всегда, эпическое — с шансом 50%, и предпочтение отдаётся родному приёму модели.
+          Они подчиняются тому же правилу: клинок на СИЛ получает только силовые эпические приёмы.
           Отдельная кнопка приёма появляется в бою рядом с обычным.
         </p>
         <div className="grid gap-3 lg:grid-cols-2">
           {Object.values(EPIC_SKILLS).map((sk) => (
             <div key={sk.id} className="border border-flamedim/50 bg-black/30 p-4 text-[0.96rem] leading-snug">
               <b className="text-flamehi">{sk.name}</b>
-              <span className="text-mute"> · откат {sk.cooldown} р.</span>
+              <span className="text-mute"> · {STAT_META[sk.scaleStat].short} · откат {sk.cooldown} р.</span>
               <div className="text-mute">{epicSkillDesc(sk.id, 1)}</div>
             </div>
           ))}

@@ -2351,3 +2351,19 @@ test("старый приём чужой характеристики меняе
   const own = { ...content.createGearItem({ baseId: "abyss", wear: "worn", rarity: "rare", identified: true }), skillId: "void_reap" };
   assert.equal(content.migrateGearItem(own).skillId, "void_reap");
 });
+
+test("эпический приём тоже считается от характеристики предмета", () => {
+  const seen = new Set();
+  for (const base of Object.values(content.GEAR_BASES)) {
+    if (!base.weaponSkill) continue;
+    for (let i = 0; i < 120; i++) {
+      const item = content.createGearItem({ baseId: base.id, rarity: "legendary", wear: "worn", identified: true });
+      assert.ok(item.epicSkill, `${base.id}: у легендарки нет эпического приёма`);
+      const want = content.gearStatReq(item).stat;
+      const got = content.EPIC_SKILLS[item.epicSkill].scaleStat;
+      assert.equal(got, want, `${base.id}: эпический приём «${item.epicSkill}» считает от ${got}, а предмет требует ${want}`);
+      seen.add(item.epicSkill);
+    }
+  }
+  assert.deepEqual([...seen].sort(), Object.keys(content.EPIC_SKILLS).sort(), "эпические приёмы должны остаться достижимыми");
+});
