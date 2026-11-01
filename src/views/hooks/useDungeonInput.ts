@@ -64,6 +64,13 @@ export function useDungeonInput(controller: GameController, state: GameState): v
       controller.dungeon.move(dx, dy, true);
       return;
     }
+    /* Ловушки видны заранее: маршрут останавливается перед ними, а не наступает. */
+    const trapAhead = run.maze.traps.includes(id) && !(run.sprungTraps ?? []).includes(id);
+    if (trapAhead) {
+      controller.model.update({ pathPaused: true });
+      controller.model.logRun("Впереди ловушка — маршрут остановлен. Реши, как поступить с механизмом.");
+      return;
+    }
     const t = window.setTimeout(() => {
       controller.dungeon.move(dx, dy, true);
       controller.model.setPath(path.slice(1), false);

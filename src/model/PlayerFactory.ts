@@ -17,7 +17,7 @@ export class PlayerFactory {
       name: "Покоритель",
       level: 1,
       xp: 0,
-      statPoints: 2,
+      statPoints: 3,
       stats: { str: 1, agi: 1, int: 1 },
       hp: 10,
       gold: 220,

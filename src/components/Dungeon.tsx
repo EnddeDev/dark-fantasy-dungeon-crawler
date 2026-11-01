@@ -396,17 +396,15 @@ export function Dungeon({
                   );
                 })}
 
-              {/* Замеченные ловушки: остальные скрыты, пока Интеллект их не различит */}
-              {(run.revealedTraps ?? [])
-                .filter((i) => m.traps.includes(i) && !(run.sprungTraps ?? []).includes(i))
+              {/* Ловушки видны все и сразу: скрытых механизмов на карте нет. */}
+              {(m.traps ?? [])
+                .filter((i) => !(run.sprungTraps ?? []).includes(i))
                 .map((i) => {
                   const x = i % S;
                   const y = Math.floor(i / S);
                   const lit = visAt(x, y) === 1;
-                  const marked = !!run.mapRevealed && visAt(x, y) === 0;
-                  if (!lit && !marked) return null;
                   return (
-                    <g key={`tr${i}`} transform={`translate(${x * CS + CS / 2} ${y * CS + CS / 2})`} opacity={lit ? 1 : 0.5}>
+                    <g key={`tr${i}`} transform={`translate(${x * CS + CS / 2} ${y * CS + CS / 2})`} opacity={lit ? 1 : 0.75}>
                       <circle r={10} fill="none" stroke="#8a2a22" strokeWidth="1" strokeDasharray="3 3" opacity="0.7" />
                       <path d="M-8 8L-4 -5L0 6L4 -8L8 6L9 8" fill="none" stroke="#8a2a22" strokeWidth="2" strokeLinejoin="round" />
                     </g>
@@ -715,8 +713,7 @@ export function Dungeon({
               Монстры: <span className="text-rubric">1 на 8 клеток</span> · видны, пока их освещает факел
             </p>
             <p className="mt-1 font-mono text-[0.88rem] text-parch/80">
-              Ловушки: <span className="text-rubric">1 на 16 клеток</span> · обычно скрыты,{" "}
-              <span className="text-flame">Интеллект</span> помогает заметить их в двух шагах
+              Ловушки: <span className="text-rubric">1 на 16 клеток</span> · все отмечены на карте с первого шага
             </p>
             <p className="mt-1 font-mono text-[0.88rem] text-parch/80">
               Пустая клетка: <span className="text-verd">10%</span> находка · знакомый путь: тишина

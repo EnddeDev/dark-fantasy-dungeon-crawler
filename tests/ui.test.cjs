@@ -94,6 +94,23 @@ test("armory shows supplies and reagents from the bag", () => {
   assert.ok(html.includes("Цена продажи"));
 });
 
+test("dungeon draws every trap on the map, even outside the torch light", () => {
+  const m = maze.genMaze(8, 1);
+  const run = {
+    floor: 1, maze: m, pos: m.start, prevPos: m.start, seen: {}, steps: 0,
+    gold: 0, loot: [], gearLoot: [], keys: 0, log: [],
+    torchTurns: 0, mapRevealed: false,
+  };
+  const html = renderToStaticMarkup(React.createElement(Dungeon, {
+    run, player: makePlayer(), bag: {},
+    intStat: 1, intDiscount: 0, path: [], pathPaused: false,
+    onMove: noop, onCellClick: noop, onUseItem: noop, onEquip: noop, onUnequip: noop,
+    onCancelPath: noop, onResumePath: noop,
+  }));
+  const marks = (html.match(/stroke-dasharray="3 3"/g) ?? []).length;
+  assert.equal(marks, m.traps.length, "все ловушки этажа отрисованы сразу");
+});
+
 test("dungeon header hides maze counts and corridor healing shows fixed/INT formulas", () => {
   const m = maze.genMaze(8, 1);
   const run = {

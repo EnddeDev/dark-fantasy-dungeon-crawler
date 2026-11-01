@@ -54,8 +54,8 @@ test("enemy transition multipliers decay from 1.21 to 1.05 and accumulate", () =
 test("stat reset costs 100 per level, returns 1/1/1 and refunds level points", () => {
   assert.equal(progression.statResetCost(1), 100);
   assert.equal(progression.statResetCost(7), 700);
-  assert.equal(progression.totalStatPoints(1), 2);
-  assert.equal(progression.totalStatPoints(4), 11);
+  assert.equal(progression.totalStatPoints(1), 3);
+  assert.equal(progression.totalStatPoints(4), 12);
   const weapon = content.createGearItem({ baseId: "sword", level: 1, wear: "worn", rarity: "common", identified: true });
   const p = mkP({
     level: 4, gold: 500, statPoints: 1, stats: { str: 5, agi: 3, int: 4 },
@@ -67,7 +67,7 @@ test("stat reset costs 100 per level, returns 1/1/1 and refunds level points", (
   assert.equal(res.cost, 400);
   assert.equal(res.player.gold, 100);
   assert.deepEqual(res.player.stats, { str: 1, agi: 1, int: 1 });
-  assert.equal(res.player.statPoints, 11);
+  assert.equal(res.player.statPoints, 12);
   assert.deepEqual(res.player.statMilestones, {});
   assert.equal(res.player.equip.mainHand, null);
   assert.ok(res.removedSlots.includes("mainHand"));

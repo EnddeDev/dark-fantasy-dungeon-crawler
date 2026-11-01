@@ -294,26 +294,6 @@ export class DungeonController {
     this.model.logRun(msg);
   }
 
-  /**
-   * Интеллект помогает заметить ловушку заранее: шанс падает с расстоянием.
-   * На карте показываются только замеченные ловушки, поэтому обычно они скрыты.
-   */
-  private spotTraps(m: Run["maze"], run: Run, skip: number): number[] {
-    const int = this.state.player.stats.int;
-    const known = new Set([...(run.revealedTraps ?? []), ...(run.sprungTraps ?? [])]);
-    const found: number[] = [];
-    for (const t of m.traps) {
-      if (known.has(t) || t === skip) continue;
-      const tx = t % m.size;
-      const ty = Math.floor(t / m.size);
-      const distance = Math.max(Math.abs(tx - run.pos.x), Math.abs(ty - run.pos.y));
-      if (distance > 2) continue;
-      const chance = Math.min(0.9, 0.12 + int * 0.12 - (distance - 1) * 0.25);
-      if (Math.random() < chance) found.push(t);
-    }
-    return found;
-  }
-
   private stepInto(nx: number, ny: number, base?: Run): void {
     const { run, player } = this.state;
     const src = base ?? run;
@@ -390,14 +370,9 @@ export class DungeonController {
 
     const commitPlayer = () => this.model.setPlayer({ ...player, hp, statuses, bag: stepBag });
 
-    const noticed = this.spotTraps(m, r, idx);
-    if (noticed.length) {
-      r = { ...r, revealedTraps: [...new Set([...(r.revealedTraps ?? []), ...noticed])] };
-      r.log.push(
-        noticed.length === 1
-          ? "Краем глаза замечена ловушка неподалёку."
-          : `Замечены ловушки неподалёку: ${noticed.length}.`,
-      );
+    /* Ловушки всегда видны: скрытых механизмов на карте нет. */
+    if ((r.revealedTraps ?? []).length !== m.traps.length) {
+      r = { ...r, revealedTraps: [...new Set([...(r.revealedTraps ?? []), ...m.traps])] };
     }
 
     if (m.boss.x === nx && m.boss.y === ny && !m.bossDefeated) {

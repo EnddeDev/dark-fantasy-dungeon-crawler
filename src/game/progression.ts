@@ -7,7 +7,7 @@ import { canWear, MAX_LEVEL } from "./content";
 import { normalizeStatMilestones } from "./statMilestones";
 import { derived } from "./battle";
 
-export const START_STAT_POINTS = 2;
+export const START_STAT_POINTS = 3;
 export const STAT_POINTS_PER_LEVEL = 3;
 
 export function totalStatPoints(level: number): number {

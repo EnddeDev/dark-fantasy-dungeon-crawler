@@ -60,7 +60,7 @@ export class BattleController {
 
     const nextRun = run ? (() => {
       const maze = b.isBoss ? { ...run.maze, bossDefeated: true } : run.maze;
-      const lvlNote = levelsGained > 0 ? ` Повышен уровень (+${levelsGained * 2} очк. хар.)!` : "";
+      const lvlNote = levelsGained > 0 ? ` Повышен уровень (+${levelsGained * 3} очк. хар.)!` : "";
       const monsterCell = run.battleCell ?? null;
       return {
         ...run,
