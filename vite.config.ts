@@ -16,10 +16,13 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     allowedHosts: [".e2b.app"],
+    // Клиент ходит по относительному /api: так браузер не зависит от localhost и превью.
+    proxy: { "/api": { target: process.env.API_PROXY ?? "http://127.0.0.1:8787", changeOrigin: true } },
   },
   preview: {
     host: "0.0.0.0",
     allowedHosts: [".e2b.app"],
+    proxy: { "/api": { target: process.env.API_PROXY ?? "http://127.0.0.1:8787", changeOrigin: true } },
   },
   resolve: {
     alias: {

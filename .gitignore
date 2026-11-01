@@ -3,3 +3,5 @@ dist/
 *.local
 .DS_Store
 .art-check-*
+server/data/
+server/.build/

@@ -1,3 +1,4 @@
+import { Users } from "lucide-react";
 import { BattleView } from "../components/BattleView";
 import { Dungeon } from "../components/Dungeon";
 import { Lobby } from "../components/Lobby";
@@ -9,7 +10,17 @@ import { ModalView } from "./ModalView";
 import { useDungeonInput } from "./hooks/useDungeonInput";
 
 /** Корневой View игрового экрана: компонует представления и передаёт команды Controller. */
-export function GameView({ game, state }: { game: GameController; state: GameState }) {
+export function GameView({
+  game,
+  state,
+  onOpenCommunity,
+  onOpenAuth,
+}: {
+  game: GameController;
+  state: GameState;
+  onOpenCommunity?: () => void;
+  onOpenAuth?: () => void;
+}) {
   useDungeonInput(game, state);
   const { screen, player, run, battle, shopStock, best, unlockedFloor, lobbyEntry, path, pathPaused } = state;
   const d = derived(player);
@@ -59,6 +70,16 @@ export function GameView({ game, state }: { game: GameController; state: GameSta
         )}
       </main>
       <ModalView game={game} state={state} />
+      {(onOpenCommunity || onOpenAuth) && (
+        <button
+          onClick={onOpenCommunity ?? onOpenAuth}
+          className="fixed bottom-4 right-4 z-40 flex items-center gap-2 border border-flamedim bg-slab/95 px-3 py-2 font-display text-[0.85rem] uppercase tracking-[0.1em] text-flamehi shadow-[0_10px_30px_-12px_#000] hover:border-flame hover:bg-flame/15"
+          title={onOpenCommunity ? "Сообщество: игроки, рынок, обмены, дуэли, чат" : "Войти в аккаунт"}
+        >
+          <Users size={15} aria-hidden />
+          {onOpenCommunity ? "Сообщество" : "Войти"}
+        </button>
+      )}
     </div>
   );
 }
