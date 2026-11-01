@@ -161,6 +161,64 @@ test("mazes stay solvable and carry the right number of chests and events", () =
   }
 });
 
+test("комнаты занимают около 40 % площади, остальное — лабиринт", () => {
+  assert.equal(maze.ROOM_AREA_SHARE, 0.4);
+  for (const size of [8, 9, 10, 11, 12, 13, 14, 15, 16]) {
+    let sumShare = 0;
+    let sumRooms = 0;
+    const runs = 40;
+    for (let i = 0; i < runs; i++) {
+      const m = maze.genMaze(size, 6);
+      const share = maze.roomShare(m.rooms, size);
+      assert.ok(share >= maze.ROOM_AREA_SHARE - 1e-9, `площадь комнат ${(share * 100).toFixed(1)}% на ${size}x${size}`);
+      assert.ok(share <= 0.55, `комнаты заняли слишком много: ${(share * 100).toFixed(1)}% на ${size}x${size}`);
+      assert.ok(
+        m.rooms.length >= maze.minRoomsFor(size),
+        `комнат ${m.rooms.length}, ждали минимум ${maze.minRoomsFor(size)} на ${size}x${size}`,
+      );
+      assert.ok(m.rooms.length <= maze.maxRoomsFor(size), `комнат слишком много: ${m.rooms.length}`);
+      sumShare += share;
+      sumRooms += m.rooms.length;
+    }
+    const avg = sumShare / runs;
+    assert.ok(avg >= 0.4 && avg <= 0.46, `средняя доля ${(avg * 100).toFixed(1)}% на ${size}x${size}`);
+    /* этаж крупнее — залов больше */
+    const expected = size <= 8 ? 3 : size <= 10 ? 4 : size <= 12 ? 5 : size <= 14 ? 8 : 10;
+    assert.ok(sumRooms / runs >= expected, `на ${size}x${size} в среднем ${(sumRooms / runs).toFixed(1)} комнат`);
+  }
+});
+
+test("комнаты не слипаются: между залами остаётся стена", () => {
+  for (let i = 0; i < 60; i++) {
+    const size = 12;
+    const m = maze.genMaze(size, 6);
+    for (let a = 0; a < m.rooms.length; a++) {
+      for (let b = a + 1; b < m.rooms.length; b++) {
+        const A = m.rooms[a];
+        const B = m.rooms[b];
+        const apart = A.x + A.w + 1 <= B.x || B.x + B.w + 1 <= A.x || A.y + A.h + 1 <= B.y || B.y + B.h + 1 <= A.y;
+        assert.ok(apart, `залы ${A.kind} и ${B.kind} слиплись на ${size}x${size}`);
+      }
+    }
+  }
+});
+
+test("у каждой комнаты есть тон и имя, форм много", () => {
+  const tones = new Set();
+  const kinds = new Set();
+  for (let i = 0; i < 60; i++) {
+    const m = maze.genMaze(14, 8);
+    for (const r of m.rooms) {
+      assert.ok(typeof r.name === "string" && r.name.length > 0, "у комнаты нет имени");
+      assert.ok(typeof r.tone === "string" && r.tone.length > 0, `у комнаты ${r.kind} нет тона`);
+      tones.add(r.tone);
+      kinds.add(r.kind);
+    }
+  }
+  assert.ok(kinds.size >= 10, `видов комнат: ${kinds.size}`);
+  assert.ok(tones.size >= 5, `тонов: ${[...tones].join(",")}`);
+});
+
 test("chests per floor follow 1 / 2 / 3 by tier and rooms appear sometimes", () => {
   assert.deepEqual([1, 2, 3, 4, 5, 8, 10].map((f) => maze.chestCountForFloor(f)), [1, 1, 1, 2, 2, 3, 3]);
   let withRooms = 0;

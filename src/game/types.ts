@@ -196,7 +196,17 @@ export interface Maze {
   /** Ловушки: 1 на 16 клеток, обычно скрыты до момента обнаружения. */
   traps: number[];
   /** Комнаты, разбавляющие коридоры: залы, крипты, галереи, пилоны. */
-  rooms: { x: number; y: number; w: number; h: number; kind: string; name: string; pillars: [number, number][] }[];
+  rooms: {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    kind: string;
+    name: string;
+    /** Тон настила на карте: plain, crypt, throne, arcane, forge, store. */
+    tone?: string;
+    pillars: [number, number][];
+  }[];
   dist: number[][];
 }
 
