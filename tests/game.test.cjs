@@ -421,6 +421,10 @@ test("throwing weapons are consumable, explosions pierce armor and living target
     b.p.hp = 300;
     b.p.maxHp = 300;
     b.p.evade = 0;
+    /* Классический биом, горящий факел и нулевое уклонение: без случайных промахов, тест про расходники. */
+    b.biome = "classic";
+    b.torchTurns = 1;
+    b.p.chanceLayers.evade = { stats: [], items: [], effects: [] };
     return b;
   };
 
@@ -563,8 +567,24 @@ test("every creature and item can be fought to a terminal state", () => {
     "seal_items", "seal_skills", "seal_attack",
   ]);
   for (const mv of seenMoves) assert.ok(known.has(mv), `неизвестный приём ${mv}`);
-  assert.ok(seenMoves.has("multi") && seenMoves.has("terror") && seenMoves.has("poison"),
-    "новые приёмы должны встречаться в бестиарии");
+  /* Многоударные, ужас и яд проверяем принудительно: случайный выбор ходов врага
+     не гарантирует, что все три встретятся за один прогон. */
+  for (const mv of ["multi", "terror", "poison"]) {
+    assert.ok(defs.some((d) => d.moves.includes(mv)), `${mv}: приём есть в бестиарии`);
+    let forced = battle.newBattle(pl, 5, false);
+    forced.enemy.def = { ...forced.enemy.def, moves: [mv] };
+    forced.enemy.moves = [mv];
+    forced.enemy.hp = 100000;
+    forced.enemy.maxHp = 100000;
+    forced.p.hp = 4000;
+    forced.p.maxHp = 4000;
+    forced.p.chanceLayers.evade = { stats: [], items: [], effects: [] };
+    forced.queue = ["e", "e", "e", "e"];
+    forced.idx = 0;
+    const moved = battle.enemyStep(forced);
+    assert.ok(moved !== forced || moved.over, `${mv}: приём обработан без повисания`);
+    seenMoves.add(mv);
+  }
 });
 
 test("haste, terror, stone skin and acid change the fight as described", () => {
@@ -1670,8 +1690,13 @@ test("weapon effects bleed, poison and sunder trigger on a plain hit", () => {
   b.enemy.effects = []; b.enemy.effectPower = {};
   b.enemy.def = { ...b.enemy.def, type: "beast" };
   b.enemy.moves = ["attack"];
+  /* Биом и защитные шансы врага фиксированы: тест про свойства оружия, а не про удачу. */
+  b.biome = "classic";
+  b.torchTurns = 0;
+  b.enemy.chanceLayers = { evade: { stats: [], items: [], effects: [] }, resist: { stats: [], items: [], effects: [] } };
+  b.p.chanceLayers.crit = { stats: [], items: [], effects: [] };
   const old = Math.random;
-  Math.random = () => 0; // шансы свойств срабатывают, крит не мешает
+  Math.random = () => 0.5; // свойства со 100% шансом срабатывают, промах и крит — нет
   const after = battle.playerAct(b, { type: "attack" });
   Math.random = old;
   assert.ok(after.enemy.statuses.bleed > 0, "кровотечение наложено");
