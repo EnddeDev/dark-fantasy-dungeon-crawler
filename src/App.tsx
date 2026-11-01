@@ -28,7 +28,7 @@ export default function App() {
           game={controller}
           state={state}
           onOpenCommunity={online.status === "online" ? () => setCommunity(true) : undefined}
-          onOpenAuth={online.status === "offline" ? online.openAuth : undefined}
+          onOpenAuth={online.status === "online" ? undefined : online.openAuth}
         />
       )}
       {community && online.status === "online" && (
@@ -40,7 +40,8 @@ export default function App() {
           }}
         />
       )}
-      {online.status === "guest" && <AuthView />}
+      {/* Форма входа, а при недоступном сервере — объяснение, почему онлайн не работает. */}
+      {online.authOpen && <AuthView />}
     </>
   );
 }

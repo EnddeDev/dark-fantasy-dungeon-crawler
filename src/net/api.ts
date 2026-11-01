@@ -17,8 +17,37 @@ export class ApiError extends Error {
   }
 }
 
-const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "/api";
+/**
+ * Адрес API. В браузере берётся из VITE_API_URL, по умолчанию — относительный /api
+ * (в dev-режиме его проксирует Vite). Чтение env защищено: в тестах и в среде без
+ * Vite объект import.meta.env может отсутствовать.
+ */
+const ENV = (import.meta as { env?: Record<string, string | undefined> }).env ?? {};
+const BASE = ENV.VITE_API_URL ?? "/api";
 const TOKEN_KEY = "sumrak.token";
+
+/** Сервер недоступен или ответил не тем, что ждём (например, HTML-страницей хостинга). */
+export const OFFLINE_MESSAGE = "Сервер недоступен";
+
+function looksLikeJson(text: string): boolean {
+  const first = text.trimStart()[0];
+  return first === "{" || first === "[";
+}
+
+/**
+ * Разбор ответа: API всегда отвечает JSON, но статический хостинг вроде GitHub Pages
+ * на /api отдаёт HTML-страницу. Раньше такой ответ ронял клиент сырым
+ * «Unexpected token '<'», теперь он превращается в понятную сетевую ошибку.
+ */
+function parseJson(text: string): { error?: string } {
+  if (!text) return {};
+  if (!looksLikeJson(text)) throw new ApiError(0, `${OFFLINE_MESSAGE}: ответ не JSON`);
+  try {
+    return JSON.parse(text) as { error?: string };
+  } catch {
+    throw new ApiError(0, `${OFFLINE_MESSAGE}: некорректный JSON`);
+  }
+}
 
 /**
  * Клиент общего сервера. Работает и с локальным API, и с внешним BaaS:
@@ -64,13 +93,17 @@ export class ApiClient {
       throw new ApiError(0, "Сервер недоступен");
     }
     const text = await response.text();
-    const data = text ? (JSON.parse(text) as { error?: string }) : {};
+    // HTML от хостинга — это «сервера нет», а не ошибка конкретного запроса.
+    const data = parseJson(text);
     if (!response.ok) throw new ApiError(response.status, data.error ?? "Ошибка сервера");
     return data as T;
   }
 
-  health(): Promise<{ ok: boolean }> {
-    return this.request("GET", "/health");
+  /** Проверка живости API: онлайн-режим включается только при настоящем `{ok:true}`. */
+  async health(): Promise<{ ok: boolean }> {
+    const res = await this.request<{ ok?: boolean }>("GET", "/health");
+    if (res?.ok !== true) throw new ApiError(0, OFFLINE_MESSAGE);
+    return { ok: true };
   }
 
   register(login: string, password: string): Promise<{ token: string; profile: OnlineProfile }> {
