@@ -516,23 +516,36 @@ export function gearExtraAp(g: GearItem): number {
   return Math.min(MAX_EXTRA_AP, effectMagnitude("ap", g.level ?? 1, g.effectRolls?.ap));
 }
 
-/* ─────────── очередь ходов: у кого больше — тот всегда раньше ─────────── */
+/**
+ * Очередь ходов: раунд — это отрезок, который каждая сторона делит на равные
+ * доли. Ход героя наступает в точках 1/P, 2/P, … , ход врага — в 1/E, 2/E, …;
+ * кто ближе по отрезку, тот и действует. Так 5 против 2 дают П П В П П В П,
+ * а не П П П В П В П: быстрый враг вклинивается между ударами, а не копится
+ * в конце раунда.
+ */
 export function buildQueue(apP: number, apE: number): ("p" | "e")[] {
-  let a = Math.max(1, apP);
-  let c = Math.max(1, apE);
+  const a = Math.max(1, Math.floor(apP));
+  const c = Math.max(1, Math.floor(apE));
   const out: ("p" | "e")[] = [];
+  let i = 0;
+  let j = 0;
   let last: "p" | "e" | null = null;
-  while (a > 0 || c > 0) {
-    let s: "p" | "e";
-    if (a === 0) s = "e";
-    else if (c === 0) s = "p";
-    else if (a > c) s = "p";
-    else if (c > a) s = "e";
-    else s = last === "p" ? "e" : "p";
-    if (s === "p") a--;
-    else c--;
-    out.push(s);
-    last = s;
+  while (i < a || j < c) {
+    let side: "p" | "e";
+    if (i >= a) side = "e";
+    else if (j >= c) side = "p";
+    else {
+      const pDue = (i + 1) / a;
+      const eDue = (j + 1) / c;
+      if (pDue < eDue) side = "p";
+      else if (eDue < pDue) side = "e";
+      /* Доли совпали — чередуем, чтобы никто не забирал все равные ходы. */
+      else side = last === "p" ? "e" : "p";
+    }
+    if (side === "p") i++;
+    else j++;
+    out.push(side);
+    last = side;
   }
   return out;
 }
@@ -574,6 +587,14 @@ export interface SpawnedEnemy {
 
 const SPECIAL_MOVES: EnemyMove[] = ["wound", "curse", "drain", "sunder", "bell_stun"];
 
+/** Печати (немота, забвение, оковы) — только у стражей лестниц и катастроф. */
+export const SEAL_MOVES: EnemyMove[] = ["seal_items", "seal_skills", "seal_attack"];
+
+/** Кому положены печати: боссу и катастрофе. У обычного монстра и «ужаса» их нет. */
+export function mayHaveSeals(isBoss: boolean, threat: Threat): boolean {
+  return isBoss || threat === "catastrophe";
+}
+
 /** Спавн монстра: уровень (этаж ±1, на первом этаже возможен 0), угроза (80/15/5). */
 export function spawnEnemy(floor: number, isBoss = false, rng: () => number = Math.random): SpawnedEnemy {
   const def = isBoss ? rollBoss(floor) : rollEnemy(floor, rng);
@@ -612,9 +633,16 @@ export function spawnEnemy(floor: number, isBoss = false, rng: () => number = Ma
   const threatXp = isBoss ? 1.6 : threat === "horror" ? 1.35 : threat === "catastrophe" ? 1.8 : 1;
   const effectCount = isBoss ? Math.max(1, floor) : threat === "catastrophe" ? 2 : 0;
   const effects = rollEnemyEffects(def, level, effectCount, rng);
-  if (isBoss || threat === "catastrophe") {
-    const seals: EnemyMove[] = ["seal_items", "seal_skills", "seal_attack"];
-    moves.push(seals[Math.floor(rng() * seals.length)]);
+  if (mayHaveSeals(isBoss, threat)) {
+    /* Одна печать на тварь, и только та, которой у неё ещё нет. */
+    const free = SEAL_MOVES.filter((mv) => !moves.includes(mv));
+    if (free.length) moves.push(free[Math.floor(rng() * free.length)]);
+  } else {
+    /* Правило важнее данных: если обычной твари печать прописали в бестиарии,
+       на поле она её не получит. */
+    for (let k = moves.length - 1; k >= 0; k--) {
+      if (SEAL_MOVES.includes(moves[k])) moves.splice(k, 1);
+    }
   }
 
   const apBase = def.ap + apBonus + (effects.includes("ap") ? effectMagnitude("ap", level) : 0) +
