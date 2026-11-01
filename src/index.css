@@ -121,6 +121,18 @@
     animation: valuePop 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
+  /* Временное усиление характеристики: строка сводки подсвечивается синим,
+     как и рамка положительного эффекта над иконкой. */
+  .boon-row {
+    background: linear-gradient(90deg, rgba(91, 141, 214, 0.16), rgba(91, 141, 214, 0));
+    box-shadow: inset 2px 0 0 rgba(91, 141, 214, 0.85);
+  }
+
+  .boon-mark {
+    color: #8fb8ec;
+    text-shadow: 0 0 6px rgba(91, 141, 214, 0.7);
+  }
+
   .item-art {
     image-rendering: auto;
     transition: transform 180ms ease, filter 180ms ease, box-shadow 180ms ease;

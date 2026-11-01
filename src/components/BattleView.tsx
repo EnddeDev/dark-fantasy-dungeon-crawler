@@ -22,6 +22,8 @@ import { Btn, Meter, Tag } from "./ui";
 import { BiomeRule, BiomeTag, biomeStyle } from "./BiomeLabel";
 import { isBattleCurse } from "../game/traps";
 import { statDamage } from "../game/statFormulas";
+import { enemyEffectChips, playerEffectChips } from "../game/effects";
+import { EffectChips } from "./EffectChips";
 
 /** Римская нумерация для строк инициативы. */
 function roman(n: number): string {
@@ -76,6 +78,20 @@ export function BattleView({
   const r = combatReadout(b);
   const effArmor = r.armor;
   const changed = (base: string, now: string) => base !== now;
+
+  /* Иконки эффектов: у героя — под здоровьем, у монстра — поверх портрета.
+     Строки сводки, которые временно усилены, подсвечиваются синим. */
+  const playerChips = playerEffectChips(b);
+  const enemyChips = enemyEffectChips(b);
+  const highlight = new Set(playerChips.map((c) => c.highlight).filter(Boolean));
+  const highlightedRows: Record<string, boolean> = {
+    "Урон оружием": highlight.has("dmg"),
+    "Броня": highlight.has("armor"),
+    "Входящий урон": highlight.has("armor"),
+    "Ходов в раунде": highlight.has("ap"),
+    "Уклонение": highlight.has("evade"),
+    "Критический удар": highlight.has("crit"),
+  };
 
   const rows: {
     label: string;
@@ -247,6 +263,13 @@ export function BattleView({
               <span className="font-mono text-sm tab text-parch">{b.p.hp}/{b.p.maxHp}</span>
             </div>
 
+            {/* Эффекты героя: под здоровьем, как и положено по раскладке панели */}
+            {playerChips.length > 0 && (
+              <div className="relative z-20 mt-2">
+                <EffectChips chips={playerChips} label="эффекты героя" />
+              </div>
+            )}
+
             {/* ВЕДОМОСТЬ: сколько наношу и сколько защищаюсь */}
             <div className="mt-3 border-t border-line/70 pt-3">
               <div className="flex items-center justify-between">
@@ -265,9 +288,19 @@ export function BattleView({
                 {rows.map((row) => {
                   const live = changed(row.base, row.now);
                   return (
-                    <div key={row.label} className="border-b border-line/40 pb-1.5">
+                    <div
+                      key={row.label}
+                      className={`border-b border-line/40 pb-1.5 ${
+                        highlightedRows[row.label] ? "boon-row -mx-1 rounded-sm px-1" : ""
+                      }`}
+                    >
                       <div className="flex flex-wrap items-baseline gap-1.5">
                         <dt className="truncate text-mute">{row.label}</dt>
+                        {highlightedRows[row.label] && (
+                          <span aria-hidden className="boon-mark font-mono text-[0.7rem]" title="временно усилено">
+                            ▲
+                          </span>
+                        )}
                         {row.badge && (
                           <span
                             className={`border px-1 py-0.2 font-mono text-[0.78rem] font-bold ${
@@ -585,6 +618,13 @@ export function BattleView({
         <div className="order-1 min-w-0 xl:order-3 xl:col-start-3 xl:border-l xl:border-line">
         {/* ПРОТИВНИК */}
         <div className="relative flex flex-col border-line bg-black/30">
+          {/* Эффекты монстра — поверх портрета в левом верхнем углу.
+              Слой вынесен из overflow-hidden, иначе подсказка обрезалась бы. */}
+          {enemyChips.length > 0 && (
+            <div className="absolute left-3 top-3 z-30 max-w-[76%]">
+              <EffectChips chips={enemyChips} size={34} label="эффекты врага" />
+            </div>
+          )}
           <div className="relative aspect-[5/4] w-full overflow-hidden border-b border-line bg-soot">
             <FoePortrait id={e.def.id} art={e.def.art} name={e.def.name} />
             <div className="absolute inset-0 bg-gradient-to-t from-soot via-soot/10 to-transparent" />
@@ -601,7 +641,7 @@ export function BattleView({
                 </span>
               </div>
             )}
-            <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
+            <div className="absolute right-3 top-14 flex flex-wrap justify-end gap-1.5">
               {b.isBoss && <Tag tone="rubric">БОСС ЭТАЖА</Tag>}
               <Tag tone="mute">ур. {e.level}</Tag>
             </div>
@@ -647,16 +687,12 @@ export function BattleView({
                 {b.isBoss ? "Босс" : THREAT_META[e.threat].name}
               </Tag>
               {e.passive && <Tag tone="rubric">{e.passive.name}</Tag>}
-              {e.guard && <Tag tone="verd">в защите</Tag>}
-              {e.statuses.chill > 0 && <Tag tone="flame">ослаблен · {e.statuses.chill}</Tag>}
-              {e.statuses.bleed > 0 && <Tag tone="rubric">кровь · {e.statuses.bleed}</Tag>}
-              {e.statuses.poison > 0 && <Tag tone="rubric">яд · {e.statuses.poison}</Tag>}
-              {e.statuses.fear > 0 && <Tag tone="flame">страх · {e.statuses.fear}</Tag>}
-              {e.statuses.stunAp > 0 && <Tag tone="flame">оглушён −{e.statuses.stunAp}</Tag>}
-              {e.depleted > 0 && <Tag tone="rubric">истощение · {e.depleted}</Tag>}
-              {e.statuses.blight > 0 && <Tag tone="rubric">порча · {e.statuses.blight}</Tag>}
-              {e.statuses.wither > 0 && <Tag tone="rubric">увядание · {e.statuses.wither}</Tag>}
               {e.forceGuard > 0 && <Tag tone="verd">вынужден держать оборону</Tag>}
+              {enemyChips.length > 0 && (
+                <span className="font-mono text-[0.78rem] text-mute">
+                  эффектов: {enemyChips.length} — наведи на иконки у портрета
+                </span>
+              )}
             </div>
             <p className="text-[0.92rem] italic leading-snug text-mute">{e.def.flavor}</p>
           </div>
