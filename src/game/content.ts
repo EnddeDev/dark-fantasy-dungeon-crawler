@@ -38,7 +38,9 @@ import {
   type GearPassiveId,
 } from "./gearEffects";
 import {
+  EXTRA_AP_MIN_LEVEL,
   clampGearLevel,
+  TWO_HAND_DAMAGE_SCALE,
   epicMagnitude,
   legendaryMagnitude,
   rareAffixMagnitude,
@@ -1477,6 +1479,10 @@ export function scaledGearStats(item: GearItem) {
         Math.max(2, scaleGearStatByLevel(Math.ceil(roll[1] * m), level)),
       ]
     : undefined;
+  /* Двуручное оружие: сила относительно одноручного аналога ×2 (было ×3). */
+  if (dmg && (base.hands === 2 || base.weaponType === "spear")) {
+    dmg = [Math.max(1, Math.round(dmg[0] * TWO_HAND_DAMAGE_SCALE)), Math.max(2, Math.round(dmg[1] * TWO_HAND_DAMAGE_SCALE))];
+  }
   if (dmg && canTwoHandGrip(item) && item.grip === "two") {
     dmg = [Math.ceil(dmg[0] * 1.5), Math.ceil(dmg[1] * 1.5)];
   }
@@ -1552,6 +1558,14 @@ export function gearSellPrice(item: GearItem): number {
 const ALL_EPIC_IDS = Object.keys(EPIC_SKILLS) as EpicSkillId[];
 const ALL_LEG_IDS = Object.keys(LEGENDARY_PASSIVES) as LegendaryPassiveId[];
 
+/**
+ * Свойство дополнительного хода — только у эпических и легендарных предметов
+ * с 5 уровня: «Ускорение» не должно появляться на обычной вещи.
+ */
+export function canRollExtraAp(rarity: RarityTier, level: number): boolean {
+  return (rarity === "epic" || rarity === "legendary") && (level ?? 1) >= EXTRA_AP_MIN_LEVEL;
+}
+
 /** Базовые веса редкости: 60% обычное, 30% редкое, 8% эпическое, 2% легендарное. */
 export const BASE_RARITY_WEIGHTS: Record<RarityTier, number> = {
   common: 60,
@@ -1625,7 +1639,7 @@ export function createGearItem(opts: {
     stat: reqStat,
     requiresNothing: base.noReq === true,
     archetype: base.archetype,
-  }).filter((id) => id !== "ap" || itemLevelForAp >= 3);
+  }).filter((id) => id !== "ap" || canRollExtraAp(rarity, itemLevelForAp));
   const effects: GearEffectId[] = [];
   const effectCount = Math.min(pool.length, effectCountForGear({ kind, rarity, weaponType }));
   const rest = [...pool];
@@ -1712,7 +1726,7 @@ export function migrateGearItem(item: GearItem): GearItem {
     stat: reqStat,
     requiresNothing: base.noReq === true,
     archetype: base.archetype,
-  }).filter((id) => id !== "ap" || (item.level ?? 1) >= 3);
+  }).filter((id) => id !== "ap" || canRollExtraAp(item.rarity ?? "common", item.level ?? 1));
   const effects: GearEffectId[] = [];
   for (const id of item.effects ?? []) {
     if (ACTIVE_GEAR_EFFECTS.includes(id) && !effects.includes(id)) effects.push(id);
@@ -1723,6 +1737,10 @@ export function migrateGearItem(item: GearItem): GearItem {
     rarity: item.rarity ?? "common",
     weaponType,
   });
+  /* «Ускорение» на неподходящей вещи снимаем: оно больше не выпадает ниже эпики 5 уровня. */
+  const allowedEffects = effects.filter((id) => id !== "ap" || canRollExtraAp(item.rarity ?? "common", item.level ?? 1));
+  effects.length = 0;
+  effects.push(...allowedEffects);
   const legacyCount = Math.max((item.effects ?? []).length + (item.rareAffix ? 1 : 0), minEffects);
   while (effects.length < Math.min(4, legacyCount)) {
     const avail = pool.filter((id) => !effects.includes(id));

@@ -528,7 +528,11 @@ export function genMaze(size = MIN_SIZE, floor = Math.max(1, size - 7), biome?: 
   };
 
   base.monsters = spread(shuffledSpots, monsterCountFor(size));
-  base.traps = spread(shuffledSpots, trapCountFor(size));
+  /* Ловушки не ставятся у входа: спуск на новый этаж не должен заканчиваться
+     срабатыванием механизма на первом же шаге. */
+  const farSpots = shuffledSpots.filter((i) => dist[Math.floor(i / size)][i % size] >= 3);
+  const trapPool = farSpots.length >= trapCountFor(size) ? farSpots : shuffledSpots.slice();
+  base.traps = spread(trapPool, trapCountFor(size));
 
   return base;
 }

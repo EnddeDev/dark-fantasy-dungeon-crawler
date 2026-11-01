@@ -9,6 +9,7 @@ import {
   THREAT_META,
   consumableIntReq,
   consumablePower,
+  canRollExtraAp,
   createGearItem,
   isImmuneTo,
   pick,
@@ -28,7 +29,7 @@ import {
   type WeaponSkillDef,
 } from "./content";
 import { SLOT_ORDER } from "./types";
-import { enemyLevelMult } from "./enemyScaling";
+import { enemyLevelMult, scaledEnemyXp } from "./enemyScaling";
 import { isBattleCurse } from "./traps";
 import {
   FIRE_BURN_STEP,
@@ -59,6 +60,7 @@ import type { ArchetypeId } from "./archetypes";
 import type { GearEffectId, GearPassiveId } from "./gearEffects";
 import {
   GEAR_PASSIVE_BASE,
+  MAX_EXTRA_AP,
   effectMagnitude,
   epicMagnitude,
   legendaryMagnitude,
@@ -118,10 +120,14 @@ export interface BattleState {
     guard: boolean;
     /** Раунды, в которые враг вынужден держать защиту (свиток ужаса, бомба). */
     forceGuard: number;
+    /** Прошлый ход врага закончился промахом: следующий ход — приём. */
+    lastMiss: boolean;
   };
   p: {
     hp: number;
     maxHp: number;
+    /** Уровень героя: от него зависит множитель опыта за монстра. */
+    level: number;
     armor: number;
     evade: number;
     ap: number;
@@ -332,7 +338,14 @@ export function derived(pl: Player): DerivedStats {
     const itemLevel = g.level ?? 1;
     if (g.effects) {
       gearEffects.push(...g.effects);
-      for (const id of g.effects) effectPower[id] = (effectPower[id] ?? 0) + effectMagnitude(id, itemLevel, g.effectRolls?.[id]);
+      for (const id of g.effects) {
+        /* «Ускорение» имеет смысл только на эпической вещи с 5 уровня. */
+        if (id === "ap" && !canRollExtraAp(g.rarity, itemLevel)) continue;
+        const value = effectMagnitude(id, itemLevel, g.effectRolls?.[id]);
+        /* Дополнительные ходы не складываются: берём самое большое значение. */
+        if (id === "ap") effectPower[id] = Math.max(effectPower[id] ?? 0, value);
+        else effectPower[id] = (effectPower[id] ?? 0) + value;
+      }
     }
     if (g.passive) {
       gearPassives.push(g.passive);
@@ -412,7 +425,7 @@ export function derived(pl: Player): DerivedStats {
     chanceLayers.magicResist.effects.push(passivePower.fortress.resist / 100);
   }
 
-  const ap = Math.max(1, statActions(pl.stats.agi)) + (effectPower.ap ?? 0);
+  const ap = Math.max(1, statActions(pl.stats.agi)) + Math.min(MAX_EXTRA_AP, effectPower.ap ?? 0);
   let firstRoundApBonus = 0;
   for (const slot of SLOT_ORDER) {
     const g = eq[slot];
@@ -471,7 +484,9 @@ export function derived(pl: Player): DerivedStats {
 /** Ускорение предмета: дополнительные ходы в каждом раунде. */
 export function gearExtraAp(g: GearItem): number {
   if (!g.identified || !g.effects?.includes("ap")) return 0;
-  return effectMagnitude("ap", g.level ?? 1, g.effectRolls?.ap);
+  /* Свойство доп. ходов бывает только у эпического снаряжения с 5 уровня. */
+  if (!canRollExtraAp(g.rarity, g.level ?? 1)) return 0;
+  return Math.min(MAX_EXTRA_AP, effectMagnitude("ap", g.level ?? 1, g.effectRolls?.ap));
 }
 
 /* ─────────── очередь ходов: у кого больше — тот всегда раньше ─────────── */
@@ -734,10 +749,12 @@ export function newBattle(pl: Player, floor: number, isBoss = false, biome: Biom
       statuses: { chill: 0, bleed: 0, poison: 0, fear: 0, stunAp: 0, blight: 0, wither: 0, burning: 0, burn: 0, curse: 0, cursePower: 30, sundered: 0 },
       guard: false,
       forceGuard: 0,
+    lastMiss: false,
     },
     p: {
       hp: Math.max(1, pl.hp),
       maxHp: d.maxHp,
+      level: Math.max(1, pl.level),
       armor: d.armor,
       evade: d.evade,
       ap: d.ap,
@@ -1217,6 +1234,11 @@ function incoming(b: BattleState, raw: number, kind: "phys" | "magic", src: stri
   return true;
 }
 
+/** Опыт за монстра с поправкой на разницу уровней: сильнее враг — больше опыта. */
+function enemyXpFor(b: BattleState): number {
+  return scaledEnemyXp(b.enemy.xp, b.p.level, b.enemy.level);
+}
+
 function gainLoot(b: BattleState) {
   const e = b.enemy;
   if (b.isBoss) {
@@ -1225,13 +1247,13 @@ function gainLoot(b: BattleState) {
     const items = rollConsumableLoot(b.floor, 2);
     // Как и раньше: босс оставляет гарантированный трофей не ниже редкого качества.
     const gear: GearItem[] = [rollGearDrop(b.floor, true)];
-    b.loot = { gold, items, gear, xp: e.xp };
+    b.loot = { gold, items, gear, xp: enemyXpFor(b) };
     return;
   }
 
   // Обычный монстр: 30% ничего, 30% золото, 20% реагенты, 15% припасы, 5% снаряжение.
   const drop = rollEnemyLoot(e.level, b.floor, e.threat);
-  b.loot = { gold: drop.gold, items: drop.items, gear: drop.gear, xp: e.xp };
+  b.loot = { gold: drop.gold, items: drop.items, gear: drop.gear, xp: enemyXpFor(b) };
 }
 
 /** Environmental tick at the start of the active side's turn. Called once per queue step. */
@@ -1246,27 +1268,26 @@ function beginTurn(b: BattleState) {
     push(b, `Ледяные просторы: холод отнимает ${ICE_TURN_DAMAGE} здоровья в начале твоего хода.`, "sys");
   }
 
-  if (b.biome === "fire") {
-    if (side === "p") {
-      b.p.statuses.burning += 1;
-      const dmg = fireBurnDamage(b.p.statuses.burning);
-      b.p.hp = Math.max(0, b.p.hp - dmg);
-      flash(b, "p", "hit", dmg);
-      push(b, `Огненные недра: горение ×${b.p.statuses.burning} отнимает ${dmg} здоровья (каждый слой +${FIRE_BURN_STEP}).`, "sys");
-    } else {
-      b.enemy.statuses.burning += 1;
-      const dmg = fireBurnDamage(b.enemy.statuses.burning);
-      b.enemy.hp = Math.max(0, b.enemy.hp - dmg);
-      flash(b, "e", "hit", dmg);
-      push(b, `Огненные недра: ${b.enemy.def.name} горит ×${b.enemy.statuses.burning} и теряет ${dmg} здоровья.`, "sys");
-    }
+  /* Огненные недра жгут только в бою и только когда ходит герой:
+     в свой ход монстр не получает урона от жара, а на карте горения нет вовсе. */
+  if (b.biome === "fire" && side === "p") {
+    b.p.statuses.burning += 1;
+    const dmg = fireBurnDamage(b.p.statuses.burning);
+    b.p.hp = Math.max(0, b.p.hp - dmg);
+    flash(b, "p", "hit", dmg);
+    push(b, `Огненные недра: горение ×${b.p.statuses.burning} отнимает ${dmg} здоровья (каждый слой +${FIRE_BURN_STEP}).`, "sys");
+    b.enemy.statuses.burning += 1;
+    const eDmg = fireBurnDamage(b.enemy.statuses.burning);
+    b.enemy.hp = Math.max(0, b.enemy.hp - eDmg);
+    flash(b, "e", "hit", eDmg);
+    push(b, `Огненные недра: ${b.enemy.def.name} горит ×${b.enemy.statuses.burning} и теряет ${eDmg} здоровья.`, "sys");
   }
 
   if (b.enemy.hp <= 0) {
     b.enemy.hp = 0;
     b.over = "win";
     gainLoot(b);
-    push(b, `${b.enemy.def.name} повержен! (+${b.enemy.xp} опыта)`, "sys");
+    push(b, `${b.enemy.def.name} повержен! (+${enemyXpFor(b)} опыта)`, "sys");
     return;
   }
   if (b.p.hp <= 0) {
@@ -1406,7 +1427,9 @@ function advance(b: BattleState) {
     const hasteBonus = b.p.statuses.haste > 0 ? 1 : 0;
     const sageAp = hasPassive(b, "arch_sage_10") ? 1 : 0;
     const shadowAp = b.p.statuses.shadowStep;
-    const pAp = Math.max(1, b.p.ap + hasteBonus + sageAp + shadowAp);
+    /* Дополнительных ходов не бывает больше трёх за раунд. */
+    const extraAp = Math.min(MAX_EXTRA_AP, hasteBonus + sageAp + shadowAp);
+    const pAp = Math.max(1, b.p.ap + extraAp);
     const eAp = Math.max(1, b.enemy.ap);
     if (hasteBonus > 0) push(b, `Зелье скорости: в этом раунде у тебя +1 ход (осталось ${b.p.statuses.haste}).`, "p");
     if (shadowAp > 0) push(b, `Шаг в тень даёт +${shadowAp} ход в этом раунде.`, "p");
@@ -1968,12 +1991,108 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
     b.enemy.hp = 0;
     b.over = "win";
     gainLoot(b);
-    push(b, `${b.enemy.def.name} повержен! (+${b.enemy.xp} опыта)`, "sys");
+    push(b, `${b.enemy.def.name} повержен! (+${enemyXpFor(b)} опыта)`, "sys");
     return b;
   }
   if (b.over) return b;
   advance(b);
   return b;
+}
+
+/* ═══════════  ИНТЕЛЛЕКТ МОНСТРОВ  ═══════════ */
+
+/** Приёмы с негативными эффектами: порча, яд, кровотечение, печати, страх. */
+const DEBUFF_MOVES: EnemyMove[] = ["wound", "poison", "curse", "sunder", "bell_stun", "terror", "seal_items", "seal_skills", "seal_attack"];
+/** Приёмы, которые бьют по духу и считаются магическими. */
+const MAGIC_MOVES: EnemyMove[] = ["curse", "drain", "bell_stun", "terror"];
+/** Прямые удары оружием и когтями. */
+const STRIKE_MOVES: EnemyMove[] = ["attack", "heavy", "multi"];
+
+/** Порог «мало здоровья» для перехода в лечение или защитную стойку. */
+export const ENEMY_LOW_HP_RATIO = 0.35;
+
+/** Сколько ходов осталось у врага до конца раунда (включая текущий). */
+function enemyTurnsLeft(b: BattleState): number {
+  let n = 0;
+  for (let i = b.idx; i < b.queue.length; i++) if (b.queue[i] === "e") n++;
+  return n;
+}
+
+/** Шипы героя: удар по нему ранит самого нападающего. */
+function playerThorns(b: BattleState): number {
+  return (
+    rarePower(b, "thorns", "damage") +
+    effectPower(b, "thorns") +
+    passivePower(b, "bulwark_wall", "thorns") +
+    (hasPassive(b, "arch_bulwark_10") ? 6 : 0)
+  );
+}
+
+/**
+ * Решение монстра на его ход. Приоритеты:
+ * 1. Мало ОЗ — лечащий приём (похищение жизни) либо защитная стойка.
+ * 2. Промах на прошлом ходу — приём; при наличии магии именно магический удар.
+ * 3. У героя шипы, а приёма нет — защита.
+ * 4. Последний ход раунда: ходов больше — атака или приём, ходов меньше — защита.
+ * 5. Обычная атака бьёт слабо — приёмы на негативные эффекты.
+ * 6. Иначе — обычный случайный выбор из доступных приёмов.
+ */
+export function chooseEnemyMove(b: BattleState): EnemyMove {
+  const e = b.enemy;
+  const moves = (e.moves.length ? e.moves : e.def.moves).slice();
+  const has = (m: EnemyMove) => moves.includes(m);
+  const debuffs = moves.filter((m) => DEBUFF_MOVES.includes(m));
+  const magics = moves.filter((m) => MAGIC_MOVES.includes(m));
+  const strikes = moves.filter((m) => STRIKE_MOVES.includes(m));
+  const hpRatio = e.hp / Math.max(1, e.maxHp);
+  const turnsLeft = enemyTurnsLeft(b);
+  const enemyTurns = b.queue.filter((s) => s === "e").length;
+  const playerTurns = b.queue.filter((s) => s === "p").length;
+
+  /* 1. Мало здоровья: лечимся похищением жизни либо держим стойку. */
+  if (hpRatio <= ENEMY_LOW_HP_RATIO) {
+    if (has("drain") && e.hp < e.maxHp) {
+      return "drain";
+    }
+    return "guard";
+  }
+
+  /* 2. Промахнулся — следующий ход приём; с магией бьёт именно магией. */
+  if (e.lastMiss) {
+    if (magics.length) {
+      return pick(magics);
+    }
+    if (debuffs.length) {
+      return pick(debuffs);
+    }
+    if (has("heavy")) return "heavy";
+  }
+
+  /* 3. Шипы у героя, а приёма для обхода нет — защита. */
+  if (playerThorns(b) > 0 && turnsLeft === 1 && !debuffs.length) {
+    return "guard";
+  }
+
+  /* 4. Последний ход раунда: кто быстрее, тот и распоряжается концовкой. */
+  if (turnsLeft === 1) {
+    if (enemyTurns < playerTurns) {
+      return "guard";
+    }
+    if (enemyTurns > playerTurns) {
+      const options = [...strikes, ...debuffs];
+      if (options.length) return pick(options);
+      return "attack";
+    }
+  }
+
+  /* 5. Обычная атака почти не пробивает героя — давим негативными эффектами. */
+  const plain = Math.round((e.atk[0] + e.atk[1]) / 2) - Math.max(0, b.p.armor);
+  if (plain <= Math.max(2, Math.round(b.p.maxHp * 0.05)) && debuffs.length) {
+    return pick(debuffs);
+  }
+
+  /* 6. Обычный выбор. */
+  return moves.length ? pick(moves) : "attack";
 }
 
 export function enemyStep(b0: BattleState): BattleState {
@@ -2006,7 +2125,9 @@ export function enemyStep(b0: BattleState): BattleState {
   }
 
   const chill = (e.statuses.blight > 0 ? 0.8 : 1) * (e.statuses.curse > 0 ? 1 - (e.statuses.cursePower ?? 30) / 100 : 1);
-  const move = pick(b.enemy.moves.length ? b.enemy.moves : e.def.moves);
+  const move = chooseEnemyMove(b);
+  /* Промах запоминается только на один ход: после решения флаг снимаем. */
+  e.lastMiss = false;
   let base = randInt(e.atk[0], e.atk[1]);
   base = Math.round(base * (1 + (eEffect(b, "rage") / 100) * Math.min(10, Math.floor(enemyMissingRatio(b) * 10))));
   base = Math.round(base * (1 + (e.level * eEffect(b, "might")) / 100));
@@ -2030,11 +2151,12 @@ export function enemyStep(b0: BattleState): BattleState {
     }
     case "heavy": {
       push(b, `${e.def.name} обрушивает сокрушительный удар!`, "e");
-      incoming(b, Math.round(base * 1.7 * chill), "phys", `${e.def.name} пробивает с плеча`);
+      if (!incoming(b, Math.round(base * 1.7 * chill), "phys", `${e.def.name} пробивает с плеча`)) e.lastMiss = true;
       break;
     }
     case "wound": {
       const landed = incoming(b, Math.round(base * 0.9 * chill), "phys", `${e.def.name} рвёт плоть`);
+      if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0 && !hasLeg(b, "titan_heart") && Math.random() > resistChance) {
         b.p.statuses.wound = Math.max(b.p.statuses.wound, 3);
         push(b, "Открылось кровотечение на 3 раунда.", "e");
@@ -2045,6 +2167,7 @@ export function enemyStep(b0: BattleState): BattleState {
     }
     case "curse": {
       const landed = incoming(b, Math.round(base * 0.7 * chill), "magic", `${e.def.name} шепчет анафему`);
+      if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0 && Math.random() > resistChance) {
         b.p.statuses.curse = Math.max(b.p.statuses.curse, 3);
         b.p.statuses.cursePower = Math.max(b.p.statuses.cursePower ?? 0, 30);
@@ -2064,6 +2187,7 @@ export function enemyStep(b0: BattleState): BattleState {
     }
     case "sunder": {
       const landed = incoming(b, Math.round(base * 1.15 * chill), "phys", `${e.def.name} бьёт по швам доспеха`);
+      if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0) {
         b.p.statuses.sundered = Math.min(4, b.p.statuses.sundered + 1);
         push(b, "Твоя броня промята (−1 к защите до конца боя).", "e");
@@ -2072,6 +2196,7 @@ export function enemyStep(b0: BattleState): BattleState {
     }
     case "bell_stun": {
       const landed = incoming(b, Math.round(base * 1.1 * chill), "magic", `${e.def.name} бьёт в погребальный колокол`);
+      if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0 && Math.random() > resistChance) {
         b.p.statuses.stunAp = 1;
         push(b, "Звон парализует волю: −1 ход в следующем раунде!", "e");
@@ -2082,6 +2207,7 @@ export function enemyStep(b0: BattleState): BattleState {
     }
     case "poison": {
       const landed = incoming(b, Math.round(base * 0.85 * chill), "phys", `${e.def.name} впивается зубами`);
+      if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0 && !hasLeg(b, "titan_heart") && Math.random() > resistChance) {
         b.p.statuses.poison = Math.max(b.p.statuses.poison, 3);
         push(b, "Яд разъедает кровь: 4 урона за раунд.", "e");
@@ -2093,7 +2219,10 @@ export function enemyStep(b0: BattleState): BattleState {
     case "multi": {
       const first = incoming(b, Math.round(base * 0.65 * chill), "phys", `${e.def.name} бьёт первым выпадом`);
       if (first && b.p.hp > 0) {
-        incoming(b, Math.round(base * 0.65 * chill), "phys", `${e.def.name} добивает вторым`);
+        const second = incoming(b, Math.round(base * 0.65 * chill), "phys", `${e.def.name} добивает вторым`);
+        e.lastMiss = !second;
+      } else {
+        e.lastMiss = true;
       }
       break;
     }
@@ -2114,6 +2243,7 @@ export function enemyStep(b0: BattleState): BattleState {
     }
     case "terror": {
       const landed = incoming(b, Math.round(base * 0.6 * chill), "magic", `${e.def.name} рычит тебе в лицо`);
+      if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0 && Math.random() > resistChance) {
         b.p.statuses.fear = Math.max(b.p.statuses.fear, 2);
         e.guard = true;
@@ -2123,7 +2253,7 @@ export function enemyStep(b0: BattleState): BattleState {
       break;
     }
     default: {
-      incoming(b, Math.round(base * chill), "phys", `${e.def.name} атакует`);
+      if (!incoming(b, Math.round(base * chill), "phys", `${e.def.name} атакует`)) e.lastMiss = true;
     }
   }
 

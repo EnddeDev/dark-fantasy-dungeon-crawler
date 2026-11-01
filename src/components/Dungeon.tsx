@@ -140,7 +140,7 @@ export function Dungeon({
           <span className="tab">добыча: <span className="text-flame">{run.gold}</span></span>
           <span className="tab text-verd">ключи: {run.keys}</span>
           {torchActive && <span className="tab text-flame">факел: {run.torchTurns} ход.</span>}
-          {(run.burning ?? 0) > 0 && <span className="tab text-rubric">горение ×{run.burning}</span>}
+
           {run.mapRevealed && <span className="tab text-flame">карта раскрыта</span>}
           {/* Здоровье и негативные эффекты переехали в левую панель над опытом. */}
           <button

@@ -6,6 +6,7 @@ import type { GearItem, Player, RarityTier, WearTier } from "./types";
 import { GEAR_BASES, LEGENDARY_PASSIVES, gearAffinity, gearKindOfBase } from "./content";
 import { GEAR_PASSIVES, archetypePassive, effectCountForGear, effectPoolForGear, passivePoolFor } from "./gearEffects";
 import { clampGearLevel, MAX_GEAR_LEVEL, rollEffectBase } from "./gearScaling";
+import { canRollExtraAp } from "./content";
 import type { GearEffectId, GearPassiveId } from "./gearEffects";
 import type { LegendaryPassiveId } from "./types";
 import { WEAR_RANGE } from "./types";
@@ -105,7 +106,7 @@ export function upgradeRarity(item: GearItem, rng: () => number = Math.random): 
     stat,
     requiresNothing: base?.noReq === true,
     archetype: arch,
-  }).filter((id) => id !== "ap" || (out.level ?? 1) >= 3);
+  }).filter((id) => id !== "ap" || canRollExtraAp(next, out.level ?? 1));
   /* Новое качество обязано дать положенное число свойств: аксессуар — минимум одно. */
   const target = effectCountForGear({ kind, rarity: next, weaponType });
   const need = Math.max(0, target - have.length);

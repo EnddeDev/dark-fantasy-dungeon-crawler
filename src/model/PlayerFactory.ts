@@ -5,6 +5,9 @@ import type { Player, Slot } from "../game/types";
 import { SLOT_ORDER } from "../game/types";
 import { SHOP_MAX_LEVEL } from "../game/world";
 
+/** Здоровье, с которым начинается новая игра. */
+export const START_HP = 10;
+
 /** Фабрика игрока: создание нового героя и миграция старых сохранений. */
 export class PlayerFactory {
   static createInitial(): Player {
@@ -16,7 +19,7 @@ export class PlayerFactory {
       xp: 0,
       statPoints: 2,
       stats: { str: 1, agi: 1, int: 1 },
-      hp: 1,
+      hp: 10,
       gold: 220,
       bag: { potion_s: 2, antidote: 1, scroll_spark: 1, moss: 1, fire: 1 },
       knownRecipes: [],
@@ -37,7 +40,8 @@ export class PlayerFactory {
       kills: 0,
       shopLevel: 1,
     };
-    player.hp = derived(player).maxHp;
+    /* Стартовое здоровье героя — 10 (не выше предела, который даёт снаряжение). */
+    player.hp = Math.min(START_HP, derived(player).maxHp);
     return player;
   }
 

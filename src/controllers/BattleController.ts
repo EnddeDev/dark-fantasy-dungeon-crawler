@@ -71,7 +71,7 @@ export class BattleController {
         gold: run.gold + b.loot.gold,
         loot: [...run.loot, ...b.loot.items],
         gearLoot: [...run.gearLoot, ...b.loot.gear],
-        burning: b.biome === "fire" ? b.p.statuses.burning : 0,
+        burning: 0,
         log: [...run.log, `Победа над ${b.enemy.def.name}: +${b.loot.gold} зол., +${b.loot.xp} XP.${lvlNote}${b.isBoss ? ` Открыт этаж ${b.floor + 1}.` : ""}`],
       };
     })() : null;
@@ -142,7 +142,7 @@ export class BattleController {
         return true;
       }),
       gearLoot: run.gearLoot.filter((g) => !droppedGearUids.has(g.uid)),
-      burning: b.biome === "fire" ? b.p.statuses.burning : 0,
+      burning: 0,
       log: [
         ...run.log,
         `Побег из боя: потеряно ${lostGold} зол., ${droppedItems.length} припасов и ${droppedGear.length} снар.` +

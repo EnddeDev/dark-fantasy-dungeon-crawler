@@ -174,6 +174,26 @@ export class GameController {
     });
   }
 
+  /** «Начать заново»: стирает сохранения и возвращает к титульному экрану. */
+  restart(): void {
+    this.saves.clear();
+    const player = PlayerFactory.createInitial();
+    this.model.update({
+      screen: "title",
+      lobbyEntry: "train",
+      player,
+      shopStock: rollShopStock(player.shopLevel, 1),
+      run: null,
+      battle: null,
+      path: [],
+      pathPaused: false,
+      best: 0,
+      unlockedFloor: 1,
+      modal: null,
+      toast: null,
+    });
+  }
+
   leaveRun(): void {
     const { run, player } = this.model.getSnapshot();
     if (!run) return;
