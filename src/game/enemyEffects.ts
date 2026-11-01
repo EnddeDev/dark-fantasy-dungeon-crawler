@@ -2,17 +2,21 @@
  * Эффекты боссов и катастроф «как у снаряжения».
  * Пул зависит от типа существа, сила скейлится от уровня монстра тем же gearScaling.
  */
-import type { CreatureType, EnemyDef } from "./content";
+import type { EnemyDef } from "./content";
+import type { MonsterRace } from "./monsters";
 import type { GearEffectId } from "./gearEffects";
 import { effectMagnitude } from "./gearScaling";
 import { combineChances } from "./chances";
 
-const TYPE_POOLS: Record<CreatureType, GearEffectId[]> = {
+const RACE_POOLS: Record<MonsterRace, GearEffectId[]> = {
   construct: ["fortify", "thorns", "regen", "armor_damage", "magic_resist"],
   undead: ["magic_resist", "regen", "magic_vamp", "thorns", "fortify"],
+  vampire: ["magic_vamp", "vamp", "crit_chance", "crit_mult", "ap"],
+  ghost: ["magic_resist", "ap", "crit_chance", "evade", "magic_vamp"],
   beast: ["rage", "vamp", "crit_chance", "crit_mult", "ap"],
-  humanoid: ["crit_chance", "crit_mult", "vamp", "ap", "fortify"],
   demon: ["magic_vamp", "rage", "crit_mult", "magic_resist", "fortify"],
+  dragon: ["rage", "might", "crit_mult", "fortify", "magic_resist"],
+  none: ["crit_chance", "crit_mult", "vamp", "ap", "fortify"],
 };
 
 export const BOSS_EFFECT_RESIST = 0.25;
@@ -23,7 +27,7 @@ export function rollEnemyEffects(
   count: number,
   rng: () => number = Math.random,
 ): GearEffectId[] {
-  const source = TYPE_POOLS[def.type] ?? TYPE_POOLS.beast;
+  const source = RACE_POOLS[def.race] ?? RACE_POOLS.none;
   let pool = [...source];
   const out: GearEffectId[] = [];
   while (out.length < count) {

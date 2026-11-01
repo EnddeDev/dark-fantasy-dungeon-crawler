@@ -28,6 +28,23 @@ import {
   type EpicSkillDef,
   type WeaponSkillDef,
 } from "./content";
+import {
+  ELEMENT_NAMES,
+  MONSTER_RACE_META,
+  MONSTER_TYPE_META,
+  coerceMonsterType,
+  monsterEvade,
+  raceApDelta,
+  raceBonusMoves,
+  raceCannotHeal,
+  raceEffectResist,
+  raceElementMult,
+  raceFortify,
+  raceGuardBonus,
+  raceImmuneTo,
+  type DamageElement,
+  type MonsterType,
+} from "./monsters";
 import { SLOT_ORDER } from "./types";
 import { enemyLevelMult, scaledEnemyXp } from "./enemyScaling";
 import { isBattleCurse } from "./traps";
@@ -104,6 +121,12 @@ export interface BattleState {
     threat: Threat;
     /** Пассивный эффект врага (у катастроф и боссов) */
     passive: EnemyPassive | null;
+    /** Итоговый боевой тип (с учётом ограничений рода). */
+    mtype: MonsterType;
+    /** Сколько твоих попаданий выдержал дракон (для «залпа»). */
+    hitsTaken: number;
+    /** Раунды ярости дракона: двойной урон и лечение в конце хода. */
+    fury: number;
     /** Набор приёмов с учётом угрозы */
     moves: EnemyMove[];
     /** Эффекты «как у снаряжения» у боссов и катастроф. */
@@ -200,6 +223,10 @@ export interface BattleState {
       fear: number;
       /** Увядание: лечение переходит в магический урон. */
       wither: number;
+      /** Холодное касание призрака: раунды, в которые лечение не действует. */
+      noHeal: number;
+      /** Мрак вампира: до конца раунда половина твоих атак уходит мимо. */
+      darkness: number;
       /** Печати босса: запрет действий в следующий ход игрока. */
       sealItems: number;
       sealSkills: number;
@@ -531,6 +558,8 @@ export interface SpawnedEnemy {
   def: EnemyDef;
   level: number;
   threat: Threat;
+  /** Итоговый боевой тип после ограничений рода. */
+  mtype: MonsterType;
   passive: EnemyPassive | null;
   moves: EnemyMove[];
   effects: GearEffectId[];
@@ -552,12 +581,19 @@ export function spawnEnemy(floor: number, isBoss = false, rng: () => number = Ma
   const level = isBoss ? floor : rollMonsterLevel(floor, rng);
   const meta = THREAT_META[threat];
 
+  /* Тип задаёт профиль: сильные крепче и бьют тяжелее, ловкие уклоняются и
+     получают лишний ход, умные держат урон на приёмах. Род ограничивает тип:
+     конструкт бывает только сильным. */
+  const mtype = coerceMonsterType(def.race, def.type);
+  const typeMeta = MONSTER_TYPE_META[mtype];
+
   // Шаг усиления падает на 0.05 за уровень, но не ниже ×1.05 (кроме ходов).
   const levelMult = enemyLevelMult(level);
-  const hpMult = levelMult * (isBoss ? 1 : meta.hpMult);
-  const atkMult = levelMult * (isBoss ? 1 : meta.atkMult);
+  const hpMult = levelMult * (isBoss ? 1 : meta.hpMult) * typeMeta.hpMult;
+  const atkMult = levelMult * (isBoss ? 1 : meta.atkMult) * typeMeta.atkMult;
 
-  const moves: EnemyMove[] = [...def.moves];
+  /* Приёмы рода (запугивание, мрак, холодное касание, сила ада) есть у каждой твари. */
+  const moves: EnemyMove[] = [...def.moves, ...raceBonusMoves(def.race)];
   if (!isBoss && threat !== "normal") {
     const need = threat === "catastrophe" ? 2 : 1;
     const pool = SPECIAL_MOVES.filter((mv) => !moves.includes(mv));
@@ -581,21 +617,26 @@ export function spawnEnemy(floor: number, isBoss = false, rng: () => number = Ma
     moves.push(seals[Math.floor(rng() * seals.length)]);
   }
 
+  const apBase = def.ap + apBonus + (effects.includes("ap") ? effectMagnitude("ap", level) : 0) +
+    typeMeta.apDelta + raceApDelta(def.race);
+
   return {
     def,
     level,
     threat,
+    mtype,
     passive,
     moves,
     effects,
     effectPower: enemyEffectPower(effects, level),
     hp: Math.max(1, Math.round(def.hp * hpMult)),
-    ap: Math.min(10, def.ap + apBonus + (effects.includes("ap") ? effectMagnitude("ap", level) : 0)),
+    ap: Math.max(1, Math.min(10, apBase)),
     atk: [
       Math.max(1, Math.round(def.atk[0] * atkMult)),
       Math.max(2, Math.round(def.atk[1] * atkMult)),
     ],
-    armor: Math.max(0, Math.round(def.armor * levelMult)),
+    /* Броня: уровень плюс прибавка типа (у ловких она отрицательная). */
+    armor: Math.max(0, Math.round(def.armor * levelMult) + typeMeta.armorDelta),
     gold: [
       Math.round(def.gold[0] * (1 + (floor - 1) * 0.5)),
       Math.round(def.gold[1] * (1 + (floor - 1) * 0.5)),
@@ -735,6 +776,9 @@ export function newBattle(pl: Player, floor: number, isBoss = false, biome: Biom
       def,
       level: s.level,
       threat: s.threat,
+      mtype: s.mtype,
+      hitsTaken: 0,
+      fury: 0,
       passive: s.passive,
       moves: s.moves,
       effects: s.effects,
@@ -811,6 +855,8 @@ export function newBattle(pl: Player, floor: number, isBoss = false, biome: Biom
         chill: pl.statuses.chill ?? 0,
         fear: pl.statuses.fear ?? 0,
         wither: pl.statuses.wither ?? 0,
+        noHeal: 0,
+        darkness: 0,
         sealItems: 0,
         sealSkills: 0,
         sealAttack: 0,
@@ -906,6 +952,11 @@ function eEffect(b: BattleState, id: GearEffectId): number {
 function eChance(b: BattleState, id: GearEffectId): number {
   return enemyChance(b.enemy.effects, b.enemy.level, id);
 }
+/** Уклонение твари: тип плюс род, всегда от текущего определения. */
+function enemyEvade(b: BattleState): number {
+  return monsterEvade(b.enemy.def.race, b.enemy.mtype);
+}
+
 function bossResists(b: BattleState): boolean {
   if (!b.isBoss) return false;
   if (Math.random() < BOSS_EFFECT_RESIST) {
@@ -915,8 +966,16 @@ function bossResists(b: BattleState): boolean {
   return false;
 }
 function applyEnemyStatus(b: BattleState, key: "chill" | "bleed" | "poison" | "fear" | "blight" | "wither" | "curse" | "burn", rounds: number) {
-  if ((key === "poison" || key === "fear") && isImmuneTo(b.enemy.def.type, key)) {
-    push(b, `${b.enemy.def.name} невосприимчив к этому эффекту.`, "sys");
+  const immuneKeys: Record<string, "poison" | "bleed" | "fear"> = { poison: "poison", bleed: "bleed", fear: "fear" };
+  const immuneKey = immuneKeys[key];
+  if (immuneKey && raceImmuneTo(b.enemy.def.race, immuneKey)) {
+    push(b, `${b.enemy.def.name} невосприимчив к этому эффекту (${MONSTER_RACE_META[b.enemy.def.race].name.toLowerCase()}).`, "sys");
+    return;
+  }
+  /* Дракон устойчив ко всем эффектам: половина наложений просто не держится. */
+  const raceResist = raceEffectResist(b.enemy.def.race);
+  if (raceResist > 0 && Math.random() < raceResist) {
+    push(b, `${b.enemy.def.name} стряхивает эффект (сопротивление ${Math.round(raceResist * 100)}%).`, "e");
     return;
   }
   if (bossResists(b)) return;
@@ -949,6 +1008,10 @@ function weaponHitEffects(b: BattleState) {
 }
 
 function healEnemy(b: BattleState, amount: number): number {
+  if (raceCannotHeal(b.enemy.def.race)) {
+    push(b, `${b.enemy.def.name} не восстанавливает здоровье: конструкт не поддаётся лечению.`, "e");
+    return 0;
+  }
   if (b.enemy.statuses.wither > 0) {
     const dmg = Math.max(1, Math.round(amount * (1 - eChance(b, "magic_resist"))));
     b.enemy.hp = Math.max(0, b.enemy.hp - dmg);
@@ -965,6 +1028,10 @@ function healEnemy(b: BattleState, amount: number): number {
 
 /** Единая точка лечения игрока: болото режет всё, кроме зелий. Возвращает реально восстановленные ОЗ. */
 function healPlayer(b: BattleState, amount: number, isPotion = false): number {
+  if (b.p.statuses.noHeal > 0) {
+    push(b, `Холодное касание глушит жизнь: лечение не действует (ещё ${b.p.statuses.noHeal} ход.).`, "e");
+    return 0;
+  }
   if (b.p.statuses.wither > 0) {
     const dmg = Math.max(1, Math.round(amount * (1 - combatChance(b.p.chanceLayers.magicResist))));
     b.p.hp = Math.max(0, b.p.hp - dmg);
@@ -1091,7 +1158,13 @@ function hitEnemy(
     push(b, `Мрак скрывает цель: удар проходит мимо.${note}`, "sys");
     return 0;
   }
-  const evade = kind === "phys" ? eChance(b, "evade") : 0;
+  /* «Мрак» вампира: до конца раунда половина ударов героя уходит в пустоту. */
+  if (strike && b.p.statuses.darkness > 0 && Math.random() < 0.5) {
+    flash(b, "e", "miss", 0);
+    push(b, `Мрак вампира съедает удар: промах.${note}`, "e");
+    return 0;
+  }
+  const evade = kind === "phys" ? eChance(b, "evade") + enemyEvade(b) : 0;
   if (evade > 0 && Math.random() < evade) {
     flash(b, "e", "miss", 0);
     push(b, `${b.enemy.def.name} уклоняется от удара.${note}`, "e");
@@ -1106,13 +1179,17 @@ function hitEnemy(
     const effArmor = Math.max(0, b.enemy.armor - pierce);
     d -= effArmor;
     if (b.enemy.passive?.id === "stone_hide") d = Math.round(d * 0.75);
+    /* Укрепление конструкта: камень и металл гасят часть физического удара. */
+    const fortify = raceFortify(b.enemy.def.race);
+    if (fortify > 0) d = Math.round(d * (1 - fortify));
     d = Math.round(d * (1 - eChance(b, "fortify")));
   } else {
     d = Math.round(d * (1 - eChance(b, "magic_resist")));
   }
   if (b.enemy.guard) {
     d = Math.floor(d / 2);
-    d = Math.round(d * Math.max(0.2, 1 - eEffect(b, "guard_bonus") / 100));
+    const guardBonus = eEffect(b, "guard_bonus") / 100 + raceGuardBonus(b.enemy.def.race);
+    d = Math.round(d * Math.max(0.2, 1 - guardBonus));
   }
   d -= eEffect(b, "damage_resist");
   d = Math.max(1, d);
@@ -1124,13 +1201,54 @@ function hitEnemy(
     b.p.hp -= thorns;
     push(b, `Шипы противника ранят тебя: −${thorns} ОЗ.`, "e");
   }
+  /* Дракон копит ярость: после трёх твоих попаданий бьёт вдвое и залечивает раны. */
+  if (b.enemy.def.race === "dragon" && b.enemy.hp > 0) {
+    b.enemy.hitsTaken += 1;
+    if (b.enemy.fury <= 0 && b.enemy.hitsTaken >= 3) {
+      b.enemy.hitsTaken = 0;
+      b.enemy.fury = 3;
+      push(b, `${b.enemy.def.name} впадает в ярость: 3 хода двойного урона и лечения!`, "e");
+    }
+  }
   return d;
 }
 
+/**
+ * Урон стихией: уязвимый род получает в полтора раза больше, а иммунный —
+ * ничего. Стихию знают свитки, зелья и часть приёмов.
+ */
+function elementalHit(
+  b: BattleState,
+  raw: number,
+  kind: "phys" | "magic" | "true",
+  note: string,
+  element: DamageElement | undefined,
+): number {
+  const mult = raceElementMult(b.enemy.def.race, element);
+  if (element && mult <= 0) {
+    flash(b, "e", "miss", 0);
+    push(b, `${b.enemy.def.name} не получает урона от стихии (${ELEMENT_NAMES[element]}).${note}`, "sys");
+    return 0;
+  }
+  if (element && mult > 1) {
+    push(b, `Уязвимость к стихии: ${ELEMENT_NAMES[element]} бьёт в ×${mult}.`, "p");
+    return hitEnemy(b, Math.round(raw * mult), kind, note);
+  }
+  return hitEnemy(b, raw, kind, note);
+}
+
 /** false означает, что враг промахнулся: побочные эффекты атаки тоже не срабатывают. */
-function incoming(b: BattleState, raw: number, kind: "phys" | "magic", src: string, strike = kind === "phys"): boolean {
+function incoming(
+  b: BattleState,
+  raw: number,
+  kind: "phys" | "magic",
+  src: string,
+  strike = kind === "phys",
+  /** Пробивает броню, сопротивление и уклонение (холодное касание призрака). */
+  ignoreDefense = false,
+): boolean {
   const darkMiss = (b.torchTurns ?? 0) > 0 ? 0 : biomeMissChance(b.biome);
-  if (strike && darkMiss > 0 && Math.random() < darkMiss) {
+  if (!ignoreDefense && strike && darkMiss > 0 && Math.random() < darkMiss) {
     flash(b, "p", "miss", 0);
     push(b, `Мрак скрывает тебя: ${src} — промах.`, "sys");
     return false;
@@ -1154,7 +1272,7 @@ function incoming(b: BattleState, raw: number, kind: "phys" | "magic", src: stri
     grantDodgeAction(b);
     return false;
   }
-  if (kind === "phys" && Math.random() < combatChance(b.p.chanceLayers.evade)) {
+  if (!ignoreDefense && kind === "phys" && Math.random() < combatChance(b.p.chanceLayers.evade)) {
     flash(b, "p", "miss", 0);
     push(b, `Ты уходишь с линии удара — промах!`, "e");
     grantDodgeAction(b);
@@ -1164,12 +1282,14 @@ function incoming(b: BattleState, raw: number, kind: "phys" | "magic", src: stri
   if (strike) d = Math.round(d * biomeStrikeMult(b.biome));
   const effArmor = Math.max(0, b.p.armor + b.p.statuses.tempArmor + (b.p.statuses.ironTonic > 0 ? 4 : 0) - b.p.statuses.sundered);
   if (kind === "phys") {
-    d -= effArmor;
-    d = Math.round(d * (1 - combatChance(b.p.chanceLayers.fortify)));
-  } else {
+    if (!ignoreDefense) {
+      d -= effArmor;
+      d = Math.round(d * (1 - combatChance(b.p.chanceLayers.fortify)));
+    }
+  } else if (!ignoreDefense) {
     d = Math.round(d * (1 - combatChance(b.p.chanceLayers.magicResist)));
   }
-  d -= effectPower(b, "damage_resist");
+  if (!ignoreDefense) d -= effectPower(b, "damage_resist");
   if (b.p.statuses.stone > 0) d = Math.round(d * 0.7);
   if (b.p.guard) d = Math.floor(d / 2);
   let guardMult = 1;
@@ -1362,14 +1482,22 @@ function advance(b: BattleState) {
       b.enemy.hp -= d;
       push(b, `Порча разъедает ${b.enemy.def.name}: −${d} ОЗ.`, "p");
     }
-    if (b.enemy.passive?.id === "regen" && b.enemy.hp > 0 && b.enemy.hp < b.enemy.maxHp) {
+    if (b.enemy.passive?.id === "regen" && !raceCannotHeal(b.enemy.def.race) && b.enemy.hp > 0 && b.enemy.hp < b.enemy.maxHp) {
       const heal = healEnemy(b, 4);
       push(b, `${b.enemy.def.name} затягивает раны (+${heal} ОЗ).`, "e");
     }
     const eRegen = eEffect(b, "regen");
-    if (eRegen > 0 && b.enemy.hp > 0 && b.enemy.hp < b.enemy.maxHp) {
+    if (eRegen > 0 && !raceCannotHeal(b.enemy.def.race) && b.enemy.hp > 0 && b.enemy.hp < b.enemy.maxHp) {
       const heal = healEnemy(b, eRegen);
       push(b, `Эффект противника затягивает раны (+${heal} ОЗ).`, "e");
+    }
+
+    /* Ярость дракона: лечится в конце своего хода и держится три раунда. */
+    if (b.enemy.fury > 0 && b.enemy.hp > 0) {
+      const heal = healEnemy(b, Math.round(b.enemy.maxHp * 0.1));
+      if (heal > 0) push(b, `Ярость дракона затягивает раны (+${heal} ОЗ).`, "e");
+      b.enemy.fury -= 1;
+      if (b.enemy.fury === 0) push(b, `${b.enemy.def.name} выдыхается: ярость угасла.`, "sys");
     }
 
     const regen = (hasPassive(b, "iron_will") ? 3 : 0) + rarePower(b, "regen", "heal") +
@@ -1396,6 +1524,8 @@ function advance(b: BattleState) {
     b.p.statuses.rage = Math.max(0, b.p.statuses.rage - 1);
     b.p.statuses.ironTonic = Math.max(0, b.p.statuses.ironTonic - 1);
     b.p.statuses.bloodRage = Math.max(0, b.p.statuses.bloodRage - 1);
+    b.p.statuses.noHeal = Math.max(0, b.p.statuses.noHeal - 1);
+    b.p.statuses.darkness = Math.max(0, b.p.statuses.darkness - 1);
     b.p.statuses.quickblade = Math.max(0, b.p.statuses.quickblade - 1);
     b.p.statuses.pactElixir = Math.max(0, b.p.statuses.pactElixir - 1);
     b.p.statuses.fullGuard = Math.max(0, b.p.statuses.fullGuard - 1);
@@ -1712,7 +1842,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
       const skLevel = b.p.epicSkillLevels[sk.id] ?? 1;
       if (sk.id === "fireball") {
         const dmg = Math.round(techniqueDamage(b.p.stats.int, epicMagnitude(sk.id, "scale", skLevel) / 2) * spellPowerMult * skillDamageMult(b));
-        const dealt = hitEnemy(b, dmg, "true", " [Огненный шар]");
+        const dealt = elementalHit(b, dmg, "true", " [Огненный шар]", "fire");
         applyVamp(b, dealt, 0, "skill", "magic");
         const burnRounds = epicMagnitude(sk.id, "rounds", skLevel);
         b.enemy.statuses.burn = Math.max(b.enemy.statuses.burn, burnRounds);
@@ -1739,7 +1869,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
         applyVamp(b, dealt, 0, "skill", "magic");
       } else if (sk.id === "frost_nova") {
         const dmg = Math.round(techniqueDamage(b.p.stats.int, epicMagnitude(sk.id, "scale", skLevel) / 2) * spellPowerMult * skillDamageMult(b));
-        const dealt = hitEnemy(b, dmg, "true", " [Дыхание склепа]");
+        const dealt = elementalHit(b, dmg, "true", " [Дыхание склепа]", "ice");
         applyVamp(b, dealt, 0, "skill", "magic");
         b.enemy.statuses.chill = Math.max(b.enemy.statuses.chill, epicMagnitude(sk.id, "rounds", skLevel));
         b.enemy.statuses.stunAp = Math.min(4, b.enemy.statuses.stunAp + epicMagnitude(sk.id, "stun", skLevel));
@@ -1767,7 +1897,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
       if (b.p.stats.int < req) return err(`Для «${def.name}» нужен Интеллект ${req}.`);
       const itemPower = consumablePowerWithGear(b, def);
       const scrollMult = consumableDamageMult(b, def);
-      if (u.type === "fear" && isImmuneTo(b.enemy.def.type, "fear")) {
+      if (u.type === "fear" && isImmuneTo(b.enemy.def.race, "fear")) {
         return err(`${b.enemy.def.name} не знает страха: флакон здесь бесполезен.`);
       }
 
@@ -1781,16 +1911,16 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
         }
         case "damage": {
           let dmg = Math.round(itemPower * scrollMult);
-          if (u.vs && b.enemy.def.type === u.vs) dmg = Math.round(dmg * 2);
+          if (u.vs && b.enemy.def.race === u.vs) dmg = Math.round(dmg * 2);
           if (b.p.statuses.rage > 0) dmg = Math.round(dmg * (1 + 0.10 * Math.min(10, Math.floor(missingHpRatio(b) * 10))));
           if (b.p.statuses.curse > 0) dmg = Math.round(dmg * (1 - (b.p.statuses.cursePower ?? 30) / 100));
-          const dealt = hitEnemy(b, dmg, u.vs ? "true" : "magic", ` [${def.name}]${u.vs && b.enemy.def.type === u.vs ? " · вдвойне против такого рода!" : ""}`);
+          const dealt = elementalHit(b, dmg, u.vs ? "true" : "magic", ` [${def.name}]${u.vs && b.enemy.def.race === u.vs ? " · вдвойне против такого рода!" : ""}`, u.element);
           applyVamp(b, dealt, 0, def.kind === "scroll" ? "scroll" : "consumable", def.kind === "scroll" ? "magic" : "phys");
           break;
         }
         case "chill": {
-          let dmg = Math.round(itemPower * scrollMult);
-          const dealt = hitEnemy(b, dmg, "magic", ` [${def.name}]`);
+          const dmg = Math.round(itemPower * scrollMult);
+          const dealt = elementalHit(b, dmg, "magic", ` [${def.name}]`, u.element ?? "ice");
           applyVamp(b, dealt, 0, def.kind === "scroll" ? "scroll" : "consumable", def.kind === "scroll" ? "magic" : "phys");
           applyEnemyStatus(b, "chill", u.rounds ?? 3);
           push(b, `${b.enemy.def.name} обморожен: лечение −50% и периодический урон.`, "p");
@@ -1834,8 +1964,8 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
           const dmg = Math.round(itemPower);
           const dealt = hitEnemy(b, dmg, "phys", ` [${def.name}]`);
           applyVamp(b, dealt, 0, "consumable", "phys");
-          if (isImmuneTo(b.enemy.def.type, "poison")) {
-            push(b, `${b.enemy.def.name} (${b.enemy.def.type === "undead" ? "нежить" : "конструкт"}) невосприимчив к яду!`, "sys");
+          if (isImmuneTo(b.enemy.def.race, "poison")) {
+            push(b, `${b.enemy.def.name} (${MONSTER_RACE_META[b.enemy.def.race].name.toLowerCase()}) невосприимчив к яду!`, "sys");
           } else if (b.enemy.hp > 0) {
             applyEnemyStatus(b, "poison", u.rounds ?? 3);
             push(b, `${b.enemy.def.name} отравлен на ${b.enemy.statuses.poison} раунда.`, "p");
@@ -1915,7 +2045,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
         }
         case "acid": {
           const dmg = Math.round(itemPower);
-          const dealt = hitEnemy(b, dmg, "true", ` [${def.name}]`);
+          const dealt = elementalHit(b, dmg, "true", ` [${def.name}]`, u.element ?? "acid");
           applyVamp(b, dealt, 0, "consumable", "phys");
           if (!bossResists(b)) {
             b.enemy.armor = Math.max(0, b.enemy.armor - 3);
@@ -2002,11 +2132,50 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
 /* ═══════════  ИНТЕЛЛЕКТ МОНСТРОВ  ═══════════ */
 
 /** Приёмы с негативными эффектами: порча, яд, кровотечение, печати, страх. */
-const DEBUFF_MOVES: EnemyMove[] = ["wound", "poison", "curse", "sunder", "bell_stun", "terror", "seal_items", "seal_skills", "seal_attack"];
+const DEBUFF_MOVES: EnemyMove[] = ["wound", "poison", "curse", "sunder", "bell_stun", "terror", "seal_items", "seal_skills", "seal_attack", "intimidate", "darkness"];
 /** Приёмы, которые бьют по духу и считаются магическими. */
-const MAGIC_MOVES: EnemyMove[] = ["curse", "drain", "bell_stun", "terror"];
+const MAGIC_MOVES: EnemyMove[] = ["curse", "drain", "bell_stun", "terror", "darkness", "cold_touch", "hell_force"];
 /** Прямые удары оружием и когтями. */
 const STRIKE_MOVES: EnemyMove[] = ["attack", "heavy", "multi"];
+
+/**
+ * Родовые свойства удара: вампир лечится от попадания, а зверь, призрак,
+ * вампир и демон оставляют на герое свой след — яд, кровь, страх или огонь.
+ */
+function applyRaceStrike(b: BattleState, isStrike: boolean, rawBase: number, resistChance: number) {
+  const e = b.enemy;
+  const race = e.def.race;
+  /* Вампиризм рода: любое попадание возвращает четверть силы удара. */
+  if (race === "vampire" && e.hp > 0) {
+    const heal = healEnemy(b, Math.max(1, Math.round(rawBase * 0.25)));
+    if (heal > 0) push(b, `${e.def.name} пьёт жизнь: +${heal} ОЗ.`, "e");
+  }
+  if (!isStrike || b.p.hp <= 0) return;
+  const lands = () => Math.random() > resistChance;
+  if (race === "vampire" && lands()) {
+    b.p.statuses.wound = Math.max(b.p.statuses.wound, 3);
+    push(b, "Клыки рвут плоть: кровотечение на 3 раунда.", "e");
+  } else if (race === "ghost" && lands()) {
+    b.p.statuses.fear = Math.max(b.p.statuses.fear, 2);
+    push(b, "Прикосновение призрака сеет страх на 2 раунда.", "e");
+  } else if (race === "beast" && lands()) {
+    if (Math.random() < 0.5) {
+      b.p.statuses.wound = Math.max(b.p.statuses.wound, 3);
+      push(b, "Зверь рвёт когтями: кровотечение на 3 раунда.", "e");
+    } else {
+      b.p.statuses.poison = Math.max(b.p.statuses.poison, 3);
+      push(b, "Яд зверя в крови: 3 раунда отравления.", "e");
+    }
+  } else if (race === "demon" && lands()) {
+    if (Math.random() < 0.5) {
+      b.p.statuses.burn = Math.max(b.p.statuses.burn, statusRounds(b, 3));
+      push(b, "Адское пламя липнет к коже: горение на 3 раунда.", "e");
+    } else {
+      b.p.statuses.fear = Math.max(b.p.statuses.fear, 2);
+      push(b, "Взгляд демона парализует волю: страх на 2 раунда.", "e");
+    }
+  }
+}
 
 /** Порог «мало здоровья» для перехода в лечение или защитную стойку. */
 export const ENEMY_LOW_HP_RATIO = 0.35;
@@ -2126,6 +2295,7 @@ export function enemyStep(b0: BattleState): BattleState {
 
   const chill = (e.statuses.blight > 0 ? 0.8 : 1) * (e.statuses.curse > 0 ? 1 - (e.statuses.cursePower ?? 30) / 100 : 1);
   const move = chooseEnemyMove(b);
+  const isStrikeMove = STRIKE_MOVES.includes(move);
   /* Промах запоминается только на один ход: после решения флаг снимаем. */
   e.lastMiss = false;
   let base = randInt(e.atk[0], e.atk[1]);
@@ -2140,7 +2310,17 @@ export function enemyStep(b0: BattleState): BattleState {
     base = Math.round(base * (2 + eEffect(b, "crit_mult") / 100));
     push(b, `${e.def.name} наносит критический удар!`, "e");
   }
+  /* Тип задаёт, на чём держится урон: у умных приёмы бьют в 1.45× сильнее. */
+  const typeMeta = MONSTER_TYPE_META[e.mtype] ?? MONSTER_TYPE_META.strong;
+  if (!isStrikeMove && move !== "guard") base = Math.round(base * typeMeta.movePower);
+  /* Агрессия зверя: ниже половины здоровья бьёт вдвое. */
+  if (e.def.race === "beast" && e.hp > 0 && e.hp <= e.maxHp * 0.5 && isStrikeMove) {
+    base = Math.round(base * 2);
+  }
+  /* Ярость дракона: двойной урон, пока держится. */
+  if (e.def.race === "dragon" && e.fury > 0) base = Math.round(base * 2);
   const resistChance = playerResistChance(b);
+  const hpBeforeMove = b.p.hp;
 
   switch (move) {
     case "guard": {
@@ -2205,6 +2385,35 @@ export function enemyStep(b0: BattleState): BattleState {
       }
       break;
     }
+    case "intimidate": {
+      b.p.statuses.sealAttack = 1;
+      b.p.statuses.sealSkills = 1;
+      push(b, `${e.def.name} давит волей: в следующий ход нельзя ни атаковать, ни применять приёмы.`, "e");
+      break;
+    }
+    case "darkness": {
+      b.p.statuses.darkness = 1;
+      push(b, `${e.def.name} сгущает мрак: до конца раунда половина твоих атак уходит в пустоту.`, "e");
+      break;
+    }
+    case "cold_touch": {
+      const landed = incoming(b, Math.round(base * 1.1 * chill), "magic", `${e.def.name} касается холодом`, false, true);
+      if (landed) {
+        push(b, "Холодное касание проходит сквозь броню и любое сопротивление.", "e");
+        b.p.statuses.noHeal = Math.max(b.p.statuses.noHeal, 2);
+        if (b.p.hp > 0) push(b, "Стужа в костях: два хода лечение не действует.", "e");
+      }
+      break;
+    }
+    case "hell_force": {
+      const landed = incoming(b, Math.round(base * 2 * chill), "magic", `${e.def.name} обрушивает силу ада`);
+      if (!landed) e.lastMiss = true;
+      if (landed && b.p.hp > 0 && Math.random() > resistChance) {
+        b.p.statuses.burn = Math.max(b.p.statuses.burn, statusRounds(b, 4));
+        push(b, "Сила ада поджигает: 4 раунда горения.", "e");
+      }
+      break;
+    }
     case "poison": {
       const landed = incoming(b, Math.round(base * 0.85 * chill), "phys", `${e.def.name} впивается зубами`);
       if (!landed) e.lastMiss = true;
@@ -2255,6 +2464,11 @@ export function enemyStep(b0: BattleState): BattleState {
     default: {
       if (!incoming(b, Math.round(base * chill), "phys", `${e.def.name} атакует`)) e.lastMiss = true;
     }
+  }
+
+  /* Родовые последствия удара: вампиризм, кровь, страх, яд, огонь. */
+  if (!e.lastMiss && b.p.hp < hpBeforeMove) {
+    applyRaceStrike(b, isStrikeMove, Math.round(base * chill), resistChance);
   }
 
   const magicMove = ["curse", "drain", "bell_stun", "terror"].includes(move);

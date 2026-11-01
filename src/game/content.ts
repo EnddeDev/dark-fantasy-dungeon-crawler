@@ -1,4 +1,6 @@
 import { SHOP_STARTER_GEAR } from "./shopStarters";
+import { raceImmuneTo } from "./monsters";
+import type { DamageElement, EffectKind, MonsterRace, MonsterType } from "./monsters";
 import {
   EXTRA_BOSSES,
   EXTRA_ENEMIES,
@@ -1946,8 +1948,10 @@ export interface ItemDef {
     intReq?: number;
     fleeRate?: number;
     rounds?: number;
-    /** Против какого типа существ усилен эффект. */
-    vs?: CreatureType;
+    /** Против какого рода существ усилен эффект. */
+    vs?: MonsterRace;
+    /** Стихия урона: уязвимости и иммунитеты рода считаются по ней. */
+    element?: DamageElement;
   };
 }
 
@@ -1962,16 +1966,16 @@ export const ITEMS: Record<string, ItemDef> = Object.fromEntries(
     I({ id: "rage", name: "Эликсир ярости", kind: "potion", price: 95, use: { type: "rage", rounds: 5 }, desc: "Пять раундов ярости: +10% урона за каждые 10% недостающего ОЗ." }),
     /* оружейные расходники не требуют Интеллекта */
     I({ id: "throwing_knife", name: "Метательный кинжал", kind: "throwable", price: 28, use: { type: "throw", power: 10, scale: 1.5, scaleStat: "agi" }, desc: "Быстрый бросок: 7 + 1.5×ЛОВ физического урона." }),
-    I({ id: "poison_dart", name: "Отравленный дротик", kind: "throwable", price: 48, use: { type: "poison", power: 5, scale: 1, scaleStat: "agi", rounds: 3 }, desc: "Прокалывает кожу и травит живую цель 3 раунда. Нежить и големы невосприимчивы." }),
+    I({ id: "poison_dart", name: "Отравленный дротик", kind: "throwable", price: 48, use: { type: "poison", power: 5, scale: 1, scaleStat: "agi", rounds: 3 }, desc: "Прокалывает кожу и травит живую цель 3 раунда. Нежить, конструкты и призраки невосприимчивы." }),
     I({ id: "smoke_bomb", name: "Дымовая бомба", kind: "throwable", price: 78, use: { type: "smoke", rounds: 2 }, desc: "Густой дым не даёт врагу попасть по тебе в следующие 2 атаки. Это не побег." }),
     I({ id: "blast_bomb", name: "Взрывная бомба", kind: "throwable", price: 95, use: { type: "explosion", power: 24, scale: 1.5, scaleStat: "agi" }, desc: "Взрыв наносит 7 + 1.5×ЛОВ урона, игнорируя броню." }),
-    I({ id: "fear_vial", name: "Зелье ужаса", kind: "potion", price: 70, level: 2, minFloor: 2, use: { type: "fear", rounds: 2 }, desc: "Живая цель 2 хода автоматически держит защиту. Нежить и големы страха не знают." }),
+    I({ id: "fear_vial", name: "Зелье ужаса", kind: "potion", price: 70, level: 2, minFloor: 2, use: { type: "fear", rounds: 2 }, desc: "Живая цель 2 хода автоматически держит защиту. Нежить, конструкты и призраки страха не знают." }),
     /* свитки (требуют Интеллект) */
-    I({ id: "scroll_spark", name: "Свиток искры", kind: "scroll", price: 60, use: { type: "damage", power: 16, scale: 3, scaleStat: "int", intReq: 2 }, desc: "10 + 2×ИНТ урона. Короткая формула поджога; чтение требует ИНТ 2." }),
-    I({ id: "scroll_fire", name: "Свиток огня", kind: "scroll", price: 85, use: { type: "damage", power: 24, scale: 4, scaleStat: "int", intReq: 3 }, desc: "10 + 2×ИНТ урона. Буквы в нём дописаны от руки, спеша; чтение требует ИНТ 3." }),
+    I({ id: "scroll_spark", name: "Свиток искры", kind: "scroll", price: 60, use: { type: "damage", power: 16, scale: 3, scaleStat: "int", intReq: 2, element: "fire" }, desc: "10 + 2×ИНТ урона. Короткая формула поджога; чтение требует ИНТ 2." }),
+    I({ id: "scroll_fire", name: "Свиток огня", kind: "scroll", price: 85, use: { type: "damage", power: 24, scale: 4, scaleStat: "int", intReq: 3, element: "fire" }, desc: "10 + 2×ИНТ урона. Буквы в нём дописаны от руки, спеша; чтение требует ИНТ 3." }),
     I({ id: "scroll_heal", name: "Свиток исцеления", kind: "scroll", price: 90, use: { type: "heal", power: 32, intReq: 3 }, desc: "32 здоровья и снимает кровотечение. Чтение требует ИНТ 3." }),
     I({ id: "scroll_shadow", name: "Свиток тени", kind: "scroll", price: 155, use: { type: "flee", fleeRate: 0, intReq: 4 }, desc: "Тень не теряет добычу — уносит из боя без потерь." }),
-    I({ id: "scroll_frost", name: "Свиток ледяных оков", kind: "scroll", price: 135, use: { type: "chill", power: 20, scale: 3, scaleStat: "int", intReq: 5, rounds: 3 }, desc: "10 + 2×ИНТ урона и обморожение на 3 раунда: лечение −50% и периодический урон. Чтение требует ИНТ 5." }),
+    I({ id: "scroll_frost", name: "Свиток ледяных оков", kind: "scroll", price: 135, use: { type: "chill", power: 20, scale: 3, scaleStat: "int", intReq: 5, rounds: 3, element: "ice" }, desc: "10 + 2×ИНТ урона и обморожение на 3 раунда: лечение −50% и периодический урон. Чтение требует ИНТ 5." }),
     I({ id: "scroll_bolt", name: "Свиток молнии", kind: "scroll", price: 175, use: { type: "sunder_damage", power: 38, scale: 5, scaleStat: "int", intReq: 6 }, desc: "10 + 2×ИНТ урона сквозь броню и раскол защиты (−2 брони). Чтение требует ИНТ 6." }),
     /* реагенты */
     I({ id: "moss", name: "Кровавый мох", kind: "reagent", reagentCat: "plant", price: 28, desc: "Растёт на том, что не похоронили." }),
@@ -2133,18 +2137,15 @@ export function attemptBrew(
 
 /* ─────────────  ВРАГИ И БОССЫ ПЕРЕД ЛЕСТНИЦЕЙ  ───────────── */
 
-export type CreatureType = "beast" | "undead" | "humanoid" | "construct" | "demon";
+/** Устаревшее имя рода: осталось для совместимости импортов. */
+export type CreatureType = MonsterRace;
 
-export const CREATURE_META: Record<CreatureType, { name: string; note: string }> = {
-  beast: { name: "Зверь", note: "Подвержен яду и страху." },
-  undead: { name: "Нежить", note: "Нельзя отравить или испугать." },
-  humanoid: { name: "Живой", note: "Подвержен яду и страху." },
-  construct: { name: "Конструкт", note: "Нельзя отравить или испугать." },
-  demon: { name: "Демон", note: "Восприимчив к яду, но не знает страха." },
-};
-
-export function isImmuneTo(type: CreatureType, effect: "poison" | "fear"): boolean {
-  return type === "undead" || type === "construct" || (type === "demon" && effect === "fear");
+/**
+ * Иммунитет рода к эффекту. Состояния «кровотечение» и «страх» тоже
+ * проверяются здесь, поэтому одна функция закрывает и оружие, и приёмы.
+ */
+export function isImmuneTo(race: MonsterRace, effect: EffectKind): boolean {
+  return raceImmuneTo(race, effect);
 }
 
 export type EnemyMove =
@@ -2161,12 +2162,19 @@ export type EnemyMove =
   | "terror"
   | "seal_items"
   | "seal_skills"
-  | "seal_attack";
+  | "seal_attack"
+  | "intimidate"
+  | "darkness"
+  | "cold_touch"
+  | "hell_force";
 
 export interface EnemyDef {
   id: string;
   name: string;
-  type: CreatureType;
+  /** Род: нежить, конструкт, вампир, призрак, зверь, демон, дракон или никакой. */
+  race: MonsterRace;
+  /** Боевой тип: сильный, ловкий или умный. */
+  type: MonsterType;
   title?: string;
   isBoss?: boolean;
   art: string;
@@ -2190,7 +2198,8 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: "vermin",
     name: "Крысиный поводырь",
-    type: "beast",
+    race: "beast",
+    type: "agile",
     art: "images/foe-vermin.jpg",
     hp: 24,
     ap: 2,
@@ -2205,7 +2214,8 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: "husk",
     name: "Гнилой ходок",
-    type: "undead",
+    race: "undead",
+    type: "strong",
     art: "images/foe-husk.jpg",
     hp: 32,
     ap: 2,
@@ -2220,7 +2230,8 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: "bone",
     name: "Костяной воин",
-    type: "undead",
+    race: "undead",
+    type: "strong",
     art: "images/foe-bone.jpg",
     hp: 40,
     ap: 3,
@@ -2235,7 +2246,8 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: "wraith",
     name: "Плачущая тень",
-    type: "undead",
+    race: "ghost",
+    type: "smart",
     art: "images/foe-wraith.jpg",
     hp: 36,
     ap: 3,
@@ -2250,7 +2262,8 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: "brute",
     name: "Огр-мясник",
-    type: "humanoid",
+    race: "none",
+    type: "strong",
     art: "images/foe-brute.jpg",
     hp: 62,
     ap: 3,
@@ -2265,7 +2278,8 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: "seer",
     name: "Ослеплённый пророк",
-    type: "humanoid",
+    race: "none",
+    type: "smart",
     art: "images/foe-wraith.jpg",
     hp: 54,
     ap: 4,
@@ -2280,7 +2294,8 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: "golem",
     name: "Страж из шлака",
-    type: "construct",
+    race: "construct",
+    type: "strong",
     art: "images/foe-brute.jpg",
     hp: 68,
     ap: 2,
@@ -2295,7 +2310,8 @@ export const ENEMIES: EnemyDef[] = [
   {
     id: "imp",
     name: "Угольный бес",
-    type: "demon",
+    race: "demon",
+    type: "agile",
     art: "images/foe-wraith.jpg",
     hp: 47,
     ap: 4,
@@ -2313,7 +2329,8 @@ export const BOSSES: EnemyDef[] = [
   {
     id: "boss_warden",
     name: "Смотритель Катакомб",
-    type: "undead",
+    race: "undead",
+    type: "strong",
     title: "Страж лестницы I яруса",
     isBoss: true,
     art: "images/foe-boss.jpg",
@@ -2336,7 +2353,8 @@ export const BOSSES: EnemyDef[] = [
   {
     id: "boss_prelate",
     name: "Костяной Архиерей",
-    type: "undead",
+    race: "undead",
+    type: "smart",
     title: "Страж лестницы II яруса",
     isBoss: true,
     art: "images/foe-boss.jpg",
@@ -2359,7 +2377,8 @@ export const BOSSES: EnemyDef[] = [
   {
     id: "boss_inquisitor",
     name: "Пепельный Инквизитор",
-    type: "humanoid",
+    race: "none",
+    type: "smart",
     title: "Страж лестницы III яруса",
     isBoss: true,
     art: "images/foe-boss.jpg",
@@ -2401,6 +2420,10 @@ export const ENEMY_MOVE_META: Record<EnemyMove, { name: string; desc: string }> 
   seal_items: { name: "Печать немоты", desc: "Запрещает игроку использовать расходники в его следующий ход." },
   seal_skills: { name: "Печать забвения", desc: "Запрещает игроку использовать приёмы в его следующий ход." },
   seal_attack: { name: "Печать оков", desc: "Запрещает игроку обычную атаку в его следующий ход." },
+  intimidate: { name: "Запугивание", desc: "Вбивает страх в прицел: в следующий ход тебе нельзя ни атаковать, ни пользоваться приёмами." },
+  darkness: { name: "Мрак", desc: "Сгущает тьму вокруг: до конца раунда половина твоих атак уходит в пустоту." },
+  cold_touch: { name: "Холодное касание", desc: "Бьёт сквозь броню и любое сопротивление, попадает всегда. Два хода нельзя восстанавливать здоровье." },
+  hell_force: { name: "Сила ада", desc: "Двойной урон и четыре слоя горения." },
 };
 
 export const STAT_ORDER: StatKey[] = ["str", "agi", "int"];

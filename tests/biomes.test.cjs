@@ -18,6 +18,14 @@ const biomes = load("biomes");
 const maze = load("maze");
 const battle = load("battle");
 
+/** Бой с нейтральным врагом: род «никакой» и тип «сильный» не дают ни уклонения, ни иммунитетов. */
+function freshBattle(pl, floor, isBoss, biome, torchTurns, burning) {
+  const b = battle.newBattle(pl, floor, isBoss, biome, torchTurns, burning);
+  b.enemy.def = { ...b.enemy.def, race: "none", type: "strong" };
+  b.enemy.mtype = "strong";
+  return b;
+}
+
 function player(extra = {}) {
   return {
     name: "Покоритель", level: 3, xp: 0, statPoints: 0,
@@ -36,9 +44,9 @@ function withRandom(value, fn) {
 }
 
 function combat(biome, extra = {}) {
-  const b = battle.newBattle(player(extra), 3, false, biome);
+  const b = freshBattle(player(extra), 3, false, biome);
   b.enemy.hp = 5000; b.enemy.maxHp = 5000; b.enemy.armor = 0;
-  b.enemy.def = { ...b.enemy.def, type: "beast", moves: ["attack"] };
+  b.enemy.def = { ...b.enemy.def, race: "none", type: "agile", moves: ["attack"] };
   b.enemy.moves = ["attack"]; b.enemy.passive = null;
   b.enemy.effects = []; b.enemy.effectPower = {};
   b.p.hp = 500; b.p.maxHp = 500; b.p.armor = 0; b.p.evade = 0;
@@ -169,7 +177,7 @@ test("darkness adds a separate 25% miss check to physical attacks", () => {
 });
 
 test("fire burns both sides only on the hero's turn", () => {
-  const b = battle.newBattle(player({ hp: 100, stats: { str: 1, agi: 10, int: 1 } }), 3, false, "fire");
+  const b = freshBattle(player({ hp: 100, stats: { str: 1, agi: 10, int: 1 } }), 3, false, "fire");
   assert.equal(b.p.statuses.burning, 1); // первый ход игрока уже начался
   b.p.hp = 100; b.p.armor = 999;
   b.enemy.hp = 1000; b.enemy.maxHp = 1000; b.enemy.statuses.burning = 1;

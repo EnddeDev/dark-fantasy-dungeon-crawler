@@ -16,6 +16,14 @@ function load(name) {
 
 const content = load("content");
 const battle = load("battle");
+
+/** Бой с нейтральным врагом: род «никакой» и тип «сильный» не дают ни уклонения, ни иммунитетов. */
+function freshBattle(pl, floor, isBoss, biome, torchTurns, burning) {
+  const b = battle.newBattle(pl, floor, isBoss, biome, torchTurns, burning);
+  b.enemy.def = { ...b.enemy.def, race: "none", type: "strong" };
+  b.enemy.mtype = "strong";
+  return b;
+}
 const maze = load("maze");
 const forge = load("forge");
 const progression = load("progression");
@@ -164,7 +172,7 @@ test("torch expands visibility and cancels dark penalty; battle curse waits for 
   assert.equal(torch[4][8], 1);
 
   const p = mkP({ hp: 200, stats: { str: 5, agi: 5, int: 5 }, statuses: { wound: 0, curse: traps.BATTLE_CURSE, poison: 0, cursePower: 30 } });
-  const b = battle.newBattle(p, 3, false, "dark", 2);
+  const b = freshBattle(p, 3, false, "dark", 2);
   assert.equal(b.torchTurns, 2);
   assert.equal(b.p.statuses.curse, traps.BATTLE_CURSE);
   const readout = battle.combatReadout(b);

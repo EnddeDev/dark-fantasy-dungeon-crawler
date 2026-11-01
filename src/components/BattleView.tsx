@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { BookOpen, ChevronDown, Shield, Skull, Swords, X } from "lucide-react";
 import {
-  CREATURE_META,
   ENEMY_MOVE_META,
   ITEMS,
   LEGENDARY_PASSIVES,
@@ -14,6 +13,7 @@ import {
   consumableScaleLabel,
 } from "../game/content";
 import { GEAR_EFFECTS, GEAR_PASSIVES, effectDetail } from "../game/gearEffects";
+import { MONSTER_RACE_META, MONSTER_TYPE_META, monsterEvade, raceTraits } from "../game/monsters";
 import { epicSkillDesc } from "../game/content";
 import { combatReadout, queuePreview, type BattleState, type PlayerAction } from "../game/battle";
 import { FoePortrait } from "./FoeArt";
@@ -365,8 +365,12 @@ export function BattleView({
                     {b.p.statuses.wound > 0 ? `рана ${b.p.statuses.wound} · ` : ""}
                     {b.p.statuses.poison > 0 ? `яд ${b.p.statuses.poison} · ` : ""}
                     {b.p.statuses.haste > 0 ? `скорость ${b.p.statuses.haste} · ` : ""}
-                    {b.p.statuses.stone > 0 ? `каменная кожа ${b.p.statuses.stone}` : ""}
-                    {!b.p.statuses.rage && !b.p.statuses.curse && !b.p.statuses.wound && !b.p.statuses.poison && !b.p.statuses.haste && !b.p.statuses.stone
+                    {b.p.statuses.stone > 0 ? `каменная кожа ${b.p.statuses.stone} · ` : ""}
+                    {b.p.statuses.noHeal > 0 ? `лечение перекрыто ${b.p.statuses.noHeal} · ` : ""}
+                    {b.p.statuses.darkness > 0 ? `мрак ${b.p.statuses.darkness} · ` : ""}
+                    {b.p.statuses.sealAttack > 0 || b.p.statuses.sealSkills > 0 ? "запуган · " : ""}
+                    {!b.p.statuses.rage && !b.p.statuses.curse && !b.p.statuses.wound && !b.p.statuses.poison && !b.p.statuses.haste &&
+                    !b.p.statuses.stone && !b.p.statuses.noHeal && !b.p.statuses.darkness && !b.p.statuses.sealAttack && !b.p.statuses.sealSkills
                       ? "чисто"
                       : ""}
                   </p>
@@ -535,8 +539,8 @@ export function BattleView({
                     const u = def.use!;
                     const req = consumableIntReq(def, b.p.intDiscount);
                     const intOk = b.p.stats.int >= req;
-                    const fearImmune = u.type === "fear" && isImmuneTo(e.def.type, "fear");
-                    const poisonImmune = u.type === "poison" && isImmuneTo(e.def.type, "poison");
+                    const fearImmune = u.type === "fear" && isImmuneTo(e.def.race, "fear");
+                    const poisonImmune = u.type === "poison" && isImmuneTo(e.def.race, "poison");
                     const ok = intOk && myTurn && !fearImmune;
                     return (
                       <button
@@ -622,7 +626,11 @@ export function BattleView({
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[0.84rem] text-mute">
               <span className="flex items-center gap-1.5 text-verd">
                 <Skull size={13} aria-hidden />
-                {CREATURE_META[e.def.type].name}
+                {MONSTER_TYPE_META[e.mtype].name} · {MONSTER_RACE_META[e.def.race].name.toLowerCase()}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Shield size={13} aria-hidden />
+                уклонение {Math.round(monsterEvade(e.def.race, e.mtype) * 100)}%
               </span>
               <span className="flex items-center gap-1.5">
                 <Shield size={13} aria-hidden />
@@ -683,7 +691,7 @@ export function BattleView({
                 <span className="sc text-flamedim">Кодекс противника</span>
                 <h3 className="font-display text-xl uppercase tracking-[0.1em] text-flamehi">{e.def.name}</h3>
                 <p className="font-mono text-[0.84rem] text-mute">
-                  {CREATURE_META[e.def.type].name} · уровень {e.level} · {b.isBoss ? "Босс" : THREAT_META[e.threat].name} · этаж {b.floor}
+                  {MONSTER_TYPE_META[e.mtype].name} · {MONSTER_RACE_META[e.def.race].name} · уровень {e.level} · {b.isBoss ? "Босс" : THREAT_META[e.threat].name} · этаж {b.floor}
                 </p>
               </div>
               <button onClick={() => setCodex(false)} className="mt-1 text-mute hover:text-rubric" aria-label="Закрыть">
@@ -749,9 +757,10 @@ export function BattleView({
                     <b>пробивающие</b> приёмы и свитки игнорируют.
                   </li>
                   <li>
-                    Отравить: {isImmuneTo(e.def.type, "poison") ? <b className="text-rubric">нельзя</b> : <b className="text-verd">можно</b>}
+                    Отравить: {isImmuneTo(e.def.race, "poison") ? <b className="text-rubric">нельзя</b> : <b className="text-verd">можно</b>}
+                    {" · "}раскровить: {isImmuneTo(e.def.race, "bleed") ? <b className="text-rubric">нельзя</b> : <b className="text-verd">можно</b>}
                     {" · "}испугать:{" "}
-                    {isImmuneTo(e.def.type, "fear") ? <b className="text-rubric">нельзя</b> : <b className="text-verd">можно</b>}
+                    {isImmuneTo(e.def.race, "fear") ? <b className="text-rubric">нельзя</b> : <b className="text-verd">можно</b>}
                   </li>
                   <li>
                     В ужасе пропускает ходы, в страхе — держит защиту. Холод снижает его урон на 30%.
@@ -767,9 +776,16 @@ export function BattleView({
                 </p>
               </section>
 
-              <p className="border-t border-line/70 pt-3 text-[0.9rem] italic text-mute">
-                {CREATURE_META[e.def.type].note}
-              </p>
+              <section className="border-t border-line/70 pt-3">
+                <h4 className="sc mb-2 text-flamedim">Род: {MONSTER_RACE_META[e.def.race].name}</h4>
+                <p className="text-[0.94rem] leading-snug text-parch/85">{MONSTER_RACE_META[e.def.race].note}</p>
+                <ul className="mt-2 space-y-1 text-[0.92rem] text-mute">
+                  <li>• Тип: <b className="text-parch">{MONSTER_TYPE_META[e.mtype].name.toLowerCase()}</b> — {MONSTER_TYPE_META[e.mtype].note}</li>
+                  {raceTraits(e.def.race).map((t) => (
+                    <li key={t}>• {t}</li>
+                  ))}
+                </ul>
+              </section>
             </div>
           </aside>
         </div>

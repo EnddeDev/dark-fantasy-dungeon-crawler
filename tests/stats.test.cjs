@@ -22,6 +22,14 @@ const content = load("content");
 const gearEffects = load("gearEffects");
 const battle = load("battle");
 
+/** Бой с нейтральным врагом: род «никакой» и тип «сильный» не дают ни уклонения, ни иммунитетов. */
+function freshBattle(pl, floor, isBoss, biome, torchTurns, burning) {
+  const b = battle.newBattle(pl, floor, isBoss, biome, torchTurns, burning);
+  b.enemy.def = { ...b.enemy.def, race: "none", type: "strong" };
+  b.enemy.mtype = "strong";
+  return b;
+}
+
 function mkP(extra = {}) {
   return {
     name: "П", level: 5, xp: 0, statPoints: 0, stats: { str: 5, agi: 5, int: 5 }, hp: 50, gold: 0,
@@ -144,11 +152,11 @@ test("consumables use AGI, damage scrolls use INT, healing/support stays flat", 
 
 test("stun skips a turn, fear auto-guards, wither turns healing into damage, chill halves healing", () => {
   const mk = (bag = {}) => {
-    const b = battle.newBattle(mkP({ bag }), 1);
+    const b = freshBattle(mkP({ bag }), 1);
     b.queue = ["p", "e", "p", "e"];
     b.idx = 0;
     b.enemy.hp = 5000; b.enemy.maxHp = 5000; b.enemy.armor = 0;
-    b.enemy.def = { ...b.enemy.def, type: "beast", moves: ["attack"] };
+    b.enemy.def = { ...b.enemy.def, race: "none", type: "agile", moves: ["attack"] };
     b.enemy.moves = ["attack"];
     b.enemy.passive = null;
     b.enemy.effects = []; b.enemy.effectPower = {};

@@ -24,6 +24,16 @@ const maze = loadGameModule("maze");
 const content = loadGameModule("content");
 const events = loadGameModule("events");
 const battle = loadGameModule("battle");
+/**
+ * Бой с нейтральным врагом: род «никакой» и тип «сильный» не дают ни
+ * уклонения, ни иммунитетов. Тесты про роды и типы задают их вручную.
+ */
+function freshBattle(pl, floor, isBoss, biome, torchTurns, burning) {
+  const b = battle.newBattle(pl, floor, isBoss, biome, torchTurns, burning);
+  b.enemy.def = { ...b.enemy.def, race: "none", type: "strong" };
+  b.enemy.mtype = "strong";
+  return b;
+}
 const gearEffects = loadGameModule("gearEffects");
 
 /** Модули вне src/game собираем тем же способом. */
@@ -363,11 +373,11 @@ test("undead resist poison and fear, smoke negates attacks and their debuffs", (
     hp: 300,
     bag: { poison_dart: 1, fear_vial: 1, smoke_bomb: 1 },
   });
-  let undead = battle.newBattle(pl, 1);
+  let undead = freshBattle(pl, 1);
   undead.queue = ["p", "e", "e", "e"];
   undead.enemy.hp = 999;
   undead.enemy.maxHp = 999;
-  undead.enemy.def = { ...undead.enemy.def, type: "undead", moves: ["wound"] };
+  undead.enemy.def = { ...undead.enemy.def, race: "undead", type: "strong", moves: ["wound"] };
   undead.enemy.moves = ["wound"];
   undead.p.hp = 300;
   undead.p.maxHp = 300;
@@ -394,9 +404,9 @@ test("undead resist poison and fear, smoke negates attacks and their debuffs", (
   smoky = battle.enemyStep(smoky);
   assert.ok(smoky.p.hp < 300);
 
-  let living = battle.newBattle(pl, 1);
+  let living = freshBattle(pl, 1);
   living.queue = ["p", "e"];
-  living.enemy.def = { ...living.enemy.def, type: "beast" };
+  living.enemy.def = { ...living.enemy.def, race: "none", type: "agile" };
   living.enemy.hp = 999;
   living = battle.playerAct(living, { type: "item", id: "poison_dart" });
   assert.equal(living.enemy.statuses.poison, 3);
@@ -404,7 +414,7 @@ test("undead resist poison and fear, smoke negates attacks and their debuffs", (
 
 test("antidote removes poison as well as wounds and curses", () => {
   const pl = player({ hp: 100, bag: { antidote: 1 }, statuses: { wound: 2, curse: 2, poison: 2 } });
-  const b = battle.newBattle(pl, 1);
+  const b = freshBattle(pl, 1);
   b.queue = ["p", "e"];
   const after = battle.playerAct(b, { type: "item", id: "antidote" });
   assert.equal(after.p.statuses.poison, 0);
@@ -418,13 +428,13 @@ test("throwing weapons are consumable, explosions pierce armor and living target
     hp: 300,
     bag: { throwing_knife: 1, blast_bomb: 1, fear_vial: 1 },
   });
-  const freshBattle = () => {
-    const b = battle.newBattle(pl, 1);
+  const fresh = () => {
+    const b = freshBattle(pl, 1);
     b.queue = ["p", "e", "e", "e"];
     b.enemy.hp = 999;
     b.enemy.maxHp = 999;
     b.enemy.armor = 200;
-    b.enemy.def = { ...b.enemy.def, type: "beast", moves: ["attack"] };
+    b.enemy.def = { ...b.enemy.def, race: "none", type: "agile", moves: ["attack"] };
     b.enemy.moves = ["attack"];
     b.p.hp = 300;
     b.p.maxHp = 300;
@@ -436,15 +446,15 @@ test("throwing weapons are consumable, explosions pierce armor and living target
     return b;
   };
 
-  const thrown = battle.playerAct(freshBattle(), { type: "item", id: "throwing_knife" });
+  const thrown = battle.playerAct(fresh(), { type: "item", id: "throwing_knife" });
   assert.ok(thrown.enemy.hp < 999);
   assert.equal(thrown.bag.throwing_knife, undefined);
 
-  const blast = battle.playerAct(freshBattle(), { type: "item", id: "blast_bomb" });
+  const blast = battle.playerAct(fresh(), { type: "item", id: "blast_bomb" });
   assert.ok(999 - blast.enemy.hp >= 8); // 7 + 1.5×ЛОВ(1), округление
   assert.equal(blast.bag.blast_bomb, undefined);
 
-  let afraid = battle.playerAct(freshBattle(), { type: "item", id: "fear_vial" });
+  let afraid = battle.playerAct(fresh(), { type: "item", id: "fear_vial" });
   assert.equal(afraid.enemy.statuses.fear, 2);
   afraid = battle.enemyStep(afraid);
   afraid = battle.enemyStep(afraid);
@@ -459,7 +469,7 @@ test("combat readout shows live numbers for curses, rage and guard", () => {
     stats: { str: 4, agi: 2, int: 3 },
     bag: { rage: 1 },
   });
-  const b0 = battle.newBattle(pl, 2);
+  const b0 = freshBattle(pl, 2);
   b0.queue = ["p", "e", "e", "e", "e"];
   b0.p.hp = 200;
   b0.p.maxHp = 200;
@@ -506,7 +516,7 @@ test("combat readout shows live numbers for curses, rage and guard", () => {
   // С бронёй раскол действительно пропускает больше урона.
   const armored = content.createGearItem({ baseId: "plate", wear: "new", rarity: "common", identified: true });
   const plArmor = { ...pl, armory: [armored], equip: { ...pl.equip, body: armored.uid } };
-  const bA = battle.newBattle(plArmor, 2);
+  const bA = freshBattle(plArmor, 2);
   bA.queue = ["p", "e", "e", "e", "e"];
   bA.p.hp = 300; bA.p.maxHp = 300; bA.enemy.hp = 900; bA.enemy.maxHp = 900;
   const cleanA = battle.combatReadout(bA);
@@ -533,7 +543,7 @@ test("every creature and item can be fought to a terminal state", () => {
   const seenMoves = new Set();
   for (const def of defs) {
     for (const isBoss of [false, true]) {
-      let b = battle.newBattle(pl, 5, isBoss);
+      let b = freshBattle(pl, 5, isBoss);
       b.enemy.def = def;
       b.enemy.hp = 100000;
       b.enemy.maxHp = 100000;
@@ -573,13 +583,14 @@ test("every creature and item can be fought to a terminal state", () => {
     "attack", "heavy", "guard", "wound", "curse", "drain", "sunder",
     "bell_stun", "poison", "multi", "terror", "flee",
     "seal_items", "seal_skills", "seal_attack",
+    "intimidate", "darkness", "cold_touch", "hell_force",
   ]);
   for (const mv of seenMoves) assert.ok(known.has(mv), `неизвестный приём ${mv}`);
   /* Многоударные, ужас и яд проверяем принудительно: случайный выбор ходов врага
      не гарантирует, что все три встретятся за один прогон. */
   for (const mv of ["multi", "terror", "poison"]) {
     assert.ok(defs.some((d) => d.moves.includes(mv)), `${mv}: приём есть в бестиарии`);
-    let forced = battle.newBattle(pl, 5, false);
+    let forced = freshBattle(pl, 5, false);
     forced.enemy.def = { ...forced.enemy.def, moves: [mv] };
     forced.enemy.moves = [mv];
     forced.enemy.hp = 100000;
@@ -598,12 +609,12 @@ test("every creature and item can be fought to a terminal state", () => {
 test("haste, terror, stone skin and acid change the fight as described", () => {
   const mk = (bag) => {
     const pl = player({ hp: 400, stats: { str: 5, agi: 5, int: 6 }, bag });
-    const b = battle.newBattle(pl, 3);
+    const b = freshBattle(pl, 3);
     b.queue = ["p", "e", "e", "e", "e", "e"];
     b.enemy.hp = 5000;
     b.enemy.maxHp = 5000;
     b.enemy.armor = 6;
-    b.enemy.def = { ...b.enemy.def, type: "beast", moves: ["attack"] };
+    b.enemy.def = { ...b.enemy.def, race: "none", type: "agile", moves: ["attack"] };
     b.enemy.moves = ["attack"];
     b.enemy.passive = null;
     b.enemy.effects = [];
@@ -1092,7 +1103,7 @@ test("healing and support potions have fixed power without a stat multiplier", (
     assert.equal(def.use.scaleStat, undefined, id);
   }
   const mk = (stats, id) => {
-    const b = battle.newBattle(player({ hp: 500, stats, bag: { [id]: 1 } }), 1);
+    const b = freshBattle(player({ hp: 500, stats, bag: { [id]: 1 } }), 1);
     b.queue = ["p", "e"]; b.idx = 0;
     b.p.hp = 1; b.p.maxHp = 500;
     return b;
@@ -1129,10 +1140,10 @@ test("damaging consumables scale from Agility; damage scrolls scale from Intelli
 test("battle consumable damage uses AGI for consumables and INT for damage scrolls", () => {
   const mk = (stats, bag) => {
     const pl = player({ hp: 500, stats, bag });
-    const b = battle.newBattle(pl, 1);
+    const b = freshBattle(pl, 1);
     b.queue = ["p", "e", "e", "e"];
     b.enemy.hp = 5000; b.enemy.maxHp = 5000; b.enemy.armor = 0;
-    b.enemy.def = { ...b.enemy.def, type: "beast", moves: ["attack"] };
+    b.enemy.def = { ...b.enemy.def, race: "none", type: "agile", moves: ["attack"] };
     b.enemy.moves = ["attack"]; b.enemy.passive = null;
     b.p.hp = 500; b.p.maxHp = 500; b.p.evade = 0;
     return b;
@@ -1175,10 +1186,10 @@ test("shadow dust is removed from items, recipes, drops and archetype supplies",
 test("magical scroll bonuses do not amplify non-scroll consumables", () => {
   const mk = (passives) => {
     const pl = player({ hp: 500, stats: { str: 1, agi: 5, int: 5 }, bag: { holy_water: 1, acid_vial: 1 }, passives });
-    const b = battle.newBattle(pl, 1);
+    const b = freshBattle(pl, 1);
     b.queue = ["p", "e", "e", "e"];
     b.enemy.hp = 5000; b.enemy.maxHp = 5000; b.enemy.armor = 6;
-    b.enemy.def = { ...b.enemy.def, type: "beast", moves: ["attack"] };
+    b.enemy.def = { ...b.enemy.def, race: "none", type: "agile", moves: ["attack"] };
     b.enemy.moves = ["attack"]; b.enemy.passive = null;
     b.enemy.effects = []; b.enemy.effectPower = {};
     b.p.hp = 500; b.p.maxHp = 500; b.p.evade = 0;
@@ -1286,7 +1297,7 @@ test("bulwark: armor damage, thorns and guard reduction are applied", () => {
   const plate = content.createGearItem({ baseId: "plate", rarity: "rare", wear: "new", identified: true, level: 5 });
   p.armory.push(plate);
   p.equip.body = plate.uid;
-  const b = battle.newBattle(p, 1);
+  const b = freshBattle(p, 1);
   b.p.gearEffects.push("armor_damage", "thorns", "guard_bonus");
   b.p.armor = 10;
   b.p.guard = true;
@@ -1308,7 +1319,7 @@ test("barbarian: two-handed damage and missing-health scaling", () => {
   const one = content.GEAR_BASES.axe.dmg;
   const two = content.GEAR_BASES[g.baseId].dmg;
   assert.ok(two[0] >= one[0] * 2.8 && two[1] >= one[1] * 2.8, "двуручник должен быть примерно втрое сильнее");
-  const b = battle.newBattle(p, 1);
+  const b = freshBattle(p, 1);
   b.p.hp = Math.floor(b.p.maxHp * 0.3);
   b.enemy.hp = Math.floor(b.enemy.maxHp * 0.4);
   const rnd = Math.random; Math.random = () => 0.99;
@@ -1320,7 +1331,7 @@ test("barbarian: two-handed damage and missing-health scaling", () => {
 
 test("assassin: first attack is guaranteed crit at milestone 10", () => {
   const { p } = withGear("assassin_stiletto", { archetype: "assassin", passives: ["arch_assassin_5", "arch_assassin_10"] });
-  const b = battle.newBattle(p, 1);
+  const b = freshBattle(p, 1);
   const rnd = Math.random; Math.random = () => 0.99;
   const after = battle.playerAct(b, { type: "attack" });
   Math.random = rnd;
@@ -1331,7 +1342,7 @@ test("assassin: first attack is guaranteed crit at milestone 10", () => {
 test("ninja: consumables scale with AGI bonuses and grant lifesteal", () => {
   const { p } = withGear("ninja_kusarigama", { archetype: "ninja", passives: ["arch_ninja_5", "arch_ninja_10"] });
   p.bag = { throwing_knife: 2, smoke_bomb: 1 };
-  const b = battle.newBattle(p, 5, true);
+  const b = freshBattle(p, 5, true);
   b.p.gearEffects.push("consumable_damage", "consumable_scale", "consumable_vamp");
   b.p.hp = Math.floor(b.p.maxHp * 0.5);
   const rnd = Math.random; Math.random = () => 0.99;
@@ -1339,14 +1350,14 @@ test("ninja: consumables scale with AGI bonuses and grant lifesteal", () => {
   Math.random = rnd;
   assert.ok(after.enemy.hp < b.enemy.hp);
   assert.ok(after.log.some((l) => l.text.includes("Похищение жизни")));
-  const b2 = battle.newBattle(p, 5, true);
+  const b2 = freshBattle(p, 5, true);
   const smoke = battle.playerAct(b2, { type: "item", id: "smoke_bomb" });
   assert.ok(smoke.p.statuses.smoke > 0);
 });
 
 test("warlock: skill damage, cooldown reduction and lifesteal", () => {
   const { p } = withGear("warlock_scepter", { archetype: "warlock", passives: ["arch_warlock_5", "arch_warlock_10"] });
-  const b = battle.newBattle(p, 1);
+  const b = freshBattle(p, 1);
   b.p.gearEffects.push("skill_damage", "skill_cd", "skill_vamp", "skill_scale");
   b.p.hp = Math.floor(b.p.maxHp * 0.5);
   const rnd = Math.random; Math.random = () => 0.99;
@@ -1360,7 +1371,7 @@ test("warlock: skill damage, cooldown reduction and lifesteal", () => {
 test("sage: scroll creation, scroll damage and scroll save", () => {
   const { p } = withGear("sage_censer", { archetype: "sage", passives: ["arch_sage_5", "arch_sage_10"] });
   p.bag = { scroll_creation: 1, scroll_bolt: 1 };
-  const b = battle.newBattle(p, 5, true);
+  const b = freshBattle(p, 5, true);
   b.p.gearEffects.push("scroll_damage", "scroll_scale", "scroll_vamp", "scroll_save", "scroll_create");
   const rnd = Math.random; Math.random = () => 0.0;
   const after = battle.playerAct(b, { type: "item", id: "scroll_creation" });
@@ -1418,7 +1429,7 @@ test("cross-archetype milestone passive works without matching main archetype", 
   p.armory = [g];
   p.equip = { ...p.equip, mainHand: g.uid };
   p.hp = battle.derived(p).maxHp;
-  const b = battle.newBattle(p, 5, true);
+  const b = freshBattle(p, 5, true);
   b.queue = ["p"];
   b.idx = 0;
   b.p.hp = Math.floor(b.p.maxHp * 0.4);
@@ -1678,7 +1689,7 @@ test("acceleration gear gives 0/1/2/3 extra actions by level 1/5/7/10 every roun
   const d = battle.derived(p);
   assert.equal(d.firstRoundApBonus, 0);
   assert.equal(d.ap, 5 + 3);
-  const b = battle.newBattle(p, 1);
+  const b = freshBattle(p, 1);
   const r1 = battle.combatReadout(b);
   b.round = 2;
   const r2 = battle.combatReadout(b);
@@ -1737,7 +1748,7 @@ test("hero starts at full health with three stat points, two-handers hit twice a
 
 test("enemy AI heals or guards when low, punishes misses and closes rounds by turn order", () => {
   const base = () => {
-    const b = battle.newBattle(mkP({ level: 1, stats: { str: 1, agi: 1, int: 1 }, hp: 60 }), 1, false, "classic");
+    const b = freshBattle(mkP({ level: 1, stats: { str: 1, agi: 1, int: 1 }, hp: 60 }), 1, false, "classic");
     b.enemy.hp = 100; b.enemy.maxHp = 100;
     b.biome = "classic";
     b.enemy.moves = ["attack", "drain", "wound"];
@@ -1797,12 +1808,12 @@ test("weapon effects bleed, poison and sunder trigger on a plain hit", () => {
   weapon.effects = ["bleed", "poison_damage", "sunder"];
   weapon.effectRolls = { bleed: 100, poison_damage: 100, sunder: 100 };
   const p = { ...mkP({ level: 10, stats: { str: 3, agi: 3, int: 3 }, hp: 300 }), armory: [weapon], equip: { ...mkP().equip, mainHand: weapon.uid } };
-  const b = battle.newBattle(p, 1);
+  const b = freshBattle(p, 1);
   b.queue = ["p", "e"];
   b.idx = 0;
   b.enemy.hp = 5000; b.enemy.maxHp = 5000; b.enemy.armor = 10;
   b.enemy.effects = []; b.enemy.effectPower = {};
-  b.enemy.def = { ...b.enemy.def, type: "beast" };
+  b.enemy.def = { ...b.enemy.def, race: "none", type: "agile" };
   b.enemy.moves = ["attack"];
   /* Биом и защитные шансы врага фиксированы: тест про свойства оружия, а не про удачу. */
   b.biome = "classic";
@@ -1852,7 +1863,7 @@ test("multi-hit technique deals normal attacks without the flat technique bonus"
   g.effects = [];
   g.effectRolls = {};
   const p = { ...mkP({ level: 10, stats: { str: 1, agi: 10, int: 4 }, hp: 500 }), armory: [g], equip: { ...mkP().equip, mainHand: g.uid } };
-  const b = battle.newBattle(p, 1);
+  const b = freshBattle(p, 1);
   b.queue = ["p", "e"]; b.idx = 0;
   b.enemy.hp = 5000; b.enemy.maxHp = 5000; b.enemy.armor = 0; b.enemy.passive = null; b.enemy.effects = []; b.enemy.effectPower = {};
   b.p.evade = 0; b.p.critChance = 0;
@@ -1876,10 +1887,10 @@ test("supplies have levels tied to minimum drop floor and new statuses work", ()
   }
   const pl = player({ hp: 500, stats: { str: 1, agi: 8, int: 1 }, bag: { serrated_knife: 1, wither_dust: 1, blight_powder: 1 } });
   const mk = (id) => {
-    const b = battle.newBattle(pl, 5);
+    const b = freshBattle(pl, 5);
     b.queue = ["p", "e"]; b.idx = 0;
     b.enemy.hp = 5000; b.enemy.maxHp = 5000; b.enemy.armor = 0; b.enemy.passive = null; b.enemy.effects = []; b.enemy.effectPower = {};
-    b.enemy.def = { ...b.enemy.def, type: "beast", moves: ["attack"] };
+    b.enemy.def = { ...b.enemy.def, race: "none", type: "agile", moves: ["attack"] };
     b.enemy.moves = ["attack"];
     return battle.playerAct(b, { type: "item", id });
   };
@@ -1935,7 +1946,7 @@ test("forge upgrade costs and destruction risks match the design", () => {
 
 test("boss effect resistance is 25% and seals block the next player action", () => {
   const pl = player({ hp: 500, stats: { str: 5, agi: 5, int: 5 }, bag: { potion_s: 3 } });
-  const b = battle.newBattle(pl, 3, true);
+  const b = freshBattle(pl, 3, true);
   b.queue = ["p", "e"]; b.idx = 0;
   b.p.statuses.sealItems = 1;
   const refused = battle.playerAct(b, { type: "item", id: "potion_s" });
@@ -1944,12 +1955,256 @@ test("boss effect resistance is 25% and seals block the next player action", () 
   const guard = battle.playerAct(refused, { type: "guard" });
   assert.equal(guard.p.statuses.sealItems, 0);
   // Сопротивление босса: при Math.random=0 эффект отражается.
-  const b2 = battle.newBattle(pl, 3, true);
+  const b2 = freshBattle(pl, 3, true);
   b2.queue = ["p", "e"]; b2.idx = 0;
-  b2.enemy.def = { ...b2.enemy.def, type: "beast" };
+  b2.enemy.def = { ...b2.enemy.def, race: "none", type: "agile" };
   b2.bag.poison_dart = 1;
   const old = Math.random; Math.random = () => 0.0;
   const dart = battle.playerAct(b2, { type: "item", id: "poison_dart" });
   Math.random = old;
   assert.equal(dart.enemy.statuses.poison, 0);
+});
+
+/* ─────────────  ТИПЫ И РОДЫ МОНСТРОВ  ───────────── */
+
+const monsters = loadGameModule("monsters");
+
+test("every creature has a race and a type the race allows", () => {
+  const defs = [...content.ENEMIES, ...content.BOSSES];
+  assert.equal(defs.length, 49);
+  for (const def of defs) {
+    const meta = monsters.MONSTER_RACE_META[def.race];
+    assert.ok(meta, `${def.id}: род ${def.race} известен`);
+    assert.ok(monsters.MONSTER_TYPE_META[def.type], `${def.id}: тип ${def.type} известен`);
+    assert.ok(meta.allowedTypes.includes(def.type), `${def.id}: тип ${def.type} допустим для рода ${def.race}`);
+    if (def.race === "construct") assert.equal(def.type, "strong", `${def.id}: конструкт только сильный`);
+  }
+  for (const race of monsters.MONSTER_RACES) {
+    assert.ok(defs.some((d) => d.race === race), `род ${race} кем-то представлен`);
+  }
+});
+
+test("monster races keep their immunities, weaknesses and elements", () => {
+  assert.equal(monsters.raceImmuneTo("undead", "poison"), true);
+  assert.equal(monsters.raceImmuneTo("undead", "bleed"), true);
+  assert.equal(monsters.raceImmuneTo("undead", "fear"), true);
+  assert.equal(monsters.raceImmuneTo("construct", "bleed"), true);
+  assert.equal(monsters.raceImmuneTo("ghost", "bleed"), true);
+  assert.equal(monsters.raceImmuneTo("ghost", "fear"), false);
+  assert.equal(monsters.raceImmuneTo("beast", "poison"), false);
+  assert.equal(monsters.raceImmuneTo("dragon", "poison"), false);
+  assert.equal(monsters.raceEffectResist("dragon") > 0, true);
+
+  assert.equal(monsters.raceElementMult("construct", "fire"), 1.5);
+  assert.equal(monsters.raceElementMult("construct", "ice"), 1.5);
+  assert.equal(monsters.raceElementMult("construct", "acid"), 1.5);
+  assert.equal(monsters.raceElementMult("construct", "light"), 1);
+  assert.equal(monsters.raceElementMult("vampire", "light"), 1.5);
+  assert.equal(monsters.raceElementMult("beast", "light"), 0);
+  assert.equal(monsters.raceElementMult("undead", "fire"), 1);
+
+  assert.equal(monsters.coerceMonsterType("construct", "agile"), "strong");
+  assert.equal(monsters.coerceMonsterType("vampire", "strong"), "agile");
+  assert.equal(monsters.coerceMonsterType("beast", "smart"), "agile");
+  assert.equal(monsters.coerceMonsterType("demon", "smart"), "smart");
+  assert.equal(monsters.raceCannotHeal("construct"), true);
+});
+
+test("spawn applies type profile and race moves", () => {
+  for (let i = 0; i < 400; i++) {
+    const s = battle.spawnEnemy(1 + (i % 8), false);
+    const meta = monsters.MONSTER_RACE_META[s.def.race];
+    assert.equal(s.mtype, monsters.coerceMonsterType(s.def.race, s.def.type));
+    assert.ok(monsters.monsterEvade(s.def.race, s.mtype) >= 0);
+    assert.ok(s.ap >= 1, "ходов всегда хотя бы один");
+    for (const mv of meta.bonusMoves) assert.ok(s.moves.includes(mv), `${s.def.id}: приём рода ${mv}`);
+  }
+  const agile = battle.spawnEnemy(3, false, seededRandom([0.9, 0.9, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]));
+  assert.ok(Number.isFinite(monsters.monsterEvade(agile.def.race, agile.mtype)));
+});
+
+test("strong monsters are tougher, agile ones are quicker and harder to hit", () => {
+  const strong = monsters.MONSTER_TYPE_META.strong;
+  const agile = monsters.MONSTER_TYPE_META.agile;
+  const smart = monsters.MONSTER_TYPE_META.smart;
+  assert.ok(strong.hpMult > agile.hpMult && strong.atkMult > agile.atkMult);
+  assert.ok(agile.apDelta > strong.apDelta && agile.evade > strong.evade);
+  assert.ok(smart.movePower > strong.movePower && smart.atkMult < strong.atkMult);
+});
+
+/** Собирает бой с принудительным родом, типом и набором приёмов. */
+function monsterBattle(race, type, moves, extra = {}) {
+  const pl = player({ hp: 400, stats: { str: 2, agi: 1, int: 1 }, ...(extra.player ?? {}) });
+  const b = freshBattle(pl, 1);
+  b.queue = ["p", "e", "e", "e", "e"];
+  b.idx = 0;
+  b.enemy.def = { ...b.enemy.def, race, type, moves };
+  b.enemy.moves = moves;
+  b.enemy.mtype = monsters.coerceMonsterType(race, type);
+  b.enemy.hp = 400;
+  b.enemy.maxHp = 400;
+  b.enemy.passive = null;
+  b.enemy.effects = [];
+  b.enemy.effectPower = {};
+  b.p.hp = 400;
+  b.p.maxHp = 400;
+  b.p.evade = 0;
+  b.p.armor = 0;
+  b.p.chanceLayers.evade = { stats: [], items: [], effects: [] };
+  b.biome = "classic";
+  b.torchTurns = 0;
+  return b;
+}
+
+test("undead intimidate seals attacks and techniques for a turn", () => {
+  const b = monsterBattle("undead", "strong", ["intimidate"]);
+  b.idx = 1;
+  const after = battle.enemyStep(b);
+  assert.equal(after.p.statuses.sealAttack, 1);
+  assert.equal(after.p.statuses.sealSkills, 1);
+  after.idx = 0;
+  const refused = battle.playerAct(after, { type: "attack" });
+  assert.equal(refused.enemy.hp, after.enemy.hp);
+  assert.ok(refused.log.some((l) => l.text.includes("Печать оков")));
+});
+
+test("vampire darkness hides half of the blows and bites bleed", () => {
+  const b = monsterBattle("vampire", "agile", ["darkness"]);
+  b.idx = 1;
+  const darkened = battle.enemyStep(b);
+  assert.equal(darkened.p.statuses.darkness, 1);
+  darkened.idx = 0;
+  const old = Math.random;
+  Math.random = () => 0.1; // ниже 50% — атака уходит в пустоту
+  const missed = battle.playerAct(darkened, { type: "attack" });
+  Math.random = old;
+  assert.equal(missed.enemy.hp, darkened.enemy.hp);
+  assert.ok(missed.log.some((l) => l.text.includes("Мрак вампира")));
+
+  const bite = monsterBattle("vampire", "agile", ["attack"]);
+  bite.idx = 1;
+  bite.enemy.hp = 200;
+  const oldRandom = Math.random;
+  Math.random = () => 0.9; // удар и укус состоялись: сопротивление героя не срабатывает
+  const bitten = battle.enemyStep(bite);
+  Math.random = oldRandom;
+  assert.ok(bitten.p.statuses.wound > 0, "клыки открывают кровотечение");
+  assert.ok(bitten.enemy.hp > 200, "вампир лечится от удара");
+});
+
+test("ghost cold touch pierces armor and forbids healing for two turns", () => {
+  const b = monsterBattle("ghost", "smart", ["cold_touch"], { player: { bag: { potion_s: 3 } } });
+  b.p.armor = 40;
+  b.p.chanceLayers.magicResist = { stats: [], items: [], effects: [] };
+  b.idx = 1;
+  const after = battle.enemyStep(b);
+  assert.ok(after.p.hp < 400, "холодное касание проходит сквозь броню 40");
+  assert.equal(after.p.statuses.noHeal, 2);
+  after.idx = 0;
+  const healed = battle.playerAct(after, { type: "item", id: "potion_s" });
+  assert.equal(healed.p.hp, after.p.hp, "пока стужа держит, зелье не лечит");
+});
+
+test("beast aggression doubles strikes under half health, demon hell force burns", () => {
+  /* Один и тот же зверь: целый бьёт слабее, раненый — вдвое. */
+  const seed = monsterBattle("beast", "agile", ["attack"]);
+  seed.idx = 1;
+  seed.enemy.atk = [10, 10];
+  const calm = structuredClone(seed);
+  calm.enemy.hp = 380;
+  const angry = structuredClone(seed);
+  angry.enemy.hp = 180; // ниже половины, но выше порога «лечусь»
+  const fixed = Math.random;
+  Math.random = () => 0.5;
+  const calmLoss = 400 - battle.enemyStep(calm).p.hp;
+  const angryLoss = 400 - battle.enemyStep(angry).p.hp;
+  Math.random = fixed;
+  assert.equal(calmLoss, 10, "обычный удар зверя");
+  assert.equal(angryLoss, 20, "агрессия удваивает удар");
+
+  const hell = monsterBattle("demon", "strong", ["hell_force"]);
+  hell.idx = 1;
+  const beforeHell = Math.random;
+  Math.random = () => 0.9; // выше шанса стойкости: горение точно прилипнет
+  const burned = battle.enemyStep(hell);
+  Math.random = beforeHell;
+  assert.ok(burned.p.hp < 400);
+  assert.ok(burned.p.statuses.burn >= 4, "сила ада оставляет четыре слоя горения");
+});
+
+test("dragon builds fury after three player hits and resists effects", () => {
+  const b = monsterBattle("dragon", "strong", ["attack"]);
+  b.enemy.hp = 3000;
+  b.enemy.maxHp = 3000;
+  let state = b;
+  for (let i = 0; i < 3; i++) {
+    state.idx = 0;
+    state = battle.playerAct(state, { type: "attack" });
+  }
+  assert.equal(state.enemy.fury, 3, "после трёх попаданий дракон в ярости");
+
+  const resist = monsterBattle("dragon", "strong", ["attack"]);
+  resist.bag.poison_dart = 1;
+  const old = Math.random;
+  Math.random = () => 0.1; // ниже 50% — эффект стряхнут
+  const dart = battle.playerAct(resist, { type: "item", id: "poison_dart" });
+  Math.random = old;
+  assert.equal(dart.enemy.statuses.poison, 0);
+});
+
+test("constructs cannot be healed or poisoned and burn badly", () => {
+  const b = monsterBattle("construct", "strong", ["drain"], { player: { bag: { scroll_fire: 1 } } });
+  b.idx = 1;
+  b.enemy.hp = 200;
+  const drained = battle.enemyStep(b);
+  assert.equal(drained.enemy.hp, 200, "конструкт не лечится похищением жизни");
+
+  const poisoned = monsterBattle("construct", "strong", ["attack"], { player: { bag: { poison_dart: 1 } } });
+  poisoned.enemy.hp = 300;
+  const dart = battle.playerAct(poisoned, { type: "item", id: "poison_dart" });
+  assert.equal(dart.enemy.statuses.poison, 0, "яд конструкту не страшен");
+
+  /* Укрепление: физический урон по конструкту срезан на пятую часть. */
+  const hitOnce = (race) => {
+    const b = monsterBattle(race, "strong", ["attack"]);
+    b.enemy.armor = 0;
+    b.idx = 0;
+    const old = Math.random;
+    Math.random = () => 0.5;
+    const hit = battle.playerAct(b, { type: "attack" });
+    Math.random = old;
+    return hit.enemy.maxHp - hit.enemy.hp;
+  };
+  const constructLoss = hitOnce("construct");
+  const plainLossPhysical = hitOnce("none");
+  assert.ok(constructLoss < plainLossPhysical, `Укрепление гасит удар: ${plainLossPhysical} → ${constructLoss}`);
+
+  const fire = monsterBattle("beast", "agile", ["attack"], { player: { stats: { str: 1, agi: 1, int: 6 }, bag: { scroll_fire: 1 } } });
+  fire.enemy.hp = 300;
+  fire.enemy.def = { ...fire.enemy.def, race: "construct", type: "strong" };
+  const burned = battle.playerAct(fire, { type: "item", id: "scroll_fire" });
+  const fireLoss = 300 - burned.enemy.hp;
+
+  const plain = monsterBattle("beast", "agile", ["attack"], { player: { stats: { str: 1, agi: 1, int: 6 }, bag: { scroll_fire: 1 } } });
+  plain.enemy.hp = 300;
+  plain.enemy.def = { ...plain.enemy.def, race: "none", type: "agile" };
+  const plainBurn = battle.playerAct(plain, { type: "item", id: "scroll_fire" });
+  const plainLoss = 300 - plainBurn.enemy.hp;
+  assert.ok(fireLoss > plainLoss, `огонь бьёт конструкта сильнее: ${plainLoss} → ${fireLoss}`);
+});
+
+test("beasts are immune to light and vampires burn in it", () => {
+  const beast = monsterBattle("beast", "agile", ["attack"], { player: { bag: { holy_water: 1 } } });
+  beast.enemy.hp = 300;
+  const blessed = battle.playerAct(beast, { type: "item", id: "holy_water" });
+  assert.equal(blessed.enemy.hp, 300, "свет не берёт зверя");
+
+  const vampire = monsterBattle("vampire", "agile", ["attack"], { player: { bag: { holy_water: 1 } } });
+  vampire.enemy.hp = 300;
+  const lightLoss = 300 - battle.playerAct(vampire, { type: "item", id: "holy_water" }).enemy.hp;
+
+  const plain = monsterBattle("none", "agile", ["attack"], { player: { bag: { holy_water: 1 } } });
+  plain.enemy.hp = 300;
+  const plainLoss = 300 - battle.playerAct(plain, { type: "item", id: "holy_water" }).enemy.hp;
+  assert.ok(lightLoss > plainLoss, `свет жжёт вампира сильнее: ${plainLoss} → ${lightLoss}`);
 });
