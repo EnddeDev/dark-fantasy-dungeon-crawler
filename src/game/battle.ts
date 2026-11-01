@@ -129,8 +129,12 @@ export interface BattleState {
     furyUsed: boolean;
     /** Раунды ярости дракона: двойной урон и лечение в конце хода. */
     fury: number;
-    /** Ходы без оберегов: защита, лечение и усиления врага не работают. */
-    suppressed: number;
+    /**
+     * Ходы истощения: положительные эффекты врага (укрепление, шипы, лечение,
+     * сопротивление, ярость) не работают. Броня, урон, ходы и стойка — обычные
+     * параметры, истощение их не трогает.
+     */
+    depleted: number;
     /** Набор приёмов с учётом угрозы */
     moves: EnemyMove[];
     /** Эффекты «как у снаряжения» у боссов и катастроф. */
@@ -814,7 +818,7 @@ export function newBattle(pl: Player, floor: number, isBoss = false, biome: Biom
       hitsTaken: 0,
       furyUsed: false,
       fury: 0,
-      suppressed: 0,
+      depleted: 0,
       passive: s.passive,
       moves: s.moves,
       effects: s.effects,
@@ -988,9 +992,13 @@ function eEffect(b: BattleState, id: GearEffectId): number {
 function eChance(b: BattleState, id: GearEffectId): number {
   return enemyChance(b.enemy.effects, b.enemy.level, id);
 }
-/** Обереги врага сорваны: пока счётчик больше нуля, положительные эффекты не работают. */
-function buffsBlocked(b: BattleState): boolean {
-  return (b.enemy.suppressed ?? 0) > 0;
+/**
+ * Истощение: пока счётчик больше нуля, положительные эффекты врага не работают.
+ * Речь только об эффектах — броня, урон, ходы, стойка и врождённые свойства
+ * породы остаются при нём.
+ */
+function effectsDepleted(b: BattleState): boolean {
+  return (b.enemy.depleted ?? 0) > 0;
 }
 
 /** Уклонение твари: тип плюс род, всегда от текущего определения. */
@@ -1020,7 +1028,7 @@ function applyEnemyStatus(b: BattleState, key: "chill" | "bleed" | "poison" | "f
     return;
   }
   if (bossResists(b)) return;
-  const resist = buffsBlocked(b) ? 0 : eChance(b, "resist");
+  const resist = effectsDepleted(b) ? 0 : eChance(b, "resist");
   if (resist > 0 && Math.random() < resist) {
     push(b, `${b.enemy.def.name} сопротивляется эффекту.`, "e");
     return;
@@ -1049,8 +1057,8 @@ function weaponHitEffects(b: BattleState) {
 }
 
 function healEnemy(b: BattleState, amount: number): number {
-  if (buffsBlocked(b)) {
-    push(b, `${b.enemy.def.name} не может лечиться: обереги сорваны (ещё ${b.enemy.suppressed} ход.).`, "e");
+  if (effectsDepleted(b)) {
+    push(b, `${b.enemy.def.name} не может лечиться: истощение (ещё ${b.enemy.depleted} ход.).`, "e");
     return 0;
   }
   if (raceCannotHeal(b.enemy.def.race)) {
@@ -1209,7 +1217,10 @@ function hitEnemy(
     push(b, `Мрак вампира съедает удар: промах.${note}`, "e");
     return 0;
   }
-  const evade = kind === "phys" && !buffsBlocked(b) ? eChance(b, "evade") + enemyEvade(b) : 0;
+  /* Базовое уклонение — параметр породы и телосложения, оно остаётся;
+     уклонение от эффектов при истощении гаснет. */
+  const effectEvade = effectsDepleted(b) ? 0 : eChance(b, "evade");
+  const evade = kind === "phys" ? effectEvade + enemyEvade(b) : 0;
   if (evade > 0 && Math.random() < evade) {
     flash(b, "e", "miss", 0);
     push(b, `${b.enemy.def.name} уклоняется от удара.${note}`, "e");
@@ -1223,35 +1234,35 @@ function hitEnemy(
     const pierce = rarePower(b, "pierce", "armor");
     const effArmor = Math.max(0, b.enemy.armor - pierce);
     d -= effArmor;
-    if (!buffsBlocked(b)) {
-      if (b.enemy.passive?.id === "stone_hide") d = Math.round(d * 0.75);
-      /* Укрепление конструкта: камень и металл гасят часть физического удара. */
-      const fortify = raceFortify(b.enemy.def.race);
-      if (fortify > 0) d = Math.round(d * (1 - fortify));
-      d = Math.round(d * (1 - eChance(b, "fortify")));
-    }
-  } else if (!buffsBlocked(b)) {
+    /* Каменная шкура и укрепление рода — врождённые свойства породы,
+       а не эффекты: истощение их не снимает. */
+    if (b.enemy.passive?.id === "stone_hide") d = Math.round(d * 0.75);
+    const fortify = raceFortify(b.enemy.def.race);
+    if (fortify > 0) d = Math.round(d * (1 - fortify));
+    if (!effectsDepleted(b)) d = Math.round(d * (1 - eChance(b, "fortify")));
+  } else if (!effectsDepleted(b)) {
     d = Math.round(d * (1 - eChance(b, "magic_resist")));
   }
-  if (b.enemy.guard && !buffsBlocked(b)) {
+  /* Стойка — действие, а не эффект: она режет урон и при истощении. */
+  if (b.enemy.guard) {
     d = Math.floor(d / 2);
     const guardBonus = eEffect(b, "guard_bonus") / 100 + raceGuardBonus(b.enemy.def.race);
     d = Math.round(d * Math.max(0.2, 1 - guardBonus));
   }
-  if (!buffsBlocked(b)) d -= eEffect(b, "damage_resist");
+  if (!effectsDepleted(b)) d -= eEffect(b, "damage_resist");
   d = Math.max(1, d);
   b.enemy.hp -= d;
   flash(b, "e", "hit", d);
   push(b, `${b.enemy.def.name} получает ${d} урона.${note}`, "p");
   /* Шипы врага ранят только того, кто бьёт вплотную: обычная атака, второй
      удар, контратака и физические приёмы. Магия и «чистый» урон их не будят. */
-  const thorns = !buffsBlocked(b) && kind === "phys" ? eEffect(b, "thorns") : 0;
+  const thorns = !effectsDepleted(b) && kind === "phys" ? eEffect(b, "thorns") : 0;
   if (thorns > 0 && b.p.hp > 0) {
     b.p.hp -= thorns;
     push(b, `Шипы противника ранят тебя: −${thorns} ОЗ.`, "e");
   }
   /* Дракон копит ярость: после трёх твоих попаданий бьёт вдвое и залечивает раны. */
-  if (b.enemy.def.race === "dragon" && b.enemy.hp > 0 && !buffsBlocked(b)) {
+  if (b.enemy.def.race === "dragon" && b.enemy.hp > 0 && !effectsDepleted(b)) {
     b.enemy.hitsTaken += 1;
     /* Ярость приходит один раз за бой: иначе дракон просто не убивается. */
     if (!b.enemy.furyUsed && b.enemy.fury <= 0 && b.enemy.hitsTaken >= 3) {
@@ -1596,9 +1607,9 @@ function advance(b: BattleState) {
     b.enemy.statuses.wither = Math.max(0, b.enemy.statuses.wither - 1);
     b.enemy.statuses.burn = Math.max(0, b.enemy.statuses.burn - 1);
     b.enemy.statuses.curse = Math.max(0, b.enemy.statuses.curse - 1);
-    if (b.enemy.suppressed > 0) {
-      b.enemy.suppressed -= 1;
-      if (b.enemy.suppressed === 0) push(b, `${b.enemy.def.name} снова собирает обереги.`, "e");
+    if (b.enemy.depleted > 0) {
+      b.enemy.depleted -= 1;
+      if (b.enemy.depleted === 0) push(b, `Истощение спадает: ${b.enemy.def.name} снова чувствует свои эффекты.`, "e");
     }
 
     if (b.p.weaponCd > 0) b.p.weaponCd -= 1;
@@ -1861,12 +1872,11 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
         b.p.statuses.fullGuard = Math.max(b.p.statuses.fullGuard, rounds);
         push(b, `Слово защиты: полная защита от урона на ${rounds} хода.`, "p");
       } else if (eff === "buff_break") {
-        /* Срок фиксирован: обереги гаснут ровно на два хода, уровнем не растягивается. */
+        /* Срок фиксирован: истощение держится ровно два хода, уровнем не растягивается. */
         const rounds = 2;
         if (!bossResists(b)) {
-          b.enemy.suppressed = Math.max(b.enemy.suppressed, rounds);
-          b.enemy.guard = false;
-          push(b, `Обереги ${b.enemy.def.name} сорваны на ${rounds} хода: защита, лечение и усиления не работают.`, "p");
+          b.enemy.depleted = Math.max(b.enemy.depleted, rounds);
+          push(b, `Истощение ${b.enemy.def.name} на ${rounds} хода: его положительные эффекты гаснут.`, "p");
         }
       } else if (eff === "create_scroll") {
         const count = scaleIntegerByLevel(ws.id === "scroll_tempest" ? 2 : 1, ws.level ?? 1) + effectPower(b, "scroll_create") +
@@ -2139,9 +2149,8 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
           }
           if (bossResists(b)) break;
           const rounds = u.rounds ?? 2;
-          b.enemy.suppressed = Math.max(b.enemy.suppressed, rounds);
-          b.enemy.guard = false;
-          push(b, `${def.name}: обереги ${b.enemy.def.name} сорваны на ${rounds} хода.`, "p");
+          b.enemy.depleted = Math.max(b.enemy.depleted, rounds);
+          push(b, `${def.name}: истощение ${b.enemy.def.name} на ${rounds} хода — эффекты гаснут.`, "p");
           break;
         }
         case "wither": {
@@ -2286,8 +2295,6 @@ export function chooseEnemyMove(b: BattleState): EnemyMove {
   const moves = (e.moves.length ? e.moves : e.def.moves).slice();
   const has = (m: EnemyMove) => moves.includes(m);
   const debuffs = moves.filter((m) => DEBUFF_MOVES.includes(m));
-  /* Обереги сорваны — стойка бесполезна, тварь бьёт или тянет жизнь. */
-  const insteadOfGuard = () => (has("drain") && e.hp < e.maxHp ? "drain" : "attack");
   const magics = moves.filter((m) => MAGIC_MOVES.includes(m));
   const strikes = moves.filter((m) => STRIKE_MOVES.includes(m));
   const hpRatio = e.hp / Math.max(1, e.maxHp);
@@ -2300,7 +2307,7 @@ export function chooseEnemyMove(b: BattleState): EnemyMove {
     if (has("drain") && e.hp < e.maxHp) {
       return "drain";
     }
-    return buffsBlocked(b) ? insteadOfGuard() : "guard";
+    return "guard";
   }
 
   /* 2. Промахнулся — следующий ход приём; с магией бьёт именно магией. */
@@ -2319,14 +2326,14 @@ export function chooseEnemyMove(b: BattleState): EnemyMove {
   if (playerThorns(b) > 0) {
     if (magics.length) return pick(magics);
     if (turnsLeft === 1 && !debuffs.length) {
-      return buffsBlocked(b) ? insteadOfGuard() : "guard";
+      return "guard";
     }
   }
 
   /* 4. Последний ход раунда: кто быстрее, тот и распоряжается концовкой. */
   if (turnsLeft === 1) {
     if (enemyTurns < playerTurns) {
-      return buffsBlocked(b) ? insteadOfGuard() : "guard";
+      return "guard";
     }
     if (enemyTurns > playerTurns) {
       const options = [...strikes, ...debuffs];
@@ -2379,17 +2386,20 @@ export function enemyStep(b0: BattleState): BattleState {
   const isStrikeMove = STRIKE_MOVES.includes(move);
   /* Промах запоминается только на один ход: после решения флаг снимаем. */
   e.lastMiss = false;
+  /* Базовый удар — обычный параметр; усиления от эффектов при истощении не работают. */
   let base = randInt(e.atk[0], e.atk[1]);
-  base = Math.round(base * (1 + (eEffect(b, "rage") / 100) * Math.min(10, Math.floor(enemyMissingRatio(b) * 10))));
-  base = Math.round(base * (1 + (e.level * eEffect(b, "might")) / 100));
-  base = Math.round(base * (1 + eEffect(b, "missing_hp_damage") / 100 * Math.min(10, Math.floor(enemyMissingRatio(b) * 10))));
-  base = Math.round(base * (1 + eEffect(b, "enemy_missing_damage") / 100 * Math.min(10, Math.floor(missingHpRatio(b) * 10))));
-  if (b.round <= 2) base = Math.round(base * (1 + eEffect(b, "first_strike") / 100));
-  base += Math.round(e.armor * eEffect(b, "armor_damage") / 100);
-  const eCritChance = eChance(b, "crit_chance");
-  if (eCritChance > 0 && Math.random() < eCritChance) {
-    base = Math.round(base * (2 + eEffect(b, "crit_mult") / 100));
-    push(b, `${e.def.name} наносит критический удар!`, "e");
+  if (!effectsDepleted(b)) {
+    base = Math.round(base * (1 + (eEffect(b, "rage") / 100) * Math.min(10, Math.floor(enemyMissingRatio(b) * 10))));
+    base = Math.round(base * (1 + (e.level * eEffect(b, "might")) / 100));
+    base = Math.round(base * (1 + eEffect(b, "missing_hp_damage") / 100 * Math.min(10, Math.floor(enemyMissingRatio(b) * 10))));
+    base = Math.round(base * (1 + eEffect(b, "enemy_missing_damage") / 100 * Math.min(10, Math.floor(missingHpRatio(b) * 10))));
+    if (b.round <= 2) base = Math.round(base * (1 + eEffect(b, "first_strike") / 100));
+    base += Math.round(e.armor * eEffect(b, "armor_damage") / 100);
+    const eCritChance = eChance(b, "crit_chance");
+    if (eCritChance > 0 && Math.random() < eCritChance) {
+      base = Math.round(base * (2 + eEffect(b, "crit_mult") / 100));
+      push(b, `${e.def.name} наносит критический удар!`, "e");
+    }
   }
   /* Тип задаёт, на чём держится урон: у умных приёмы бьют в 1.45× сильнее. */
   const typeMeta = MONSTER_TYPE_META[e.mtype] ?? MONSTER_TYPE_META.strong;
@@ -2399,18 +2409,13 @@ export function enemyStep(b0: BattleState): BattleState {
     base = Math.round(base * 2);
   }
   /* Ярость дракона: двойной урон, пока держится. */
-  if (e.def.race === "dragon" && e.fury > 0 && !buffsBlocked(b)) base = Math.round(base * 2);
+  if (e.def.race === "dragon" && e.fury > 0 && !effectsDepleted(b)) base = Math.round(base * 2);
   const resistChance = playerResistChance(b);
   const hpBeforeMove = b.p.hp;
 
   switch (move) {
     case "guard": {
-      if (buffsBlocked(b)) {
-        /* Обереги сорваны: стойка не держится, ход уходит впустую. */
-        flash(b, "e", "miss", 0);
-        push(b, `${e.def.name} пытается закрыться, но обереги сорваны: защиты нет.`, "p");
-        break;
-      }
+      /* Истощение гасит эффекты, но стойка — обычное действие. */
       e.guard = true;
       flash(b, "e", "guard", 0);
       push(b, `${e.def.name} уходит в глухую защиту.`, "e");
