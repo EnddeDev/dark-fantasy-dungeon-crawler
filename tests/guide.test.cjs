@@ -75,10 +75,46 @@ test("guide codifies the new stat formulas and probability rule", () => {
 });
 
 test("guide navigation anchors point to existing sections", () => {
-  for (const id of ["guide-stats", "guide-gear", "guide-combat", "guide-biomes", "guide-reference"]) {
+  for (const id of ["guide-stats", "guide-gear", "guide-combat", "guide-techniques", "guide-biomes", "guide-reference"]) {
     assert.ok(html.includes(`href="#${id}"`), `missing nav link ${id}`);
     assert.ok(html.includes(`id="${id}"`), `missing section ${id}`);
   }
+});
+
+test("weapon techniques section sits between combat rules and maze types", () => {
+  const combat = html.indexOf('id="guide-combat"');
+  const techniques = html.indexOf('id="guide-techniques"');
+  const biomes = html.indexOf('id="guide-biomes"');
+  assert.ok(combat >= 0 && techniques > combat && biomes > techniques);
+  assert.match(html, /id="guide-techniques-title"[^>]*>Приёмы оружия</);
+});
+
+test("weapon techniques section lists every technique and epic skill", () => {
+  const start = html.indexOf('id="guide-techniques"');
+  const section = html.slice(start, html.indexOf('id="guide-biomes"'));
+  for (const name of [
+    "Удар в артерию", "Быстрый порез", "Ядовитая кромка",
+    "Фехтование", "Обезоруживающий выпад", "Стойка дуэлянта",
+    "Ответная стойка", "Секущий удар", "Раскол лат",
+    "Тайный разряд", "Удар углей", "Оберегающий взмах",
+    "Рассечение кости", "Безрассудный замах", "Рваная рана",
+    "Колокол приговора", "Сокрушение", "Удар оплота",
+    "Жатва бездны", "Разрез тени", "Питьё душ",
+    "Стена щитов", "Приговор лат", "Яростный размах", "Раскол черепа",
+    "Парные клыки", "Удар открытия", "Ядовитая цепь", "Пустой шаг",
+    "Печать проклятия", "Реприза души", "Слово защиты", "Буря свитков",
+  ]) {
+    assert.ok(section.includes(name), `missing technique ${name}`);
+  }
+  assert.match(section, /Всего приёмов оружия<b[^>]*> 44</);
+  for (const name of ["Огненный шар", "Кровавое копьё", "Эгида пепла", "Теневой росчерк", "Дыхание склепа"]) {
+    assert.ok(section.includes(name), `missing epic skill ${name}`);
+  }
+  /* одиночные модели без пула тоже на месте */
+  for (const name of ["Клеймор следопыта", "Копьё пещерного охотника", "Осадный молот", "Кинжал затяжки", "Пепельная палочка"]) {
+    assert.ok(section.includes(name), `missing weapon ${name}`);
+  }
+  assert.match(section, /магия/);
 });
 
 test("extra reference material is collapsed by default", () => {
