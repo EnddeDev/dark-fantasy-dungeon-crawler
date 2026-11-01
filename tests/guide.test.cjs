@@ -58,7 +58,7 @@ test("guide core sections are characteristics, gear quality/wear, then combat ru
 
 test("guide codifies the new stat formulas and probability rule", () => {
   assert.doesNotMatch(html, /Уклонение даёт не Ловкость/);
-  assert.ok(html.includes("Здоровье: 10 + 10 × (СИЛ − 1)"));
+  assert.ok(html.includes("Здоровье: 10 базовых + 10 × СИЛ"));
   assert.ok(html.includes("Урон оружием: 2 + 1 × СИЛ"));
   assert.ok(html.includes("Стойкость: 5% за каждое очко"));
   assert.ok(html.includes("Ход: 1 за каждое очко ЛОВ"));

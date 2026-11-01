@@ -51,6 +51,23 @@ test("MVC: SaveRepository isolates localStorage keys and PlayerFactory migrates 
   assert.ok(restored.hp > 0);
 });
 
+test("MVC: the hero always has full health in the lobby", () => {
+  const game = makeGame();
+  const fresh = game.model.getSnapshot().player;
+  assert.equal(fresh.hp, battle.derived(fresh).maxHp, "новый герой приходит с полным здоровьем");
+
+  /* Раны, полученные в вылазке, в лобби не остаются. */
+  game.model.updatePlayer((p) => ({ ...p, hp: 1 }));
+  game.enterLobby("train");
+  const healed = game.model.getSnapshot().player;
+  assert.equal(healed.hp, battle.derived(healed).maxHp);
+
+  /* Смена снаряжения и очки характеристик тоже поднимают здоровье до предела. */
+  game.lobby.upgradeStat("str");
+  const upgraded = game.model.getSnapshot().player;
+  assert.equal(upgraded.hp, battle.derived(upgraded).maxHp);
+});
+
 test("MVC: LobbyController mutates the model through commands, not React setters", () => {
   const player = PlayerFactory.createInitial();
   player.statPoints = 5;

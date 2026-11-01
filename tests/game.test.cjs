@@ -1686,12 +1686,13 @@ test("acceleration gear gives 0/1/2/3 extra actions by level 1/5/7/10 every roun
   assert.equal(r2.ap, 8);
 });
 
-test("hero starts with 10 health and two-handers hit twice as hard as one-handers", () => {
+test("hero starts at full health with three stat points, two-handers hit twice as hard", () => {
   const initial = PlayerFactory.createInitial();
-  /* Герой создаётся с 10 здоровья и тремя свободными очками характеристик. */
-  assert.equal(initial.hp, 10);
+  /* Стартовый герой приходит с полным здоровьем и тремя свободными очками. */
   assert.equal(initial.statPoints, 3);
-  assert.ok(battle.derived(initial).maxHp >= 10);
+  assert.equal(initial.hp, battle.derived(initial).maxHp);
+  /* СИЛ 1 = базовые 10 ОЗ + 10 за очко Силы. */
+  assert.ok(battle.derived({ ...initial, armory: [], equip: { ...initial.equip, mainHand: null, body: null } }).maxHp >= 20);
   const oneHand = content.createGearItem({ baseId: "sword", level: 1, wear: "new", rarity: "common", identified: true, rng: () => 0.5 });
   const twoHand = content.createGearItem({ baseId: "greatsword", level: 1, wear: "new", rarity: "common", identified: true, rng: () => 0.5 });
   const a = content.scaledGearStats(oneHand).dmg;

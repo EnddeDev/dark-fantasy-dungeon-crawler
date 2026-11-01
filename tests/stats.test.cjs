@@ -44,10 +44,10 @@ test("chances multiply in layer order and never reach 100%", () => {
 });
 
 test("stat formulas count the full characteristic value including the starting point", () => {
-  /* Здоровье не пропадает без Силы: 0 и 1 очко дают по 10 ОЗ. */
+  /* Базовые 10 ОЗ со старта плюс 10 за каждое очко Силы. */
   assert.equal(formulas.statHealth(0), 10);
-  assert.equal(formulas.statHealth(1), 10);
-  assert.equal(formulas.statHealth(10), 100);
+  assert.equal(formulas.statHealth(1), 20);
+  assert.equal(formulas.statHealth(10), 110);
   assert.equal(formulas.statDamage(1), 3);
   assert.equal(formulas.statDamage(10), 12);
   assert.equal(formulas.statTenacity(5), 0.25);
@@ -64,7 +64,8 @@ test("stat formulas count the full characteristic value including the starting p
   assert.equal(formulas.statTechniqueDamage(10), 30);
 
   const d = battle.derived(mkP());
-  assert.equal(d.maxHp, 50);
+  /* СИЛ 5: базовые 10 + 5 × 10 ОЗ. */
+  assert.equal(d.maxHp, 60);
   assert.equal(d.ap, 5);
   assert.equal(d.strFlat, 7);
   assert.equal(d.evade, 0.25);

@@ -5,9 +5,6 @@ import type { Player, Slot } from "../game/types";
 import { SLOT_ORDER } from "../game/types";
 import { SHOP_MAX_LEVEL } from "../game/world";
 
-/** Здоровье, с которым начинается новая игра. */
-export const START_HP = 10;
-
 /** Фабрика игрока: создание нового героя и миграция старых сохранений. */
 export class PlayerFactory {
   static createInitial(): Player {
@@ -40,8 +37,8 @@ export class PlayerFactory {
       kills: 0,
       shopLevel: 1,
     };
-    /* Стартовое здоровье героя — 10 (не выше предела, который даёт снаряжение). */
-    player.hp = Math.min(START_HP, derived(player).maxHp);
+    /* В лобби герой всегда с полным здоровьем. */
+    player.hp = derived(player).maxHp;
     return player;
   }
 
@@ -119,8 +116,8 @@ export class PlayerFactory {
           statMilestones: saved.statMilestones ?? {},
         };
         const migrated = normalizeStatMilestones(restored);
-        const maxHp = derived(migrated).maxHp;
-        return { ...migrated, hp: Math.max(1, Math.min(maxHp, migrated.hp || maxHp)) };
+        /* Сохранение живёт только в лобби, поэтому здоровье там всегда полное. */
+        return { ...migrated, hp: derived(migrated).maxHp };
       }
     } catch {
       /* повреждённое сохранение */
