@@ -11,9 +11,18 @@ export const FOE_ART: Readonly<Record<string, string>> = {
   "brute": "images/foe-brute.jpg",
   "boss_warden": "images/foe-boss.jpg",
   "bat_vampire": "images/monsters/bat_vampire.jpg",
+  "ghost_light": "images/monsters/ghost_light.jpg",
+  "goblin_scout": "images/monsters/goblin_scout.jpg",
+  "golem": "images/monsters/golem.jpg",
   "imp": "images/monsters/imp.jpg",
+  "kobold": "images/monsters/kobold.jpg",
+  "mimic_larva": "images/monsters/mimic_larva.jpg",
   "rat_giant": "images/monsters/rat_giant.jpg",
-  "rat_swarm": "images/monsters/rat_swarm.jpg"
+  "rat_swarm": "images/monsters/rat_swarm.jpg",
+  "seer": "images/monsters/seer.jpg",
+  "skeleton_guard": "images/monsters/skeleton_guard.jpg",
+  "spider_weaver": "images/monsters/spider_weaver.jpg",
+  "sporeling": "images/monsters/sporeling.jpg"
 };
 
 export const ITEM_ART: Readonly<Record<string, string>> = {
