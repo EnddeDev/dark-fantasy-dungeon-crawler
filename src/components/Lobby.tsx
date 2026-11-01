@@ -24,10 +24,7 @@ import {
   consumableScaleLabel,
   canBuySupply,
   supplySellPrice,
-  equipItem,
-  identifyReqs,
   slotsForItem,
-  unequipSlot,
   ITEMS,
   LEGENDARY_PASSIVES,
   MAX_LEVEL,
@@ -38,9 +35,7 @@ import {
   RECIPES,
   STAT_META,
   STAT_ORDER,
-  attemptBrew,
   gearBuyPrice,
-  gearSellPrice,
   hasIngredients,
   scaledGearStats,
   statPointCost,
@@ -48,6 +43,8 @@ import {
   type ItemDef,
   type Recipe,
 } from "../game/content";
+import type { LobbyController } from "../controllers/LobbyController";
+import { recipePrice } from "../model/pricing";
 import { SLOT_META, SLOT_ORDER } from "../game/types";
 import type { RarityTier, Slot } from "../game/types";
 import { derived } from "../game/battle";
@@ -55,10 +52,10 @@ import { GEAR_BASES } from "../game/content";
 import { GEAR_EFFECTS, GEAR_PASSIVES } from "../game/gearEffects";
 import type { GearItem, Player, StatKey } from "../game/types";
 import type { ArchetypeId } from "../game/archetypes";
-import { canChooseStatMilestone, chooseStatMilestone, chosenStatMilestone, statMilestoneOptions, type StatMilestoneTier } from "../game/statMilestones";
+import { canChooseStatMilestone, chosenStatMilestone, statMilestoneOptions, type StatMilestoneTier } from "../game/statMilestones";
 import { SHOP_MAX_LEVEL, shopRarityTable, shopUpgradeCost, shopWearTable } from "../game/world";
-import { forgeOptions, forgeUpgrade, type ForgeUpgradeKind } from "../game/forge";
-import { resetStats, statResetCost, totalStatPoints } from "../game/progression";
+import { forgeOptions, type ForgeUpgradeKind } from "../game/forge";
+import { statResetCost, totalStatPoints } from "../game/progression";
 import { WEAR_RANGE } from "../game/types";
 import { Guide } from "./Guide";
 import { Bestiary } from "./Bestiary";
@@ -231,23 +228,16 @@ const TABS: { id: Tab; label: string; badge?: (p: Player) => number }[] = [
 
 export function Lobby({
   player,
-  setPlayer,
+  controller,
   shopStock,
-  onRefreshShop,
-  onUpgradeShop,
-  onPurchaseGear,
   onStart,
   best,
   unlockedFloor,
   initialTab = "train",
 }: {
   player: Player;
-  setPlayer: (fn: (p: Player) => Player) => void;
+  controller: LobbyController;
   shopStock: GearItem[];
-  onRefreshShop: () => void;
-  onUpgradeShop: () => void;
-  /** Убрать купленный товар с прилавка. */
-  onPurchaseGear: (uid: string) => void;
   onStart: (floor: number) => void;
   best: number;
   unlockedFloor: number;
@@ -276,203 +266,66 @@ export function Lobby({
   const [resetConfirm, setResetConfirm] = useState(false);
 
   const d = derived(player);
-  const say = (t: string) => {
+  const say = (t: string | null) => {
+    if (!t) return;
     setToast(t);
     window.setTimeout(() => setToast((cur) => (cur === t ? null : cur)), 3200);
   };
 
-  /* Повышение характеристики за очки уровня */
+  /* Команды лобби выполняет Controller; View только показывает результат. */
   const upgradeStat = (k: StatKey) => {
-    const cur = player.stats[k];
-    if (cur >= 10) return;
-    const cost = statPointCost(k, cur);
-    if (player.statPoints < cost) return;
-    const next = cur + 1;
-    setPlayer((p) => {
-      const stats = { ...p.stats, [k]: next };
-      const after = derived({ ...p, stats }).maxHp;
-      return {
-        ...p,
-        stats,
-        statPoints: p.statPoints - cost,
-        hp: after,
-      };
-    });
-    if (next === 5 || next === 10) setPick({ stat: k, tier: next as StatMilestoneTier });
-    else say(`${STAT_META[k].name}: ${next}/10`);
+    const res = controller.upgradeStat(k);
+    if (!res) return;
+    if (res.milestone) setPick(res.milestone);
+    else say(res.message);
   };
 
   const chooseArchetype = (id: ArchetypeId) => {
-    const a = ARCHETYPES[id];
-    setPlayer((p) => (p.archetype ? p : { ...p, archetype: id }));
+    say(controller.chooseArchetype(id));
     setPickArchetype(false);
-    say(`Архетип выбран: ${a.name}`);
   };
 
   const pickStatMilestone = (id: string) => {
     if (!pick) return;
-    setPlayer((p) => {
-      const next = chooseStatMilestone(p, pick.stat, pick.tier, id);
-      if (next === p) return p;
-      return { ...next, hp: derived(next).maxHp };
-    });
+    say(controller.pickStatMilestone(pick.stat, pick.tier, id));
     setPick(null);
-    say("Усиление рубежа записано в лист");
   };
 
-  /* Покупка расходников/свитков/реагентов: уровень предмета не выше уровня лавки. */
-  const buyConsumable = (def: ItemDef) => {
-    const price = def.price ?? 0;
-    if (player.gold < price || !canBuySupply(def.id, player.shopLevel)) return;
-    setPlayer((p) => ({
-      ...p,
-      gold: p.gold - price,
-      bag: { ...p.bag, [def.id]: (p.bag[def.id] ?? 0) + 1 },
-    }));
-    say(`Куплено: ${def.name}`);
-  };
-
-  const sellSupply = (def: ItemDef) => {
-    const have = player.bag[def.id] ?? 0;
-    if (have <= 0) return;
-    const price = supplySellPrice(def);
-    setPlayer((p) => {
-      const bag = { ...p.bag, [def.id]: (p.bag[def.id] ?? 0) - 1 };
-      if (bag[def.id] <= 0) delete bag[def.id];
-      return { ...p, gold: p.gold + price, bag };
-    });
-    say(`Продано: ${def.name} за ${price} зол.`);
-  };
+  const buyConsumable = (def: ItemDef) => say(controller.buyConsumable(def));
+  const sellSupply = (def: ItemDef) => say(controller.sellSupply(def));
 
   const confirmResetStats = () => {
-    const res = resetStats(player);
-    if (!res) return;
-    setPlayer(() => res.player);
+    const msg = controller.resetStats();
+    if (!msg) return;
     setResetConfirm(false);
     setPick(null);
-    say(`Характеристики сброшены. Возвращено ${res.refunded} очк., потрачено ${res.cost} зол.${res.removedSlots.length ? ` Снято снаряжение: ${res.removedSlots.length}.` : ""}`);
+    say(msg);
   };
 
-  /* Если Интеллект позволяет — предметы в арсенале исследуются сами */
+  /* Если Интеллект позволяет — предметы в арсенале исследуются сами. */
   useEffect(() => {
-    const pending = player.armory.filter((g) => !g.identified);
-    if (!pending.length) return;
-    const canDo = pending.filter((g) => player.stats.int >= identifyReqs(g).int);
-    if (!canDo.length) return;
-    setPlayer((p) => ({
-      ...p,
-      armory: p.armory.map((g) => (canDo.some((c) => c.uid === g.uid) ? { ...g, identified: true } : g)),
-    }));
-    say(`Исследовано автоматически: ${canDo.length} предмет(ов)`);
+    say(controller.autoIdentify());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [player.armory, player.stats.int]);
+  }, [player.armory, player.stats.int, controller]);
 
-  /* Покупка снаряжения. Если Интеллект позволяет — предмет исследуется сразу,
-     а купленная вещь исчезает с прилавка. */
   const buyGear = (item: GearItem) => {
-    const price = gearBuyPrice(item);
-    if (player.gold < price) return;
-    const reqs = identifyReqs(item);
-    const auto = player.stats.int >= reqs.int;
-    setPlayer((p) => ({
-      ...p,
-      gold: p.gold - price,
-      armory: [{ ...item, identified: auto }, ...p.armory],
-    }));
-    onPurchaseGear(item.uid);
+    const msg = controller.buyGear(item);
+    if (!msg) return;
     setPurchasedUids((prev) => ({ ...prev, [item.uid]: true }));
-    say(
-      auto
-        ? `Куплено и исследовано: ${scaledGearStats(item).base.name}`
-        : `Куплено: ${scaledGearStats(item).base.name}`,
-    );
+    say(msg);
   };
 
-  /* Исследование снаряжения (за Интеллект или за Золото) */
-  const identifyGear = (uid: string, mode: "int" | "gold") => {
-    const target = player.armory.find((g) => g.uid === uid);
-    if (!target || target.identified) return;
-    const st = scaledGearStats(target);
-    const reqs = identifyReqs(target);
-    const reqInt = Math.max(1, reqs.int - d.intDiscount);
-    const goldCost = reqs.gold;
-
-    if (mode === "int" && player.stats.int < reqInt) return;
-    if (mode === "gold" && player.gold < goldCost) return;
-
-    setPlayer((p) => {
-      const armory = p.armory.map((g) => (g.uid === uid ? { ...g, identified: true } : g));
-      const gold = mode === "gold" ? p.gold - goldCost : p.gold;
-      const nextP = { ...p, armory, gold };
-      return { ...nextP, hp: derived(nextP).maxHp };
-    });
-
-    const rName = RARITY_META[target.rarity].name;
-    say(`Исследовано: ${st.base.name} — ${rName}!`);
-  };
-
-  const equipGear = (item: GearItem, slot: Slot, grip?: "one" | "two") => {
-    const before = derived(player).maxHp;
-    const { player: next, note } = equipItem(player, item.uid, slot, grip);
-    if (next === player) {
-      say(note ?? "Не удалось надеть предмет.");
-      return;
-    }
-    const after = derived(next).maxHp;
-    setPlayer(() => ({ ...next, hp: Math.min(after, next.hp + Math.max(0, after - before)) }));
-    say(note ?? `Надето: ${scaledGearStats(item).base.name} · ${SLOT_META[slot].name}`);
-  };
-
-  const takeOff = (slot: Slot) => {
-    setPlayer((p) => {
-      const next = unequipSlot(p, slot);
-      return { ...next, hp: Math.min(derived(next).maxHp, next.hp) };
-    });
-    say(`${SLOT_META[slot].name}: снято`);
-  };
-
-  const sellGear = (item: GearItem) => {
-    const isEquipped = Object.values(player.equip).includes(item.uid);
-    if (isEquipped) return;
-    const price = gearSellPrice(item);
-    setPlayer((p) => ({
-      ...p,
-      gold: p.gold + price,
-      armory: p.armory.filter((g) => g.uid !== item.uid),
-    }));
-    say(`Продано за ${price} зол.`);
-  };
-
-  const buyRecipe = (recipe: Recipe) => {
-    const price = recipePrice(recipe);
-    if (player.knownRecipes.includes(recipe.id) || player.gold < price) return;
-    setPlayer((p) => ({
-      ...p,
-      gold: p.gold - price,
-      knownRecipes: [...p.knownRecipes, recipe.id],
-    }));
-    say(`Рецепт изучен: ${ITEMS[recipe.out].name}`);
-  };
-
-  const brew = (recipeId: string) => {
-    const r = RECIPES.find((x) => x.id === recipeId);
-    if (!r) return;
-    const result = attemptBrew(player, r);
-    if (!result) return;
-    setPlayer(() => result.player);
-    say(result.success
-      ? `Создано: ${ITEMS[r.out].name}${player.passives.includes("brewer") ? " (+1)" : ""}`
-      : r.station === "workshop"
-        ? "Сборка не удалась: реагенты потрачены, результата нет."
-        : "Алхимия не удалась: реагенты потрачены, результата нет.");
-  };
+  const identifyGear = (uid: string, mode: "int" | "gold") => say(controller.identifyGear(uid, mode));
+  const equipGear = (item: GearItem, slot: Slot, grip?: "one" | "two") => say(controller.equipGear(item, slot, grip));
+  const takeOff = (slot: Slot) => say(controller.takeOff(slot));
+  const sellGear = (item: GearItem) => say(controller.sellGear(item));
+  const buyRecipe = (recipe: Recipe) => say(controller.buyRecipe(recipe));
+  const brew = (recipeId: string) => say(controller.brew(recipeId));
 
   const shopSupplies = Object.values(ITEMS).filter(
     (i) => (i.price ?? 0) > 0 && i.kind !== "reagent" && groupOfKind(i.kind) === supplyGroup,
   );
   const shopReagents = Object.values(ITEMS).filter((i) => i.kind === "reagent" && (i.price ?? 0) > 0);
-  /** Рецепты дорожают: лист редкого зелья ценится выше. */
-  const recipePrice = (r: Recipe) => Math.round(r.price * 1.8 / 5) * 5;
   const stationRecipes = (station: "alchemy" | "workshop") =>
     RECIPES.filter((r) => (r.station ?? "alchemy") === station);
   const groupedRecipes = RECIPES.filter((r) => groupOfKind(ITEMS[r.out].kind) === recipeGroup);
@@ -952,7 +805,7 @@ export function Lobby({
                       <Btn
                         tone={upgradeCost > 0 && player.gold >= upgradeCost ? "flame" : "ghost"}
                         disabled={upgradeCost === 0 || player.gold < upgradeCost}
-                        onClick={onUpgradeShop}
+                        onClick={() => controller.upgradeShop()}
                       >
                         {upgradeCost === 0 ? "Предел · уровень 10" : `Вложиться в лавку · ${upgradeCost} зол.`}
                       </Btn>
@@ -1023,7 +876,7 @@ export function Lobby({
                         disabled={player.gold < 25}
                         onClick={() => {
                           setPurchasedUids({});
-                          onRefreshShop();
+                          controller.refreshShop();
                           say("Прилавок обновлён");
                         }}
                       >
@@ -1481,12 +1334,7 @@ export function Lobby({
             <div className="flex justify-end gap-2">
               <Btn tone="ghost" onClick={() => setForgeConfirm(null)}>Отмена</Btn>
               <Btn tone="flame" onClick={() => {
-                const res = forgeUpgrade(player, forgeConfirm.uid, forgeConfirm.kind);
-                setPlayer(() => {
-                  const maxHp = derived(res.player).maxHp;
-                  return { ...res.player, hp: Math.min(res.player.hp, maxHp) };
-                });
-                say(res.message);
+                say(controller.forge(forgeConfirm.uid, forgeConfirm.kind));
                 setForgeConfirm(null);
               }}>
                 В горн
