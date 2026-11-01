@@ -22,8 +22,9 @@ export function TitleView({ onEnter }: { onEnter: (entry: LobbyEntry) => void })
         </h1>
         <div className="mt-6 grid gap-8 md:grid-cols-[minmax(0,440px)_1fr] md:items-end">
           <p className="dropcap text-[1rem] leading-relaxed text-parch/90">
-            Первый ярус — короткий лабиринт 6×6. Дальше коридоры растут до 10×10, но свет факела показывает
-            лишь три клетки вперёд. Исследуй снаряжение, читай свитки и победи Стража у лестницы.
+            Первый ярус — лабиринт 8×8. Дальше коридоры растут до 16×16, но свет факела показывает лишь три
+            клетки вперёд. Монстры и ловушки стоят на карте заранее: одних видно в пламени, другие ждут в темноте.
+            Исследуй снаряжение, читай свитки и победи Стража у лестницы.
           </p>
           <div className="flex flex-wrap items-center gap-3 md:justify-end">
             <Btn tone="flame" className="px-8 py-3.5 text-sm" onClick={() => onEnter("train")}>

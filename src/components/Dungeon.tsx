@@ -371,6 +371,43 @@ export function Dungeon({
                   );
                 })}
 
+              {/* Монстры этажа: видны в круге света; на раскрытой карте — приглушённо */}
+              {m.monsters
+                .filter((i) => !(run.clearedMonsters ?? []).includes(i))
+                .map((i) => {
+                  const x = i % S;
+                  const y = Math.floor(i / S);
+                  const lit = visAt(x, y) === 1;
+                  const marked = !!run.mapRevealed && visAt(x, y) === 0;
+                  if (!lit && !marked) return null;
+                  return (
+                    <g key={`mo${i}`} transform={`translate(${x * CS + CS / 2} ${y * CS + CS / 2})`} opacity={lit ? 1 : 0.5}>
+                      <circle r={11} fill={colors.fog} opacity="0.4" />
+                      <path d="M-8 2l-3-7 7 3h8l7-3-3 7z" fill="#1b1310" stroke={colors.wallShadow} strokeWidth="1.4" />
+                      <circle cx={-3} cy={-1} r={1.7} fill="#e04a2a" />
+                      <circle cx={3} cy={-1} r={1.7} fill="#e04a2a" />
+                      <path d="M-4 6h8" stroke="#f6d48a" strokeWidth="1.1" strokeLinecap="round" />
+                    </g>
+                  );
+                })}
+
+              {/* Замеченные ловушки: остальные скрыты, пока Интеллект их не различит */}
+              {(run.revealedTraps ?? [])
+                .filter((i) => m.traps.includes(i) && !(run.sprungTraps ?? []).includes(i))
+                .map((i) => {
+                  const x = i % S;
+                  const y = Math.floor(i / S);
+                  const lit = visAt(x, y) === 1;
+                  const marked = !!run.mapRevealed && visAt(x, y) === 0;
+                  if (!lit && !marked) return null;
+                  return (
+                    <g key={`tr${i}`} transform={`translate(${x * CS + CS / 2} ${y * CS + CS / 2})`} opacity={lit ? 1 : 0.5}>
+                      <circle r={10} fill="none" stroke="#8a2a22" strokeWidth="1" strokeDasharray="3 3" opacity="0.7" />
+                      <path d="M-8 8L-4 -5L0 6L4 -8L8 6L9 8" fill="none" stroke="#8a2a22" strokeWidth="2" strokeLinejoin="round" />
+                    </g>
+                  );
+                })}
+
               {/* Босс перед лестницей */}
               {visAt(m.boss.x, m.boss.y) > 0 && (
                 <g transform={`translate(${m.boss.x * CS + CS / 2} ${m.boss.y * CS + CS / 2})`} opacity={m.bossDefeated ? 0.35 : 1}>
@@ -514,6 +551,8 @@ export function Dungeon({
                 <span className="inline-block h-2.5 w-2.5 rotate-45 border" style={{ borderColor: colors.accent }} />
                 событие
               </span>
+              <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full bg-[#e04a2a]" />монстр</span>
+              <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 bg-[#8a2a22]" />ловушка</span>
               <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full bg-[#8f1d14]" />босс</span>
               <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 bg-[#a52a2a]" />лестница</span>
               <span className="flex items-center gap-1.5">
@@ -668,11 +707,14 @@ export function Dungeon({
           <div className="border border-line bg-slab/70 px-4 py-3 text-[0.96rem] leading-snug text-mute">
             <span className="sc mb-1 block">Разведка и опасности</span>
             <p className="font-mono text-[0.88rem] text-parch/80">
-              Новый путь: <span className="text-flame">60%</span> тихо · <span className="text-rubric">10%</span> ловушка ·{" "}
-              <span className="text-rubric">20%</span> бой · <span className="text-verd">10%</span> находка
+              Монстры: <span className="text-rubric">1 на 8 клеток</span> · видны, пока их освещает факел
             </p>
             <p className="mt-1 font-mono text-[0.88rem] text-parch/80">
-              Известный путь: <span className="text-flame">90%</span> ничего · <span className="text-rubric">10%</span> бой
+              Ловушки: <span className="text-rubric">1 на 16 клеток</span> · обычно скрыты,{" "}
+              <span className="text-flame">Интеллект</span> помогает заметить их в двух шагах
+            </p>
+            <p className="mt-1 font-mono text-[0.88rem] text-parch/80">
+              Пустая клетка: <span className="text-verd">10%</span> находка · знакомый путь: тишина
             </p>
             <p className="mt-1.5">
               Кликни любую клетку — маршрут прочертится на чертеже и пойдёт сам. После боя или ловушки его можно

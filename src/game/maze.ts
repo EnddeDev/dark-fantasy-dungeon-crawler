@@ -1,12 +1,23 @@
 import type { Cell, Maze } from "./types";
 import { biomeVision, mazeBiome, normalizeBiome, rollBiome, type BiomeId } from "./biomes";
 
-export const MIN_SIZE = 6;
-export const MAX_SIZE = 10;
+export const MIN_SIZE = 8;
+export const MAX_SIZE = 16;
 export const TORCH = 3;
 
+/** Сторона карты: 8×8 на первом этаже, +1 за этаж, 16×16 с девятого и дальше. */
 export function mazeSizeForFloor(floor: number): number {
   return Math.min(MAX_SIZE, Math.max(MIN_SIZE, MIN_SIZE + Math.floor(floor) - 1));
+}
+
+/** Обитатели этажа: один монстр на восемь клеток (8×8 — восемь тварей). */
+export function monsterCountFor(size: number): number {
+  return Math.max(1, Math.round((size * size) / 8));
+}
+
+/** Ловушки: одна на шестнадцать клеток (8×8 — четыре). */
+export function trapCountFor(size: number): number {
+  return Math.max(1, Math.round((size * size) / 16));
 }
 
 export const cellIdx = (x: number, y: number, size = MIN_SIZE) => y * size + x;
@@ -207,7 +218,7 @@ function carveRooms(h: boolean[][], v: boolean[][], size: number): Room[] {
   return rooms;
 }
 
-export function genMaze(size = MIN_SIZE, floor = Math.max(1, size - 5), biome?: BiomeId): Maze {
+export function genMaze(size = MIN_SIZE, floor = Math.max(1, size - 7), biome?: BiomeId): Maze {
   size = Math.min(MAX_SIZE, Math.max(MIN_SIZE, Math.floor(size)));
   floor = Math.max(1, Math.floor(floor));
   const selectedBiome = floor < 3 ? "classic" : biome === undefined ? rollBiome(floor) : normalizeBiome(biome);
@@ -270,6 +281,8 @@ export function genMaze(size = MIN_SIZE, floor = Math.max(1, size - 5), biome?: 
     takenKeys: [],
     events: [],
     usedEvents: [],
+    monsters: [],
+    traps: [],
     rooms,
     dist: [],
   };
@@ -455,6 +468,67 @@ export function genMaze(size = MIN_SIZE, floor = Math.max(1, size - 5), biome?: 
   }
 
   base.events = events;
+
+  /* Постоянные обитатели этажа: монстры и ловушки стоят на карте с самого начала,
+     а не появляются случайно на шаге. Монстр — 1 на 8 клеток, ловушка — 1 на 16. */
+  const spotTaken = new Set<number>([
+    0,
+    stairsIdx,
+    bossIdx,
+    ...base.chests,
+    ...base.doors,
+    ...base.keys,
+    ...base.events,
+    ...pillarIdx,
+  ]);
+  const spots: number[] = [];
+  for (let y = 0; y < size; y++)
+    for (let x = 0; x < size; x++) {
+      const i = cellIdx(x, y, size);
+      if (spotTaken.has(i) || dist[y][x] < 1) continue;
+      spots.push(i);
+    }
+  const shuffledSpots = spots.slice();
+  for (let i = shuffledSpots.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffledSpots[i], shuffledSpots[j]] = [shuffledSpots[j], shuffledSpots[i]];
+  }
+
+  /* Сначала стараемся развести обитателей по разным клеткам, чтобы они не
+     сбивались в стаю, и только потом добираем оставшихся вплотную. */
+  const spread = (cands: number[], want: number): number[] => {
+    const picked: number[] = [];
+    const adjacent = (i: number) => {
+      const x = i % size;
+      const y = Math.floor(i / size);
+      return ([
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as [number, number][]).some(([dx, dy]) => {
+        const nx = x + dx;
+        const ny = y + dy;
+        return nx >= 0 && ny >= 0 && nx < size && ny < size && spotTaken.has(cellIdx(nx, ny, size));
+      });
+    };
+    for (const i of cands) {
+      if (picked.length >= want) break;
+      if (spotTaken.has(i) || adjacent(i)) continue;
+      picked.push(i);
+      spotTaken.add(i);
+    }
+    for (const i of cands) {
+      if (picked.length >= want) break;
+      if (spotTaken.has(i)) continue;
+      picked.push(i);
+      spotTaken.add(i);
+    }
+    return picked;
+  };
+
+  base.monsters = spread(shuffledSpots, monsterCountFor(size));
+  base.traps = spread(shuffledSpots, trapCountFor(size));
 
   return base;
 }

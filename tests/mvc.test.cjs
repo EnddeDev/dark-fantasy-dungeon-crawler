@@ -28,6 +28,7 @@ const { MemoryStorage, SaveRepository } = load("src/model/SaveRepository.ts", "s
 const { PlayerFactory } = load("src/model/PlayerFactory.ts", "player-factory");
 const content = load("src/game/content.ts", "content");
 const battle = load("src/game/battle.ts", "battle");
+const maze = load("src/game/maze.ts", "maze");
 
 function makeGame() {
   return new GameController(new MemoryStorage());
@@ -124,4 +125,65 @@ test("MVC: BattleController applies victory loot and returns to the dungeon", ()
   assert.equal(state.player.kills, player.kills + 1);
   assert.equal(state.run.gold, 15);
   assert.ok(state.run.loot.includes("potion_s"));
+});
+
+test("MVC: a monster on the map starts a battle and victory clears its cell", () => {
+  const game = makeGame();
+  game.enterLobby("train");
+  game.startRun(1);
+  game.closeModal();
+  const run = game.model.getSnapshot().run;
+  const [dx, dy] = maze.openDirs(run.maze, run.pos.x, run.pos.y)[0];
+  const cell = maze.cellIdx(run.pos.x + dx, run.pos.y + dy, run.maze.size);
+  game.model.updateRun((r) => ({
+    ...r,
+    maze: { ...r.maze, monsters: [cell], traps: [] },
+    revealedTraps: [],
+    sprungTraps: [],
+  }));
+
+  game.dungeon.move(dx, dy);
+  const inBattle = game.model.getSnapshot();
+  assert.equal(inBattle.screen, "battle");
+  assert.ok(inBattle.battle, "монстр на клетке начинает бой");
+  assert.equal(inBattle.run.battleCell, cell);
+  assert.equal(inBattle.run.pos.x, run.pos.x + dx);
+
+  inBattle.battle.over = "win";
+  inBattle.battle.loot = { gold: 5, xp: 3, items: [], gear: [] };
+  game.battle.continueAfterWin();
+  const after = game.model.getSnapshot();
+  assert.equal(after.screen, "dungeon");
+  assert.equal(after.battle, null);
+  assert.ok(after.run.clearedMonsters.includes(cell), "победа освобождает клетку");
+  assert.equal(after.run.battleCell, null);
+  assert.equal(after.run.maze.monsters.includes(cell), true, "расстановка этажа остаётся неизменной");
+});
+
+test("MVC: a trap cell opens the trap choice and is never rolled at random", () => {
+  const game = makeGame();
+  game.enterLobby("train");
+  game.startRun(1);
+  game.closeModal();
+  const run = game.model.getSnapshot().run;
+  const [dx, dy] = maze.openDirs(run.maze, run.pos.x, run.pos.y)[0];
+  const cell = maze.cellIdx(run.pos.x + dx, run.pos.y + dy, run.maze.size);
+  game.model.updateRun((r) => ({
+    ...r,
+    maze: { ...r.maze, monsters: [], traps: [cell] },
+    revealedTraps: [],
+    sprungTraps: [],
+  }));
+
+  game.dungeon.move(dx, dy);
+  const trapped = game.model.getSnapshot();
+  assert.equal(trapped.screen, "dungeon");
+  assert.equal(trapped.modal.kind, "trap");
+  assert.ok(trapped.run.sprungTraps.includes(cell), "ловушка срабатывает один раз");
+  assert.ok(trapped.run.revealedTraps.includes(cell));
+
+  game.dungeon.takeTrap("prepare");
+  const after = game.model.getSnapshot();
+  assert.equal(after.modal, null);
+  assert.equal(maze.openDirs(run.maze, run.pos.x, run.pos.y)[0] !== undefined, true);
 });

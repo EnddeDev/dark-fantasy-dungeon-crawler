@@ -31,7 +31,7 @@ import {
 import { MAP_EVENTS } from "../game/world";
 import { BIOMES, BIOME_ORDER, biomeChanceLabel } from "../game/biomes";
 import { BiomeIcon } from "./BiomeLabel";
-import { MAX_SIZE, MIN_SIZE, TORCH, chestCountForFloor, mazeSizeForFloor } from "../game/maze";
+import { MAX_SIZE, MIN_SIZE, TORCH, chestCountForFloor, mazeSizeForFloor, monsterCountFor, trapCountFor } from "../game/maze";
 import { SLOT_META, SLOT_ORDER } from "../game/types";
 import { ACTIVE_GEAR_EFFECTS, GEAR_EFFECTS } from "../game/gearEffects";
 import { GEAR_EFFECT_BASE, GEAR_EFFECT_GROWTH, GEAR_EFFECT_SPREAD } from "../game/gearScaling";
@@ -565,9 +565,21 @@ export function Guide({
         <div className="mt-4 space-y-3">
           <Reference id="guide-map" title="Карта, комнаты и управление">
             <p>
-              Первый лабиринт {MIN_SIZE}×{MIN_SIZE}, с этажами стороны растут до {MAX_SIZE}×{MAX_SIZE}.
-              Обычный факел освещает текущую клетку и до {TORCH} полей по прямым коридорам; в тёмном подземелье — до 2.
-              Сквозь стены и запертые двери не видно. Пройденные клетки остаются на карте тусклым следом.
+              Первый лабиринт {MIN_SIZE}×{MIN_SIZE}, с каждым этажом сторона растёт на клетку и доходит до{" "}
+              {MAX_SIZE}×{MAX_SIZE} к девятому ярусу. Обычный факел освещает текущую клетку и до {TORCH} полей по
+              прямым коридорам; в тёмном подземелье — до 2. Сквозь стены и запертые двери не видно. Пройденные
+              клетки остаются на карте тусклым следом.
+            </p>
+            <p>
+              <b className="text-flamehi">Монстры</b> занимают карту заранее: один на восемь клеток, то есть восемь
+              на 8×8. Пока клетка в круге света, тварь видна на чертеже; в темноте её не разглядеть. Шаг в её клетку
+              начинает бой, а противник выбирается случайно по правилам этажа. После победы клетка пустеет, после
+              побега ты отступаешь назад, и тварь остаётся на месте.
+            </p>
+            <p>
+              <b className="text-rubric">Ловушки</b> стоят по одной на шестнадцать клеток — четыре на 8×8. Обычно
+              на карте их не видно: заметить ловушку в двух шагах помогает Интеллект (шанс тем выше, чем ближе
+              и чем острее ум). Сработавшая или обезвреженная ловушка исчезает.
             </p>
             <p className="flex items-start gap-2">
               <MousePointerClick size={15} className="mt-1 shrink-0 text-flame" aria-hidden />
@@ -578,16 +590,17 @@ export function Guide({
             </p>
             <p>
               Сундуков: 1–3 этажи — один, 4–7 — два, 8–10 — три. Событий с выбором — одно-два.
-              Новая клетка: 60% пусто, 10% ловушка, 20% враг, 10% находка.
-              Пройденная клетка: 90% ничего, 10% враг.
-              Дополнительно при входе на ещё не посещённую клетку есть <b className="text-flamehi">5%</b> шанс
-              найти <b className="text-flamehi">1–3 реагента</b>.
+              Пустая клетка: 10% небольшая находка, знакомый путь — тишина. Дополнительно при входе на ещё не
+              посещённую клетку есть <b className="text-flamehi">5%</b> шанс найти{" "}
+              <b className="text-flamehi">1–3 реагента</b>. Случайных боёв и ловушек больше нет — всё стоит на карте.
             </p>
             <div className="flex flex-wrap gap-x-5 gap-y-1 border-y border-line/70 py-2 font-mono text-[0.88rem] text-mute">
               {stages.map((floor) => (
                 <span key={floor}>
                   {floor}-й: <b className="text-parch">{mazeSizeForFloor(floor)}²</b> ·{" "}
-                  <b className="text-flame">{chestCountForFloor(floor)}</b> сундук
+                  <b className="text-flame">{chestCountForFloor(floor)}</b> сундук ·{" "}
+                  <b className="text-rubric">{monsterCountFor(mazeSizeForFloor(floor))}</b> монстр. ·{" "}
+                  <b className="text-mute">{trapCountFor(mazeSizeForFloor(floor))}</b> лов.
                 </span>
               ))}
             </div>
@@ -606,7 +619,8 @@ export function Guide({
             <p>
               <b className="text-flamehi">Снаряжение сапёра</b> нужно для обезвреживания. <b className="text-flamehi">Отмычки</b>
               дают шанс открыть запертую дверь без ключа (от Ловкости) и тратятся при попытке.
-              <b className="text-flamehi"> Потрёпанная карта</b> отмечает сундуки, босса и события до конца этажа.
+              <b className="text-flamehi"> Потрёпанная карта</b> отмечает сундуки, босса, события, монстров и
+              ловушки до конца этажа.
               <b className="text-flamehi"> Бурдюк с водой</b> снимает горение на карте в Огненных недрах.
               <b className="text-flamehi"> Факел</b> даёт +1 к видимости на 5 ходов по карте, а в Тёмном подземелье
               ещё и снимает штраф мрака, пока горит.

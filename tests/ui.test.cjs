@@ -72,7 +72,7 @@ test("left character panel hides the sheet label, health and free stat points", 
 });
 
 test("dungeon header hides maze counts and corridor healing shows fixed/INT formulas", () => {
-  const m = maze.genMaze(6, 1);
+  const m = maze.genMaze(8, 1);
   const run = {
     floor: 1, maze: m, pos: m.start, prevPos: m.start, seen: {}, steps: 0,
     gold: 0, loot: [], gearLoot: [], keys: 0, log: [],
@@ -169,7 +169,7 @@ test("lobby exposes stat reset, special supplies and sell buttons", () => {
 });
 
 test("dungeon shows field specials, torch/burning chips and revealed map markers", () => {
-  const m = maze.genMaze(6, 3, "fire");
+  const m = maze.genMaze(8, 3, "fire");
   const run = {
     floor: 3, maze: m, pos: m.start, prevPos: m.start, seen: {}, steps: 0,
     gold: 0, loot: [], gearLoot: [], keys: 0, log: [],

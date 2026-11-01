@@ -65,15 +65,15 @@ test("biome chances are 30/17.5/17.5/17.5/17.5 and floors 1-2 are always classic
 });
 
 test("generated mazes carry their biome and early floors cannot be overridden", () => {
-  assert.equal(maze.genMaze(6, 1, "fire").biome, "classic");
-  assert.equal(maze.genMaze(7, 2, "swamp").biome, "classic");
+  assert.equal(maze.genMaze(8, 1, "fire").biome, "classic");
+  assert.equal(maze.genMaze(8, 2, "swamp").biome, "classic");
   for (const id of biomes.BIOME_ORDER) assert.equal(maze.genMaze(8, 3, id).biome, id);
 });
 
 test("dark dungeons limit sight to 2 cells while walls still block light", () => {
-  const m = maze.genMaze(7, 3, "classic");
-  m.h = Array.from({ length: 8 }, () => Array(7).fill(false));
-  m.v = Array.from({ length: 7 }, () => Array(8).fill(false));
+  const m = maze.genMaze(8, 3, "classic");
+  m.h = Array.from({ length: 9 }, () => Array(8).fill(false));
+  m.v = Array.from({ length: 8 }, () => Array(9).fill(false));
   m.doors = []; m.openedDoors = []; m.rooms = [];
   const pos = { x: 3, y: 3 };
   const classic = maze.computeVisibility(m, pos, {});

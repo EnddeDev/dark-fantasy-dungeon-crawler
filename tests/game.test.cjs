@@ -74,11 +74,13 @@ function reachable(m, blocked = new Set()) {
   return seen;
 }
 
-test("floors grow from 6x6 to 10x10 and stay capped", () => {
+test("floors grow from 8x8 to 16x16 and stay capped", () => {
   assert.deepEqual(
-    Array.from({ length: 9 }, (_, i) => maze.mazeSizeForFloor(i + 1)),
-    [6, 7, 8, 9, 10, 10, 10, 10, 10],
+    Array.from({ length: 11 }, (_, i) => maze.mazeSizeForFloor(i + 1)),
+    [8, 9, 10, 11, 12, 13, 14, 15, 16, 16, 16],
   );
+  assert.deepEqual([8, 9, 12, 16].map((s) => maze.monsterCountFor(s)), [8, 10, 18, 32]);
+  assert.deepEqual([8, 9, 12, 16].map((s) => maze.trapCountFor(s)), [4, 5, 9, 16]);
 });
 
 test("mazes stay solvable and carry the right number of chests and events", () => {
@@ -109,6 +111,24 @@ test("mazes stay solvable and carry the right number of chests and events", () =
       for (const cell of [...m.chests, ...m.keys, ...m.events, boss, stairs]) {
         assert.ok(all.has(cell), `клетка ${cell} отрезана комнатами на ${size}x${size}`);
       }
+      /* обитатели этажа: 1 монстр на 8 клеток, 1 ловушка на 16, без наложений */
+      assert.equal(m.monsters.length, maze.monsterCountFor(size), `монстров на этаже ${floor}`);
+      assert.equal(m.traps.length, maze.trapCountFor(size), `ловушек на этаже ${floor}`);
+      assert.equal(
+        new Set([...m.monsters, ...m.traps]).size,
+        m.monsters.length + m.traps.length,
+        "монстр и ловушка не делят клетку",
+      );
+      const service = new Set([0, boss, stairs, ...m.chests, ...m.doors, ...m.keys, ...m.events]);
+      const pillars = new Set(
+        m.rooms.flatMap((room) => room.pillars.map(([px, py]) => maze.cellIdx(px, py, size))),
+      );
+      for (const cell of [...m.monsters, ...m.traps]) {
+        assert.ok(!service.has(cell), `обитатель на служебной клетке ${cell}`);
+        assert.ok(!pillars.has(cell), `обитатель в колонне ${cell}`);
+        assert.ok(all.has(cell), `обитатель ${cell} отрезан на ${size}x${size}`);
+      }
+
       /* колонны комнат замурованы — туда нельзя поставить ни сундук, ни событие */
       m.rooms.forEach((room) =>
         room.pillars.forEach(([px, py]) => {
@@ -137,9 +157,9 @@ test("chests per floor follow 1 / 2 / 3 by tier and rooms appear sometimes", () 
 });
 
 test("torch never sees through walls or an unopened door", () => {
-  const m = maze.genMaze(6);
-  m.h = Array.from({ length: 7 }, () => Array(6).fill(true));
-  m.v = Array.from({ length: 6 }, () => Array(7).fill(true));
+  const m = maze.genMaze(8);
+  m.h = Array.from({ length: 9 }, () => Array(8).fill(true));
+  m.v = Array.from({ length: 8 }, () => Array(9).fill(true));
   m.h[1][0] = false;
   m.h[2][0] = false;
   m.h[3][0] = false;
@@ -153,20 +173,20 @@ test("torch never sees through walls or an unopened door", () => {
   assert.equal(first[4][0], 0);
   assert.equal(first[0][1], 0);
 
-  m.doors = [maze.cellIdx(0, 2, 6)];
+  m.doors = [maze.cellIdx(0, 2, 8)];
   const throughDoor = maze.computeVisibility(m, { x: 0, y: 0 }, { "0,0": true });
   assert.equal(throughDoor[2][0], 1);
   assert.equal(throughDoor[3][0], 0);
 });
 
-test("new and explored cells use exact probability boundaries", () => {
+test("empty cells only ever offer a small find, never a random fight or trap", () => {
   assert.deepEqual(
-    [0, 0.599, 0.6, 0.699, 0.7, 0.899, 0.9, 0.999].map((r) => events.rollStepEvent(false, r)),
-    ["quiet", "quiet", "trap", "trap", "fight", "fight", "find", "find"],
+    [0, 0.599, 0.899, 0.9, 0.999].map((r) => events.rollStepEvent(false, r)),
+    ["quiet", "quiet", "quiet", "find", "find"],
   );
   assert.deepEqual(
-    [0, 0.899, 0.9, 0.999].map((r) => events.rollStepEvent(true, r)),
-    ["quiet", "quiet", "fight", "fight"],
+    [0, 0.5, 0.899, 0.9, 0.999].map((r) => events.rollStepEvent(true, r)),
+    ["quiet", "quiet", "quiet", "quiet", "quiet"],
   );
 });
 
@@ -1253,9 +1273,9 @@ test("shop upgrade price is the same function used by the UI and the charge", ()
 });
 
 test("line of sight does not leak around corners or through closed doors", () => {
-  const m = maze.genMaze(6);
-  m.h = Array.from({ length: 7 }, () => Array(6).fill(true));
-  m.v = Array.from({ length: 6 }, () => Array(7).fill(true));
+  const m = maze.genMaze(8);
+  m.h = Array.from({ length: 9 }, () => Array(8).fill(true));
+  m.v = Array.from({ length: 8 }, () => Array(9).fill(true));
   // L-коридор: (0,0) -> (1,0) -> (1,1)
   m.v[0][1] = false;
   m.h[1][1] = false;
@@ -1270,17 +1290,17 @@ test("line of sight does not leak around corners or through closed doors", () =>
   m.h[1][0] = false;
   m.h[2][0] = false;
   m.h[3][0] = false;
-  m.doors = [maze.cellIdx(0, 2, 6)];
+  m.doors = [maze.cellIdx(0, 2, 8)];
   const doorVis = maze.computeVisibility(m, { x: 0, y: 0 }, {});
   assert.equal(doorVis[2][0], 1, "сама дверь видна");
   assert.equal(doorVis[3][0], 0, "за дверью темно");
-  m.openedDoors = [maze.cellIdx(0, 2, 6)];
+  m.openedDoors = [maze.cellIdx(0, 2, 8)];
   const openVis = maze.computeVisibility(m, { x: 0, y: 0 }, {});
   assert.equal(openVis[3][0], 1, "открытая дверь пропускает свет");
 });
 
 test("pathfinding accepts unseen targets and returns a walkable route", () => {
-  const m = maze.genMaze(6);
+  const m = maze.genMaze(8);
   const target = { x: m.stairs.x, y: m.stairs.y };
   const route = maze.findPath(m, m.start, target);
   assert.ok(route && route.length > 0);
