@@ -2390,7 +2390,7 @@ function withTechnique(skillId, baseId = "sword") {
   return b;
 }
 
-test("обереги врага срывают приём на каждую характеристику, свиток и прах", () => {
+test("истощение врага накладывают приём на каждую характеристику, свиток и прах", () => {
   const breaks = Object.values(content.WEAPON_TECHNIQUES).filter((t) => t.effect === "buff_break");
   assert.deepEqual(breaks.map((t) => t.scaleStat).sort(), ["agi", "int", "str"], "нужен приём на каждую характеристику");
   for (const t of breaks) {
@@ -2407,109 +2407,188 @@ test("обереги врага срывают приём на каждую ха
   assert.equal(powder.kind, "throwable");
   for (const def of [scroll, powder]) {
     assert.equal(def.use.type, "buff_break");
-    assert.equal(def.use.rounds, 2, `${def.id}: обереги гаснут ровно на 2 хода`);
+    assert.equal(def.use.rounds, 2, `${def.id}: истощение держится ровно 2 хода`);
     assert.ok(content.canBuySupply(def.id, 3), `${def.id}: должен появляться в лавке`);
   }
 });
 
-test("приём срывает обереги врага на два хода", () => {
+test("приём накладывает истощение на два хода", () => {
   const rnd = Math.random;
   const b = withTechnique("ward_shatter");
   Math.random = () => 0.9;
   const after = battle.playerAct(b, { type: "weapon_skill" });
   Math.random = rnd;
-  assert.equal(after.enemy.suppressed, 2);
-  assert.equal(after.enemy.guard, false);
-  assert.ok(after.log.some((l) => l.text.includes("Обереги")), "нет сообщения о срыве оберегов");
+  assert.equal(after.enemy.depleted, 2);
+  assert.ok(after.log.some((l) => l.text.includes("Истощение")), "нет сообщения об истощении");
 });
 
-test("под сорванными оберегами враг не лечится, не держит защиту и не ярится", () => {
+/** Бой с истощённым или обычным врагом: общая заготовка для сравнений. */
+function depletionSeed() {
+  const b = withTechnique("ward_shatter");
+  b.enemy.maxHp = 5000;
+  b.enemy.hp = 5000;
+  b.enemy.armor = 0;
+  b.enemy.effects = [];
+  b.enemy.effectPower = {};
+  b.p.hp = b.p.maxHp;
+  return b;
+}
+
+function withRandom(fn, value = 0.5) {
   const rnd = Math.random;
-  const seed = withTechnique("ward_shatter");
-
-  const damage = (suppressed) => {
-    const b = structuredClone(seed);
-    /* Запас здоровья огромный: иначе урон обрезается добиванием. */
-    b.enemy.maxHp = 5000;
-    b.enemy.hp = 5000;
-    b.enemy.guard = true;
-    if (suppressed) b.enemy.suppressed = 2;
-    Math.random = () => 0.5;
-    const before = b.enemy.hp;
-    const dealt = before - battle.playerAct(b, { type: "attack" }).enemy.hp;
+  Math.random = () => value;
+  try {
+    return fn();
+  } finally {
     Math.random = rnd;
-    return dealt;
-  };
-  const guarded = damage(false);
-  const broken = damage(true);
-  assert.ok(guarded > 0 && broken > guarded * 1.5, `защита должна гаснуть: ${broken} против ${guarded}`);
+  }
+}
 
-  const heal = (suppressed) => {
+test("истощение гасит лечение, эффекты и ярость дракона", () => {
+  const seed = depletionSeed();
+
+  const heal = (depleted) => {
     const b = structuredClone(seed);
     b.enemy.moves = ["drain"];
     b.enemy.hp = Math.floor(b.enemy.maxHp * 0.5);
-    if (suppressed) b.enemy.suppressed = 2;
-    /* Очередь задаём вручную: у врага два хода, чтобы он не уходил в стойку от слабости. */
+    if (depleted) b.enemy.depleted = 2;
     b.queue = ["p", "e", "p", "e"];
     b.idx = 1;
-    Math.random = () => 0.9;
-    const after = battle.enemyStep(b);
-    Math.random = rnd;
+    const after = withRandom(() => battle.enemyStep(b), 0.9);
     return { healed: after.enemy.hp - b.enemy.hp, log: after.log.map((l) => l.text) };
   };
-  assert.ok(heal(false).healed > 0, "без подавления вампиризм лечит");
+  assert.ok(heal(false).healed > 0, "без истощения вампиризм лечит");
   const blocked = heal(true);
-  assert.equal(blocked.healed, 0, "под подавлением лечение не работает");
-  assert.ok(blocked.log.some((t) => t.includes("обереги сорваны")));
+  assert.equal(blocked.healed, 0, "истощение отключает лечение");
+  assert.ok(blocked.log.some((t) => t.includes("истощение")));
 
-  const furyDamage = (suppressed) => {
+  const furyDamage = (depleted) => {
     const b = structuredClone(seed);
     b.enemy.def = { ...b.enemy.def, race: "dragon" };
     b.enemy.moves = ["attack"];
     b.enemy.atk = [10, 10];
     b.enemy.fury = 3;
-    if (suppressed) b.enemy.suppressed = 2;
+    if (depleted) b.enemy.depleted = 2;
     b.p.hp = b.p.maxHp;
     b.queue = ["p", "e", "p", "e"];
     b.idx = 1;
-    Math.random = () => 0.9;
-    const after = battle.enemyStep(b);
-    Math.random = rnd;
+    const after = withRandom(() => battle.enemyStep(b), 0.9);
     return b.p.hp - after.p.hp;
   };
   const rage = furyDamage(false);
   const damped = furyDamage(true);
-  assert.ok(damped > 0, "под подавлением дракон всё равно бьёт");
-  assert.ok(rage > damped * 1.8, `ярость дракона тоже гаснет: ${damped} против ${rage}`);
+  assert.ok(damped > 0, "истощённый дракон всё равно бьёт обычным уроном");
+  assert.ok(rage > damped * 1.8, `ярость дракона гаснет: ${damped} против ${rage}`);
 });
 
-test("обереги возвращаются через два раунда, свиток и прах срывают их сразу", () => {
+test("истощение гасит шипы, сопротивление урону и укрепление эффектов", () => {
+  const seed = depletionSeed();
+  const thorns = (depleted) => {
+    const b = structuredClone(seed);
+    b.enemy.effectPower = { thorns: 12 };
+    b.enemy.effects = ["thorns"];
+    if (depleted) b.enemy.depleted = 2;
+    b.p.hp = b.p.maxHp;
+    const after = withRandom(() => battle.playerAct(b, { type: "attack" }));
+    return b.p.hp - after.p.hp;
+  };
+  assert.ok(thorns(false) > 0, "шипы врага работают");
+  assert.equal(thorns(true), 0, "истощение отключает шипы");
+
+  const resist = (depleted) => {
+    const b = structuredClone(seed);
+    b.enemy.effectPower = { damage_resist: 6 };
+    b.enemy.effects = ["damage_resist"];
+    if (depleted) b.enemy.depleted = 2;
+    const after = withRandom(() => battle.playerAct(b, { type: "attack" }));
+    return b.enemy.hp - after.enemy.hp;
+  };
+  const plain = resist(false);
+  const depleted = resist(true);
+  assert.ok(depleted > plain, `сопротивление урону гаснет: ${plain} против ${depleted}`);
+});
+
+test("истощение не трогает обычные параметры: броню, урон, ходы и стойку", () => {
+  const seed = depletionSeed();
+
+  /* Броня — параметр, а не эффект: она режет урон одинаково. */
+  const armored = (depleted) => {
+    const b = structuredClone(seed);
+    b.enemy.armor = 8;
+    if (depleted) b.enemy.depleted = 2;
+    const after = withRandom(() => battle.playerAct(b, { type: "attack" }));
+    return b.enemy.hp - after.enemy.hp;
+  };
+  assert.equal(armored(true), armored(false), "истощение не снимает броню");
+
+  /* Стойка (защита) — действие, а не эффект: урон делится пополам и при истощении. */
+  const guarded = (depleted) => {
+    const b = structuredClone(seed);
+    b.enemy.guard = true;
+    if (depleted) b.enemy.depleted = 2;
+    const after = withRandom(() => battle.playerAct(b, { type: "attack" }));
+    return b.enemy.hp - after.enemy.hp;
+  };
+  const plainHit = guarded(false);
+  const depletedHit = guarded(true);
+  assert.equal(depletedHit, plainHit, "стойка работает и при истощении");
+
+  /* Урон и число ходов твари не меняются. */
+  const stats = (depleted) => {
+    const b = structuredClone(seed);
+    b.enemy.moves = ["attack"];
+    b.enemy.atk = [10, 10];
+    if (depleted) b.enemy.depleted = 2;
+    b.p.hp = b.p.maxHp;
+    b.queue = ["p", "e", "p", "e"];
+    b.idx = 1;
+    const after = withRandom(() => battle.enemyStep(b), 0.9);
+    return { damage: b.p.hp - after.p.hp, ap: after.enemy.ap, atk: after.enemy.atk };
+  };
+  const normal = stats(false);
+  const depleted = stats(true);
+  assert.equal(depleted.damage, normal.damage, "базовый урон твари от истощения не меняется");
+  assert.equal(depleted.ap, normal.ap, "ходы не отнимаются");
+  assert.deepEqual(depleted.atk, normal.atk, "удар не ослабевает");
+});
+
+test("истощённый враг по-прежнему уходит в защиту", () => {
+  const b = depletionSeed();
+  b.enemy.depleted = 2;
+  b.enemy.moves = ["attack"];
+  b.enemy.hp = Math.floor(b.enemy.maxHp * 0.2);
+  b.queue = ["p", "e", "p", "e"];
+  b.idx = 1;
+  assert.equal(battle.chooseEnemyMove(b), "guard", "стойка — обычное действие, не эффект");
+});
+
+test("истощение спадает через два раунда, свиток и прах накладывают его сразу", () => {
   const rnd = Math.random;
   Math.random = () => 0.9;
   let b = withTechnique("ward_shatter");
-  b.enemy.suppressed = 2;
+  b.enemy.depleted = 2;
   const startRound = b.round;
   let steps = 0;
   while (b.round < startRound + 1 && steps < 40) {
     b = b.queue[b.idx] === "p" ? battle.playerAct(b, { type: "guard" }) : battle.enemyStep(b);
     steps++;
   }
-  assert.equal(b.enemy.suppressed, 1, "через раунд остаётся один ход");
+  assert.equal(b.enemy.depleted, 1, "через раунд остаётся один ход");
   while (b.round < startRound + 2 && steps < 80) {
     b = b.queue[b.idx] === "p" ? battle.playerAct(b, { type: "guard" }) : battle.enemyStep(b);
     steps++;
   }
-  assert.equal(b.enemy.suppressed, 0, "через два раунда обереги возвращаются");
+  assert.equal(b.enemy.depleted, 0, "через два раунда эффекты возвращаются");
 
   const scroll = withTechnique("ward_shatter");
   scroll.bag = { scroll_dispel: 1 };
   const scrollHit = battle.playerAct(scroll, { type: "item", id: "scroll_dispel" });
-  assert.equal(scrollHit.enemy.suppressed, 2, "свиток срывает обереги");
+  assert.equal(scrollHit.enemy.depleted, 2, "свиток накладывает истощение");
 
   const powder = withTechnique("ward_shatter");
   powder.bag = { dispel_powder: 1 };
   const powderHit = battle.playerAct(powder, { type: "item", id: "dispel_powder" });
-  assert.equal(powderHit.enemy.suppressed, 2, "прах срывает обереги");
+  assert.equal(powderHit.enemy.depleted, 2, "прах накладывает истощение");
   assert.equal(powderHit.enemy.hp, powder.enemy.hp, "прах не наносит урона");
   Math.random = rnd;
 });
@@ -2540,13 +2619,13 @@ function applyWithoutLuck(b, act) {
 }
 
 test("шипы врага ранят за физический приём, но не за магический", () => {
-  /* «Сокрушение оберега» — приём меча, бьёт физикой. */
+  /* «Истощающий удар» — приём меча, бьёт физикой. */
   const physical = thornsBattle("ward_shatter", "sword");
   const afterPhys = applyWithoutLuck(physical, () => battle.playerAct(physical, { type: "weapon_skill" }));
   assert.ok(afterPhys.p.hp < physical.p.hp, "физический приём задел шипы");
   assert.ok(afterPhys.log.some((l) => l.text.includes("Шипы противника")), "нет сообщения о шипах врага");
 
-  /* «Развеивание чар» — приём посоха, урон магический. */
+  /* «Истощающее слово» — приём посоха, урон магический. */
   const magic = thornsBattle("ward_unravel", "staff");
   const afterMagic = applyWithoutLuck(magic, () => battle.playerAct(magic, { type: "weapon_skill" }));
   assert.equal(afterMagic.p.hp, magic.p.hp, "магический приём шипы не задевает");
