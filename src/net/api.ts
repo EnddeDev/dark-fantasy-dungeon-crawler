@@ -64,6 +64,11 @@ export class ApiClient {
     }
   }
 
+  /** Адрес API, который использует клиент (для диагностики в окне входа). */
+  get baseUrl(): string {
+    return BASE;
+  }
+
   getToken(): string | null {
     return this.token;
   }

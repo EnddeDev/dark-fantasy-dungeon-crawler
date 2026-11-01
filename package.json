@@ -11,7 +11,8 @@
     "art:manifest": "node scripts/gen-art-manifest.mjs",
     "art:check": "node scripts/check-art.mjs",
     "server": "node scripts/build-server.mjs && node server/.build/server.mjs",
-    "server:build": "node scripts/build-server.mjs"
+    "server:build": "node scripts/build-server.mjs",
+    "start": "node scripts/build-server.mjs && node server/.build/server.mjs"
   },
   "dependencies": {
     "clsx": "2.1.1",
