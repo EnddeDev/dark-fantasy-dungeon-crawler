@@ -1046,6 +1046,8 @@ export function gearClassLabel(item: GearItem): string {
 
 /** Броня лёгкого веса может не требовать характеристику вовсе. */
 export function gearRequiresNothing(item: GearItem): boolean {
+  /* Стартовые вещи надеваются без требований: у них флаг стоит на самом предмете. */
+  if (item.noReq === true) return true;
   const base = GEAR_BASES[item.baseId];
   if (!base) return false;
   return gearKindOfBase(base) === "armor" && base.noReq === true;

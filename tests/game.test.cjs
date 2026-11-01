@@ -1686,6 +1686,29 @@ test("acceleration gear gives 0/1/2/3 extra actions by level 1/5/7/10 every roun
   assert.equal(r2.ap, 8);
 });
 
+test("starter gear has no stat or level requirements", () => {
+  const initial = PlayerFactory.createInitial();
+  const zero = { ...initial, stats: { str: 0, agi: 0, int: 0 } };
+  assert.equal(initial.armory.length, 2);
+  for (const item of initial.armory) {
+    assert.equal(content.gearRequiresNothing(item), true, `${item.baseId}: без требований`);
+    assert.equal(content.gearRequirement(item).stat, null);
+    assert.equal(content.gearStatReqLabel(item), "без требований");
+    assert.equal(content.canWear(item, zero), true, `${item.baseId} надевается даже с нулевыми характеристиками`);
+  }
+
+  /* Старые сохранения: те же обноски без флага тоже теряют требования. */
+  const legacy = initial.armory.map((item) => {
+    const copy = { ...item };
+    delete copy.noReq;
+    return copy;
+  });
+  const restored = PlayerFactory.restore({ ...initial, armory: legacy });
+  for (const item of restored.armory) {
+    assert.equal(content.gearRequiresNothing(item), true, `${item.baseId}: миграция снимает требования`);
+  }
+});
+
 test("hero starts at full health with three stat points, two-handers hit twice as hard", () => {
   const initial = PlayerFactory.createInitial();
   /* Стартовый герой приходит с полным здоровьем и тремя свободными очками. */
