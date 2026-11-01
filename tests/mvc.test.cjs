@@ -127,17 +127,39 @@ test("MVC: BattleController applies victory loot and returns to the dungeon", ()
   assert.ok(state.run.loot.includes("potion_s"));
 });
 
+/** Соседняя клетка без двери, босса и лестницы: шаг в неё запускает ровно то событие, что нужно тесту. */
+function cleanStep(run) {
+  const m = run.maze;
+  return maze.openDirs(m, run.pos.x, run.pos.y).find(([sx, sy]) => {
+    const x = run.pos.x + sx;
+    const y = run.pos.y + sy;
+    const idx = maze.cellIdx(x, y, m.size);
+    if (m.doors.includes(idx)) return false;
+    if (m.boss.x === x && m.boss.y === y) return false;
+    if (m.stairs.x === x && m.stairs.y === y) return false;
+    return true;
+  });
+}
+
+/** Гасит прочие события карты, чтобы тест проверял только свой тип клетки. */
+function calmMaze(m) {
+  return { ...m, chests: [], openedChests: [], keys: [], takenKeys: [], events: [], usedEvents: [], doors: [] };
+}
+
 test("MVC: a monster on the map starts a battle and victory clears its cell", () => {
   const game = makeGame();
   game.enterLobby("train");
   game.startRun(1);
   game.closeModal();
   const run = game.model.getSnapshot().run;
-  const [dx, dy] = maze.openDirs(run.maze, run.pos.x, run.pos.y)[0];
+  /* Берём проход без закрытой двери: дверь открыла бы окно, а не бой. */
+  const step = cleanStep(run);
+  assert.ok(step, "у старта есть проход без двери, босса и лестницы");
+  const [dx, dy] = step;
   const cell = maze.cellIdx(run.pos.x + dx, run.pos.y + dy, run.maze.size);
   game.model.updateRun((r) => ({
     ...r,
-    maze: { ...r.maze, monsters: [cell], traps: [] },
+    maze: { ...calmMaze(r.maze), monsters: [cell], traps: [] },
     revealedTraps: [],
     sprungTraps: [],
   }));
@@ -166,11 +188,13 @@ test("MVC: a trap cell opens the trap choice and is never rolled at random", () 
   game.startRun(1);
   game.closeModal();
   const run = game.model.getSnapshot().run;
-  const [dx, dy] = maze.openDirs(run.maze, run.pos.x, run.pos.y)[0];
+  const step = cleanStep(run);
+  assert.ok(step, "у старта есть проход без двери, босса и лестницы");
+  const [dx, dy] = step;
   const cell = maze.cellIdx(run.pos.x + dx, run.pos.y + dy, run.maze.size);
   game.model.updateRun((r) => ({
     ...r,
-    maze: { ...r.maze, monsters: [], traps: [cell] },
+    maze: { ...calmMaze(r.maze), monsters: [], traps: [cell] },
     revealedTraps: [],
     sprungTraps: [],
   }));
