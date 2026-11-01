@@ -77,7 +77,10 @@ const XP_TABLE: Record<number, number> = {
 };
 
 export function xpForNextLevel(level: number): number {
-  return XP_TABLE[level] ?? 0;
+  /* Максимальный уровень: опыт больше не нужен, но возвращать 0 нельзя —
+     любой счётчик «опыт / нужно» получил бы деление на ноль. */
+  if (level >= MAX_LEVEL) return 1;
+  return XP_TABLE[level] ?? 1;
 }
 
 /**
@@ -807,7 +810,7 @@ export const WEAPON_TYPE_META: Record<WeaponType, WeaponTypeDef> = {
   dagger: { id: "dagger", name: "Кинжал", gearClass: "light", hands: 1, hand: "either", minEffects: 1, magic: false },
   rapier: { id: "rapier", name: "Рапира", gearClass: "light", hands: 1, hand: "either", minEffects: 1, magic: false },
   sword: { id: "sword", name: "Меч", gearClass: "medium", hands: 1, hand: "right", minEffects: 1, magic: false },
-  spear: { id: "spear", name: "Копьё", gearClass: "medium", hands: 2, hand: "right", minEffects: 2, magic: false },
+  spear: { id: "spear", name: "Копьё", gearClass: "heavy", hands: 2, hand: "right", minEffects: 2, magic: false },
   axe: { id: "axe", name: "Топор", gearClass: "medium", hands: 1, hand: "either", minEffects: 1, magic: false },
   hammer: { id: "hammer", name: "Молот", gearClass: "medium", hands: 1, hand: "right", minEffects: 1, magic: false },
   greatsword: { id: "greatsword", name: "Двуручный меч", gearClass: "heavy", hands: 2, hand: "right", minEffects: 1, magic: false },
@@ -884,7 +887,7 @@ const GEAR_CLASS_FIX: Record<string, "light" | "medium" | "heavy"> = {
   ring_edge: "light", ring_ward: "light", ring_venom: "light",
   tooth: "light", icon: "light", soulstone: "light",
   /* Среднее: одноручный меч, копьё, кольчуга, открытые шлемы, круглый щит, магический клинок. */
-  sword: "medium", spear: "medium", abyss: "medium",
+  sword: "medium", spear: "heavy", abyss: "medium",
   rag: "medium", mail: "medium", coif: "medium", helm: "medium", shield_round: "medium",
   /* Тяжёлое: массивное ударное/двуручное оружие, латы, закрытые шлемы, башенный щит. */
   axe: "heavy", hammer: "heavy", greatsword: "heavy", warhammer2: "heavy",

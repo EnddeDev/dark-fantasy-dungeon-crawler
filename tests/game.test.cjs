@@ -800,14 +800,19 @@ test("equipment slots: two hands, shield, rings and the full set", () => {
   assert.ok(d.hit[1] > greatOnly.hit[1], "вторая рука добавляет урон");
 });
 
-test("wear multiplier: battered 0.75±0.05, worn 1.0±0.10, new 1.25±0.05..0.10", () => {
+test("wear multiplier: battered 0.75±0.05, worn 1.0±0.10, new 1.325 (1.30..1.35)", () => {
   for (const [wear, lo, hi] of [["battered", 0.7, 0.8], ["worn", 0.9, 1.1], ["new", 1.3, 1.35]]) {
     for (let i = 0; i < 200; i++) {
       const m = content.rollWearMult(wear);
       assert.ok(m >= lo - 1e-9 && m <= hi + 1e-9, `${wear}: ${m} вне ${lo}..${hi}`);
     }
   }
-  assert.deepEqual(Object.values(content.WEAR_RANGE).map((r) => r.base), [0.75, 1, 1.25]);
+  assert.deepEqual(Object.values(content.WEAR_RANGE).map((r) => r.base), [0.75, 1, 1.325]);
+  /* Базовый множитель обязан лежать внутри своего диапазона: иначе улучшение
+     изношенности в кузнице давало бы другой предмет, чем находка. */
+  for (const [wear, range] of Object.entries(content.WEAR_RANGE)) {
+    assert.ok(range.base >= range.lo && range.base <= range.hi, `${wear}: ${range.base} вне ${range.lo}..${range.hi}`);
+  }
 });
 
 test("gear cannot be worn above player level, and only with the required stat", () => {
@@ -911,7 +916,7 @@ test("every gear base declares its kind, weight class and affinity", () => {
     boots: ["armor", "light", "agi", "-"],
     seal: ["accessory", "light", "int", "-"],
     greatsword: ["weapon", "heavy", "str", "greatsword"],
-    spear: ["weapon", "medium", "agi", "spear"],
+    spear: ["weapon", "heavy", "agi", "spear"],
     warhammer2: ["weapon", "heavy", "str", "warhammer"],
     dagger: ["weapon", "light", "agi", "dagger"],
     shield_round: ["armor", "medium", "str", "-"],

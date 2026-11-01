@@ -1,5 +1,6 @@
 import { enemyStep, playerAct, type BattleState, type PlayerAction } from "../game/battle";
 import { grantXp } from "../game/content";
+import { pruneRunLoot, usedFromBags } from "../game/runLoot";
 import { isBattleCurse } from "../game/traps";
 import type { Player } from "../game/types";
 import { SLOT_ORDER } from "../game/types";
@@ -14,8 +15,18 @@ export class BattleController {
   act(action: PlayerAction): void {
     const battle = this.model.getSnapshot().battle;
     if (!battle) return;
+    const bagBefore = { ...battle.bag };
     const next = playerAct(battle, action);
     this.model.setBattle(next);
+    /* Потраченное в бою перестаёт быть «найденным»: иначе штраф за поражение
+       спишет его повторно из личного запаса. */
+    const used = usedFromBags(bagBefore, next.bag);
+    if (Object.keys(used).length) {
+      this.model.updateRun((run) => (run ? { ...run, loot: pruneRunLoot(run.loot, used) } : run));
+    }
+    /* Сумка героя в модели держится в актуальном виде: по ней считаются штрафы
+       за поражение и побег, и она не должна отставать от боевой. */
+    this.model.updatePlayer((p) => ({ ...p, bag: { ...next.bag } }));
     this.resolveEnd(next);
   }
 
@@ -76,7 +87,16 @@ export class BattleController {
       };
     })() : null;
 
-    this.model.update({ player: updated, unlockedFloor: nextUnlocked, run: nextRun, battle: null, screen: "dungeon" });
+    /* Победа над стражем на клетке лестницы: сразу предлагаем спуск. */
+    const onStairs = !!nextRun && nextRun.pos.x === nextRun.maze.stairs.x && nextRun.pos.y === nextRun.maze.stairs.y;
+    this.model.update({
+      player: updated,
+      unlockedFloor: nextUnlocked,
+      run: nextRun,
+      battle: null,
+      screen: "dungeon",
+      ...(onStairs ? { modal: { kind: "stairs" } as const } : {}),
+    });
   }
 
   private resolveEnd(b: BattleState): void {
@@ -119,8 +139,9 @@ export class BattleController {
 
     const bag = { ...basePlayer.bag };
     Object.entries(droppedCounts).forEach(([id, count]) => {
-      bag[id] = (bag[id] ?? 0) - count;
-      if (bag[id] <= 0) delete bag[id];
+      const left = Math.max(0, (bag[id] ?? 0) - count);
+      if (left > 0) bag[id] = left;
+      else delete bag[id];
     });
     const armory = basePlayer.armory.filter((g) => !droppedGearUids.has(g.uid));
     const equip = { ...basePlayer.equip };

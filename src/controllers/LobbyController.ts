@@ -227,6 +227,7 @@ export class LobbyController {
 
   refreshShop(): void {
     const { player, best } = this.model.getSnapshot();
+    if (player.gold < 25) return;
     this.model.updatePlayer((p) => ({ ...p, gold: Math.max(0, p.gold - 25) }));
     this.model.setShopStock(rollShopStock(player.shopLevel, Math.max(1, best)));
   }

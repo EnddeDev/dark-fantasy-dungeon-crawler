@@ -241,7 +241,7 @@ export function ModalView({ game, state }: { game: GameController; state: GameSt
             {ev.choices.map((c) => (
               <button
                 key={c.id}
-                onClick={() => game.dungeon.resolveEvent(ev.id, c.id)}
+                onClick={() => game.dungeon.resolveEvent(ev.id, c.id, modal.cell)}
                 className="group border border-line bg-black/30 px-3 py-2.5 text-left transition-colors hover:border-flame hover:bg-flame/10"
               >
                 <span className="flex items-baseline justify-between gap-3">

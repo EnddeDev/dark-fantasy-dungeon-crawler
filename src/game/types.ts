@@ -50,7 +50,7 @@ export type WearTier = "battered" | "worn" | "new";
 export const WEAR_RANGE: Record<WearTier, { base: number; lo: number; hi: number; label: string }> = {
   battered: { base: 0.75, lo: 0.7, hi: 0.8, label: "Изношенное" },
   worn: { base: 1.0, lo: 0.9, hi: 1.1, label: "Ношенное" },
-  new: { base: 1.25, lo: 1.3, hi: 1.35, label: "Новое" },
+  new: { base: 1.325, lo: 1.3, hi: 1.35, label: "Новое" },
 };
 export type RarityTier = "common" | "rare" | "epic" | "legendary";
 
@@ -96,7 +96,7 @@ export interface GearItem {
   identified: boolean;
   /**
    * Множитель состояния предмета. Изношенное 0.75 (0.70–0.80), ношенное 1.0 (0.90–1.10),
-   * новое 1.25 (1.30–1.35). Применяется ко всем характеристикам предмета.
+   * новое 1.325 (1.30–1.35). Применяется ко всем характеристикам предмета.
    */
   wearMult: number;
   /** Разброс урона конкретного экземпляра: [минимум, максимум] */
@@ -236,5 +236,5 @@ export type ModalState =
   | { kind: "key" }
   | { kind: "stairs" }
   | { kind: "death"; cause: string; lost: number; lostGear: number }
-  | { kind: "event"; eventId: string; result?: { title: string; good: string; bad: string } }
+  | { kind: "event"; eventId: string; cell: number; result?: { title: string; good: string; bad: string } }
   | { kind: "note"; title: string; body: string };

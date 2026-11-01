@@ -7,6 +7,7 @@ import type { GearItem, Player } from "../src/game/types";
 import { GEAR_BASES } from "../src/game/content";
 import { PlayerFactory } from "../src/model/PlayerFactory";
 import { createDuel, duelAction, duelActionError, duelTimeout, DUEL_TURN_MS, type DuelAction, type DuelState } from "../src/game/duel";
+import { sanitizePlayer } from "./save";
 
 type Row = Record<string, unknown>;
 
@@ -136,10 +137,12 @@ function loginUser(ctx: Ctx, db: Db) {
 function saveProfile(ctx: Ctx, db: Db) {
   const user = requireUser(db, ctx);
   const profile = profileOf(db, user.id);
-  const player = field<Player>(ctx.body, "player");
-  if (!player || typeof player !== "object" || !player.stats) throw new HttpError(400, "Некорректное сохранение");
   const unlockedFloor = Math.max(1, Math.min(99, Math.round(num(ctx.body, "unlockedFloor") || profile.unlockedFloor)));
   const bestFloor = Math.max(profile.bestFloor, Math.round(num(ctx.body, "bestFloor") || 0), unlockedFloor - 1);
+  /* Клиент присылает героя целиком, поэтому сохранение проверяется и
+     приводится к допустимому виду на сервере: неизвестные предметы, чужие
+     uid в слотах и характеристики сверх очков уровня отклоняются. */
+  const player = sanitizePlayer(field<Player>(ctx.body, "player"), unlockedFloor);
   writeProfile(db, { userId: user.id, player, bestFloor, unlockedFloor });
   return { profile: publicProfile(profileOf(db, user.id), db) };
 }

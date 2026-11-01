@@ -1,4 +1,4 @@
-import { derived } from "./battle";
+import { derived, techniqueDamage } from "./battle";
 import type { Player } from "./types";
 
 /**
@@ -149,7 +149,9 @@ function finishTurn(state: DuelState, now: number): void {
 
 function checkWinner(state: DuelState): boolean {
   if (state.a.hp <= 0 && state.b.hp <= 0) {
-    state.winner = state.a.hp <= 0 ? "b" : "a";
+    /* Обоюдная смерть: победа остаётся тому, у кого больше здоровья,
+       при полном равенстве — защищавшейся стороне "b". */
+    state.winner = state.a.hp > state.b.hp ? "a" : "b";
   } else if (state.a.hp <= 0) state.winner = "b";
   else if (state.b.hp <= 0) state.winner = "a";
   if (state.winner) {
@@ -184,9 +186,9 @@ export function duelAction(state0: DuelState, side: DuelSide, action: DuelAction
         state.log.push(`${actor.name} пытается применить приём, но не хватает условий.`);
         break;
       }
-      const stat = actor.skill.scaleStat;
-      const statValue = stat === "int" ? actor.intStat : stat === "str" ? actor.strFlat : actor.ap;
-      const bonus = Math.round(actor.skill.scaleMult * (stat === "str" ? statValue : Math.max(1, statValue)));
+      /* Урон приёма считается той же формулой, что и в подземелье: основа от
+         Интеллекта, множитель — из самого приёма. */
+      const bonus = Math.round(techniqueDamage(actor.intStat, actor.skill.scaleMult));
       const { dmg, text } = strike(actor, target, bonus, `приём «${actor.skill.name}»`);
       target.hp -= dmg;
       actor.cooldown = actor.skill.cooldown;
