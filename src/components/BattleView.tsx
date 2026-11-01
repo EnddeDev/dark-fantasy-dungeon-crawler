@@ -653,6 +653,7 @@ export function BattleView({
               {e.statuses.poison > 0 && <Tag tone="rubric">яд · {e.statuses.poison}</Tag>}
               {e.statuses.fear > 0 && <Tag tone="flame">страх · {e.statuses.fear}</Tag>}
               {e.statuses.stunAp > 0 && <Tag tone="flame">оглушён −{e.statuses.stunAp}</Tag>}
+              {e.suppressed > 0 && <Tag tone="rubric">без оберегов · {e.suppressed}</Tag>}
               {e.statuses.blight > 0 && <Tag tone="rubric">порча · {e.statuses.blight}</Tag>}
               {e.statuses.wither > 0 && <Tag tone="rubric">увядание · {e.statuses.wither}</Tag>}
               {e.forceGuard > 0 && <Tag tone="verd">вынужден держать оборону</Tag>}

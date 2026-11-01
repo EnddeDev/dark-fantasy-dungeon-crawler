@@ -103,10 +103,11 @@ test("weapon techniques section lists every technique and epic skill", () => {
     "Стена щитов", "Приговор лат", "Яростный размах", "Раскол черепа",
     "Парные клыки", "Удар открытия", "Ядовитая цепь", "Пустой шаг",
     "Печать проклятия", "Реприза души", "Слово защиты", "Буря свитков",
+    "Сокрушение оберега", "Срез оберега", "Развеивание чар",
   ]) {
     assert.ok(section.includes(name), `missing technique ${name}`);
   }
-  assert.match(section, /Всего приёмов оружия<b[^>]*> 44</);
+  assert.match(section, /Всего приёмов оружия<b[^>]*> 47</);
   for (const name of ["Огненный шар", "Кровавое копьё", "Эгида пепла", "Теневой росчерк", "Дыхание склепа"]) {
     assert.ok(section.includes(name), `missing epic skill ${name}`);
   }
