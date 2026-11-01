@@ -1664,7 +1664,9 @@ export function createGearItem(opts: {
     effects.push(rest.splice(Math.floor(rng() * rest.length), 1)[0]);
   }
 
-  const hasTechnique = !!(TECHNIQUE_POOL[base.id] ?? []).length;
+  /* Приём есть у каждой модели оружия: у одних линейка из трёх, у других один родной. */
+  const techniquePool = TECHNIQUE_POOL[base.id] ?? (base.weaponSkill ? [base.weaponSkill.id] : []);
+  const hasTechnique = techniquePool.length > 0;
   let epicSkill: EpicSkillId | undefined;
 
   if ((rarity === "epic" || rarity === "legendary") && hasTechnique) {
@@ -1704,9 +1706,9 @@ export function createGearItem(opts: {
     dmgRoll: base.dmg ? rollDamageSpread(base.dmg, rng) : undefined,
     statMult: rollStatSpread(rng),
     skillId: base.weaponSkill
-      ? opts.skillId && (TECHNIQUE_POOL[base.id] ?? []).includes(opts.skillId)
+      ? opts.skillId && techniquePool.includes(opts.skillId)
         ? opts.skillId
-        : pick(TECHNIQUE_POOL[base.id] ?? [base.weaponSkill.id], rng)
+        : pick(techniquePool, rng)
       : undefined,
     epicSkill,
     legendaryPassive: legacyPassive,

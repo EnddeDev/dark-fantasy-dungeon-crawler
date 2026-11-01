@@ -2255,3 +2255,62 @@ test("seals belong to bosses and catastrophes only", () => {
     assert.equal(boss.moves.filter((m) => seals.includes(m)).length, 1, `${boss.def.id}: у босса ровно одна печать`);
   }
 });
+
+test("каждый приём оружия выпадает вместе с предметом", () => {
+  const techniques = content.WEAPON_TECHNIQUES;
+  const seen = new Set();
+  for (const base of Object.values(content.GEAR_BASES)) {
+    if (!base.weaponSkill) continue;
+    for (let i = 0; i < 120; i++) {
+      const item = content.createGearItem({
+        baseId: base.id,
+        rarity: ["common", "rare", "epic", "legendary"][i % 4],
+        level: base.level ?? 1,
+        wear: "worn",
+        identified: true,
+      });
+      const skill = content.weaponSkillFor(item);
+      assert.ok(skill, `${base.id}: приём не назначен`);
+      assert.equal(skill.id, item.skillId, `${base.id}: приём предмета расходится с его описанием`);
+      seen.add(skill.id);
+    }
+  }
+  const missing = Object.keys(techniques).filter((id) => !seen.has(id));
+  assert.deepEqual(missing, [], `приёмы не выпадают: ${missing.join(", ")}`);
+  assert.equal(Object.keys(techniques).length, 44);
+});
+
+test("альтернативные приёмы линейки выдаются наравне с родным", () => {
+  const pools = content.TECHNIQUE_POOL;
+  for (const [baseId, pool] of Object.entries(pools)) {
+    assert.equal(pool.length, 3, `${baseId}: в линейке три приёма`);
+    const counts = Object.fromEntries(pool.map((id) => [id, 0]));
+    for (let i = 0; i < 300; i++) {
+      const item = content.createGearItem({ baseId, rarity: "rare", wear: "worn", identified: true });
+      counts[item.skillId] += 1;
+    }
+    for (const id of pool) {
+      assert.ok(counts[id] > 40, `${baseId}/${id}: выпал ${counts[id]} раз из 300`);
+    }
+  }
+});
+
+test("оружие с единственным приёмом тоже получает эпические приёмы", () => {
+  for (const baseId of ["greatsword", "spear", "warhammer2", "dagger", "wand_ash"]) {
+    for (let i = 0; i < 60; i++) {
+      const legendary = content.createGearItem({ baseId, rarity: "legendary", wear: "worn", identified: true });
+      assert.ok(legendary.epicSkill, `${baseId}: легендарка без эпического приёма`);
+    }
+  }
+});
+
+test("выбранный приём переживает миграцию сохранения", () => {
+  const item = content.createGearItem({ baseId: "sword", skillId: "sundering_blade", rarity: "rare", wear: "worn", identified: true });
+  assert.equal(item.skillId, "sundering_blade");
+  const migrated = content.migrateGearItem(item);
+  assert.equal(migrated.skillId, "sundering_blade");
+  assert.equal(content.weaponSkillFor(migrated).id, "sundering_blade");
+  /* чужой линейке приём не подсунуть */
+  const mismatch = content.createGearItem({ baseId: "sword", skillId: "quick_cut", rarity: "rare", wear: "worn", identified: true });
+  assert.ok(content.TECHNIQUE_POOL.sword.includes(mismatch.skillId));
+});

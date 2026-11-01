@@ -18,12 +18,16 @@ import {
   ARCHETYPE_ORDER,
   BREW_FAILURE_CHANCE,
   ENEMIES,
+  EPIC_SKILLS,
   GEAR_BASES,
   MAX_LEVEL,
   RARITY_META,
   REAGENTS,
   STAT_META,
+  TECHNIQUE_POOL,
+  WEAPON_TECHNIQUES,
   WEAR_META,
+  epicSkillDesc,
   statPointCost,
   xpForNextLevel,
 } from "../game/content";
@@ -47,6 +51,7 @@ const GUIDE_NAV = [
   { href: "#guide-stats", label: "Характеристики" },
   { href: "#guide-gear", label: "Снаряжение" },
   { href: "#guide-combat", label: "Правила боя" },
+  { href: "#guide-techniques", label: "Приёмы" },
   { href: "#guide-biomes", label: "Лабиринты" },
   { href: "#guide-reference", label: "Подробности" },
 ] as const;
@@ -159,6 +164,25 @@ function GuideSection({
     </section>
   );
 }
+
+/**
+ * Приёмы оружия, сгруппированные по моделям: у большинства клинков в линейке
+ * три приёма, и предмет может попасться с любым из них.
+ */
+const TECHNIQUE_GROUPS = Object.values(GEAR_BASES)
+  .filter((b) => b.weaponSkill)
+  .map((b) => {
+    const ids = TECHNIQUE_POOL[b.id] ?? [b.weaponSkill!.id];
+    return {
+      id: b.id,
+      weapon: b.name,
+      magic: b.weaponType === "staff" || b.weaponType === "wand",
+      signature: b.weaponSkill!.id,
+      skills: ids.map((id) => WEAPON_TECHNIQUES[id]).filter((sk) => Boolean(sk)),
+    };
+  });
+
+const TECHNIQUE_TOTAL = Object.keys(WEAPON_TECHNIQUES).length;
 
 function Reference({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
@@ -524,7 +548,59 @@ export function Guide({
       </GuideSection>
 
       {/* 04 — типы этажей */}
-      <GuideSection id="guide-biomes" step="04" title="Типы лабиринтов">
+      <GuideSection id="guide-techniques" step="04" title="Приёмы оружия">
+        <p>
+          У оружия есть боевой приём, но он не закреплён за моделью намертво: у большинства клинков в
+          линейке по три приёма, и предмет попадается с любым из них. Две «Рапиры дуэлянта» могут прийти
+          с разными приёмами — смотри строку приёма в описании вещи. Всего приёмов оружия
+          <b className="text-parch"> {TECHNIQUE_TOTAL}</b>; у редких моделей приём только один, зато он
+          и самый тяжёлый.
+        </p>
+        <p>
+          Множитель в описании — сила приёма для предмета 1 уровня: с уровнем растут и урон, и требование
+          ИНТ (2 на уровнях 1–5, 3 на 6–8, 4 на 9–10, а силовым приёмам на 1 меньше). Без нужного
+          Интеллекта приём не применить: кнопка в бою подскажет «нужен ИНТ N». Зато пока ИНТ хватает,
+          обычные удары этим оружием получают пассивную прибавку из строки «При ИНТ ≥ …». Приёмы посоха
+          и волшебной палочки бьют магией: броню они обходят, но встречают сопротивление магии. Откат
+          считается в раундах.
+        </p>
+        <div className="grid gap-3 lg:grid-cols-2">
+          {TECHNIQUE_GROUPS.map((g) => (
+            <div key={g.id} className="border border-line bg-black/30 p-4">
+              <h5 className="flex flex-wrap items-baseline justify-between gap-2 font-display text-[1.08rem] uppercase tracking-[0.08em] text-flamehi">
+                {g.weapon}
+                {g.magic && <span className="text-[0.85rem] tracking-normal text-flamedim">магия</span>}
+              </h5>
+              <ul className="mt-2 space-y-2 text-[0.96rem] leading-snug">
+                {g.skills.map((sk) => (
+                  <li key={sk.id}>
+                    <b className="text-parch">{sk.name}</b>
+                    {sk.id === g.signature && <span className="text-mute"> · родной</span>}
+                    <span className="text-mute"> · откат {sk.cooldown} р.</span>
+                    <div className="text-mute">{sk.desc}</div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+        <p>
+          <b className="text-flamehi">Эпические приёмы</b> достаются вдобавок к обычному: легендарное оружие
+          получает их всегда, эпическое — с шансом 50%, и предпочтение отдаётся родному приёму модели.
+          Отдельная кнопка приёма появляется в бою рядом с обычным.
+        </p>
+        <div className="grid gap-3 lg:grid-cols-2">
+          {Object.values(EPIC_SKILLS).map((sk) => (
+            <div key={sk.id} className="border border-flamedim/50 bg-black/30 p-4 text-[0.96rem] leading-snug">
+              <b className="text-flamehi">{sk.name}</b>
+              <span className="text-mute"> · откат {sk.cooldown} р.</span>
+              <div className="text-mute">{epicSkillDesc(sk.id, 1)}</div>
+            </div>
+          ))}
+        </div>
+      </GuideSection>
+
+      <GuideSection id="guide-biomes" step="05" title="Типы лабиринтов">
         <p>
           На <b className="text-flamehi">1–2 этажах</b> всегда классический лабиринт.
           Начиная с <b className="text-flamehi">3-го</b> тип выбирается при создании этажа:
