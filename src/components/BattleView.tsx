@@ -807,7 +807,7 @@ export function BattleView({
 
               <section>
                 <h4 className="sc mb-2 text-flamedim">Что оставляет после себя</h4>
-                <p className="text-[0.94rem] text-parch/85">{b.isBoss ? "Босс оставляет золото, припасы и гарантированный трофей не ниже редкого качества." : THREAT_META[e.threat].desc}</p>
+                <p className="text-[0.94rem] text-parch/85">{b.isBoss ? "Босс оставляет золото, припасы и трофей: 50% редкий, 10% эпический, 1% легендарный." : THREAT_META[e.threat].desc}</p>
                 <p className="mt-1 font-mono text-[0.86rem] text-mute">
                   опыт: {e.xp} XP · золото: {e.gold[0]}–{e.gold[1]}
                 </p>

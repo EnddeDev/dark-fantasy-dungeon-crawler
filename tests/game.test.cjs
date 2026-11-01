@@ -322,19 +322,77 @@ test("loot tables follow the stated percentages and scale with monster level", (
   assert.equal(content.lootCategoryForRoll(normal, 0.95), "gear");
 });
 
-test("rarity weights are 60/30/8/2 and grow with threat and monster level", () => {
-  const base = content.rarityWeightsFor("normal", 0);
-  assert.equal(base.common, 60);
-  assert.equal(base.rare, 30);
-  assert.equal(base.epic, 8);
-  assert.equal(base.legendary, 2);
+test("качество добычи с монстров: 5/15/25 редкое, легендарного нет", () => {
+  assert.deepEqual(content.rarityWeightsFor("normal"), { common: 95, rare: 5, epic: 0, legendary: 0 });
+  assert.deepEqual(content.rarityWeightsFor("horror"), { common: 84, rare: 15, epic: 1, legendary: 0 });
+  assert.deepEqual(content.rarityWeightsFor("catastrophe"), { common: 70, rare: 25, epic: 5, legendary: 0 });
+});
 
-  const horror = content.rarityWeightsFor("horror", 0);
-  assert.ok(horror.rare > base.rare);
-  const catastrophe = content.rarityWeightsFor("catastrophe", 0);
-  assert.ok(catastrophe.epic > horror.epic);
-  const stronger = content.rarityWeightsFor("normal", 1);
-  assert.ok(stronger.rare > base.rare);
+test("босс и сундук: 50/10/1 и 30/5/0.5 на редкое, эпическое и легендарное", () => {
+  assert.deepEqual(content.BOSS_RARITY_WEIGHTS, { common: 39, rare: 50, epic: 10, legendary: 1 });
+  assert.deepEqual(content.CHEST_RARITY_WEIGHTS, { common: 64.5, rare: 30, epic: 5, legendary: 0.5 });
+  for (const w of [
+    content.rarityWeightsFor("normal"),
+    content.rarityWeightsFor("horror"),
+    content.rarityWeightsFor("catastrophe"),
+    content.BOSS_RARITY_WEIGHTS,
+    content.CHEST_RARITY_WEIGHTS,
+  ]) {
+    const total = Object.values(w).reduce((a, b) => a + b, 0);
+    assert.ok(Math.abs(total - 100) < 1e-9, `веса должны давать 100%, получено ${total}`);
+  }
+});
+
+test("вещь с монстра получает уровень монстра, а не уровень модели", () => {
+  const rng = lcg(11);
+  for (let level = 1; level <= 10; level++) {
+    for (const threat of ["normal", "horror", "catastrophe"]) {
+      let got = null;
+      for (let i = 0; i < 400 && !got; i++) {
+        const drop = content.rollEnemyLoot(level, level, threat, rng);
+        if (drop.gear.length) got = drop.gear[0];
+      }
+      assert.ok(got, `за 400 попыток ${threat} уровня ${level} не выдал снаряжение`);
+      assert.equal(got.level, level, `уровень вещи ${got.level} вместо ${level}`);
+      assert.notEqual(got.wear, "new", "в подземелье новое не выпадает");
+      assert.ok(["battered", "worn"].includes(got.wear), `износ ${got.wear}`);
+      if (threat === "normal") assert.ok(!["epic", "legendary"].includes(got.rarity), `обычная тварь дала ${got.rarity}`);
+      if (threat !== "normal") assert.notEqual(got.rarity, "legendary", "легендарное с монстров не выпадает");
+    }
+  }
+});
+
+test("изношенность находки: 75% изношенное и 25% ношеное, нового нет", () => {
+  const rng = lcg(23);
+  let battered = 0;
+  let worn = 0;
+  for (let i = 0; i < 4000; i++) {
+    const wear = content.rollDungeonWear(rng);
+    assert.ok(wear === "battered" || wear === "worn", `недопустимый износ ${wear}`);
+    if (wear === "battered") battered++;
+    else worn++;
+  }
+  assert.ok(Math.abs(battered / 4000 - 0.75) < 0.03, `изношенных ${battered}/4000`);
+  assert.equal(battered + worn, 4000);
+});
+
+test("сундук и босс: подземный износ и уровень монстра у трофея", () => {
+  const rng = lcg(5);
+  for (let i = 0; i < 200; i++) {
+    const chest = battle.rollGearDrop(4, content.CHEST_RARITY_WEIGHTS, undefined, rng);
+    assert.notEqual(chest.wear, "new", "сундук не выдаёт новое");
+    assert.equal(chest.identified, false, "качество скрыто до исследования");
+
+    const boss = battle.rollGearDrop(4, content.BOSS_RARITY_WEIGHTS, 5, rng);
+    assert.equal(boss.level, 5, "трофей босса получает уровень босса");
+    assert.notEqual(boss.wear, "new", "босс не выдаёт новое");
+  }
+
+  let legendaries = 0;
+  for (let i = 0; i < 4000; i++) {
+    if (battle.rollGearDrop(1, content.BOSS_RARITY_WEIGHTS, 1, rng).rarity === "legendary") legendaries++;
+  }
+  assert.ok(Math.abs(legendaries / 4000 - 0.01) < 0.008, `легендарных с босса ${legendaries}/4000`);
 });
 
 test("monster level and threat boundaries are exact, including level 0 on floor 1", () => {
@@ -760,8 +818,15 @@ test("shop level tables match the stated 1 and 10 values", () => {
 
   assert.deepEqual(round(w1), { new: 5, worn: 25, battered: 70 });
   assert.deepEqual(round(w10), { new: 40, worn: 60, battered: 0 });
-  assert.deepEqual(round(r1), { common: 80, rare: 15, epic: 5, legendary: 0 });
-  assert.deepEqual(round(r10), { common: 40, rare: 25, epic: 20, legendary: 15 });
+  assert.deepEqual(round(r1), { common: 90, rare: 10, epic: 0, legendary: 0 });
+  assert.deepEqual(round(r10), { common: 26, rare: 50, epic: 17, legendary: 7 });
+
+  // ступени открываются постепенно: эпическое с 3 уровня, легендарное с 4
+  assert.equal(content.shopRarityTable(2).epic, 0, "до 3 уровня эпического нет");
+  assert.equal(content.shopRarityTable(2).legendary, 0, "до 4 уровня легендарного нет");
+  assert.equal(Math.round(content.shopRarityTable(3).epic), 3, "на 3 уровне эпическое 3%");
+  assert.equal(content.shopRarityTable(3).legendary, 0, "на 3 уровне легендарного ещё нет");
+  assert.equal(content.shopRarityTable(4).legendary, 1, "на 4 уровне легендарное 1%");
 
   // монотонность: с уровнем растёт доля нового и редкого
   for (let lvl = 2; lvl <= 10; lvl++) {
@@ -792,10 +857,16 @@ test("shop stock respects the shop level and covers every slot", () => {
         assert.ok(slots.has(slot), `на уровне ${lvl} нет ${slot}`);
     }
   }
-  // легендарки на первом уровне лавки невозможны
+  // на первом уровне лавки нет ни эпического, ни легендарного
   let legendaries = 0;
-  for (let i = 0; i < 400; i++) legendaries += content.rollShopStock(1, 1).filter((g) => g.rarity === "legendary").length;
+  let epics = 0;
+  for (let i = 0; i < 400; i++) {
+    const stock = content.rollShopStock(1, 1);
+    legendaries += stock.filter((g) => g.rarity === "legendary").length;
+    epics += stock.filter((g) => g.rarity === "epic").length;
+  }
   assert.equal(legendaries, 0, "на первом уровне лавки легендарное не появляется");
+  assert.equal(epics, 0, "на первом уровне лавки эпическое не появляется");
 });
 
 test("research cost grows with the item level", () => {
@@ -1319,6 +1390,12 @@ function withGear(baseId, extra = {}, rarity = "legendary") {
 function seededRandom(seq) {
   let i = 0;
   return () => seq[i++ % seq.length];
+}
+
+/** Линейный конгруэнтный генератор: одинаковые броски в каждом прогоне тестов. */
+function lcg(seed) {
+  let s = seed >>> 0;
+  return () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296);
 }
 
 test("six archetypes: two per stat, milestones at 5 and 10", () => {

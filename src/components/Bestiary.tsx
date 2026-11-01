@@ -2,6 +2,8 @@ import { useState } from "react";
 import { ChevronDown, Coins, FlaskConical, Package, Shield, Skull, Swords } from "lucide-react";
 import {
   BOSSES,
+  BOSS_RARITY_WEIGHTS,
+  CHEST_RARITY_WEIGHTS,
   ENEMIES,
   THREAT_META,
   lootTableFor,
@@ -49,7 +51,7 @@ export function Bestiary() {
   const [threat, setThreat] = useState<Threat>("normal");
   const level = Math.max(0, floor + offset);
   const table = lootTableFor(level, floor, threat);
-  const rarity = rarityWeightsFor(threat, level - floor);
+  const rarity = rarityWeightsFor(threat);
   const size = mazeSizeForFloor(floor);
 
   return (
@@ -166,9 +168,25 @@ export function Bestiary() {
             ))}
           </div>
           <p className="mt-3 text-[0.88rem] leading-snug text-mute">
-            База 60/30/8/2. Ужас, катастрофа и уровень выше этажа повышают шанс редкого, эпического и
-            легендарного качества.
+            Шансы показаны при условии, что предмет вообще выпал. Легендарного у обычной твари, ужаса и
+            катастрофы не бывает вовсе.
           </p>
+          <div className="mt-3 border-t border-line pt-3">
+            <div className="sc mb-2">Босс и сундук</div>
+            <div className="space-y-1.5 font-mono text-[0.86rem] text-parch/85">
+              {([
+                ["Босс", BOSS_RARITY_WEIGHTS, "50% редкое · 10% эпическое · 1% легендарное"],
+                ["Сундук", CHEST_RARITY_WEIGHTS, "30% редкое · 5% эпическое · 0.5% легендарное"],
+              ] as const).map(([name, w, note]) => (
+                <div key={name} className="grid gap-x-3 sm:grid-cols-[64px_1fr]">
+                  <span className="text-flamehi">{name}</span>
+                  <span className="text-mute">
+                    обычное {Math.round(w.common * 10) / 10}% · {note}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         </section>
       </div>
 

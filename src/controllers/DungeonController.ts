@@ -1,4 +1,5 @@
 import { derived, newBattle, rollConsumableLoot, rollGearDrop } from "../game/battle";
+import { CHEST_RARITY_WEIGHTS } from "../game/content";
 import { biomeHealingAmount, mazeBiome } from "../game/biomes";
 import { GEAR_BASES, ITEMS, REAGENTS, consumableIntReq, consumablePower, equipItem, grantXp, pick, randInt, scaledGearStats, unequipSlot } from "../game/content";
 import { rollStepEvent } from "../game/events";
@@ -111,7 +112,7 @@ export class DungeonController {
         case "poison": statuses.poison = Math.max(statuses.poison, e.v ?? 0); break;
         case "reagent": for (let i = 0; i < (e.v ?? 1); i++) gainedItems.push(pick(REAGENTS)); break;
         case "supply": for (let i = 0; i < (e.v ?? 1); i++) gainedItems.push(pick(["potion_s", "antidote", "scroll_spark", "throwing_knife"])); break;
-        case "gear": for (let i = 0; i < (e.v ?? 1); i++) gainedGear.push(rollGearDrop(floor, Math.random() < 0.4)); break;
+        case "gear": for (let i = 0; i < (e.v ?? 1); i++) gainedGear.push(rollGearDrop(floor, CHEST_RARITY_WEIGHTS)); break;
         case "stat": if (e.stat) statUp[e.stat] = (statUp[e.stat] ?? 0) + (e.v ?? 1); break;
       }
     }
@@ -419,7 +420,7 @@ export class DungeonController {
       const raw = 35 + Math.floor(Math.random() * 46);
       const gold = Math.round((raw * (1 + (r.floor - 1) * 0.6)) / 5) * 5;
       const items = rollConsumableLoot(r.floor, Math.random() < 0.55 ? 2 : 1);
-      const droppedGear = rollGearDrop(r.floor, Math.random() < 0.35);
+      const droppedGear = rollGearDrop(r.floor, CHEST_RARITY_WEIGHTS);
       const chestXp = 6 + r.floor * 3;
 
       r = {

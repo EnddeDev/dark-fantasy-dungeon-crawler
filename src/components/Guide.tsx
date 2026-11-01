@@ -15,6 +15,9 @@ import {
 } from "lucide-react";
 import {
   ARCHETYPES,
+  BOSS_RARITY_WEIGHTS,
+  CHEST_RARITY_WEIGHTS,
+  MONSTER_RARITY_WEIGHTS,
   ARCHETYPE_ORDER,
   BREW_FAILURE_CHANCE,
   ENEMIES,
@@ -115,6 +118,9 @@ const QUALITY_ROWS: { tier: RarityTier; text: string }[] = [
   { tier: "epic", text: "Свойство редкого плюс ещё два эффекта или активная способность предмета." },
   { tier: "legendary", text: "Всё предыдущее плюс уникальная пассивная способность." },
 ];
+
+/** Проценты шансов: целые без хвоста, дробные — с одним знаком. */
+const fmtPct = (v: number) => `${Math.round(v * 10) / 10}%`;
 
 const WEAR_ROWS: { tier: WearTier; text: string }[] = [
   { tier: "new", text: "Лучшее состояние: предмет заметно сильнее обычного." },
@@ -380,6 +386,41 @@ export function Guide({
             Рамки карточек повторяют качество: обычная, сине-голубая, фиолетовая, золотая.
             До исследования качество скрыто.
           </p>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[28rem] border-collapse text-left text-[0.93rem]">
+              <thead>
+                <tr className="border-b border-line text-mute">
+                  <th className="py-2 pr-3 font-normal">Откуда вещь</th>
+                  <th className="py-2 pr-3 font-normal">Обычное</th>
+                  <th className="py-2 pr-3 font-normal">Редкое</th>
+                  <th className="py-2 pr-3 font-normal">Эпическое</th>
+                  <th className="py-2 font-normal">Легендарное</th>
+                </tr>
+              </thead>
+              <tbody className="font-mono text-[0.9rem]">
+                {([
+                  ["Обычный монстр", MONSTER_RARITY_WEIGHTS.normal],
+                  ["Ужас", MONSTER_RARITY_WEIGHTS.horror],
+                  ["Катастрофа", MONSTER_RARITY_WEIGHTS.catastrophe],
+                  ["Сундук и событие", CHEST_RARITY_WEIGHTS],
+                  ["Босс", BOSS_RARITY_WEIGHTS],
+                ] as const).map(([label, w]) => (
+                  <tr key={label} className="border-b border-line/50">
+                    <td className="py-1.5 pr-3 font-sans text-parch/85">{label}</td>
+                    <td className="py-1.5 pr-3">{fmtPct(w.common)}</td>
+                    <td className="py-1.5 pr-3 text-verd">{fmtPct(w.rare)}</td>
+                    <td className="py-1.5 pr-3 text-flame">{fmtPct(w.epic)}</td>
+                    <td className="py-1.5 text-flamehi">{fmtPct(w.legendary)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-[0.93rem] text-mute">
+            Шансы — при условии, что снаряжение вообще выпало. С обычной твари, ужаса и катастрофы легендарное
+            не выпадает никогда; единственный источник в подземелье — босс. Уровень найденной с монстра вещи
+            равен уровню монстра, из сундука — уровню модели.
+          </p>
         </div>
 
         <div>
@@ -411,6 +452,7 @@ export function Guide({
           <p className="mt-2 text-[0.95rem] text-mute">
             Это базовые множители: у конкретного экземпляра есть небольшой разброс, точные числа видны в «Подробнее».
             Изношенность не тратится от ударов — это состояние вещи при находке или покупке.
+            В подземелье новое не выпадает: 75% находок изношенные и 25% ношеные. Новое можно получить только в лавке или в кузнице.
           </p>
         </div>
 
@@ -821,6 +863,8 @@ export function Guide({
               <span>
                 Улучшение лавки стоит <b className="text-parch">250 × текущий уровень</b>.
                 Уровень лавки определяет, какие вещи появляются и с каким качеством/износом.
+                На первом уровне только обычное (90%) и редкое (10%). Эпическое появляется с 3 уровня (3%),
+                легендарное — с 4 (1%). На десятом уровне: 26% обычное, 50% редкое, 17% эпическое, 7% легендарное.
                 Для каждого вида снаряжения в продаже не меньше <b className="text-parch">6 вариантов</b>;
                 «Обновить прилавок» генерирует новый набор товаров, а не перемешивает старый.
                 Припасы и реагенты можно продавать. Купить припас или реагент можно, только если его уровень
@@ -869,7 +913,7 @@ export function Guide({
             <p>
               Обычный монстр (80%) даёт стандартную добычу. Ужас (15%) сильнее и оставляет снаряжение чаще.
               Катастрофа (5%) — мини-босс с дополнительными приёмами, эффектами и печатью.
-              Босс охраняет лестницу и оставляет гарантированный трофей не ниже редкого качества.
+              Босс охраняет лестницу и всегда оставляет трофей: 50% редкий, 10% эпический, 1% легендарный.
               Печати (немота, забвение, оковы) накладывают только катастрофы и стражи лестниц:
               у обычного монстра и ужаса их не бывает.
             </p>
