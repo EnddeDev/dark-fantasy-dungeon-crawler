@@ -1,13 +1,13 @@
 import { derived } from "../game/battle";
-import { GEAR_BASES, ITEMS, RECIPES, createGearItem, migrateGearItem } from "../game/content";
+import { GEAR_BASES, ITEMS, RECIPES, createGearItem, isStarterItem, migrateGearItem } from "../game/content";
 import { normalizeStatMilestones } from "../game/statMilestones";
 import type { Player, Slot } from "../game/types";
 import { SLOT_ORDER } from "../game/types";
 import { SHOP_MAX_LEVEL } from "../game/world";
 
-/** Стартовые обноски: нож и тряпьё 1-го уровня, изношенные и обычные. */
-function isStarterGear(baseId: string, level: number | undefined, wear: string, rarity: string): boolean {
-  return (baseId === "knife" || baseId === "rag") && (level ?? 1) === 1 && wear === "worn" && rarity === "common";
+/** Стартовые обноски: нож и рубаха 1-го уровня — требований у них нет. */
+function isStarterGear(baseId: string, level: number | undefined): boolean {
+  return isStarterItem({ baseId, level });
 }
 
 /** Фабрика игрока: создание нового героя и миграция старых сохранений. */
@@ -74,12 +74,17 @@ export class PlayerFactory {
             const level = g.level ?? Math.max(1, Math.min(SHOP_MAX_LEVEL, base?.level ?? base?.minFloor ?? 1));
             return migrateGearItem({
               ...g,
+              /* Старые сохранения могли не знать о состоянии и редкости — подставляем базовые. */
+              wear: g.wear ?? "worn",
+              rarity: g.rarity ?? "common",
+              wearMult: g.wearMult ?? 1,
+              identified: g.identified ?? false,
               statMult: g.statMult ?? 1,
               level,
               slot: (base?.slot ?? g.slot) as Slot,
               gearClass: base?.gearClass ?? g.gearClass,
               /* Старые сохранения: узнаём стартовые обноски и снимаем с них требования. */
-              noReq: g.noReq ?? (isStarterGear(g.baseId, level, g.wear, g.rarity) ? true : undefined),
+              noReq: g.noReq ?? (isStarterGear(g.baseId, level) ? true : undefined),
             });
           });
         const owned = new Set(armory.map((g) => g.uid));

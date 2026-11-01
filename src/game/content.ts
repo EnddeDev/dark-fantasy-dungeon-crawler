@@ -1045,9 +1045,22 @@ export function gearClassLabel(item: GearItem): string {
 }
 
 /** Броня лёгкого веса может не требовать характеристику вовсе. */
+/** Базы стартового снаряжения: нож и рубаха, с которыми герой начинает игру. */
+export const STARTER_GEAR_BASES: readonly string[] = ["knife", "rag"];
+
+/**
+ * Стартовое снаряжение: вещи стартовых баз 1-го уровня.
+ * Требований к характеристикам у них нет никогда — ни новых, ни из старых сохранений,
+ * ни после смены редкости в мастерской.
+ */
+export function isStarterItem(item: { baseId: string; level?: number }): boolean {
+  return STARTER_GEAR_BASES.includes(item.baseId) && (item.level ?? 1) <= 1;
+}
+
 export function gearRequiresNothing(item: GearItem): boolean {
-  /* Стартовые вещи надеваются без требований: у них флаг стоит на самом предмете. */
   if (item.noReq === true) return true;
+  /* Стартовые вещи надеваются без требований при любых характеристиках. */
+  if (isStarterItem(item)) return true;
   const base = GEAR_BASES[item.baseId];
   if (!base) return false;
   return gearKindOfBase(base) === "armor" && base.noReq === true;
