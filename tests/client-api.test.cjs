@@ -147,9 +147,24 @@ test("auth screen explains an unavailable server instead of showing a failing fo
     React.createElement(OnlineProvider, null, React.createElement(AuthView)),
   );
   assert.ok(html.includes("Повторить подключение"), "есть кнопка повторной проверки");
+  assert.ok(html.includes("сборка r20"), "видна метка сборки — по ней отличить кэш от свежей версии");
+  assert.ok(html.includes("API: /api"), "видно, какой адрес API использует клиент");
   assert.ok(html.includes("Играть без аккаунта"), "можно уйти в соло-режим");
   assert.ok(html.includes("GitHub Pages"), "объяснение про статический хостинг");
   assert.ok(html.includes("VITE_API_URL"), "подсказка, как включить онлайн");
   assert.ok(html.includes("npm run server"), "подсказка про локальный сервер");
   assert.ok(!html.includes("Создать аккаунт"), "форма не показывается без связи");
+});
+
+test("login validation mirrors the server rules", async () => {
+  const outfile = path.join(temp, "validate.mjs");
+  buildSync({ entryPoints: ["src/net/validate.ts"], outfile, bundle: true, platform: "node", format: "esm" });
+  const { validateCredentials } = await import(pathToFileURL(outfile).href);
+
+  assert.equal(validateCredentials("", "secret123"), "Введите логин");
+  assert.equal(validateCredentials("ab", "secret123"), "Логин: минимум 3 символа");
+  assert.equal(validateCredentials("плохой логин", "secret123"), "Логин: буквы, цифры, дефис или подчёркивание");
+  assert.equal(validateCredentials("endde", "12345"), "Пароль должен быть не короче 6 символов");
+  assert.equal(validateCredentials("endde", "secret123"), null);
+  assert.equal(validateCredentials("Игрок_1-2", "пароль"), null);
 });

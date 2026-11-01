@@ -1,0 +1,18 @@
+# Деплой одним файлом: Render собирает Dockerfile, поднимает сервер
+# и раздаёт игру вместе с API по одному адресу.
+services:
+  - type: web
+    name: sumrak
+    runtime: docker
+    plan: free
+    region: frankfurt
+    healthCheckPath: /api/health
+    envVars:
+      - key: DB_FILE
+        value: /data/sumrak.db
+      - key: DIST_DIR
+        value: /app/dist
+    disk:
+      name: sumrak-data
+      mountPath: /data
+      sizeGB: 1

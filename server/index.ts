@@ -1,5 +1,8 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { createServer } from "node:http";
 import { Db } from "./db";
+import { createStaticHandler } from "./static";
 import { HttpError, readBody, send, type Ctx } from "./http";
 import {
   handleAuth,
@@ -14,8 +17,11 @@ import {
 
 const PORT = Number(process.env.PORT ?? 8787);
 const DB_FILE = process.env.DB_FILE ?? "server/data/sumrak.db";
+/** Папка собранной игры: если она есть, сервер отдаёт ещё и клиент. */
+const DIST_DIR = process.env.DIST_DIR ?? "dist";
 
 const db = new Db(DB_FILE);
+const serveStatic = createStaticHandler(DIST_DIR);
 
 const routes: { method: string; re: RegExp; keys: string[]; run: (ctx: Ctx, db: Db, p: Record<string, string>) => unknown }[] = [
   { method: "GET", re: /^\/api\/health$/, keys: [], run: () => ({ ok: true, service: "sumrak-api" }) },
@@ -52,6 +58,9 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // Сначала пробуем отдать собранную игру; маршруты /api обрабатываются ниже.
+  if ((method === "GET" || method === "HEAD") && serveStatic(req, res)) return;
+
   const token = (req.headers.authorization ?? "").replace(/^Bearer\s+/i, "") || null;
 
   try {
@@ -79,7 +88,8 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`СУМРАК API слушает http://0.0.0.0:${PORT} (БД: ${DB_FILE})`);
+  const withApp = existsSync(join(DIST_DIR, "index.html")) ? `, игра из ${DIST_DIR}` : " (только API)";
+  console.log(`СУМРАК слушает http://0.0.0.0:${PORT} (БД: ${DB_FILE}${withApp})`);
 });
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

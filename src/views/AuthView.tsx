@@ -1,6 +1,17 @@
 import { useState } from "react";
 import { Btn } from "../components/ui";
 import { useOnline } from "../net/online";
+import { validateCredentials } from "../net/validate";
+import { BUILD_ID } from "../version";
+
+/** Игра открыта со статического хостинга — API там нет по определению. */
+function staticHostHint(): boolean {
+  try {
+    return /(^|\.)github\.io$/i.test(window.location.hostname);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Вход и регистрация: логин и пароль, без почты.
@@ -20,8 +31,9 @@ export function AuthView() {
   const submit = async () => {
     setLocal(null);
     if (offline) return;
-    if (!login.trim() || !password) {
-      setLocal("Введите логин и пароль");
+    const problem = validateCredentials(login, password);
+    if (problem) {
+      setLocal(problem);
       return;
     }
     const ok = mode === "login" ? await online.login(login.trim(), password) : await online.register(login.trim(), password);
@@ -60,6 +72,12 @@ export function AuthView() {
                 команды <span className="font-mono text-parch">npm run server</span> рядом с{" "}
                 <span className="font-mono text-parch">npm run dev</span>.
               </p>
+              {staticHostHint() && (
+                <p className="mt-2 text-parch/90">
+                  Сейчас страница открыта с <span className="font-mono text-parch">{typeof window === "undefined" ? "" : window.location.hostname}</span> —
+                  это статический хостинг.
+                </p>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Btn tone="flame" disabled={checking} onClick={() => void online.retry()}>
@@ -67,6 +85,9 @@ export function AuthView() {
               </Btn>
               <Btn onClick={online.goOffline}>Играть без аккаунта</Btn>
             </div>
+            <p className="border-t border-line/60 pt-2 font-mono text-[0.76rem] leading-relaxed text-mute">
+              сборка {BUILD_ID} · API: {online.api.baseUrl}
+            </p>
           </div>
         ) : (
           <>
@@ -126,6 +147,9 @@ export function AuthView() {
               </Btn>
               <Btn onClick={online.goOffline}>Играть без аккаунта</Btn>
             </div>
+            <p className="mt-3 border-t border-line/60 pt-2 font-mono text-[0.76rem] leading-relaxed text-mute">
+              сборка {BUILD_ID} · API: {online.api.baseUrl}
+            </p>
           </>
         )}
       </div>
