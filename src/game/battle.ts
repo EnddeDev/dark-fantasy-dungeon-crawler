@@ -125,6 +125,8 @@ export interface BattleState {
     mtype: MonsterType;
     /** Сколько твоих попаданий выдержал дракон (для «залпа»). */
     hitsTaken: number;
+    /** Ярость дракона приходит один раз за бой. */
+    furyUsed: boolean;
     /** Раунды ярости дракона: двойной урон и лечение в конце хода. */
     fury: number;
     /** Набор приёмов с учётом угрозы */
@@ -806,6 +808,7 @@ export function newBattle(pl: Player, floor: number, isBoss = false, biome: Biom
       threat: s.threat,
       mtype: s.mtype,
       hitsTaken: 0,
+      furyUsed: false,
       fury: 0,
       passive: s.passive,
       moves: s.moves,
@@ -1232,9 +1235,11 @@ function hitEnemy(
   /* Дракон копит ярость: после трёх твоих попаданий бьёт вдвое и залечивает раны. */
   if (b.enemy.def.race === "dragon" && b.enemy.hp > 0) {
     b.enemy.hitsTaken += 1;
-    if (b.enemy.fury <= 0 && b.enemy.hitsTaken >= 3) {
+    /* Ярость приходит один раз за бой: иначе дракон просто не убивается. */
+    if (!b.enemy.furyUsed && b.enemy.fury <= 0 && b.enemy.hitsTaken >= 3) {
       b.enemy.hitsTaken = 0;
       b.enemy.fury = 3;
+      b.enemy.furyUsed = true;
       push(b, `${b.enemy.def.name} впадает в ярость: 3 хода двойного урона и лечения!`, "e");
     }
   }

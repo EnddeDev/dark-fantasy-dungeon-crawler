@@ -325,6 +325,8 @@ export interface EpicSkillDef {
   name: string;
   intReq: number;
   cooldown: number;
+  /** От какой характеристики считается урон: как и обычный приём, он должен совпадать с требованием предмета. */
+  scaleStat: StatKey;
   desc: string;
 }
 
@@ -333,6 +335,7 @@ export const EPIC_SKILLS: Record<EpicSkillId, EpicSkillDef> = {
     id: "fireball",
     name: "Огненный шар",
     intReq: 4,
+    scaleStat: "int",
     cooldown: 3,
     desc: "Взрыв пламени: 20 + 3.5×ИНТ чистого урона и поджог врага (4 урона/раунд на 3 раунда).",
   },
@@ -340,6 +343,7 @@ export const EPIC_SKILLS: Record<EpicSkillId, EpicSkillDef> = {
     id: "blood_lance",
     name: "Кровавое копьё",
     intReq: 4,
+    scaleStat: "str",
     cooldown: 3,
     desc: "Пронзает броню на 16 + 2.5×СИЛ урона и восстанавливает тебе 50% от этого урона.",
   },
@@ -347,6 +351,7 @@ export const EPIC_SKILLS: Record<EpicSkillId, EpicSkillDef> = {
     id: "ash_aegis",
     name: "Эгида пепла",
     intReq: 3,
+    scaleStat: "int",
     cooldown: 3,
     desc: "Восстанавливает 16 + 2.5×ИНТ здоровья, снимает кровотечение/проклятие и ставит в Защиту.",
   },
@@ -354,6 +359,7 @@ export const EPIC_SKILLS: Record<EpicSkillId, EpicSkillDef> = {
     id: "shadow_volley",
     name: "Теневой росчерк",
     intReq: 4,
+    scaleStat: "agi",
     cooldown: 2,
     desc: "Серия выпадов на 16 + 3×ЛОВ урона сквозь броню и ослабление атаки врага на 2 раунда.",
   },
@@ -361,6 +367,7 @@ export const EPIC_SKILLS: Record<EpicSkillId, EpicSkillDef> = {
     id: "frost_nova",
     name: "Дыхание склепа",
     intReq: 5,
+    scaleStat: "int",
     cooldown: 3,
     desc: "Наносит 16 + 3×ИНТ урона, сковывает врага холодом на 3 раунда и отнимает у него 1 ход.",
   },
@@ -1689,9 +1696,14 @@ export function createGearItem(opts: {
   let epicSkill: EpicSkillId | undefined;
 
   if ((rarity === "epic" || rarity === "legendary") && hasTechnique) {
-    /* Эпический и легендарный предмет получают боевой приём вдобавок к свойствам. */
+    /* Эпический и легендарный предмет получают боевой приём вдобавок к свойствам.
+       Как и обычный приём, он берётся только из «своей» характеристики. */
+    const epicPool = ALL_EPIC_IDS.filter((id) => EPIC_SKILLS[id].scaleStat === reqStat);
+    const epicChoices = epicPool.length ? epicPool : ALL_EPIC_IDS;
     if (rarity === "legendary" || rng() < 0.5) {
-      epicSkill = base.preferredEpic && rng() < 0.6 ? base.preferredEpic : pick(ALL_EPIC_IDS, rng);
+      epicSkill = base.preferredEpic && epicChoices.includes(base.preferredEpic) && rng() < 0.6
+        ? base.preferredEpic
+        : pick(epicChoices, rng);
     }
   }
 
