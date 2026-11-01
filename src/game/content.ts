@@ -26,18 +26,19 @@ import type {
 } from "./types";
 import { WEAR_RANGE } from "./types";
 export { WEAR_RANGE } from "./types";
-import { effectPoolFor, passivePoolFor, archetypePassive, type GearEffectId, type GearPassiveId } from "./gearEffects";
+import { ACTIVE_GEAR_EFFECTS, effectPoolFor, passivePoolFor, archetypePassive, type GearEffectId, type GearPassiveId } from "./gearEffects";
 import {
   clampGearLevel,
   epicMagnitude,
-  gearLevelMultiplier,
   legendaryMagnitude,
   rareAffixMagnitude,
-  scaleIntegerByLevel,
   scaleMultByLevel,
-  scalePercentByLevel,
+  scaleGearStatByLevel,
+  rollEffectBase,
   techniqueIntReq,
+  GEAR_STAT_GROWTH,
 } from "./gearScaling";
+import { statConsumableDamage, statTechniqueDamage } from "./statFormulas";
 import type { ArchetypeId } from "./archetypes";
 export { ARCHETYPES, ARCHETYPE_ORDER, archetypeForStat, archetypeMilestoneIds, archetypeByMilestone } from "./archetypes";
 export type { ArchetypeId } from "./archetypes";
@@ -116,20 +117,20 @@ export const STAT_META: Record<
   str: {
     name: "Сила",
     short: "СИЛ",
-    blurb: "Здоровье, тяжесть удара оружием и устойчивость к негативным эффектам и ловушкам.",
-    gain: "+6 здоровья, +0.8 к урону, +6% стойкости",
+    blurb: "Здоровье, плоский урон оружием и стойкость против негативных эффектов.",
+    gain: "+10 ОЗ, +1 урона (база 2), +5% стойкости",
   },
   agi: {
     name: "Ловкость",
     short: "ЛОВ",
-    blurb: "Количество ходов в раунде, сила метательных расходников, урон ловкого оружия и обезвреживание ловушек.",
-    gain: "+1 ход каждые 2 очка, урон ловкого оружия и метательных расходников",
+    blurb: "Ходы в раунде, уклонение, критические удары и урон расходников.",
+    gain: "+1 ход, +5% уклонения, +1% крита, +0.10 крит-урона, +1.5 урона расходников",
   },
   int: {
     name: "Интеллект",
     short: "ИНТ",
-    blurb: "Сила свитков и наносящих урон зелий, чтение свитков, приёмы оружия, исследование и алхимия.",
-    gain: "усиливает свитки и урон зелий, открывает приёмы и исследование",
+    blurb: "Магическое сопротивление, урон приёмов и свитков, чтение и исследование.",
+    gain: "+5% маг. сопротивления, +2 урона приёмов/свитков (база 10)",
   },
 };
 
@@ -857,15 +858,15 @@ export const GEAR_CLASS_META: Record<
 > = {
   light: {
     name: "Лёгкое",
-    desc: "Малый вес: больше здоровья и уклонения, чем у тяжёлого; меньше защиты, чем у среднего.",
+    desc: "Малый вес: базовая защита без удвоения; удобно для ловких и магических сборок.",
   },
   medium: {
     name: "Среднее",
-    desc: "Сбалансированное снаряжение: больше защиты, чем у лёгкого, и больше уклонения, чем у обоих других классов.",
+    desc: "Сбалансированное снаряжение: базовая защита без удвоения; среднее оружие можно взять в две руки.",
   },
   heavy: {
     name: "Тяжёлое",
-    desc: "Массивное снаряжение: больше защиты и здоровья, чем у среднего; уклонение ниже, чем у лёгкого.",
+    desc: "Массивное снаряжение: базовая защита удваивается; здоровье и уклонение не получают классовых бонусов.",
   },
 };
 
@@ -1209,7 +1210,7 @@ let gearSeq = 100;
 
 /** Рост характеристик с уровнем предмета: каждый уровень +20% с округлением вверх. */
 export function gearLevelMult(item: GearItem): number {
-  return gearLevelMultiplier(item.level ?? 1);
+  return Math.pow(GEAR_STAT_GROWTH, clampGearLevel(item.level ?? 1) - 1);
 }
 
 export function canTwoHandGrip(item: GearItem): boolean {
@@ -1222,24 +1223,46 @@ export function effectiveHands(item: GearItem): 1 | 2 {
   return (GEAR_BASES[item.baseId]?.hands ?? 1) >= 2 ? 2 : 1;
 }
 
+export const ITEM_HP_BASE = 10;
+export const ITEM_HP_SPREAD = 15;
+export const ITEM_ARMOR_BASE = 2;
+export const ITEM_ARMOR_SPREAD = 3;
+
+export function canItemHaveArmor(base: GearBaseDef): boolean {
+  if (base.shield) return true;
+  return !base.dmg;
+}
+
+export function rollItemStatRolls(base: GearBaseDef, gearClass: "light" | "medium" | "heavy", rng: () => number = Math.random) {
+  const hp = ITEM_HP_BASE + Math.floor(rng() * (ITEM_HP_SPREAD + 1));
+  let armor = 0;
+  if (canItemHaveArmor(base)) {
+    armor = ITEM_ARMOR_BASE + Math.floor(rng() * (ITEM_ARMOR_SPREAD + 1));
+    if (gearClass === "heavy") armor *= 2;
+  }
+  return { hp, armor };
+}
+
 export function scaledGearStats(item: GearItem) {
   const base = GEAR_BASES[item.baseId] ?? GEAR_BASES.knife;
   const m = item.wearMult ?? WEAR_META[item.wear].mult;
-  const v = item.statMult ?? 1;
   const level = clampGearLevel(item.level);
   const roll = item.dmgRoll ?? base.dmg;
   let dmg: [number, number] | undefined = roll
     ? [
-        Math.max(1, scaleIntegerByLevel(Math.ceil(roll[0] * m), level)),
-        Math.max(2, scaleIntegerByLevel(Math.ceil(roll[1] * m), level)),
+        Math.max(1, scaleGearStatByLevel(Math.ceil(roll[0] * m), level)),
+        Math.max(2, scaleGearStatByLevel(Math.ceil(roll[1] * m), level)),
       ]
     : undefined;
   if (dmg && canTwoHandGrip(item) && item.grip === "two") {
     dmg = [Math.ceil(dmg[0] * 1.5), Math.ceil(dmg[1] * 1.5)];
   }
-  const armor = base.armor ? scaleIntegerByLevel(Math.ceil(base.armor * m * v), level) : 0;
-  const hp = base.hp ? scaleIntegerByLevel(Math.ceil(base.hp * m * v), level) : 0;
-  const evade = base.evade ? scalePercentByLevel(Math.ceil(base.evade * 100 * m * v), level) / 100 : 0;
+  const cls = gearClassFor(item);
+  const rolls = item.statRolls ?? rollItemStatRolls(base, cls, () => 0.5);
+  const armor = canItemHaveArmor(base) ? scaleGearStatByLevel(Math.ceil(rolls.armor * m), level) : 0;
+  const hp = scaleGearStatByLevel(Math.ceil(rolls.hp * m), level);
+  // Уклонение больше не является базовым свойством предметов: только характеристики, эффекты и пассивы.
+  const evade = 0;
   return { base, dmg, armor, hp, evade, skill: weaponSkillFor(item), level, wearMult: m };
 }
 
@@ -1250,13 +1273,13 @@ export function identifyReqs(item: GearItem): { int: number; gold: number } {
 }
 
 /** Разброс урона конкретного клинка: узкий (3–5) или размашистый (2–7). */
-export function rollDamageSpread(base: [number, number]): [number, number] {
-  const style = Math.random();
+export function rollDamageSpread(base: [number, number], rng: () => number = Math.random): [number, number] {
+  const style = rng();
   let lo = base[0];
   let hi = base[1];
   if (style < 0.22) {
     lo = base[0] - 2;
-    hi = base[1] + 1 + Math.round(Math.random() * 2);
+    hi = base[1] + 1 + Math.round(rng() * 2);
   } else if (style < 0.45) {
     lo = base[0] - 1;
     hi = base[1];
@@ -1265,7 +1288,7 @@ export function rollDamageSpread(base: [number, number]): [number, number] {
     hi = base[1] + 1;
   } else {
     lo = base[0];
-    hi = base[1] + 2 + Math.round(Math.random() * 2);
+    hi = base[1] + 2 + Math.round(rng() * 2);
   }
   lo = Math.max(1, lo);
   hi = Math.max(lo + 1, hi);
@@ -1273,8 +1296,8 @@ export function rollDamageSpread(base: [number, number]): [number, number] {
 }
 
 /** Случайный разброс параметров брони и украшений: −10% … +10%. */
-export function rollStatSpread(): number {
-  return Number((0.9 + Math.random() * 0.2).toFixed(2));
+export function rollStatSpread(rng: () => number = Math.random): number {
+  return Number((0.9 + rng() * 0.2).toFixed(2));
 }
 
 /**
@@ -1350,41 +1373,21 @@ export function createGearItem(opts: {
       return "new";
     })();
 
-  const rarity: RarityTier = opts.rarity ?? rollRarity(opts.rarityWeights);
+  const rarity: RarityTier = opts.rarity ?? rollRarity(opts.rarityWeights, rng);
   const gearClass: "light" | "medium" | "heavy" =
     base.gearClass ?? (["plate", "shield_tower", "greathelm"].includes(base.id) ? "heavy" : "medium");
 
   /* Характеристика назначения важнее веса: лёгкий нож получает ловкие свойства. */
   const reqStat = base.stat ?? (gearClass === "heavy" ? "str" : gearClass === "light" ? "int" : "agi");
 
-  /* Более высокое качество обладает всеми свойствами прошлого!
-     Пул свойств зависит от характеристики предмета. */
-  const statAffixes: Record<StatKey, RareAffixId[]> = {
-    // Магическое: вампиризм, регенерация, ускользание
-    int: ["vamp", "regen", "swift"],
-    // Ловкое: крит, вампиризм, ускользание
-    agi: ["crit", "vamp", "swift"],
-    // Силовое: шипы, регенерация, мощь, пролом брони
-    str: ["thorns", "regen", "might", "pierce"],
-  };
-  const affixPool: RareAffixId[] = [
-    ...(statAffixes[reqStat] ?? []),
-    "crit" as RareAffixId,
-    "vamp" as RareAffixId,
-    "regen" as RareAffixId,
-  ];
-  const rareAffix: RareAffixId | undefined =
-    rarity === "rare" || rarity === "epic" || rarity === "legendary"
-      ? pick(affixPool)
-      : undefined;
-
   const itemLevelForAp = opts.level ?? base.level ?? 1;
   const legacyPool = ALL_LEG_IDS.filter((id) => id !== "time_weaver" || itemLevelForAp >= 3);
   const legacyPassive: LegendaryPassiveId | undefined =
-    rarity === "legendary" ? pick(legacyPool) : undefined;
+    rarity === "legendary" ? pick(legacyPool, rng) : undefined;
 
   /* Множитель состояния: изношенное 0.75±0.05, ношенное 1.0±0.10, новое 1.25±0.05…0.10 */
-  const wearMult = rollWearMult(wear);
+  const wearMult = rollWearMult(wear, rng);
+  const statRolls = rollItemStatRolls(base, gearClass, rng);
 
   /* Качество: обычное — без бафов;
      редкое — 1 уникальный эффект по характеристике требования;
@@ -1402,7 +1405,7 @@ export function createGearItem(opts: {
       epicSkill =
         base.preferredEpic && rng() < 0.6
           ? base.preferredEpic
-          : pick(ALL_EPIC_IDS);
+          : pick(ALL_EPIC_IDS, rng);
     }
   }
 
@@ -1425,13 +1428,18 @@ export function createGearItem(opts: {
     rarity === "legendary"
       ? base.archetype && (archetypePassive(base.archetype) !== "assassin_shadow" || itemLevelForAp >= 3)
         ? archetypePassive(base.archetype)
-        : pick(passivePool.length ? passivePool : passivePoolFor(reqStat))
+        : pick(passivePool.length ? passivePool : passivePoolFor(reqStat), rng)
       : undefined;
+
+  const effectRolls: Partial<Record<GearEffectId, number>> = {};
+  for (const id of effects) effectRolls[id] = rollEffectBase(id, rng);
 
   return {
     uid: `g_${Date.now().toString(36)}_${++gearSeq}_${rng().toString(36).slice(2, 8)}`,
     wearMult,
     effects,
+    effectRolls,
+    statRolls,
     passive,
     baseId: base.id,
     slot: base.slot,
@@ -1440,16 +1448,62 @@ export function createGearItem(opts: {
     wear,
     rarity,
     identified: opts.identified ?? false,
-    dmgRoll: base.dmg ? rollDamageSpread(base.dmg) : undefined,
-    statMult: rollStatSpread(),
+    dmgRoll: base.dmg ? rollDamageSpread(base.dmg, rng) : undefined,
+    statMult: rollStatSpread(rng),
     skillId: base.weaponSkill
       ? opts.skillId && (TECHNIQUE_POOL[base.id] ?? []).includes(opts.skillId)
         ? opts.skillId
-        : pick(TECHNIQUE_POOL[base.id] ?? [base.weaponSkill.id])
+        : pick(TECHNIQUE_POOL[base.id] ?? [base.weaponSkill.id], rng)
       : undefined,
-    rareAffix,
     epicSkill,
     legendaryPassive: legacyPassive,
+  };
+}
+
+/** Детерминированный RNG для миграции старых сохранений. */
+function seededRng(seed: string): () => number {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return () => {
+    h = Math.imul(h ^ (h >>> 15), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    return ((h ^= h >>> 16) >>> 0) / 4294967296;
+  };
+}
+
+/** Переводит старый предмет на новый набор характеристик и свойств. */
+export function migrateGearItem(item: GearItem): GearItem {
+  const base = GEAR_BASES[item.baseId] ?? GEAR_BASES.knife;
+  const gearClass = base.gearClass ?? item.gearClass ?? "medium";
+  const rng = seededRng(item.uid || item.baseId);
+  const statRolls = item.statRolls ?? rollItemStatRolls(base, gearClass, rng);
+  const reqStat = gearAffinity(item);
+  const pool = effectPoolFor(reqStat, base.archetype).filter((id) => id !== "ap" || (item.level ?? 1) >= 3);
+  const effects: GearEffectId[] = [];
+  for (const id of item.effects ?? []) {
+    if (ACTIVE_GEAR_EFFECTS.includes(id) && !effects.includes(id)) effects.push(id);
+  }
+  const legacyCount = (item.effects ?? []).length + (item.rareAffix ? 1 : 0);
+  while (effects.length < Math.min(3, legacyCount)) {
+    const avail = pool.filter((id) => !effects.includes(id));
+    if (!avail.length) break;
+    effects.push(avail[Math.floor(rng() * avail.length)]);
+  }
+  const effectRolls: Partial<Record<GearEffectId, number>> = { ...(item.effectRolls ?? {}) };
+  for (const id of effects) {
+    if (effectRolls[id] == null) effectRolls[id] = rollEffectBase(id, rng);
+  }
+  return {
+    ...item,
+    slot: base.slot ?? item.slot,
+    gearClass,
+    statRolls,
+    effects,
+    effectRolls,
+    rareAffix: undefined,
   };
 }
 
@@ -1632,20 +1686,20 @@ export const ITEMS: Record<string, ItemDef> = Object.fromEntries(
     I({ id: "potion_s", name: "Малое зелье лечения", kind: "potion", price: 45, use: { type: "heal", power: 28 }, desc: "Восстанавливает 28 здоровья. Вкус жжёного мёда и золы." }),
     I({ id: "potion_l", name: "Большое зелье лечения", kind: "potion", price: 120, use: { type: "heal", power: 65 }, desc: "Восстанавливает 65 здоровья. Густое, тёплое, варится на слезе банши." }),
     I({ id: "antidote", name: "Горечь полыни", kind: "potion", price: 42, use: { type: "cleanse", power: 8 }, desc: "Снимает кровотечение, проклятие и яд, возвращает 8 здоровья." }),
-    I({ id: "rage", name: "Эликсир ярости", kind: "potion", price: 95, use: { type: "rage", rounds: 5 }, desc: "Пять раундов злости: +50% к урону." }),
+    I({ id: "rage", name: "Эликсир ярости", kind: "potion", price: 95, use: { type: "rage", rounds: 5 }, desc: "Пять раундов ярости: +10% урона за каждые 10% недостающего ОЗ." }),
     /* оружейные расходники не требуют Интеллекта */
-    I({ id: "throwing_knife", name: "Метательный кинжал", kind: "throwable", price: 28, use: { type: "throw", power: 10, scale: 1.5, scaleStat: "agi" }, desc: "Быстрый бросок: 10 + 1.5×ЛОВ физического урона." }),
+    I({ id: "throwing_knife", name: "Метательный кинжал", kind: "throwable", price: 28, use: { type: "throw", power: 10, scale: 1.5, scaleStat: "agi" }, desc: "Быстрый бросок: 7 + 1.5×ЛОВ физического урона." }),
     I({ id: "poison_dart", name: "Отравленный дротик", kind: "throwable", price: 48, use: { type: "poison", power: 5, scale: 1, scaleStat: "agi", rounds: 3 }, desc: "Прокалывает кожу и травит живую цель 3 раунда. Нежить и големы невосприимчивы." }),
     I({ id: "smoke_bomb", name: "Дымовая бомба", kind: "throwable", price: 78, use: { type: "smoke", rounds: 2 }, desc: "Густой дым не даёт врагу попасть по тебе в следующие 2 атаки. Это не побег." }),
-    I({ id: "blast_bomb", name: "Взрывная бомба", kind: "throwable", price: 95, use: { type: "explosion", power: 24, scale: 1.5, scaleStat: "agi" }, desc: "Взрыв наносит 24 + 1.5×ЛОВ урона, игнорируя броню." }),
-    I({ id: "fear_vial", name: "Зелье ужаса", kind: "potion", price: 70, level: 2, minFloor: 2, use: { type: "fear", rounds: 2 }, desc: "Живая цель пропустит 2 следующих хода. Нежить и големы страха не знают." }),
+    I({ id: "blast_bomb", name: "Взрывная бомба", kind: "throwable", price: 95, use: { type: "explosion", power: 24, scale: 1.5, scaleStat: "agi" }, desc: "Взрыв наносит 7 + 1.5×ЛОВ урона, игнорируя броню." }),
+    I({ id: "fear_vial", name: "Зелье ужаса", kind: "potion", price: 70, level: 2, minFloor: 2, use: { type: "fear", rounds: 2 }, desc: "Живая цель 2 хода автоматически держит защиту. Нежить и големы страха не знают." }),
     /* свитки (требуют Интеллект) */
-    I({ id: "scroll_spark", name: "Свиток искры", kind: "scroll", price: 60, use: { type: "damage", power: 16, scale: 3, scaleStat: "int", intReq: 2 }, desc: "16 + 3×ИНТ урона. Короткая формула поджога; чтение требует ИНТ 2." }),
-    I({ id: "scroll_fire", name: "Свиток огня", kind: "scroll", price: 85, use: { type: "damage", power: 24, scale: 4, scaleStat: "int", intReq: 3 }, desc: "24 + 4×ИНТ урона. Буквы в нём дописаны от руки, спеша; чтение требует ИНТ 3." }),
-    I({ id: "scroll_heal", name: "Свиток исцеления", kind: "scroll", price: 90, use: { type: "heal", power: 32, scale: 4, scaleStat: "int", intReq: 3 }, desc: "32 + 4×ИНТ здоровья и снимает кровотечение. Чтение требует ИНТ 3." }),
+    I({ id: "scroll_spark", name: "Свиток искры", kind: "scroll", price: 60, use: { type: "damage", power: 16, scale: 3, scaleStat: "int", intReq: 2 }, desc: "10 + 2×ИНТ урона. Короткая формула поджога; чтение требует ИНТ 2." }),
+    I({ id: "scroll_fire", name: "Свиток огня", kind: "scroll", price: 85, use: { type: "damage", power: 24, scale: 4, scaleStat: "int", intReq: 3 }, desc: "10 + 2×ИНТ урона. Буквы в нём дописаны от руки, спеша; чтение требует ИНТ 3." }),
+    I({ id: "scroll_heal", name: "Свиток исцеления", kind: "scroll", price: 90, use: { type: "heal", power: 32, intReq: 3 }, desc: "32 здоровья и снимает кровотечение. Чтение требует ИНТ 3." }),
     I({ id: "scroll_shadow", name: "Свиток тени", kind: "scroll", price: 155, use: { type: "flee", fleeRate: 0, intReq: 4 }, desc: "Тень не теряет добычу — уносит из боя без потерь." }),
-    I({ id: "scroll_frost", name: "Свиток ледяных оков", kind: "scroll", price: 135, use: { type: "chill", power: 20, scale: 3, scaleStat: "int", intReq: 5, rounds: 3 }, desc: "20 + 3×ИНТ урона и холод на 3 раунда (урон врага −30%). Чтение требует ИНТ 5." }),
-    I({ id: "scroll_bolt", name: "Свиток молнии", kind: "scroll", price: 175, use: { type: "sunder_damage", power: 38, scale: 5, scaleStat: "int", intReq: 6 }, desc: "38 + 5×ИНТ урона сквозь броню и раскол защиты (−2 брони). Чтение требует ИНТ 6." }),
+    I({ id: "scroll_frost", name: "Свиток ледяных оков", kind: "scroll", price: 135, use: { type: "chill", power: 20, scale: 3, scaleStat: "int", intReq: 5, rounds: 3 }, desc: "10 + 2×ИНТ урона и обморожение на 3 раунда: лечение −50% и периодический урон. Чтение требует ИНТ 5." }),
+    I({ id: "scroll_bolt", name: "Свиток молнии", kind: "scroll", price: 175, use: { type: "sunder_damage", power: 38, scale: 5, scaleStat: "int", intReq: 6 }, desc: "10 + 2×ИНТ урона сквозь броню и раскол защиты (−2 брони). Чтение требует ИНТ 6." }),
     /* реагенты */
     I({ id: "moss", name: "Кровавый мох", kind: "reagent", reagentCat: "plant", price: 28, desc: "Растёт на том, что не похоронили." }),
     I({ id: "bone", name: "Костяная пыль", kind: "reagent", reagentCat: "monster", price: 28, desc: "Растёртые ошмётки чьего-то упрямства." }),
@@ -1657,7 +1711,7 @@ export const ITEMS: Record<string, ItemDef> = Object.fromEntries(
       desc: "Бастион: +4 брони и +4 регенерации на 4 раунда, снимает кровотечение." }),
     I({ id: "blood_rage", name: "Кровавая ярость", kind: "potion", price: 130,
       use: { type: "blood_rage", rounds: 4 },
-      desc: "Варвар: ярость на 4 раунда (+50% урона) и +15% вампиризма оружием." }),
+      desc: "Варвар: ярость на 4 раунда (+10% урона за каждые 10% недостающего ОЗ) и +15% вампиризма оружием." }),
     I({ id: "quickblade_oil", name: "Масло быстрого клинка", kind: "potion", price: 125,
       use: { type: "quickblade", rounds: 3 },
       desc: "Ассасин: +25% шанса крита и +50% силы крита на 3 раунда." }),
@@ -1707,32 +1761,31 @@ export function consumableIntReq(def: ItemDef, intDiscount = 0): number {
   return Math.max(0, (def.use?.intReq ?? 0) - intDiscount);
 }
 
-/**
-  * Зелья лечения/поддержки не имеют множителя характеристики.
-  * Зелья с уроном и свитки считаются от ИНТ; метательные расходники — от ЛОВ.
-  */
+const DAMAGE_CONSUMABLE_TYPES = new Set(["damage", "chill", "sunder_damage", "throw", "poison", "explosion", "acid", "bleed", "blight", "wither"]);
+
 export function consumableScaleStat(def: ItemDef): StatKey | null {
   const u = def.use;
   if (!u) return null;
   if (def.kind === "special" || def.kind === "reagent") return null;
-  if (def.kind === "scroll") return "int";
-  if (def.kind === "potion") return u.type === "damage" || u.type === "acid" ? "int" : null;
-  return "agi";
+  if (!DAMAGE_CONSUMABLE_TYPES.has(u.type)) return null;
+  return def.kind === "scroll" ? "int" : "agi";
 }
 
-/** Единая формула для боя, лобби и подсказок: база + масштаб × характеристика. */
+/** Расходники: 7 + 1.5×ЛОВ; свитки и приёмы: 10 + 2×ИНТ. Лечебные/вспомогательные зелья без множителя. */
 export function consumablePower(def: ItemDef, stats: Record<StatKey, number>): number {
   const u = def.use;
   if (!u) return 0;
   const stat = consumableScaleStat(def);
-  return (u.power ?? 0) + (u.scale ?? 0) * (stat ? stats[stat] : 0);
+  if (stat === "int") return statTechniqueDamage(stats.int);
+  if (stat === "agi") return statConsumableDamage(stats.agi);
+  return u.power ?? 0;
 }
 
 export function consumableScaleLabel(def: ItemDef): string {
-  const u = def.use;
   const stat = consumableScaleStat(def);
-  if (!u?.scale || !stat) return "";
-  return ` + ${u.scale}×${STAT_META[stat].short}`;
+  if (stat === "int") return "10 + 2×ИНТ";
+  if (stat === "agi") return "7 + 1.5×ЛОВ";
+  return "";
 }
 
 export type CraftStation = "alchemy" | "workshop";

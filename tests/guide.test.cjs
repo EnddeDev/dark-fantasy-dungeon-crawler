@@ -56,10 +56,22 @@ test("guide core sections are characteristics, gear quality/wear, then combat ru
   assert.match(html, /Одно действие — один ход/);
 });
 
-test("guide does not repeat the stale agility-evasion claim", () => {
-  assert.doesNotMatch(html, /Ловкость — ходы в раунде, уклонение/);
-  assert.doesNotMatch(html, /Ловкость.*уклонение.*урон быстрых/);
-  assert.match(html, /Уклонение даёт не Ловкость, а снаряжение, эффекты и пассивы/);
+test("guide codifies the new stat formulas and probability rule", () => {
+  assert.doesNotMatch(html, /Уклонение даёт не Ловкость/);
+  assert.ok(html.includes("Здоровье: 10 × СИЛ"));
+  assert.ok(html.includes("Урон оружием: 2 + 1 × СИЛ"));
+  assert.ok(html.includes("Стойкость: 5% за каждое очко"));
+  assert.ok(html.includes("Ход: 1 за каждое очко ЛОВ"));
+  assert.ok(html.includes("Уклонение: 5% за каждое очко"));
+  assert.ok(html.includes("Урон расходников: 7 + 1.5 × ЛОВ"));
+  assert.ok(html.includes("Крит-шанс: 2% + 1% × ЛОВ"));
+  assert.ok(html.includes("Магическое сопротивление: 5% за каждое очко"));
+  assert.ok(html.includes("Урон приёмов и свитков: 10 + 2 × ИНТ"));
+  assert.ok(html.includes("Правило вероятностей"));
+  assert.ok(html.includes("x + y × (100 − x) / 100"));
+  assert.ok(html.includes("20% + 10% = 28%"));
+  assert.ok(html.includes("70% + 70% = 91%"));
+  assert.ok(html.includes("99%"));
 });
 
 test("guide navigation anchors point to existing sections", () => {
@@ -80,14 +92,31 @@ test("extra reference material is collapsed by default", () => {
 });
 
 test("guide keeps the current combat and crafting numbers", () => {
-  assert.ok(html.includes("Метательные — от Ловкости"));
+  assert.ok(html.includes("Урон расходников — 7 + 1.5 × ЛОВ"));
   assert.ok(html.includes("Обычные зелья лечения и поддержки работают без множителя"));
   assert.match(html, /25% сопротивления эффектам/);
-  assert.match(html, /только в первом раунде/);
+  assert.ok(html.includes("Ускорение от снаряжения"));
+  assert.ok(html.includes("каждый раунд"));
+  assert.ok(html.includes("+1 с уровня 3"));
+  assert.ok(html.includes("+2 с уровня 7"));
+  assert.ok(html.includes("+3 на уровне 10"));
   assert.match(html, /250 × текущий уровень/);
   assert.match(html, /качество 25\/50\/75%/);
   assert.match(html, /изношенность 30\/60%/);
   assert.match(html, /шанс успеха 80%/);
+});
+
+test("guide lists item stat rolls, all 14 positive effects and all 9 negative effects", () => {
+  assert.ok(html.includes("здоровье 10 + разброс 0…15"));
+  assert.ok(html.includes("защита 2 + разброс 0…3"));
+  assert.ok(html.includes("тяжёлое снаряжение удваивает сумму"));
+  assert.ok(html.includes("Защита не может быть у оружия, кроме щитов"));
+  for (const name of ["Вампиризм", "Магический вампиризм", "Шанс крита", "Критический урон", "Регенерация", "Укрепление", "Магическое сопротивление", "Наступление", "Ярость", "Ускорение", "Мудрость", "Мощь", "Точность", "Шипы"]) {
+    assert.ok(html.includes(name), name);
+  }
+  for (const name of ["Проклятие", "Яд", "Горение", "Кровотечение", "Обморожение", "Увядание", "Оглушение", "Страх", "Раскол"]) {
+    assert.ok(html.includes(name), name);
+  }
 });
 
 

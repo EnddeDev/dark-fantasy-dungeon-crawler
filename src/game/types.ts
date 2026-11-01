@@ -86,8 +86,12 @@ export interface GearItem {
   wearMult: number;
   /** Разброс урона конкретного экземпляра: [минимум, максимум] */
   dmgRoll?: [number, number];
-  /** Разброс параметров брони и украшений: 0.9 … 1.1 */
+  /** Разброс параметров брони и украшений: 0.9 … 1.1 (только совместимость). */
   statMult: number;
+  /** Базовые броски ОЗ/брони до изношенности и уровня. */
+  statRolls?: { hp: number; armor: number };
+  /** Базовые значения свойств этого экземпляра до уровня. */
+  effectRolls?: Partial<Record<GearEffectId, number>>;
   /** Конкретный приём этого экземпляра оружия (может отличаться от базового) */
   skillId?: string;
   /** Хват среднего оружия: одной рукой или двумя (×1.5 к урону). */
@@ -128,7 +132,11 @@ export interface Player {
   archetype?: ArchetypeId | null;
   /** Выборы на рубежах характеристик 5/10. */
   statMilestones?: StatMilestoneChoices;
-  statuses: { wound: number; curse: number; poison: number; cursePower?: number };
+  statuses: {
+    wound: number; curse: number; poison: number; cursePower?: number;
+    /** Новые боевые эффекты, которые могут переживать бой. */
+    chill?: number; fear?: number; wither?: number; burn?: number;
+  };
   kills: number;
   /** Уровень лавки 1…10: задаёт шансы изношенности, редкости и ассортимент. */
   shopLevel: number;

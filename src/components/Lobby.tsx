@@ -102,16 +102,17 @@ function intReqLabel(def: ItemDef, discount: number): string {
 function effectSummary(def: ItemDef): { what: string; when: string } {
   const u = def.use;
   if (!u) return { what: def.desc, when: "не применяется" };
-  const bonusPart = consumableScaleLabel(def);
+  const formula = consumableScaleLabel(def);
+  const dmg = formula || String(u.power ?? 0);
   switch (u.type) {
     case "heal":
       return {
-        what: `Восстанавливает ${u.power}${bonusPart} здоровья.`,
+        what: `Восстанавливает ${u.power ?? 0} здоровья.`,
         when: "Мгновенно. Работает в коридоре и в бою.",
       };
     case "damage":
       return {
-        what: `Наносит врагу ${u.power}${bonusPart} урона.`,
+        what: `Наносит врагу ${dmg} урона.`,
         when: `Мгновенно. ${u.vs ? `Против существ типа «${u.vs}» урон вдвое.` : "Только в бою."}`,
       };
     case "cleanse":
@@ -120,10 +121,10 @@ function effectSummary(def: ItemDef): { what: string; when: string } {
         when: "Мгновенно. Работает в коридоре и в бою.",
       };
     case "throw":
-      return { what: `Наносит ${u.power}${bonusPart} физического урона.`, when: "Мгновенно. Только в бою." };
+      return { what: `Наносит ${dmg} физического урона.`, when: "Мгновенно. Только в бою." };
     case "poison":
       return {
-        what: `Наносит ${u.power}${bonusPart} урона и отравляет живую цель.`,
+        what: `Наносит ${dmg} урона и отравляет живую цель.`,
         when: `Яд действует ${u.rounds} раунда. Нежить и конструкты невосприимчивы.`,
       };
     case "smoke":
@@ -133,27 +134,27 @@ function effectSummary(def: ItemDef): { what: string; when: string } {
       };
     case "explosion":
       return {
-        what: `Наносит ${u.power}${bonusPart} урона, игнорируя броню.`,
+        what: `Наносит ${dmg} урона, игнорируя броню.`,
         when: "Мгновенно. Только в бою.",
       };
     case "fear":
       return {
-        what: "Заставляет врага провести в защитной стойке и пропустить свои ходы.",
+        what: "Заставляет врага автоматически держать защиту в свои ходы.",
         when: `Действует ${u.rounds} хода. На нежить и конструкты не действует.`,
       };
     case "rage":
       return {
-        what: "+50% к наносимому урону.",
+        what: "+10% урона за каждые 10% недостающего ОЗ.",
         when: `Действует ${u.rounds} раундов.`,
       };
     case "chill":
       return {
-        what: `Наносит ${u.power}${bonusPart} урона и сковывает врага.`,
-        when: `Урон врага −30% на ${u.rounds} раунда.`,
+        what: `Наносит ${dmg} урона и обморожает врага.`,
+        when: `Лечение врага −50% и периодический урон на ${u.rounds} раунда.`,
       };
     case "sunder_damage":
       return {
-        what: `Наносит ${u.power}${bonusPart} урона сквозь броню и ломает её.`,
+        what: `Наносит ${dmg} урона сквозь броню и ломает её.`,
         when: "Мгновенно. Броня врага −2 до конца боя.",
       };
     case "flee":
@@ -163,7 +164,7 @@ function effectSummary(def: ItemDef): { what: string; when: string } {
       };
     case "acid":
       return {
-        what: `Наносит ${u.power}${bonusPart} урона сквозь броню и разъедает её на −3.`,
+        what: `Наносит ${dmg} урона сквозь броню и разъедает её на −3.`,
         when: "Мгновенно. Только в бою.",
       };
     case "haste":

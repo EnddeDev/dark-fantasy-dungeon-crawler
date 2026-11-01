@@ -21,6 +21,7 @@ import { ItemArt } from "./ItemArt";
 import { Btn, Meter, Tag } from "./ui";
 import { BiomeRule, BiomeTag, biomeStyle } from "./BiomeLabel";
 import { isBattleCurse } from "../game/traps";
+import { statDamage } from "../game/statFormulas";
 
 /** Римская нумерация для строк инициативы. */
 function roman(n: number): string {
@@ -91,9 +92,9 @@ export function BattleView({
         b.p.statuses.curse > 0
           ? { text: `−${b.p.statuses.cursePower ?? 30}% Проклятие (${isBattleCurse(b.p.statuses.curse) ? "до конца боя" : `${b.p.statuses.curse} р.`})`, tone: "rubric" }
           : b.p.statuses.rage > 0
-          ? { text: `+50% Ярость (${b.p.statuses.rage} р.)`, tone: "flame" }
+          ? { text: `Ярость: +10%/10% недостающих ОЗ (${b.p.statuses.rage} р.)`, tone: "flame" }
           : undefined,
-      hint: `${b.p.weaponName} + ${Math.floor(b.p.stats.str * 0.8)} от СИЛ`,
+      hint: `${b.p.weaponName} + ${statDamage(b.p.stats.str)} от СИЛ`,
     },
     {
       label: "По противнику",
@@ -138,7 +139,7 @@ export function BattleView({
         b.p.statuses.haste > 0
           ? { text: `+1 Скорость (${b.p.statuses.haste} р.)`, tone: "flame" }
           : b.p.statuses.stunAp > 0
-          ? { text: `−${b.p.statuses.stunAp} Оглушение`, tone: "rubric" }
+          ? { text: `Оглушение: пропуск ${b.p.statuses.stunAp} хода`, tone: "rubric" }
           : undefined,
       hint: "у кого больше — тот всегда раньше",
     },
@@ -146,8 +147,10 @@ export function BattleView({
     ...(r.missChance > 0
       ? [{ label: "Промах в мраке", base: "0%", now: `${Math.round(r.missChance * 100)}%`, hint: "дополнительная проверка для физических ударов обоих участников" }]
       : []),
-    { label: "Критический удар", base: `${Math.round(r.crit * 100)}%`, now: `${Math.round(r.crit * 100)}%`, hint: "двойной урон" },
-    { label: "Стойкость", base: `${Math.round(r.resist * 100)}%`, now: `${Math.round(r.resist * 100)}%`, hint: "шанс отбить рану, проклятие, яд" },
+    { label: "Критический удар", base: `${Math.round(r.crit * 100)}%`, now: `${Math.round(r.crit * 100)}%`, hint: `множитель ×${r.critDamage.toFixed(2)}` },
+    { label: "Стойкость", base: `${Math.round(r.resist * 100)}%`, now: `${Math.round(r.resist * 100)}%`, hint: "шанс не получить негативный эффект" },
+    { label: "Маг. сопротивление", base: `${Math.round(r.magicResist * 100)}%`, now: `${Math.round(r.magicResist * 100)}%`, hint: "снижение магического урона" },
+    { label: "Укрепление", base: `${Math.round(r.fortify * 100)}%`, now: `${Math.round(r.fortify * 100)}%`, hint: "снижение физического урона" },
     { label: "Характеристики", base: `${b.p.stats.str}/${b.p.stats.agi}/${b.p.stats.int}`, now: `${b.p.stats.str}/${b.p.stats.agi}/${b.p.stats.int}`, hint: "СИЛ / ЛОВ / ИНТ" },
   ];
 
@@ -317,7 +320,7 @@ export function BattleView({
                 <div className="mt-3 space-y-1.5 border-t border-line/70 pt-2.5 text-[0.92rem] leading-snug">
                   <p className="text-mute">
                     Расчёт удара: <b className="text-parch">{b.p.hit[0]}–{b.p.hit[1]}</b> по оружию +{" "}
-                    <b className="text-parch">{Math.floor(b.p.stats.str * 0.8)}</b> от СИЛ ({b.p.stats.str}×0.8)
+                    <b className="text-parch">{statDamage(b.p.stats.str)}</b> от СИЛ (2 + {b.p.stats.str})
                     {r.dmgMods.filter((m) => m.mult && m.mult !== 1).length
                       ? `, затем множители ${r.dmgMods
                           .filter((m) => m.mult && m.mult !== 1)

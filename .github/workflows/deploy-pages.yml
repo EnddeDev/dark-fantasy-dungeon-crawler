@@ -35,7 +35,7 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Run game tests
-        run: node --test tests/game.test.cjs
+        run: npm test
 
       - name: Build
         run: npm run build

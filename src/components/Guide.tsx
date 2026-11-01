@@ -33,6 +33,11 @@ import { BIOMES, BIOME_ORDER, biomeChanceLabel } from "../game/biomes";
 import { BiomeIcon } from "./BiomeLabel";
 import { MAX_SIZE, MIN_SIZE, TORCH, chestCountForFloor, mazeSizeForFloor } from "../game/maze";
 import { SLOT_META, SLOT_ORDER } from "../game/types";
+import { ACTIVE_GEAR_EFFECTS, GEAR_EFFECTS } from "../game/gearEffects";
+import { GEAR_EFFECT_BASE, GEAR_EFFECT_GROWTH, GEAR_EFFECT_SPREAD } from "../game/gearScaling";
+import { effectDetail } from "../game/gearEffects";
+import { NEGATIVE_EFFECTS } from "../game/statusEffects";
+import { CHANCE_CAP } from "../game/chances";
 import type { RarityTier, StatKey, WearTier } from "../game/types";
 import { Btn, RarityBadge, Rune, Tag } from "./ui";
 
@@ -57,9 +62,9 @@ const STAT_CARDS: {
     icon: Sword,
     tagline: "Живучесть и тяжёлый удар",
     points: [
-      "+6 здоровья за каждое очко.",
-      "+0.8 к урону оружием за очко (округляется вниз).",
-      "+6% к стойкости против ран, проклятия, яда и оглушения.",
+      "Здоровье: 10 × СИЛ.",
+      "Урон оружием: 2 + 1 × СИЛ.",
+      "Стойкость: 5% за каждое очко.",
       "Открывает силовое снаряжение и приёмы тяжёлого оружия.",
     ],
   },
@@ -68,9 +73,10 @@ const STAT_CARDS: {
     icon: Sparkles,
     tagline: "Темп, расходники и фехтование",
     points: [
-      "+1 ход в раунде за каждые 2 очка.",
-      "Усиливает метательные расходники: бомбы, кинжали и дротики.",
-      "Усиливает приёмы ловкого оружия и помогает обезвреживать ловушки.",
+      "Ход: 1 за каждое очко ЛОВ.",
+      "Уклонение: 5% за каждое очко.",
+      "Урон расходников: 7 + 1.5 × ЛОВ.",
+      "Крит-шанс: 2% + 1% × ЛОВ; крит-урон: +0.10 × ЛОВ.",
       "Открывает лёгкие клинки и ловчее снаряжение.",
     ],
   },
@@ -79,9 +85,10 @@ const STAT_CARDS: {
     icon: Brain,
     tagline: "Приёмы, свитки и знания",
     points: [
+      "Магическое сопротивление: 5% за каждое очко.",
+      "Урон приёмов и свитков: 10 + 2 × ИНТ.",
       "Открывает приёмы оружия и эпические способности снаряжения.",
-      "Усиливает свитки и наносящие урон зелья; позволяет читать свитки и исследовать вещи.",
-      "Открывает рецепты алхимии и мастерской.",
+      "Позволяет читать свитки, исследовать вещи и открывать рецепты.",
       "Обычные лечащие и вспомогательные зелья не зависят от характеристик.",
     ],
   },
@@ -118,15 +125,16 @@ const COMBAT_ACTIONS = [
   { name: "Побег", text: "Завершает бой, но может унести до 70% добычи текущего похода." },
 ];
 
-const STATUS_ROWS = [
-  { name: "Кровотечение / яд", text: "Отнимают здоровье в конце раунда." },
-  { name: "Замерзание", text: "Урон врага −30%." },
-  { name: "Проклятие", text: "Твой урон −30%." },
-  { name: "Порча", text: "Урон врага −20% и потеря здоровья за раунд." },
-  { name: "Увядание", text: "Любое лечение врага −75%." },
-  { name: "Кислота", text: "Снимает броню врага." },
-  { name: "Оглушение", text: "Отнимает ходы в следующем раунде." },
-];
+const STATUS_ROWS = NEGATIVE_EFFECTS.map((effect) => ({ name: effect.name, text: effect.text }));
+
+const POSITIVE_EFFECT_ROWS = ACTIVE_GEAR_EFFECTS.map((id) => {
+  const effect = GEAR_EFFECTS[id];
+  const base = GEAR_EFFECT_BASE[id];
+  const spread = GEAR_EFFECT_SPREAD[id];
+  const growth = GEAR_EFFECT_GROWTH[id];
+  const range = id === "ap" ? "0 → 1 (ур. 3) → 2 (ур. 7) → 3 (ур. 10)" : `${base.value}${spread ? ` ±${spread}` : ""}`;
+  return { name: effect.name, text: effect.desc, range, growth: id === "ap" ? "пороги" : `×${growth}` };
+});
 
 function GuideSection({
   id,
@@ -254,6 +262,25 @@ export function Guide({
               </ul>
             </div>
           ))}
+        </div>
+
+        <Note>
+          <b className="text-flamehi">Правило вероятностей.</b> Уклонение, крит-шанс, укрепление, магическое сопротивление,
+          стойкость и оглушение не бывают 100% и не складываются напрямую. Источники применяются по очереди:
+          характеристики → предметы → эффекты → боевые эффекты: <b className="text-parch">x + y × (100 − x) / 100</b>.
+          Например, 20% + 10% = 28%, а 70% + 70% = 91%. Общий предел — {Math.round(CHANCE_CAP * 100)}%.
+        </Note>
+
+        <div>
+          <h5 className="font-display text-[1.08rem] uppercase tracking-[0.08em] text-flamehi">Основные боевые параметры</h5>
+          <ul className="mt-2 grid gap-1.5 text-[0.96rem] sm:grid-cols-2">
+            <li><b className="text-parch">Здоровье.</b> Запас ОЗ; при нуле герой погибает.</li>
+            <li><b className="text-parch">Ход.</b> Число действий в раунде.</li>
+            <li><b className="text-parch">Защита.</b> Вычитает число из физического урона.</li>
+            <li><b className="text-parch">Стойкость.</b> Шанс не получить негативный эффект.</li>
+            <li><b className="text-parch">Урон.</b> Базовая сила удара оружием.</li>
+            <li><b className="text-parch">Уклонение.</b> Шанс полностью избежать физического урона.</li>
+          </ul>
         </div>
 
         <div>
@@ -404,9 +431,10 @@ export function Guide({
             <ul className="mt-2 space-y-2 text-[0.96rem] leading-snug">
               <li><b className="text-parch">Оружие.</b> Бросок урона + бонус Силы + эффекты; из физического урона вычитается броня врага.</li>
               <li><b className="text-parch">Магия и чистый урон.</b> Игнорируют броню.</li>
-              <li><b className="text-parch">Крит.</b> Обычно умножает урон на 2; шанс и силу можно повысить эффектами.</li>
-              <li><b className="text-parch">Уклонение.</b> Полностью отменяет удар.</li>
-              <li><b className="text-parch">Стойкость.</b> Снижает шанс получить рану, проклятие, яд или оглушение.</li>
+              <li><b className="text-parch">Крит.</b> Базовый множитель ×2; Ловкость и предметы повышают шанс и множитель.</li>
+              <li><b className="text-parch">Уклонение.</b> Полностью отменяет физический удар.</li>
+              <li><b className="text-parch">Стойкость.</b> Шанс не получить негативный эффект.</li>
+              <li><b className="text-parch">Защита.</b> Вычитает число из физического урона; магический и чистый урон её игнорируют.</li>
             </ul>
           </div>
         </div>
@@ -420,12 +448,12 @@ export function Guide({
                 каждая отдельно бросает крит, оглушение и эффекты от удара.
               </li>
               <li>
-                <b className="text-parch">Дополнительные ходы от снаряжения.</b> Работают только в первом раунде:
-                уровень 3–5 даёт до +1, 6–10 — до +2, легендарный предмет 10 уровня — до +3.
+                <b className="text-parch">Ускорение от снаряжения.</b> Даёт дополнительные ходы каждый раунд:
+                0 на уровнях 1–2, +1 с уровня 3, +2 с уровня 7 и +3 на уровне 10.
               </li>
               <li>
-                <b className="text-parch">Расходники.</b> Метательные — от Ловкости; свитки и урон зелий — от Интеллекта.
-                Обычные зелья лечения и поддержки работают без множителя характеристики.
+                <b className="text-parch">Расходники.</b> Урон расходников — 7 + 1.5 × ЛОВ;
+                урон приёмов и свитков — 10 + 2 × ИНТ. Обычные зелья лечения и поддержки работают без множителя характеристики.
               </li>
             </ul>
           </div>
@@ -444,7 +472,7 @@ export function Guide({
         </div>
 
         <div>
-          <h5 className="font-display text-[1.08rem] uppercase tracking-[0.08em] text-flamehi">Частые эффекты</h5>
+          <h5 className="font-display text-[1.08rem] uppercase tracking-[0.08em] text-flamehi">Негативные эффекты</h5>
           <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
             {STATUS_ROWS.map((row) => (
               <div key={row.name} className="flex flex-wrap items-baseline gap-x-2 border-b border-line/40 py-1.5 text-[0.95rem]">
@@ -453,6 +481,35 @@ export function Guide({
               </div>
             ))}
           </div>
+        </div>
+
+        <div>
+          <h5 className="font-display text-[1.08rem] uppercase tracking-[0.08em] text-flamehi">Положительные эффекты предметов</h5>
+          <div className="mt-2 overflow-x-auto">
+            <table className="w-full min-w-[560px] border-collapse text-[0.92rem]">
+              <thead>
+                <tr className="border-b border-line text-left font-display uppercase tracking-[0.06em] text-flame">
+                  <th className="py-2 pr-3">Эффект</th>
+                  <th className="py-2 pr-3">База 1 ур.</th>
+                  <th className="py-2 pr-3">Рост</th>
+                  <th className="py-2">Описание</th>
+                </tr>
+              </thead>
+              <tbody>
+                {POSITIVE_EFFECT_ROWS.map((row) => (
+                  <tr key={row.name} className="border-b border-line/40 align-top">
+                    <td className="py-2 pr-3 font-display uppercase tracking-[0.05em] text-parch">{row.name}</td>
+                    <td className="py-2 pr-3 font-mono text-flamehi">{row.range}</td>
+                    <td className="py-2 pr-3 font-mono text-mute">{row.growth}</td>
+                    <td className="py-2 text-mute">{row.text}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-[0.93rem] text-mute">
+            Пример усиления: {effectDetail("vamp", 3, 5)}. Каждый уровень округляется вверх.
+          </p>
         </div>
 
         <Note>
@@ -568,8 +625,9 @@ export function Guide({
               ))}
             </div>
             <p>
-              При одинаковых уровне и состоянии: защита — тяжёлое &gt; среднее &gt; лёгкое;
-              здоровье — лёгкое &gt; тяжёлое &gt; среднее; уклонение — среднее &gt; лёгкое &gt; тяжёлое.
+              Базовые характеристики предметов: здоровье 10 + разброс 0…15, защита 2 + разброс 0…3
+              (тяжёлое снаряжение удваивает сумму). На каждом уровне значение умножается на 1.5 с округлением вверх.
+              Защита не может быть у оружия, кроме щитов. Базовое уклонение от снаряжения больше не даётся.
               Вес не привязывает вещь к характеристике жёстко: посох лёгкий, но требует Интеллекта.
             </p>
             <p>
@@ -588,10 +646,11 @@ export function Guide({
               на значениях 5 и 10 каждой характеристики — рубеж.
             </p>
             <p>
-              Сила даёт здоровье, урон оружием и стойкость. Ловкость — ходы, силу метательных расходников,
-              урон ловкого оружия и шанс обезвредить ловушку. Интеллект усиливает свитки и наносящие урон зелья,
-              открывает приёмы, исследование и рецепты. Обычные зелья не имеют множителя.
-              Уклонение даёт не Ловкость, а снаряжение, эффекты и пассивы (потолок 65%).
+              Сила: здоровье 10 × СИЛ, урон 2 + СИЛ, стойкость 5% × СИЛ.
+              Ловкость: 1 ход за очко, уклонение 5% × ЛОВ, расходники 7 + 1.5 × ЛОВ,
+              крит-шанс 2% + 1% × ЛОВ и крит-урон +0.10 × ЛОВ.
+              Интеллект: магическое сопротивление 5% × ИНТ, приёмы и свитки 10 + 2 × ИНТ.
+              Обычные зелья лечения и поддержки не имеют множителя.
             </p>
           </Reference>
 
@@ -636,8 +695,8 @@ export function Guide({
             <p className="flex items-start gap-2">
               <FlaskConical size={15} className="mt-1 shrink-0 text-flame" aria-hidden />
               <span>
-                Реагентов {REAGENTS.length} видов. Метательные расходники масштабируются от Ловкости,
-                свитки и наносящие урон зелья — от Интеллекта; только свитки требуют Интеллекта для чтения.
+                Реагентов {REAGENTS.length} видов. Урон расходников — 7 + 1.5 × ЛОВ,
+                урон приёмов и свитков — 10 + 2 × ИНТ; только свитки требуют Интеллекта для чтения.
                 Обычные зелья лечения и поддержки работают без множителя. У припаса есть уровень — минимальный этаж, с которого он выпадает.
                 Для всех свитков нужны <b className="text-parch">пергамент</b> и <b className="text-parch">магические чернила</b>,
                 для метательных расходников — <b className="text-parch">металлолом</b>, для зелий — <b className="text-parch">фляга</b>.

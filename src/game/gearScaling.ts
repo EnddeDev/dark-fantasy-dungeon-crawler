@@ -1,12 +1,15 @@
 /**
- * Единый рост снаряжения: каждый уровень сильнее предыдущего на 20%.
- * Целые характеристики и проценты округляются вверх на каждом уровне.
- * Множители (×1.8, ×0.25) хранятся в сотых, чтобы не терять точность.
+ * Рост снаряжения.
+ * Новые свойства предметов и базовые ОЗ/броня растут сложно: ×1.5 или ×1.25 за уровень,
+ * с округлением вверх на каждом шаге. Приёмы и пассивные способности пока живут по старому ×1.2.
  */
 import type { GearEffectId, GearPassiveId } from "./gearEffects";
 import type { EpicSkillId, LegendaryPassiveId, RareAffixId } from "./types";
 
 export const GEAR_LEVEL_GROWTH = 1.2;
+export const GEAR_STAT_GROWTH = 1.5;
+export const GEAR_EFFECT_FAST_GROWTH = 1.5;
+export const GEAR_EFFECT_SLOW_GROWTH = 1.25;
 export const MAX_GEAR_LEVEL = 10;
 
 export function clampGearLevel(level: number | undefined): number {
@@ -27,6 +30,14 @@ export function scaleIntegerByLevel(value: number, level: number): number {
   return scaleByLevel(Math.ceil(value), level, 1);
 }
 
+/** Сложный рост целой характеристики предмета: ceil на каждом уровне. */
+export function scaleGearStatByLevel(value: number, level: number, growth = GEAR_STAT_GROWTH): number {
+  let v = Math.ceil(value);
+  const target = clampGearLevel(level);
+  for (let l = 1; l < target; l++) v = Math.ceil(v * growth - 1e-9);
+  return v;
+}
+
 /** Процент хранится как целое число процентных пунктов: 3 → 4 → 5 → 6 → 8… */
 export function scalePercentByLevel(percent: number, level: number): number {
   return scaleByLevel(percent, level, 1);
@@ -45,12 +56,25 @@ export function gearLevelMultiplier(level: number): number {
 type NumericDef = { value: number; precision?: number };
 
 export const GEAR_EFFECT_BASE: Record<GearEffectId, NumericDef> = {
-  damage_resist: { value: 2 },
+  // Новые свойства предметов
+  vamp: { value: 5 },
+  magic_vamp: { value: 5 },
+  crit_chance: { value: 5 },
+  crit_mult: { value: 10 },
+  regen: { value: 4 },
+  fortify: { value: 5 },
+  magic_resist: { value: 5 },
+  armor_damage: { value: 8 },
+  rage: { value: 10 },
+  ap: { value: 0 },
+  wisdom: { value: 5 },
+  might: { value: 5 },
+  precision: { value: 5 },
   thorns: { value: 4 },
-  regen: { value: 3 },
+  // Старые id сохранены только для миграции сохранений
+  damage_resist: { value: 2 },
   resist: { value: 10 },
   guard_bonus: { value: 15 },
-  armor_damage: { value: 25 },
   stun_chance: { value: 8 },
   vamp_str: { value: 8 },
   missing_hp_damage: { value: 6 },
@@ -58,10 +82,6 @@ export const GEAR_EFFECT_BASE: Record<GearEffectId, NumericDef> = {
   two_hand_damage: { value: 15 },
   evade: { value: 3 },
   counter: { value: 12 },
-  crit_chance: { value: 5 },
-  crit_mult: { value: 30 },
-  vamp: { value: 8 },
-  ap: { value: 1 },
   first_strike: { value: 20 },
   consumable_damage: { value: 15 },
   consumable_scale: { value: 0.25, precision: 100 },
@@ -80,9 +100,36 @@ export const GEAR_EFFECT_BASE: Record<GearEffectId, NumericDef> = {
   scroll_create: { value: 1 },
 };
 
-export function effectMagnitude(id: GearEffectId, level: number): number {
+/** Разброс базового значения нового свойства при создании предмета. */
+export const GEAR_EFFECT_SPREAD: Partial<Record<GearEffectId, number>> = {
+  vamp: 2, magic_vamp: 2, crit_chance: 3, crit_mult: 5, regen: 2,
+  fortify: 1, magic_resist: 1, armor_damage: 2, rage: 5,
+  wisdom: 1, might: 1, precision: 1, thorns: 1,
+};
+
+export const GEAR_EFFECT_GROWTH: Partial<Record<GearEffectId, number>> = {
+  vamp: 1.5, magic_vamp: 1.5, crit_chance: 1.25, crit_mult: 1.5, regen: 1.5,
+  fortify: 1.25, magic_resist: 1.25, armor_damage: 1.5, rage: 1.5,
+  wisdom: 1.5, might: 1.5, precision: 1.5, thorns: 1.5,
+};
+
+export function rollEffectBase(id: GearEffectId, rng: () => number = Math.random): number {
+  const base = GEAR_EFFECT_BASE[id]?.value ?? 0;
+  const spread = GEAR_EFFECT_SPREAD[id] ?? 0;
+  if (!spread) return base;
+  return Math.max(0, base + Math.floor(rng() * (spread * 2 + 1)) - spread);
+}
+
+export function effectMagnitude(id: GearEffectId, level: number, rolledBase?: number): number {
+  if (id === "ap") {
+    const l = clampGearLevel(level);
+    return l >= 10 ? 3 : l >= 7 ? 2 : l >= 3 ? 1 : 0;
+  }
   const def = GEAR_EFFECT_BASE[id];
-  return scaleByLevel(def.value, level, def.precision ?? 1);
+  const base = rolledBase ?? def.value;
+  const growth = GEAR_EFFECT_GROWTH[id];
+  if (growth) return scaleGearStatByLevel(base, level, growth);
+  return scaleByLevel(base, level, def.precision ?? 1);
 }
 
 export const GEAR_PASSIVE_BASE: Record<GearPassiveId, Record<string, NumericDef>> = {
