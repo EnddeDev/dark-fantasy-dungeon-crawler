@@ -12,15 +12,20 @@ export const FOE_ART: Readonly<Record<string, string>> = {
   "boss_warden": "images/foe-boss.jpg",
   "bat_vampire": "images/monsters/bat_vampire.jpg",
   "dark_priest": "images/monsters/dark_priest.jpg",
+  "devourer": "images/monsters/devourer.jpg",
   "gargoyle": "images/monsters/gargoyle.jpg",
   "ghost_light": "images/monsters/ghost_light.jpg",
   "goblin_scout": "images/monsters/goblin_scout.jpg",
   "goblin_warrior": "images/monsters/goblin_warrior.jpg",
   "golem": "images/monsters/golem.jpg",
+  "golem_colossus": "images/monsters/golem_colossus.jpg",
   "harpy": "images/monsters/harpy.jpg",
   "imp": "images/monsters/imp.jpg",
+  "iron_guardian": "images/monsters/iron_guardian.jpg",
   "kobold": "images/monsters/kobold.jpg",
+  "lich_tender": "images/monsters/lich_tender.jpg",
   "mimic_chest": "images/monsters/mimic_chest.jpg",
+  "mimic_elder": "images/monsters/mimic_elder.jpg",
   "mimic_larva": "images/monsters/mimic_larva.jpg",
   "ogre_oaf": "images/monsters/ogre_oaf.jpg",
   "orc_raider": "images/monsters/orc_raider.jpg",
@@ -32,7 +37,12 @@ export const FOE_ART: Readonly<Record<string, string>> = {
   "slime": "images/monsters/slime.jpg",
   "spider_hunter": "images/monsters/spider_hunter.jpg",
   "spider_weaver": "images/monsters/spider_weaver.jpg",
-  "sporeling": "images/monsters/sporeling.jpg"
+  "sporeling": "images/monsters/sporeling.jpg",
+  "troll": "images/monsters/troll.jpg",
+  "vampire_lord": "images/monsters/vampire_lord.jpg",
+  "werewolf": "images/monsters/werewolf.jpg",
+  "witch_spider": "images/monsters/witch_spider.jpg",
+  "wyrmling": "images/monsters/wyrmling.jpg"
 };
 
 export const ITEM_ART: Readonly<Record<string, string>> = {
