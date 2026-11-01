@@ -6,7 +6,7 @@ import type { StatKey } from "./types";
 
 export const STAT_FORMULAS = {
   str: {
-    /** Здоровье не зависит от того, вложено ли очко в Силу: 10 ОЗ есть и при 0. */
+    /** Базовое здоровье: 10 ОЗ есть даже при нулевой Силе. */
     healthBase: 10,
     healthPerPoint: 10,
     damageBase: 2,
@@ -30,12 +30,11 @@ export const STAT_FORMULAS = {
 } as const;
 
 /**
- * Здоровье = базовые 10 + 10 за каждое очко Силы сверх первого.
- * Так герой со стартовой Силой 1 имеет 10 ОЗ, и с нулевой Силой — тоже 10.
+ * Здоровье = базовые 10 + 10 за каждое очко Силы.
+ * Сила 0 — 10 ОЗ, Сила 1 — 20 ОЗ, Сила 10 — 110 ОЗ.
  */
 export function statHealth(str: number): number {
-  const points = Math.max(0, Math.floor(str));
-  return STAT_FORMULAS.str.healthBase + STAT_FORMULAS.str.healthPerPoint * Math.max(0, points - 1);
+  return STAT_FORMULAS.str.healthBase + STAT_FORMULAS.str.healthPerPoint * Math.max(0, Math.floor(str));
 }
 export function statDamage(str: number): number {
   return STAT_FORMULAS.str.damageBase + STAT_FORMULAS.str.damagePerPoint * Math.max(0, str);

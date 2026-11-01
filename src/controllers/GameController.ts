@@ -45,7 +45,10 @@ export class GameController {
     this.lobby = new LobbyController(this.model);
     this.dungeon = new DungeonController(this.model, this);
     this.battle = new BattleController(this.model, this);
-    this.unsubscribe = this.model.subscribe(() => this.persistIfLobby());
+    this.unsubscribe = this.model.subscribe(() => {
+      this.healInLobby();
+      this.persistIfLobby();
+    });
   }
 
   static fromBrowser(): GameController {
@@ -57,7 +60,9 @@ export class GameController {
   }
 
   enterLobby(entry: LobbyEntry): void {
-    this.model.update({ screen: "lobby", lobbyEntry: entry });
+    const { player } = this.model.getSnapshot();
+    /* В лобби герой отдыхает: здоровье всегда полное. */
+    this.model.update({ screen: "lobby", lobbyEntry: entry, player: { ...player, hp: derived(player).maxHp } });
   }
 
   closeModal(): void {
@@ -223,6 +228,14 @@ export class GameController {
 
   saveUnlockedFloor(floor: number): void {
     this.saves.writeUnlockedFloor(floor);
+  }
+
+  /** В лобби здоровье всегда полное: герой отдыхает между вылазками. */
+  private healInLobby(): void {
+    const { screen, run, battle, player } = this.model.getSnapshot();
+    if (screen !== "lobby" || run || battle) return;
+    const maxHp = derived(player).maxHp;
+    if (player.hp !== maxHp) this.model.setPlayer({ ...player, hp: maxHp });
   }
 
   private persistIfLobby(): void {
