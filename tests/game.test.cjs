@@ -1697,6 +1697,16 @@ test("starter gear has no stat or level requirements", () => {
     assert.equal(content.canWear(item, zero), true, `${item.baseId} надевается даже с нулевыми характеристиками`);
   }
 
+  /* Стартовые вещи без требований при любом качестве и в любом сохранении. */
+  for (const item of initial.armory) {
+    assert.equal(content.isStarterItem(item), true, `${item.baseId}: это стартовая вещь`);
+    assert.equal(content.gearRequiresNothing({ ...item, rarity: "epic", wear: "new" }), true, "редкость не добавляет требований");
+    assert.equal(content.gearRequiresNothing({ baseId: item.baseId, level: 1 }), true, "старое сохранение без полей тоже без требований");
+  }
+  /* Вещь той же базы, но выше 1 уровня, требования сохраняет. */
+  const upgraded = content.createGearItem({ baseId: "knife", level: 4, rarity: "common", wear: "worn", identified: true });
+  assert.equal(content.gearRequiresNothing(upgraded), false, "нож 4 уровня требует характеристику");
+
   /* Старые сохранения: те же обноски без флага тоже теряют требования. */
   const legacy = initial.armory.map((item) => {
     const copy = { ...item };

@@ -79,6 +79,21 @@ test("left panel shows health, then negative effects, then experience", () => {
   assert.ok(html.includes("Характеристики"));
 });
 
+test("starter knife and rag show no requirements in the armory", () => {
+  const knife = { ...content.createGearItem({ baseId: "knife", wear: "worn", rarity: "common", identified: true }), noReq: true };
+  const rag = { ...content.createGearItem({ baseId: "rag", wear: "worn", rarity: "common", identified: true }), noReq: true };
+  const player = makePlayer({
+    level: 1, stats: { str: 1, agi: 1, int: 1 }, armory: [knife, rag],
+    equip: { ...makePlayer().equip, mainHand: knife.uid, body: rag.uid },
+  });
+  const html = renderToStaticMarkup(React.createElement(Lobby, {
+    player, controller: {}, shopStock: [], onStart: noop, onRestart: noop, best: 1, unlockedFloor: 1, initialTab: "armory",
+  }));
+  assert.ok((html.match(/без требований/g) ?? []).length >= 2, "у стартовых вещей нет требований");
+  assert.ok(!html.includes("ЛОВ 2") && !html.includes("СИЛ 2"), "характеристики не требуются");
+  assert.ok(!html.includes("Нужно:"), "нет предупреждения о нехватке характеристик");
+});
+
 test("armory shows supplies and reagents from the bag", () => {
   const player = makePlayer({ bag: { potion_s: 2, scroll_heal: 1, moss: 3 } });
   const html = renderToStaticMarkup(React.createElement(Lobby, {
