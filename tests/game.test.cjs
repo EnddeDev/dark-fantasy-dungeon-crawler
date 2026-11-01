@@ -328,9 +328,9 @@ test("качество добычи с монстров: 5/15/25 редкое, �
   assert.deepEqual(content.rarityWeightsFor("catastrophe"), { common: 70, rare: 25, epic: 5, legendary: 0 });
 });
 
-test("босс и сундук: 50/10/1 и 30/5/0.5 на редкое, эпическое и легендарное", () => {
+test("босс 50/10/1, сундук 50/1 без легендарного", () => {
   assert.deepEqual(content.BOSS_RARITY_WEIGHTS, { common: 39, rare: 50, epic: 10, legendary: 1 });
-  assert.deepEqual(content.CHEST_RARITY_WEIGHTS, { common: 64.5, rare: 30, epic: 5, legendary: 0.5 });
+  assert.deepEqual(content.CHEST_RARITY_WEIGHTS, { common: 49, rare: 50, epic: 1, legendary: 0 });
   for (const w of [
     content.rarityWeightsFor("normal"),
     content.rarityWeightsFor("horror"),
@@ -393,6 +393,34 @@ test("сундук и босс: подземный износ и уровень 
     if (battle.rollGearDrop(1, content.BOSS_RARITY_WEIGHTS, 1, rng).rarity === "legendary") legendaries++;
   }
   assert.ok(Math.abs(legendaries / 4000 - 0.01) < 0.008, `легендарных с босса ${legendaries}/4000`);
+
+  // сундук не выдаёт легендарное вовсе, эпическое — редкость
+  let chestLegend = 0;
+  let chestEpic = 0;
+  for (let i = 0; i < 4000; i++) {
+    const rarity = battle.rollGearDrop(1, content.CHEST_RARITY_WEIGHTS, undefined, rng).rarity;
+    if (rarity === "legendary") chestLegend++;
+    if (rarity === "epic") chestEpic++;
+  }
+  assert.equal(chestLegend, 0, "сундук не даёт легендарное");
+  assert.ok(Math.abs(chestEpic / 4000 - 0.01) < 0.008, `эпических из сундуков ${chestEpic}/4000`);
+});
+
+test("уровень предмета никогда не выше 10", () => {
+  assert.equal(content.createGearItem({ baseId: "sword", level: 25, wear: "worn", identified: true }).level, 10);
+  assert.equal(content.createGearItem({ baseId: "sword", level: 0, wear: "worn", identified: true }).level, 1);
+
+  const rng = lcg(31);
+  for (let level = 11; level <= 20; level++) {
+    for (let i = 0; i < 200; i++) {
+      const drop = content.rollEnemyLoot(level, level, "catastrophe", rng);
+      for (const item of drop.gear) assert.ok(item.level <= 10, `дроп уровня ${item.level}`);
+    }
+    const boss = battle.rollGearDrop(level, content.BOSS_RARITY_WEIGHTS, level, rng);
+    assert.equal(boss.level, 10, "трофей босса упирается в 10 уровень");
+    const chest = battle.rollGearDrop(level, content.CHEST_RARITY_WEIGHTS, undefined, rng);
+    assert.ok(chest.level <= 10, `сундук выдал уровень ${chest.level}`);
+  }
 });
 
 test("monster level and threat boundaries are exact, including level 0 on floor 1", () => {

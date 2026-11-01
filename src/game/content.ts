@@ -1765,7 +1765,8 @@ export function createGearItem(opts: {
     kind,
     weaponType,
     slot: base.slot,
-    level: opts.level ?? base.level ?? 1,
+    /* Потолок уровня предмета — 10; выше не бывает ни у покупки, ни у находки. */
+    level: clampGearLevel(opts.level ?? base.level ?? 1),
     gearClass: base.gearClass ?? "medium",
     wear,
     rarity,
@@ -2670,12 +2671,12 @@ export const BOSS_RARITY_WEIGHTS: Record<RarityTier, number> = {
   legendary: 1,
 };
 
-/** Сундуки и события карты: между обычной тварью и боссом. Легендарка — 0.5%. */
+/** Сундуки и события карты: 49% обычное, 50% редкое, 1% эпическое, легендарного нет. */
 export const CHEST_RARITY_WEIGHTS: Record<RarityTier, number> = {
-  common: 64.5,
-  rare: 30,
-  epic: 5,
-  legendary: 0.5,
+  common: 49,
+  rare: 50,
+  epic: 1,
+  legendary: 0,
 };
 
 export function rarityWeightsFor(threat: Threat): Record<RarityTier, number> {
