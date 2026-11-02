@@ -268,6 +268,95 @@ const crackle = (env: AmbientEnv, gain: number) =>
 
 const ICE_BELLS = [1174.7, 1396.9, 880, 1046.5];
 
+/**
+ * Эхо каменного зала: сухой звук идёт как есть, а часть уходит в линию задержки
+ * с затуханием в фильтре. Возвращает окружение, где out — вход эха.
+ */
+function withEcho(env: AmbientEnv, delayS: number, feedback: number, wet: number): AmbientEnv {
+  const { ctx, out } = env;
+  const input = ctx.createGain();
+  const delay = ctx.createDelay(2);
+  delay.delayTime.value = delayS;
+  const damp = ctx.createBiquadFilter();
+  damp.type = "lowpass";
+  damp.frequency.value = 2200;
+  const fb = ctx.createGain();
+  fb.gain.value = feedback;
+  const wetGain = ctx.createGain();
+  wetGain.gain.value = wet;
+  input.connect(out);
+  input.connect(delay);
+  delay.connect(damp);
+  damp.connect(fb);
+  fb.connect(delay);
+  delay.connect(wetGain);
+  wetGain.connect(out);
+  env.track(() => {
+    [input, delay, damp, fb, wetGain].forEach((n) => n.disconnect());
+  });
+  return { ...env, out: input };
+}
+
+/** Уханье совы: две ноты, вторая ниже и длиннее. */
+function owl(env: AmbientEnv): void {
+  const f = rnd(380, 430);
+  blip(env, { freq: f, endFreq: f * 0.93, dur: 0.45, gain: 0.02 });
+  blip(env, { freq: f, endFreq: f * 0.9, dur: 0.7, gain: 0.018, at: 0.7 });
+}
+
+/** Треск углей: короткий хлопок с низким тоном. */
+function pop(env: AmbientEnv, gain: number): void {
+  noiseShot(env, { type: "bandpass", freq: rnd(500, 1000), q: 2, dur: 0.07, gain, pan: rnd(-0.5, 0.5) });
+  blip(env, { freq: 160, endFreq: 60, dur: 0.08, gain: gain * 0.5 });
+}
+
+/** Шорох листвы на ветру. */
+const rustle = (env: AmbientEnv) =>
+  noiseShot(env, { type: "highpass", freq: rnd(3500, 6000), q: 0.6, dur: rnd(0.04, 0.1), gain: 0.006, pan: rnd(-0.8, 0.8) });
+
+/** Капли дождя по листьям и камню. */
+const patter = (env: AmbientEnv) =>
+  noiseShot(env, { type: "highpass", freq: rnd(4000, 7000), dur: 0.02, gain: 0.005, pan: rnd(-0.9, 0.9) });
+
+/** Далёкий гром: низкий рокот, медленно набирающий силу. */
+const thunder = (env: AmbientEnv) =>
+  noiseShot(env, { type: "lowpass", freq: 150, q: 0.5, dur: rnd(3.5, 5), gain: 0.05, pan: rnd(-0.3, 0.3) });
+
+/**
+ * Лапки мышей по каменным кирпичам: серия коротких сухих цоканий с затуханием,
+ * иногда писк.
+ */
+function scurry(env: AmbientEnv): void {
+  const steps = 4 + Math.floor(Math.random() * 5);
+  let at = 0;
+  for (let i = 0; i < steps; i++) {
+    const gain = 0.024 * (1 - (i / steps) * 0.6);
+    noiseShot(env, { type: "bandpass", freq: rnd(2600, 4200), q: 3, dur: 0.012, gain, at, pan: i % 2 ? 0.5 : -0.5 });
+    at += rnd(0.09, 0.15);
+  }
+  if (Math.random() < 0.4) {
+    const f = rnd(2800, 3600);
+    blip(env, { freq: f, endFreq: f * 1.15, dur: 0.08, gain: 0.006, at: rnd(0, at), pan: rnd(-0.6, 0.6) });
+  }
+}
+
+/**
+ * Камушки осыпаются: сначала короткий шорох, затем каскад мелких «тиков»,
+ * которые реже и тише с каждым ударом, пока камни не улягутся.
+ */
+function pebbles(env: AmbientEnv): void {
+  const count = 2 + Math.floor(Math.random() * 3);
+  noiseShot(env, { type: "bandpass", freq: rnd(1800, 3000), q: 2, dur: 0.05, gain: 0.02, pan: rnd(-0.5, 0.5) });
+  let at = 0.05;
+  let spacing = rnd(0.12, 0.2);
+  for (let i = 0; i < count; i++) {
+    at += spacing;
+    spacing *= 0.7;
+    const f = rnd(1000, 2600);
+    blip(env, { freq: f, endFreq: f * 0.8, dur: 0.06, gain: 0.012 * (1 - i / count / 2), at, pan: rnd(-0.8, 0.8) });
+  }
+}
+
 /** Параметры боевой сцены: тональность, темп и ритм барабана. */
 interface BattleConfig {
   root: number;
@@ -369,24 +458,35 @@ const BATTLE: Record<BiomeId, BattleConfig> = {
 
 /** Рецепты по сценам (экспорт для тестов: все сцены должны иметь рецепт). */
 export const AMBIENT_RECIPES: Readonly<Record<AmbientScene, Recipe>> = {
-  /** Лагерь у врат: далёкий гонг, колокол и медленный минорный пэд. */
+  /**
+   * Лагерь в лесу под дождём у костра: треск углей, шум ветра в кронах,
+   * шорох листвы, капли по листьям, уханье совы и далёкий гром.
+   */
   lobby(env) {
-    drone(env, 73.4, "sine", 0.018, { swell: 8 });
-    drone(env, 110, "triangle", 0.005, { detune: 5, lfoHz: 0.04, swell: 10 });
-    pad(env, [146.8, 174.6, 220], 0.003, { swell: 12, lfoHz: 0.03 });
-    noiseBed(env, { type: "bandpass", freq: 280, q: 0.5, gain: 0.014, sweepHz: 0.04, sweepDepth: 120 });
-    every(env, 18, 30, () => gong(env, 73.4, 0.022, rnd(-0.3, 0.3)));
-    every(env, 8, 14, () => chime(env, 587.3, 0.006, 4.5, rnd(-0.6, 0.6)));
+    // Костёр: гул пламени, треск и редкие хлопки углей.
+    noiseBed(env, { type: "lowpass", freq: 380, q: 0.7, gain: 0.02, sweepHz: 0.13, sweepDepth: 120 });
+    every(env, 0.06, 0.35, () => crackle(env, 0.012));
+    every(env, 1.2, 3.5, () => pop(env, 0.025));
+    // Лес: ветер в кронах с порывами и шорох листвы.
+    noiseBed(env, { type: "bandpass", freq: 600, q: 0.4, gain: 0.014, sweepHz: 0.05, sweepDepth: 250 });
+    every(env, 0.08, 0.25, () => rustle(env));
+    every(env, 25, 45, () => owl(env));
+    // Дождь: ровный шелест с меняющейся силой и отдельные капли.
+    noiseBed(env, { type: "highpass", freq: 2500, q: 0.5, gain: 0.01, sweepHz: 0.03, sweepDepth: 800 });
+    every(env, 0.02, 0.12, () => patter(env));
+    every(env, 40, 70, () => thunder(env));
   },
 
-  /** Классический лабиринт: каменный дрон, рокот, капли и далёкие гонги. */
+  /**
+   * Каменный лабиринт: далёкое эхо капель, лапки мышей по кирпичам,
+   * осыпающиеся камушки и тихий воздух подземелья.
+   */
   classic(env) {
-    drone(env, 36.7, "sine", 0.025, { swell: 6 });
-    pad(env, [146.8, 174.6, 220], 0.003, { swell: 10, lfoHz: 0.03 });
-    noiseBed(env, { type: "lowpass", freq: 140, q: 0.7, gain: 0.025, sweepHz: 0.03, sweepDepth: 30 });
-    every(env, 2.5, 6, () => drip(env, 0.02));
-    every(env, 22, 36, () => gong(env, 55, 0.02));
-    every(env, 16, 28, () => thump(env, 55, 0.016));
+    noiseBed(env, { type: "lowpass", freq: 160, q: 0.6, gain: 0.01, sweepHz: 0.03, sweepDepth: 30 });
+    const cave = withEcho(env, 0.37, 0.4, 0.5);
+    every(cave, 1.5, 5, () => drip(cave, 0.03));
+    every(env, 6, 14, () => scurry(env));
+    every(env, 15, 30, () => pebbles(env));
   },
 
   /** Подземное болото: влажный шум, бульканье, квакши и глухой колокол. */
