@@ -286,14 +286,14 @@ export function forgeUpgrade(
     : { picked: {}, total: 0, scrap: 0 };
   const failChance = forgeFailChance(opt, plan.total);
   const paid: Player = { ...player, gold: player.gold - opt.cost, bag: spendReagents(player.bag, plan.picked) };
-  const spent = plan.total > 0 ? ` Золото и ${plan.total} реаг. потрачены.` : " Золото потрачено.";
+  const spent = plan.total > 0 ? ` Золото и реагенты (${plan.total}) потрачены.` : " Золото потрачено.";
 
   if (rng() < failChance) {
     return {
       player: paid,
       success: false,
       cost: opt.cost,
-      message: `«${GEAR_NAME(item)}» остался как был: горн не взял работу.${spent}`,
+      message: `Горн не взял работу: «${GEAR_NAME(item)}» остался как был.${spent}`,
       reagentsUsed: plan.total,
       failChance,
     };
@@ -311,7 +311,7 @@ export function forgeUpgrade(
     player: { ...paid, armory: paid.armory.map((g) => (g.uid === uid ? upgraded : g)) },
     success: true,
     cost: opt.cost,
-    message: `«${GEAR_NAME(upgraded)}» улучшен: ${opt.label.toLowerCase()} → ${opt.to}.${spent}`,
+    message: `«${GEAR_NAME(upgraded)}»: ${opt.label.toLowerCase()} → ${opt.to}.${spent}`,
     item: upgraded,
     reagentsUsed: plan.total,
     failChance,
