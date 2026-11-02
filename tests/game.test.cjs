@@ -180,6 +180,64 @@ test("mazes stay solvable and carry the right number of chests and events", () =
   }
 });
 
+test("туман не просачивается через обратный угол стены", () => {
+  /* Решётка стен: h[y][x] — стена сверху клетки (x,y), v[y][x] — стена слева. */
+  const blank = (size) => ({
+    size,
+    h: Array.from({ length: size + 1 }, () => Array(size).fill(true)),
+    v: Array.from({ length: size }, () => Array(size + 1).fill(true)),
+    doors: [],
+    openedDoors: [],
+  });
+  /* H — герой, R — справа, U — сверху, D — по диагонали за стыком. */
+  const tight = blank(5);
+  tight.v[2][3] = false; // H|R открыто
+  tight.h[2][2] = false; // H|U открыто
+  /* стены сходятся ровно в точке стыка: R|D и U|D закрыты */
+  assert.equal(maze.hasLOS(tight, { x: 2, y: 2 }, { x: 3, y: 1 }), false, "щель обратного угла не просматривается");
+
+  const open = blank(5);
+  open.v[2][3] = false;
+  open.h[2][2] = false;
+  open.h[2][3] = false;
+  open.v[1][3] = false;
+  assert.equal(maze.hasLOS(open, { x: 2, y: 2 }, { x: 3, y: 1 }), true, "открытый стык просматривается");
+
+  const sideWall = blank(5);
+  sideWall.v[2][3] = true;
+  sideWall.h[2][2] = false;
+  sideWall.h[2][3] = false;
+  sideWall.v[1][3] = false;
+  assert.equal(maze.hasLOS(sideWall, { x: 2, y: 2 }, { x: 3, y: 1 }), false, "стена рядом с героем закрывает диагональ");
+
+  /* Зал 3×3: из угла видно весь зал, в том числе диагональ через центр. */
+  const hall = blank(6);
+  for (let y = 1; y <= 3; y++)
+    for (let x = 1; x <= 3; x++) {
+      hall.h[y][x] = false;
+      hall.h[y + 1][x] = false;
+      hall.v[y][x] = false;
+      hall.v[y][x + 1] = false;
+    }
+  for (let y = 1; y <= 3; y++)
+    for (let x = 1; x <= 3; x++) {
+      assert.ok(maze.hasLOS(hall, { x: 1, y: 1 }, { x, y }), `клетка зала ${x},${y} должна быть видна`);
+    }
+
+  /* Ни разу за тысячу этажей: видимая клетка за сплошной стеной. */
+  for (let floor = 1; floor <= 10; floor++) {
+    for (let i = 0; i < 100; i++) {
+      const m = maze.genMaze(maze.mazeSizeForFloor(floor), floor);
+      const vis = maze.computeVisibility(m, m.start, {}, 0);
+      for (let y = 0; y < m.size; y++)
+        for (let x = 0; x < m.size; x++) {
+          if (vis[y][x] === 0 || (x === m.start.x && y === m.start.y)) continue;
+          assert.ok(maze.hasLOS(m, m.start, { x, y }), `клетка ${x},${y} видна без прямой линии`);
+        }
+    }
+  }
+});
+
 test("комнаты занимают около 40 % площади, остальное — лабиринт", () => {
   assert.equal(maze.ROOM_AREA_SHARE, 0.4);
   for (const size of [8, 9, 10, 11, 12, 13, 14, 15, 16]) {

@@ -10,6 +10,7 @@ import {
   equipItem,
   gearBuyPrice,
   gearSellPrice,
+  identifyIntReq,
   identifyReqs,
   scaledGearStats,
   statPointCost,
@@ -116,7 +117,11 @@ export class LobbyController {
     const player = this.player;
     const pending = player.armory.filter((g) => !g.identified);
     if (!pending.length) return null;
-    const canDo = pending.filter((g) => player.stats.int >= identifyReqs(g).int);
+    /* Скидка на исследование («Тайновед», кровь архимага) действует и здесь:
+       раньше авто-исследование сравнивало сырое требование, а кнопка — со
+       скидкой, поэтому у части героев вещи оставались неисследованными. */
+    const discount = derived(player).intDiscount;
+    const canDo = pending.filter((g) => player.stats.int >= identifyIntReq(g, discount));
     if (!canDo.length) return null;
     const ids = new Set(canDo.map((g) => g.uid));
     this.model.updatePlayer((p) => ({
@@ -130,7 +135,7 @@ export class LobbyController {
     const player = this.player;
     const price = gearBuyPrice(item);
     if (player.gold < price) return null;
-    const auto = player.stats.int >= identifyReqs(item).int;
+    const auto = player.stats.int >= identifyIntReq(item, derived(player).intDiscount);
     this.model.updatePlayer((p) => ({
       ...p,
       gold: p.gold - price,
@@ -149,7 +154,7 @@ export class LobbyController {
     const st = scaledGearStats(target);
     const reqs = identifyReqs(target);
     const d = derived(player);
-    const reqInt = Math.max(1, reqs.int - d.intDiscount);
+    const reqInt = identifyIntReq(target, d.intDiscount);
     if (mode === "int" && player.stats.int < reqInt) return null;
     if (mode === "gold" && player.gold < reqs.gold) return null;
     this.model.updatePlayer((p) => {

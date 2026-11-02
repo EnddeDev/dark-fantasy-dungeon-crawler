@@ -309,11 +309,13 @@ export function Lobby({
     say(msg);
   };
 
-  /* Если Интеллект позволяет — предметы в арсенале исследуются сами. */
+  /* Если Интеллект позволяет — предметы в арсенале исследуются сами.
+     Скидка на исследование приходит от «Тайноведа» и легендарной крови,
+     поэтому экипировка и пассивки тоже в зависимостях. */
   useEffect(() => {
     say(controller.autoIdentify());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [player.armory, player.stats.int, controller]);
+  }, [player.armory, player.stats.int, player.passives, player.equip, controller]);
 
   const buyGear = (item: GearItem) => {
     const msg = controller.buyGear(item);
