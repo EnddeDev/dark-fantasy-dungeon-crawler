@@ -189,15 +189,18 @@ test("комнаты занимают около 40 % площади, остал
 });
 
 test("комнаты не слипаются: между залами остаётся стена", () => {
-  for (let i = 0; i < 60; i++) {
-    const size = 12;
-    const m = maze.genMaze(size, 6);
-    for (let a = 0; a < m.rooms.length; a++) {
-      for (let b = a + 1; b < m.rooms.length; b++) {
-        const A = m.rooms[a];
-        const B = m.rooms[b];
-        const apart = A.x + A.w + 1 <= B.x || B.x + B.w + 1 <= A.x || A.y + A.h + 1 <= B.y || B.y + B.h + 1 <= A.y;
-        assert.ok(apart, `залы ${A.kind} и ${B.kind} слиплись на ${size}x${size}`);
+  /* Малые этажи — самый тесный случай: раньше добор шёл «вплотную». */
+  for (const size of [8, 9, 10, 12, 16]) {
+    for (let i = 0; i < 40; i++) {
+      const m = maze.genMaze(size, 6);
+      assert.ok(m.rooms.length >= maze.minRoomsFor(size), `на ${size}x${size} комнат ${m.rooms.length}`);
+      for (let a = 0; a < m.rooms.length; a++) {
+        for (let b = a + 1; b < m.rooms.length; b++) {
+          const A = m.rooms[a];
+          const B = m.rooms[b];
+          const apart = A.x + A.w + 1 <= B.x || B.x + B.w + 1 <= A.x || A.y + A.h + 1 <= B.y || B.y + B.h + 1 <= A.y;
+          assert.ok(apart, `залы ${A.kind} и ${B.kind} слиплись на ${size}x${size}`);
+        }
       }
     }
   }
@@ -365,6 +368,31 @@ test("качество добычи с монстров: 5/15/25 редкое, �
   assert.deepEqual(content.rarityWeightsFor("normal"), { common: 95, rare: 5, epic: 0, legendary: 0 });
   assert.deepEqual(content.rarityWeightsFor("horror"), { common: 84, rare: 15, epic: 1, legendary: 0 });
   assert.deepEqual(content.rarityWeightsFor("catastrophe"), { common: 70, rare: 25, epic: 5, legendary: 0 });
+});
+
+test("нулевой вес редкости не выпадает даже при rng() = 0", () => {
+  /* Раньше вычитание нулевого веса не сдвигало бросок и возвращало запрещённую ступень. */
+  /* rng() = 0 попадает в первый интервал — самую высокую ДОСТУПНУЮ ступень. */
+  assert.equal(content.rollRarity({ common: 95, rare: 5, epic: 0, legendary: 0 }, () => 0), "rare");
+  assert.equal(content.rollRarity({ common: 49, rare: 50, epic: 1, legendary: 0 }, () => 0), "epic");
+  assert.equal(content.rollRarity({ common: 0, rare: 100, epic: 0, legendary: 0 }, () => 0), "rare");
+  assert.equal(content.rollRarity({ common: 0, rare: 0, epic: 0, legendary: 0 }, () => 0), "common", "пустые веса — обычное");
+  for (let i = 0; i < 3000; i++) {
+    assert.notEqual(content.rollRarity(content.MONSTER_RARITY_WEIGHTS.normal), "legendary");
+    assert.notEqual(content.rollRarity(content.MONSTER_RARITY_WEIGHTS.normal), "epic");
+    assert.notEqual(content.rollRarity(content.CHEST_RARITY_WEIGHTS), "legendary");
+  }
+});
+
+test("вещь из сундука получает уровень этажа, а не уровень модели", () => {
+  const rng = lcg(77);
+  for (const floor of [1, 3, 6, 10]) {
+    for (let i = 0; i < 120; i++) {
+      const chest = battle.rollGearDrop(floor, content.CHEST_RARITY_WEIGHTS, floor, rng);
+      assert.equal(chest.level, Math.min(10, Math.max(1, floor)), `сундук ${floor} этажа дал уровень ${chest.level}`);
+      assert.notEqual(chest.wear, "new");
+    }
+  }
 });
 
 test("босс 50/10/1, сундук 50/1 без легендарного", () => {
@@ -936,14 +964,36 @@ test("shop stock respects the shop level and covers every slot", () => {
   assert.equal(epics, 0, "на первом уровне лавки эпическое не появляется");
 });
 
-test("research cost grows with the item level", () => {
-  const low = content.createGearItem({ baseId: "knife", identified: false });
-  const high = content.createGearItem({ baseId: "soulstone", identified: false });
-  const rLow = content.identifyReqs({ ...low, level: 1 });
-  const rHigh = content.identifyReqs({ ...high, level: 6 });
-  assert.deepEqual(rLow, { int: 2, gold: 20 });
-  assert.deepEqual(rHigh, { int: 7, gold: 120 });
-  assert.ok(rHigh.int > rLow.int && rHigh.gold > rLow.gold);
+test("исследование стоит долю ценности вещи, а не фиксированные 20 × уровень", () => {
+  /* Редкость задана явно: без неё createGearItem бросает случайную и цены плавают. */
+  const mk = (baseId, level) => content.createGearItem({ baseId, level, wear: "worn", rarity: "common", identified: false });
+  const low = content.identifyReqs(mk("knife", 1));
+  const mid = content.identifyReqs(mk("sword", 3));
+  const high = content.identifyReqs(mk("soulstone", 6));
+  assert.deepEqual(low, { int: 2, gold: 1 }, "минимум 1 золото");
+  assert.equal(mid.int, 4);
+  assert.equal(mid.gold, 4);
+  assert.deepEqual(high, { int: 7, gold: 15 });
+  assert.ok(high.int > low.int && high.gold > mid.gold && mid.gold > low.gold);
+
+  /* Исследование окупается там, где выгоду не съедает округление цены до 5. */
+  for (const [baseId, level] of [["sword", 3], ["plate", 3], ["sword", 5], ["crown_husk", 6], ["soulstone", 5], ["soulstone", 8]]) {
+    const item = content.createGearItem({ baseId, level, wear: "worn", rarity: "common", identified: true });
+    const cost = content.identifyReqs(item).gold;
+    const gain = content.gearSellPrice(item) - content.gearSellPrice({ ...item, identified: false });
+    assert.ok(gain >= cost, `${baseId} ${level}: выгода ${gain} меньше цены исследования ${cost}`);
+  }
+
+  /* Ни в одном случае исследование не дороже самой вещи — в этом и был баг. */
+  for (const base of Object.values(content.GEAR_BASES)) {
+    for (let level = 1; level <= 10; level++) {
+      for (const wear of ["battered", "worn", "new"]) {
+        const item = content.createGearItem({ baseId: base.id, level, wear, rarity: "common", identified: false });
+        const cost = content.identifyReqs(item).gold;
+        assert.ok(cost <= content.gearSellPrice(item) * 0.5, `${base.id} ${level} ${wear}: исследование ${cost}`);
+      }
+    }
+  }
 });
 
 test("equipment slots: two hands, shield, rings and the full set", () => {
@@ -1775,18 +1825,18 @@ test("armor and accessories give defense by weight and stat; weapons give none",
   assert.ok(geared.maxHp > plain.maxHp, "лёгкая броня добавляет здоровье");
 });
 
-test("уровень предмета: параметры линейно +50%, эффекты сложным процентом ×1.17/×1.25", () => {
+test("уровень предмета: параметры линейно +50%, эффекты сложным процентом ×1.17", () => {
   const scaling = loadGameModule("gearScaling");
   assert.equal(scaling.GEAR_STAT_RATE, 0.5);
   assert.equal(scaling.GEAR_EFFECT_RATE, 0.17);
   assert.equal(scaling.GEAR_EFFECT_GROWTH_MAIN, 1.17);
-  assert.equal(scaling.GEAR_EFFECT_GROWTH_HIGH, 1.25);
+  assert.equal(scaling.GEAR_EFFECT_GROWTH_HIGH, undefined, "повышенной ставки больше нет");
   /* сложный процент: 5 → 6 → 8 → 10 … на десятом уровне 31 */
   assert.equal(scaling.scaleByLevel(5, 1), 5);
   assert.equal(scaling.scaleByLevel(5, 2), 6);
   assert.equal(scaling.scaleByLevel(5, 3), 8);
   assert.equal(scaling.scaleByLevel(5, 10), 31);
-  assert.equal(scaling.scaleCompoundByLevel(5, 10, 1.25), 48);
+  assert.equal(scaling.scaleCompoundByLevel(5, 10, 1.25), 48, "функция умеет любую ставку");
   /* множители уровня: 1 + rate × уровень */
   assert.equal(scaling.levelFactor(1, 0.17), 1.17);
   assert.equal(Math.round(scaling.levelFactor(10, 0.17) * 100) / 100, 2.7);
@@ -2150,20 +2200,36 @@ test("workshop recipes craft throwables and special supplies, alchemy stays sepa
 test("forge upgrade costs and destruction risks match the design", () => {
   const g = content.createGearItem({ baseId: "sword", level: 1, wear: "battered", rarity: "common", identified: true });
   const opts = forge.forgeOptions(g);
-  assert.equal(opts.find((o) => o.kind === "rarity").cost, 100);
+  /* Цена — доля цены продажи: 20% качество, 15% износ, 4% уровень. */
+  assert.equal(opts.find((o) => o.kind === "rarity").cost, 15);
   assert.equal(opts.find((o) => o.kind === "rarity").destroyChance, 0.25);
-  assert.equal(opts.find((o) => o.kind === "wear").cost, 100);
+  assert.equal(opts.find((o) => o.kind === "wear").cost, 10);
   assert.equal(opts.find((o) => o.kind === "wear").destroyChance, 0.3);
-  assert.equal(opts.find((o) => o.kind === "level").cost, 200);
+  assert.equal(opts.find((o) => o.kind === "level").cost, 5);
   assert.equal(opts.find((o) => o.kind === "level").destroyChance, 0.1);
   assert.equal(opts.find((o) => o.kind === "level").successChance, undefined);
+  /* Каждая ступень дешевле прибавки к цене, которую она даёт. */
+  for (const baseId of ["sword", "plate", "crown_husk", "soulstone", "knife"]) {
+    for (const level of [1, 3, 6, 9]) {
+      for (const wear of ["battered", "worn"]) {
+        const item = content.createGearItem({ baseId, level, wear, rarity: "rare", identified: true });
+        const sell = content.gearSellPrice(item);
+        const [rarityOpt, wearOpt] = forge.forgeOptions(item);
+        const rarityGain = content.gearSellPrice({ ...item, rarity: "epic" }) - sell;
+        const wearGain = content.gearSellPrice({ ...item, wear: wear === "battered" ? "worn" : "new" }) - sell;
+        assert.ok(rarityOpt.cost <= rarityGain, `${baseId} ${level} ${wear}: качество ${rarityOpt.cost} против ${rarityGain}`);
+        assert.ok(wearOpt.cost <= wearGain, `${baseId} ${level} ${wear}: износ ${wearOpt.cost} против ${wearGain}`);
+        assert.ok(rarityOpt.cost < sell && wearOpt.cost < sell, "работа кузницы дешевле самой вещи");
+      }
+    }
+  }
   assert.equal(forge.levelUpgradeDestroyChance(1), 0.1);
   assert.equal(forge.levelUpgradeDestroyChance(3), 0.2);
   assert.equal(forge.levelUpgradeDestroyChance(10), 0.55);
   const p = mkP({ gold: 1000, armory: [g], equip: { ...mkP().equip, mainHand: g.uid } });
   const destroyed = forge.forgeUpgrade(p, g.uid, "level", () => 0.05);
   assert.equal(destroyed.destroyed, true);
-  assert.equal(destroyed.player.gold, 800);
+  assert.equal(destroyed.player.gold, 995);
   assert.equal(destroyed.player.armory.length, 0);
   assert.equal(destroyed.player.equip.mainHand, null);
   const upgraded = forge.forgeUpgrade(p, g.uid, "level", () => 0.9);

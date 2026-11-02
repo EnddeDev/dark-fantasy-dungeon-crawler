@@ -421,7 +421,9 @@ export class DungeonController {
       /* Золото подземелья урезано вдвое: множитель применяем до округления до пяти. */
       const gold = Math.round((raw * DUNGEON_GOLD_SHARE * (1 + (r.floor - 1) * 0.6)) / 5) * 5;
       const items = rollConsumableLoot(r.floor, Math.random() < 0.55 ? 2 : 1);
-      const droppedGear = rollGearDrop(r.floor, CHEST_RARITY_WEIGHTS);
+      /* Из сундука вещь того же уровня, что и этаж: иначе на глубине
+         почти всегда выпадал бы мусор 1 уровня. */
+      const droppedGear = rollGearDrop(r.floor, CHEST_RARITY_WEIGHTS, r.floor);
       const chestXp = 6 + r.floor * 3;
 
       r = {

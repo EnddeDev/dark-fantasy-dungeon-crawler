@@ -3,7 +3,7 @@
  * Каждая попытка стоит золота и может уничтожить предмет.
  */
 import type { GearItem, Player, RarityTier, WearTier } from "./types";
-import { GEAR_BASES, LEGENDARY_PASSIVES, gearAffinity, gearKindOfBase } from "./content";
+import { GEAR_BASES, LEGENDARY_PASSIVES, gearAffinity, gearKindOfBase, gearSellPrice } from "./content";
 import { GEAR_PASSIVES, archetypePassive, effectCountForGear, effectPoolForGear, passivePoolFor } from "./gearEffects";
 import { clampGearLevel, MAX_GEAR_LEVEL, rollEffectBase } from "./gearScaling";
 import { canRollExtraAp } from "./content";
@@ -26,13 +26,25 @@ export interface ForgeOption {
 
 const RARITY_ORDER: RarityTier[] = ["common", "rare", "epic", "legendary"];
 const WEAR_ORDER: WearTier[] = ["battered", "worn", "new"];
-const RARITY_COST: Record<RarityTier, number> = { common: 100, rare: 500, epic: 1000, legendary: 0 };
+/**
+ * Цена работы кузницы — доля ценности вещи, а не фиксированная сумма:
+ * иначе дешёвая находка стоила бы дороже самой себя.
+ * Качество — 20%, изношенность — 15%, уровень — 4% цены продажи (минимум 1):
+ * каждая ступень дешевле прибавки, которую она даёт вещи.
+ */
+const FORGE_SHARE: Record<ForgeUpgradeKind, number> = { rarity: 0.2, wear: 0.15, level: 0.04 };
+const FORGE_MIN_COST = 1;
 const RARITY_RISK: Record<RarityTier, number> = { common: 0.25, rare: 0.5, epic: 0.75, legendary: 0 };
-const WEAR_COST: Record<WearTier, number> = { battered: 100, worn: 375, new: 0 };
 const WEAR_RISK: Record<WearTier, number> = { battered: 0.3, worn: 0.6, new: 0 };
 
-export function levelUpgradeCost(level: number): number {
-  return 100 + 50 * (clampGearLevel(level) + 1);
+function forgeCost(item: GearItem, kind: ForgeUpgradeKind): number {
+  const raw = gearSellPrice({ ...item, identified: true }) * FORGE_SHARE[kind];
+  return Math.max(FORGE_MIN_COST, Math.round(raw / 5) * 5);
+}
+
+/** Цена повышения уровня: 4% цены продажи (минимум 1). */
+export function levelUpgradeCost(item: GearItem): number {
+  return forgeCost(item, "level");
 }
 
 /** Риск уничтожения при повышении уровня: 10% + 5% за каждый текущий уровень сверх первого. */
@@ -52,7 +64,7 @@ export function forgeOptions(item: GearItem): ForgeOption[] {
       label: "Качество",
       from: item.rarity,
       to: nextRarity ?? item.rarity,
-      cost: RARITY_COST[item.rarity],
+      cost: forgeCost(item, "rarity"),
       destroyChance: RARITY_RISK[item.rarity],
       available: !!nextRarity,
     },
@@ -61,7 +73,7 @@ export function forgeOptions(item: GearItem): ForgeOption[] {
       label: "Изношенность",
       from: item.wear,
       to: nextWear ?? item.wear,
-      cost: WEAR_COST[item.wear],
+      cost: forgeCost(item, "wear"),
       destroyChance: WEAR_RISK[item.wear],
       available: !!nextWear,
     },
@@ -70,7 +82,7 @@ export function forgeOptions(item: GearItem): ForgeOption[] {
       label: "Уровень",
       from: String(lvl),
       to: String(Math.min(MAX_GEAR_LEVEL, lvl + 1)),
-      cost: levelUpgradeCost(lvl),
+      cost: levelUpgradeCost(item),
       destroyChance: levelUpgradeDestroyChance(lvl),
       available: lvl < MAX_GEAR_LEVEL,
     },

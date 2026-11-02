@@ -107,10 +107,10 @@ test("new gear effects roll base spread and grow by compound rate per level", ()
   assert.equal(scaling.effectMagnitude("vamp", 2, 5), 6);
   assert.equal(scaling.effectMagnitude("vamp", 3, 5), 8);
   assert.equal(scaling.effectMagnitude("vamp", 10, 5), 31);
-  /* шанс крита — повышенная ставка ×1.25 */
-  assert.equal(scaling.effectMagnitude("crit_chance", 2, 5), 7);
-  assert.equal(scaling.effectMagnitude("crit_chance", 3, 5), 9);
-  assert.equal(scaling.effectMagnitude("crit_chance", 10, 5), 48);
+  /* у всех эффектов одна ставка — ×1.17 за уровень */
+  assert.equal(scaling.effectMagnitude("crit_chance", 2, 5), 6);
+  assert.equal(scaling.effectMagnitude("crit_chance", 3, 5), 8);
+  assert.equal(scaling.effectMagnitude("crit_chance", 10, 5), 31);
   for (const [level, expected] of [[1, 0], [2, 0], [3, 0], [4, 0], [5, 1], [6, 1], [7, 2], [8, 2], [9, 3], [10, 3]]) {
     assert.equal(scaling.effectMagnitude("ap", level), expected);
   }
