@@ -2281,6 +2281,104 @@ test("в бою дебаффы монстра идут не чаще раза в
   assert.ok(applied.size >= 2, `тварь должна пользоваться разными приёмами, а применила: ${[...applied].join(", ")}`);
 });
 
+/** Один ход врага с заданным набором приёмов: герой не уклоняется и не имеет брони. */
+function enemyTurnWith(b, moves, value = 0.99) {
+  const st = {
+    ...b,
+    enemy: { ...b.enemy, moves: [...moves], def: { ...b.enemy.def, moves: [...moves] }, specialCooldown: 0 },
+    queue: ["e", "p"],
+    idx: 0,
+    p: {
+      ...b.p,
+      evade: 0,
+      armor: 0,
+      chanceLayers: { ...b.p.chanceLayers, evade: { stats: [], items: [], effects: [] } },
+    },
+  };
+  return withRandom(() => battle.enemyStep(st), value);
+}
+
+test("яд складывается: срок обновляется, урон за тик суммируется", () => {
+  const base = freshBattle(mkP({ level: 1, stats: { str: 1, agi: 1, int: 1 }, hp: 100 }), 1, false, "classic");
+  base.enemy.hp = 9999;
+  base.enemy.maxHp = 9999;
+
+  const first = enemyTurnWith(base, ["poison"]);
+  assert.equal(first.p.statuses.poison, 3, "яд висит 3 раунда");
+  assert.equal(first.p.statuses.poisonStacks, 1);
+
+  /* Второй яд при почти истёкшем сроке: время обновляется, наложения складываются. */
+  const second = enemyTurnWith({ ...first, p: { ...first.p, statuses: { ...first.p.statuses, poison: 1 } } }, ["poison"]);
+  assert.equal(second.p.statuses.poison, 3, "срок обновлён");
+  assert.equal(second.p.statuses.poisonStacks, 2, "два наложения");
+
+  /* Тик: 4% от 100 = 4 ОЗ за наложение, два наложения — 8. */
+  const ticked = battle.playerAct(
+    {
+      ...second,
+      p: { ...second.p, hp: 100, maxHp: 100, statuses: { ...second.p.statuses, poison: 3, poisonStacks: 2 } },
+      queue: ["p"],
+      idx: 0,
+    },
+    { type: "guard" },
+  );
+  assert.equal(ticked.p.hp, 100 - 8, "урон яда удвоился от двух наложений");
+
+  /* Предел наложений — MAX_DOT_STACKS. */
+  let many = base;
+  for (let i = 0; i < 8; i++) many = enemyTurnWith(many, ["poison"]);
+  assert.equal(many.p.statuses.poisonStacks, battle.MAX_DOT_STACKS);
+});
+
+test("кровотечение складывается так же, как яд", () => {
+  const base = freshBattle(mkP({ level: 1, stats: { str: 1, agi: 1, int: 1 }, hp: 100 }), 1, false, "classic");
+  base.enemy.hp = 9999;
+  base.enemy.maxHp = 9999;
+  const first = enemyTurnWith(base, ["wound"]);
+  assert.equal(first.p.statuses.wound, 3);
+  assert.equal(first.p.statuses.woundStacks, 1);
+  const second = enemyTurnWith({ ...first, p: { ...first.p, statuses: { ...first.p.statuses, wound: 1 } } }, ["wound"]);
+  assert.equal(second.p.statuses.wound, 3);
+  assert.equal(second.p.statuses.woundStacks, 2);
+
+  const ticked = battle.playerAct(
+    {
+      ...second,
+      p: { ...second.p, hp: 100, maxHp: 100, statuses: { ...second.p.statuses, wound: 3, woundStacks: 2 } },
+      queue: ["p"],
+      idx: 0,
+    },
+    { type: "guard" },
+  );
+  assert.equal(ticked.p.hp, 100 - 10, "5% × 2 наложения");
+});
+
+test("раскол складывается, сила растёт с уровнем эффекта и монстра", () => {
+  assert.equal(battle.sunderBreakAmount(30), 1);
+  assert.equal(battle.sunderBreakAmount(60), 2);
+  assert.equal(battle.sunderBreakAmount(90), 3);
+  assert.equal(battle.sunderBreakAmount(5), 1, "минимум один пункт брони");
+
+  assert.equal(battle.enemySunderBreak(1), 1);
+  assert.equal(battle.enemySunderBreak(4), 1);
+  assert.equal(battle.enemySunderBreak(5), 2);
+  assert.equal(battle.enemySunderBreak(9), 3);
+
+  const base = freshBattle(mkP({ level: 1, stats: { str: 1, agi: 1, int: 1 }, hp: 500 }), 3, false, "classic");
+  base.p.armor = 12;
+  base.enemy.hp = 9999;
+  base.enemy.maxHp = 9999;
+  base.enemy.level = 3;
+
+  const first = enemyTurnWith(base, ["sunder"]);
+  assert.equal(first.p.statuses.sundered, 1, "первое наложение");
+  const second = enemyTurnWith({ ...first, p: { ...first.p, armor: 0 } }, ["sunder"]);
+  assert.equal(second.p.statuses.sundered, 2, "наложения складываются");
+
+  const strong = enemyTurnWith({ ...base, enemy: { ...base.enemy, level: 9 } }, ["sunder"]);
+  assert.equal(strong.p.statuses.sundered, 3, "монстр 9 уровня снимает три пункта за наложение");
+});
+
 test("enemy AI heals or guards when low, punishes misses and closes rounds by turn order", () => {
   const base = () => {
     const b = freshBattle(mkP({ level: 1, stats: { str: 1, agi: 1, int: 1 }, hp: 60 }), 1, false, "classic");

@@ -151,7 +151,14 @@ export interface BattleState {
     armor: number;
     gold: [number, number];
     xp: number;
-    statuses: { chill: number; bleed: number; poison: number; fear: number; stunAp: number; blight: number; wither: number; burning: number; burn: number; curse: number; cursePower: number; sundered: number };
+    statuses: {
+      chill: number; bleed: number; poison: number; fear: number; stunAp: number;
+      blight: number; wither: number; burning: number; burn: number; curse: number;
+      cursePower: number; sundered: number;
+      /** Наложения кровотечения и яда: урон за тик складывается. */
+      bleedStacks?: number;
+      poisonStacks?: number;
+    };
     guard: boolean;
     /** Раунды, в которые враг вынужден держать защиту (свиток ужаса, бомба). */
     forceGuard: number;
@@ -203,9 +210,13 @@ export interface BattleState {
     immortalUsed: boolean;
     statuses: {
       wound: number;
+      /** Наложения кровотечения: урон за тик складывается. */
+      woundStacks?: number;
       curse: number;
       cursePower?: number;
       poison: number;
+      /** Наложения яда: урон за тик складывается. */
+      poisonStacks?: number;
       rage: number;
       sundered: number;
       stunAp: number;
@@ -859,7 +870,10 @@ export function newBattle(
       armor: s.armor,
       gold: s.gold,
       xp: s.xp,
-      statuses: { chill: 0, bleed: 0, poison: 0, fear: 0, stunAp: 0, blight: 0, wither: 0, burning: 0, burn: 0, curse: 0, cursePower: 30, sundered: 0 },
+      statuses: {
+        chill: 0, bleed: 0, poison: 0, fear: 0, stunAp: 0, blight: 0, wither: 0, burning: 0,
+        burn: 0, curse: 0, cursePower: 30, sundered: 0, bleedStacks: 0, poisonStacks: 0,
+      },
       guard: false,
       forceGuard: 0,
       lastMiss: false,
@@ -903,9 +917,11 @@ export function newBattle(
       immortalUsed: false,
       statuses: {
         wound: pl.statuses.wound,
+        woundStacks: pl.statuses.wound > 0 ? 1 : 0,
         curse: pl.statuses.curse,
         cursePower: pl.statuses.cursePower,
         poison: pl.statuses.poison,
+        poisonStacks: pl.statuses.poison > 0 ? 1 : 0,
         rage: 0,
         sundered: 0,
         stunAp: 0,
@@ -1044,6 +1060,50 @@ function bossResists(b: BattleState): boolean {
   }
   return false;
 }
+/** Предел наложений периодических эффектов: урон за тик складывается. */
+export const MAX_DOT_STACKS = 5;
+
+/** Сколько наложений яда или кровотечения висит на герое. */
+function playerDotStacks(b: BattleState, kind: "poison" | "wound"): number {
+  const rounds = kind === "poison" ? b.p.statuses.poison : b.p.statuses.wound;
+  if (rounds <= 0) return 1;
+  const key = kind === "poison" ? "poisonStacks" : "woundStacks";
+  return Math.max(1, b.p.statuses[key] ?? 1);
+}
+
+/**
+ * Новое наложение яда или кровотечения на героя: срок обновляется до большего,
+ * а урон за тик складывается. Больше MAX_DOT_STACKS наложений не держится.
+ */
+function applyPlayerDot(b: BattleState, kind: "poison" | "wound", rounds: number): number {
+  const key = kind === "poison" ? "poisonStacks" : "woundStacks";
+  const active = kind === "poison" ? b.p.statuses.poison > 0 : b.p.statuses.wound > 0;
+  const prev = active ? (b.p.statuses[key] ?? 1) : 0;
+  const stacks = Math.min(MAX_DOT_STACKS, prev + 1);
+  b.p.statuses[key] = stacks;
+  if (kind === "poison") b.p.statuses.poison = Math.max(b.p.statuses.poison, rounds);
+  else b.p.statuses.wound = Math.max(b.p.statuses.wound, rounds);
+  return stacks;
+}
+
+/** Сколько наложений яда или кровотечения висит на враге. */
+function enemyDotStacks(b: BattleState, kind: "poison" | "bleed"): number {
+  const cur = kind === "poison" ? b.enemy.statuses.poison : b.enemy.statuses.bleed;
+  if (cur <= 0) return 1;
+  const key = kind === "poison" ? "poisonStacks" : "bleedStacks";
+  return Math.max(1, b.enemy.statuses[key] ?? 1);
+}
+
+/** Сколько брони снимает раскол от свойства оружия: растёт с уровнем свойства. */
+export function sunderBreakAmount(power: number): number {
+  return Math.max(1, Math.round(Math.max(0, power) / 30));
+}
+
+/** Сколько брони снимает раскол монстра: растёт с его уровнем. */
+export function enemySunderBreak(level: number): number {
+  return 1 + Math.min(2, Math.max(0, Math.floor((Math.max(1, level) - 1) / 4)));
+}
+
 function applyEnemyStatus(b: BattleState, key: "chill" | "bleed" | "poison" | "fear" | "blight" | "wither" | "curse" | "burn", rounds: number) {
   const immuneKeys: Record<string, "poison" | "bleed" | "fear"> = { poison: "poison", bleed: "bleed", fear: "fear" };
   const immuneKey = immuneKeys[key];
@@ -1063,7 +1123,14 @@ function applyEnemyStatus(b: BattleState, key: "chill" | "bleed" | "poison" | "f
     push(b, `${b.enemy.def.name} сопротивляется эффекту.`, "e");
     return;
   }
+  const wasActive = b.enemy.statuses[key] > 0;
   b.enemy.statuses[key] = Math.max(b.enemy.statuses[key], statusRounds(b, rounds));
+  /* Яд и кровотечение складываются: каждое новое наложение усиливает урон за тик. */
+  if (key === "poison" || key === "bleed") {
+    const stackKey = key === "poison" ? "poisonStacks" : "bleedStacks";
+    const prev = wasActive ? (b.enemy.statuses[stackKey] ?? 1) : 0;
+    b.enemy.statuses[stackKey] = Math.min(MAX_DOT_STACKS, prev + 1);
+  }
 }
 /** Свойства оружия, которые срабатывают прямо от удара: кровотечение, яд, раскол. */
 function weaponHitEffects(b: BattleState) {
@@ -1081,8 +1148,10 @@ function weaponHitEffects(b: BattleState) {
   }
   const sunderChance = chanceOf("sunder");
   if (b.enemy.hp > 0 && sunderChance > 0 && b.enemy.armor > 0 && !bossResists(b) && Math.random() < sunderChance) {
-    b.enemy.armor = Math.max(0, b.enemy.armor - 1);
-    push(b, `Раскол: броня ${b.enemy.def.name} треснула (осталось ${b.enemy.armor}).`, "p");
+    /* Чем выше уровень свойства, тем больше брони снимает каждое наложение. */
+    const breakAmount = sunderBreakAmount(effectPower(b, "sunder"));
+    b.enemy.armor = Math.max(0, b.enemy.armor - breakAmount);
+    push(b, `Раскол: броня ${b.enemy.def.name} треснула (−${breakAmount}, осталось ${b.enemy.armor}).`, "p");
   }
 }
 
@@ -1399,8 +1468,8 @@ function incoming(
 
   // Ядовитый враг отравляет игрока физическим уроном.
   if (b.enemy.passive?.id === "venom" && kind === "phys" && b.p.hp > 0 && !tryResist(b, "яд")) {
-    b.p.statuses.poison = Math.max(b.p.statuses.poison, 2);
-    push(b, "Яд врага попал в кровь: отравление на 2 раунда.", "e");
+    const stacks = applyPlayerDot(b, "poison", 2);
+    push(b, `Яд врага попал в кровь: отравление на 2 раунда, наложений ${stacks}.`, "e");
   }
 
   /* Шипы отвечают только на физическую атаку: магический выпад тварь
@@ -1519,14 +1588,16 @@ function advance(b: BattleState) {
   if (idx >= b.queue.length) {
     /* конец раунда */
     if (b.p.statuses.wound > 0 && !hasLeg(b, "titan_heart")) {
-      const d = statusTickDamage(b.p.maxHp, "bleed");
+      const stacks = playerDotStacks(b, "wound");
+      const d = statusTickDamage(b.p.maxHp, "bleed") * stacks;
       b.p.hp -= d;
-      push(b, `Кровотечение отнимает ${d} здоровья (5% макс. ОЗ).`, "sys");
+      push(b, `Кровотечение отнимает ${d} здоровья (5% макс. ОЗ${stacks > 1 ? ` × ${stacks}` : ""}).`, "sys");
     }
     if (b.p.statuses.poison > 0 && b.p.hp > 0) {
-      const d = statusTickDamage(b.p.maxHp, "poison");
+      const stacks = playerDotStacks(b, "poison");
+      const d = statusTickDamage(b.p.maxHp, "poison") * stacks;
       b.p.hp -= d;
-      push(b, `Яд в твоей крови отнимает ${d} здоровья (4% макс. ОЗ).`, "e");
+      push(b, `Яд в твоей крови отнимает ${d} здоровья (4% макс. ОЗ${stacks > 1 ? ` × ${stacks}` : ""}).`, "e");
     }
     if (b.p.statuses.burn > 0 && b.p.hp > 0) {
       const d = statusTickDamage(b.p.maxHp, "burn");
@@ -1544,14 +1615,16 @@ function advance(b: BattleState) {
       push(b, `Проклятие выжигает ${d} здоровья.`, "e");
     }
     if (b.enemy.statuses.bleed > 0 && b.enemy.hp > 0) {
-      const d = statusTickDamage(b.enemy.maxHp, "bleed");
+      const stacks = enemyDotStacks(b, "bleed");
+      const d = statusTickDamage(b.enemy.maxHp, "bleed") * stacks;
       b.enemy.hp -= d;
-      push(b, `${b.enemy.def.name} истекает кровью: −${d} ОЗ (5% макс. ОЗ).`, "p");
+      push(b, `${b.enemy.def.name} истекает кровью: −${d} ОЗ (5% макс. ОЗ${stacks > 1 ? ` × ${stacks}` : ""}).`, "p");
     }
     if (b.enemy.statuses.poison > 0 && b.enemy.hp > 0) {
-      const d = statusTickDamage(b.enemy.maxHp, "poison");
+      const stacks = enemyDotStacks(b, "poison");
+      const d = statusTickDamage(b.enemy.maxHp, "poison") * stacks;
       b.enemy.hp -= d;
-      push(b, `Яд разъедает ${b.enemy.def.name}: −${d} ОЗ (4% макс. ОЗ).`, "p");
+      push(b, `Яд разъедает ${b.enemy.def.name}: −${d} ОЗ (4% макс. ОЗ${stacks > 1 ? ` × ${stacks}` : ""}).`, "p");
     }
     if (b.enemy.statuses.burn > 0 && b.enemy.hp > 0) {
       const d = statusTickDamage(b.enemy.maxHp, "burn");
@@ -1958,9 +2031,11 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
       } else if (sk.id === "ash_aegis") {
         const heal = healPlayer(b, Math.round((epicMagnitude(sk.id, "base", skLevel) + epicMagnitude(sk.id, "scale", skLevel) * b.p.stats.int) * spellPowerMult));
         b.p.statuses.wound = 0;
+        b.p.statuses.woundStacks = 0;
         b.p.statuses.curse = 0;
         b.p.statuses.cursePower = 0;
         b.p.statuses.poison = 0;
+        b.p.statuses.poisonStacks = 0;
         b.p.guard = true;
         flash(b, "p", "heal", heal);
         push(b, `Эгида пепла: +${heal} ОЗ, раны сняты, включена Защита.`, "p");
@@ -2006,7 +2081,10 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
       switch (u.type) {
         case "heal": {
           const healed = healPlayer(b, itemPower, def.kind === "potion");
-          if (def.kind === "scroll") b.p.statuses.wound = 0;
+          if (def.kind === "scroll") {
+            b.p.statuses.wound = 0;
+            b.p.statuses.woundStacks = 0;
+          }
           flash(b, "p", "heal", healed);
           push(b, `${def.name}: +${healed} здоровья.`, "p");
           break;
@@ -2038,9 +2116,11 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
         }
         case "cleanse": {
           b.p.statuses.wound = 0;
+          b.p.statuses.woundStacks = 0;
           b.p.statuses.curse = 0;
         b.p.statuses.cursePower = 0;
           b.p.statuses.poison = 0;
+          b.p.statuses.poisonStacks = 0;
           const amt = healPlayer(b, Math.max(1, Math.round(itemPower)), def.kind === "potion");
           push(b, `${def.name}: раны, проклятие и яд сняты (+${amt} ОЗ).`, "p");
           break;
@@ -2116,6 +2196,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
         case "iron_tonic": {
           b.p.statuses.ironTonic = statusRounds(b, u.rounds ?? 4);
           b.p.statuses.wound = 0;
+          b.p.statuses.woundStacks = 0;
           push(b, `${def.name}: +4 брони и +4 регенерации на ${b.p.statuses.ironTonic} раунда.`, "p");
           break;
         }
@@ -2299,18 +2380,18 @@ function applyRaceStrike(b: BattleState, isStrike: boolean, rawBase: number, res
   if (!isStrike || b.p.hp <= 0) return;
   const lands = () => Math.random() > resistChance;
   if (race === "vampire" && lands()) {
-    b.p.statuses.wound = Math.max(b.p.statuses.wound, 3);
-    push(b, "Клыки рвут плоть: кровотечение на 3 раунда.", "e");
+    const stacks = applyPlayerDot(b, "wound", 3);
+    push(b, `Клыки рвут плоть: кровотечение на 3 раунда, наложений ${stacks}.`, "e");
   } else if (race === "ghost" && lands()) {
     b.p.statuses.fear = Math.max(b.p.statuses.fear, 2);
     push(b, "Прикосновение призрака сеет страх на 2 раунда.", "e");
   } else if (race === "beast" && lands()) {
     if (Math.random() < 0.5) {
-      b.p.statuses.wound = Math.max(b.p.statuses.wound, 3);
-      push(b, "Зверь рвёт когтями: кровотечение на 3 раунда.", "e");
+      const stacks = applyPlayerDot(b, "wound", 3);
+      push(b, `Зверь рвёт когтями: кровотечение на 3 раунда, наложений ${stacks}.`, "e");
     } else {
-      b.p.statuses.poison = Math.max(b.p.statuses.poison, 3);
-      push(b, "Яд зверя в крови: 3 раунда отравления.", "e");
+      const stacks = applyPlayerDot(b, "poison", 3);
+      push(b, `Яд зверя в крови: 3 раунда отравления, наложений ${stacks}.`, "e");
     }
   } else if (race === "demon" && lands()) {
     if (Math.random() < 0.5) {
@@ -2495,8 +2576,8 @@ export function enemyStep(b0: BattleState): BattleState {
       const landed = incoming(b, Math.round(base * 0.9 * chill), "phys", `${e.def.name} рвёт плоть`);
       if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0 && !hasLeg(b, "titan_heart") && Math.random() > resistChance) {
-        b.p.statuses.wound = Math.max(b.p.statuses.wound, 3);
-        push(b, "Открылось кровотечение на 3 раунда.", "e");
+        const stacks = applyPlayerDot(b, "wound", 3);
+        push(b, `Открылось кровотечение на 3 раунда, наложений ${stacks}.`, "e");
       } else if (landed && b.p.hp > 0) {
         push(b, "Твоя сила сдерживает рану — кровотечения нет.", "p");
       }
@@ -2526,8 +2607,9 @@ export function enemyStep(b0: BattleState): BattleState {
       const landed = incoming(b, Math.round(base * 1.15 * chill), "phys", `${e.def.name} бьёт по швам доспеха`);
       if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0) {
-        b.p.statuses.sundered = Math.min(4, b.p.statuses.sundered + 1);
-        push(b, "Твоя броня промята (−1 к защите до конца боя).", "e");
+        const breakAmount = enemySunderBreak(b.enemy.level);
+        b.p.statuses.sundered = Math.min(8, b.p.statuses.sundered + breakAmount);
+        push(b, `Твоя броня промята (−${breakAmount} к защите, всего −${b.p.statuses.sundered} до конца боя).`, "e");
       }
       break;
     }
@@ -2575,8 +2657,8 @@ export function enemyStep(b0: BattleState): BattleState {
       const landed = incoming(b, Math.round(base * 0.85 * chill), "phys", `${e.def.name} впивается зубами`);
       if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0 && !hasLeg(b, "titan_heart") && Math.random() > resistChance) {
-        b.p.statuses.poison = Math.max(b.p.statuses.poison, 3);
-        push(b, "Яд разъедает кровь: 4 урона за раунд.", "e");
+        const stacks = applyPlayerDot(b, "poison", 3);
+        push(b, `Яд разъедает кровь: отравление на 3 раунда, наложений ${stacks}.`, "e");
       } else if (landed && b.p.hp > 0) {
         push(b, "Кровь выжигает яд на лету.", "p");
       }
@@ -2817,7 +2899,7 @@ export function combatReadout(b: BattleState): CombatReadout {
       label: "Раскол брони",
       flat: -b.p.statuses.sundered,
       good: false,
-      detail: `Броня снижена на ${b.p.statuses.sundered} до конца боя.`,
+      detail: `Броня снижена на ${b.p.statuses.sundered} до конца боя; каждое новое наложение складывается.`,
     });
   if (b.p.statuses.stone > 0)
     defMods.push({
@@ -2844,7 +2926,7 @@ export function combatReadout(b: BattleState): CombatReadout {
       label: "Кровотечение",
       good: false,
       rounds: b.p.statuses.wound,
-      detail: `−${Math.max(1, Math.ceil(b.p.maxHp * 0.05))} здоровья в конце каждого раунда (5% макс. ОЗ).`,
+      detail: `−${Math.max(1, Math.ceil(b.p.maxHp * 0.05)) * Math.max(1, b.p.statuses.woundStacks ?? 1)} здоровья в конце каждого раунда (5% макс. ОЗ${(b.p.statuses.woundStacks ?? 1) > 1 ? ` × ${b.p.statuses.woundStacks} наложения` : ""}).`,
     });
   if (b.p.statuses.poison > 0)
     defMods.push({
@@ -2852,7 +2934,7 @@ export function combatReadout(b: BattleState): CombatReadout {
       label: "Отравление",
       good: false,
       rounds: b.p.statuses.poison,
-      detail: `−${Math.max(1, Math.ceil(b.p.maxHp * 0.04))} здоровья в конце каждого раунда (4% макс. ОЗ).`,
+      detail: `−${Math.max(1, Math.ceil(b.p.maxHp * 0.04)) * Math.max(1, b.p.statuses.poisonStacks ?? 1)} здоровья в конце каждого раунда (4% макс. ОЗ${(b.p.statuses.poisonStacks ?? 1) > 1 ? ` × ${b.p.statuses.poisonStacks} наложения` : ""}).`,
     });
   if (b.p.statuses.burn > 0)
     defMods.push({ id: "burn", label: "Горение", good: false, rounds: b.p.statuses.burn, detail: `−${Math.max(1, Math.ceil(b.p.maxHp * 0.05))} ОЗ в конце раунда (5% макс. ОЗ).` });
@@ -2938,7 +3020,7 @@ export function combatReadout(b: BattleState): CombatReadout {
       label: "Кровотечение врага",
       good: true,
       rounds: b.enemy.statuses.bleed,
-      detail: `−${Math.max(1, Math.ceil(b.enemy.maxHp * 0.05))} ОЗ врагу в конце раунда (5% макс. ОЗ).`,
+      detail: `−${Math.max(1, Math.ceil(b.enemy.maxHp * 0.05)) * Math.max(1, b.enemy.statuses.bleedStacks ?? 1)} ОЗ врагу в конце раунда (5% макс. ОЗ${(b.enemy.statuses.bleedStacks ?? 1) > 1 ? ` × ${b.enemy.statuses.bleedStacks} наложения` : ""}).`,
     });
   if (b.enemy.statuses.poison > 0)
     enemyMods.push({
@@ -2946,7 +3028,7 @@ export function combatReadout(b: BattleState): CombatReadout {
       label: "Яд на враге",
       good: true,
       rounds: b.enemy.statuses.poison,
-      detail: `−${Math.max(1, Math.ceil(b.enemy.maxHp * 0.04))} ОЗ врагу в конце раунда (4% макс. ОЗ).`,
+      detail: `−${Math.max(1, Math.ceil(b.enemy.maxHp * 0.04)) * Math.max(1, b.enemy.statuses.poisonStacks ?? 1)} ОЗ врагу в конце раунда (4% макс. ОЗ${(b.enemy.statuses.poisonStacks ?? 1) > 1 ? ` × ${b.enemy.statuses.poisonStacks} наложения` : ""}).`,
     });
   if (b.enemy.passive?.id === "stone_hide")
     enemyMods.push({ id: "estone", label: "Каменная шкура врага", mult: 1, good: false, detail: "Твой физический урон по нему −25%." });

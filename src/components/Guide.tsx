@@ -44,6 +44,7 @@ import { ACTIVE_GEAR_EFFECTS, GEAR_EFFECTS } from "../game/gearEffects";
 import { GEAR_EFFECT_BASE, GEAR_EFFECT_GROWTH_MAIN, GEAR_EFFECT_SPREAD } from "../game/gearScaling";
 import { effectDetail } from "../game/gearEffects";
 import { NEGATIVE_EFFECTS } from "../game/statusEffects";
+import { MAX_DOT_STACKS } from "../game/battle";
 import { CHANCE_CAP } from "../game/chances";
 import type { RarityTier, StatKey, WearTier } from "../game/types";
 import { Btn, RarityBadge, Rune, Tag } from "./ui";
@@ -565,6 +566,12 @@ export function Guide({
               </div>
             ))}
           </div>
+          <p className="mt-2 text-[0.96rem] leading-snug text-mute">
+            <b className="text-parch">Наложения складываются.</b> Яд и кровотечение при повторном наложении
+            обновляют срок, а урон за тик суммируется: яд на 4% и второй яд — это 8% макс. ОЗ за раунд.
+            Раскол складывает снятую броню, а чем выше уровень свойства или уровень монстра, тем больше
+            брони снимает каждое наложение. Предел наложений яда и крови — {MAX_DOT_STACKS}.
+          </p>
         </div>
 
         <div>
