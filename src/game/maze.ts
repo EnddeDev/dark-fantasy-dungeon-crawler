@@ -1,5 +1,6 @@
-import type { Cell, Maze } from "./types";
+import type { Cell, EventSpawn, Maze } from "./types";
 import { biomeVision, mazeBiome, normalizeBiome, rollBiome, type BiomeId } from "./biomes";
+import { drawEventsForPlan, rollFloorEventPlan } from "./mapEvents";
 
 export const MIN_SIZE = 8;
 export const MAX_SIZE = 16;
@@ -30,6 +31,11 @@ export function wallBetween(m: Maze, x: number, y: number, dx: number, dy: numbe
   if (dy === 1) return x < m.size && y + 1 <= m.size ? (m.h[y + 1]?.[x] ?? true) : true;
   if (dy === -1) return y > 0 ? m.h[y][x] : true;
   return true;
+}
+
+/** Индекс комнаты, накрывающей клетку, или −1. События привязаны к комнатам. */
+export function roomIndexAt(m: Maze, x: number, y: number): number {
+  return m.rooms.findIndex((r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h);
 }
 
 export function openDirs(m: Maze, x: number, y: number): [number, number][] {
@@ -74,11 +80,6 @@ export function chestCountForFloor(floor: number): number {
   if (floor <= 3) return 1;
   if (floor <= 7) return 2;
   return 3;
-}
-
-/** Сколько событий с выбором появляется на этаже: 1–2. */
-export function eventCountForFloor(floor: number): number {
-  return floor >= 5 ? 2 : Math.random() < 0.55 ? 1 : 2;
 }
 
 /**
@@ -657,48 +658,74 @@ export function genMaze(size = MIN_SIZE, floor = Math.max(1, size - 7), biome?: 
   }
   base.keys = keys.map((k) => cellIdx(k.x, k.y, size));
 
-  /* События с выбором: значки на карте, стоят в видимых коридорах,
-     дальше от служебных клеток, чтобы игрок заметил их заранее. */
-  const eventTaken = new Set<number>([...base.chests, ...base.doors, ...base.keys, stairsIdx, bossIdx]);
-  const evCands: Cell[] = [];
-  for (let y = 0; y < size; y++)
-    for (let x = 0; x < size; x++) {
-      const i = cellIdx(x, y, size);
-      if (i === 0 || eventTaken.has(i) || pillarIdx.has(i)) continue;
-      if (reach[y][x] < 2) continue;
-      if (openDirs(base, x, y).length < 1) continue;
-      evCands.push({ x, y });
-    }
-  evCands.sort(() => Math.random() - 0.5);
-  const wantEvents = Math.max(1, Math.min(2, eventCountForFloor(floor)));
-  const events: number[] = [];
-  for (const c of evCands) {
-    if (events.length >= wantEvents) break;
-    const i = cellIdx(c.x, c.y, size);
-    if (eventTaken.has(i)) continue;
-    events.push(i);
-    eventTaken.add(i);
-  }
-
-  /* Гарантия 1–2 событий: если строгих кандидатов не хватило, берём любую клетку,
-     достижимую после открытия дверей ключами. Служебные клетки и колонны исключаем. */
-  if (events.length < 1) {
-    const anyReach = bfs(base, base.start);
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const i = cellIdx(x, y, size);
-        if (i === 0 || eventTaken.has(i) || pillarIdx.has(i)) continue;
-        if (anyReach[y][x] >= 0) {
-          events.push(i);
-          eventTaken.add(i);
-          break;
-        }
+  /* События живут в комнатах: одна комната — одно событие, значок ставится
+     ближе к центру зала. Комнаты без служебных клеток (вход, лестница, босс,
+     сундук, ключ, дверь) идут первыми, но если залов мало, событие встанет и
+     в комнату с колонной или сундуком — иначе этаж остался бы без событий. */
+  const serviceCells = new Set<number>([
+    0,
+    stairsIdx,
+    bossIdx,
+    ...base.chests,
+    ...base.doors,
+    ...base.keys,
+  ]);
+  const roomCellList = (room: (typeof base.rooms)[number]): number[] => {
+    const cells: number[] = [];
+    for (let ry = room.y; ry < room.y + room.h; ry++)
+      for (let rx = room.x; rx < room.x + room.w; rx++) cells.push(cellIdx(rx, ry, size));
+    return cells;
+  };
+  type RoomSlot = { room: (typeof base.rooms)[number]; index: number; cells: number[]; marker: number; rank: number };
+  const roomSlots: RoomSlot[] = [];
+  base.rooms.forEach((room, index) => {
+    const cells = roomCellList(room);
+    if (cells.includes(0)) return;
+    const centreX = room.x + (room.w - 1) / 2;
+    const centreY = room.y + (room.h - 1) / 2;
+    let marker: number | null = null;
+    let bestScore = Infinity;
+    let clean = true;
+    for (const cell of cells) {
+      if (pillarIdx.has(cell)) {
+        clean = false;
+        continue;
       }
-      if (events.length >= 1) break;
+      if (serviceCells.has(cell)) clean = false;
+      const x = cell % size;
+      const y = Math.floor(cell / size);
+      if (dist[y][x] < 0 || serviceCells.has(cell)) continue;
+      const score = Math.abs(x - centreX) + Math.abs(y - centreY);
+      if (score < bestScore) {
+        bestScore = score;
+        marker = cell;
+      }
     }
+    if (marker === null) return;
+    roomSlots.push({ room, index, cells, marker, rank: clean ? 2 : 1 });
+  });
+  /* Чистые залы вперёд, внутри группы порядок случайный. */
+  for (let i = roomSlots.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [roomSlots[i], roomSlots[j]] = [roomSlots[j], roomSlots[i]];
   }
+  roomSlots.sort((a, b) => b.rank - a.rank);
 
-  base.events = events;
+  const plan = rollFloorEventPlan(floor, roomSlots.length);
+  const drawn = drawEventsForPlan(plan);
+  const eventSpawns: EventSpawn[] = [];
+  const eventRoomCells = new Set<number>();
+  drawn.forEach((ev, n) => {
+    const slot = roomSlots[n];
+    if (!slot) return;
+    eventSpawns.push({ room: slot.index, cell: slot.marker, kind: ev.kind, eventId: ev.id });
+    slot.cells.forEach((c) => {
+      if (!pillarIdx.has(c) && !serviceCells.has(c)) eventRoomCells.add(c);
+    });
+  });
+
+  base.events = eventSpawns.map((e) => e.cell);
+  base.eventSpawns = eventSpawns;
 
   /* Постоянные обитатели этажа: монстры и ловушки стоят на карте с самого начала,
      а не появляются случайно на шаге. Монстр — 1 на 8 клеток, ловушка — 1 на 16. */
@@ -710,6 +737,7 @@ export function genMaze(size = MIN_SIZE, floor = Math.max(1, size - 7), biome?: 
     ...base.doors,
     ...base.keys,
     ...base.events,
+    ...eventRoomCells,
     ...pillarIdx,
   ]);
   const spots: number[] = [];

@@ -34,7 +34,7 @@ import {
   statPointCost,
   xpForNextLevel,
 } from "../game/content";
-import { MAP_EVENTS } from "../game/world";
+import { MAP_EVENTS, NEGATIVE_EVENTS, NEUTRAL_EVENTS, POSITIVE_EVENTS } from "../game/world";
 import { MONSTER_RACES, MONSTER_RACE_META, MONSTER_TYPES, MONSTER_TYPE_META } from "../game/monsters";
 import { BIOMES, BIOME_ORDER, biomeChanceLabel } from "../game/biomes";
 import { BiomeIcon } from "./BiomeLabel";
@@ -960,36 +960,75 @@ export function Guide({
             </Btn>
           </Reference>
 
-          <Reference id="guide-events" title="События с выбором">
+          <Reference id="guide-events" title="События в комнатах">
             <p>
-              У каждого события несколько вариантов. Любой исход несёт и дар, и потерю:
-              алтарь даст опыт, но возьмёт кровь; монеты из колодца окажутся целыми, но под ними будет жало.
-              Шанс удачи показан на кнопке.
+              События стоят в комнатах: одна комната — одно событие, поэтому значок на карте сразу
+              говорит, что тебя ждёт. На этаж выпадает одно <b className="text-verd">положительное</b>,
+              одно-два <b className="text-flame">нейтральных</b> и одно <b className="text-rubric">негативное</b>;
+              на 1–2 этажах негативного нет — только положительное и нейтральное.
             </p>
-            <div className="space-y-2">
-              {MAP_EVENTS.map((ev) => (
-                <details key={ev.id} className="group border border-line bg-black/25">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2">
-                    <span className="font-display text-[1.02rem] uppercase tracking-[0.08em] text-flamehi">{ev.name}</span>
-                    <ChevronRight size={14} className="text-mute transition-transform group-open:rotate-90" aria-hidden />
-                  </summary>
-                  <div className="border-t border-line/60 px-3 py-2">
-                    <p className="text-[0.93rem] italic text-mute">{ev.prompt}</p>
-                    <ul className="mt-2 space-y-1.5 text-[0.92rem]">
-                      {ev.choices.map((c) => (
-                        <li key={c.id} className="border-l-2 border-flamedim/60 pl-2.5">
-                          <b className="text-parch">{c.label}</b>{" "}
-                          <span className="font-mono text-[0.84rem] text-verd">удача {Math.round(c.chance * 100)}%</span>
-                          <div className="text-mute">
-                            удачно: {c.goodText} <span className="text-rubric/80">· иначе: {c.badText}</span>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </details>
-              ))}
-            </div>
+            <ul className="mt-2 space-y-1.5 text-[0.93rem] text-mute">
+              <li>
+                <b className="text-verd">Положительное:</b> дар без подвоха — лечение, свет, золото, вещь.
+                Взять можно один раз; «не сейчас» оставляет событие на карте до следующего захода.
+              </li>
+              <li>
+                <b className="text-flame">Нейтральное:</b> две проверки характеристик и уход. Шанс удачи
+                растёт на 5 % за каждую единицу характеристики сверх трёх, поэтому сильный лезет к алтарю,
+                ловкий — к вороту, умный — к запискам.
+              </li>
+              <li>
+                <b className="text-rubric">Негативное:</b> срабатывает само, как только ты вошёл в комнату.
+                Оно бьёт здоровьем, золотом, ядом или проклятием, а иногда призывает катастрофу или
+                четырёх тварей прямо на карту рядом с героем.
+              </li>
+            </ul>
+            {[
+              { kind: "positive", title: "Положительные", list: POSITIVE_EVENTS, tone: "text-verd" },
+              { kind: "neutral", title: "Нейтральные", list: NEUTRAL_EVENTS, tone: "text-flame" },
+              { kind: "negative", title: "Негативные", list: NEGATIVE_EVENTS, tone: "text-rubric" },
+            ].map((group) => (
+              <div key={group.kind} className="mt-3 space-y-2">
+                <div className={`font-mono text-[0.72rem] uppercase tracking-[0.16em] ${group.tone}`}>
+                  {group.title} — {group.list.length}
+                </div>
+                {group.list.map((ev) => (
+                  <details key={ev.id} className="group border border-line bg-black/25">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2">
+                      <span className="font-display text-[1.02rem] uppercase tracking-[0.08em] text-flamehi">{ev.name}</span>
+                      <ChevronRight size={14} className="text-mute transition-transform group-open:rotate-90" aria-hidden />
+                    </summary>
+                    <div className="border-t border-line/60 px-3 py-2">
+                      <p className="text-[0.93rem] italic text-mute">{ev.prompt}</p>
+                      {ev.kind === "negative" ? (
+                        <p className="mt-2 border-l-2 border-rubric/60 pl-2.5 text-[0.92rem] text-mute">{ev.text}</p>
+                      ) : (
+                        <ul className="mt-2 space-y-1.5 text-[0.92rem]">
+                          {ev.choices.map((c) => (
+                            <li key={c.id} className="border-l-2 border-flamedim/60 pl-2.5">
+                              <b className="text-parch">{c.label}</b>{" "}
+                              <span className="font-mono text-[0.84rem] text-verd">
+                                {c.leave
+                                  ? "без последствий"
+                                  : c.stat
+                                    ? `${c.stat.toUpperCase()} · удача ${Math.round(c.chance * 100)}% +5% за единицу`
+                                    : "удача 100%"}
+                              </span>
+                              {!c.leave && (
+                                <div className="text-mute">
+                                  {c.detail}: {c.goodText}
+                                  {c.badText ? <span className="text-rubric/80"> · иначе: {c.badText}</span> : null}
+                                </div>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            ))}
           </Reference>
 
           <Reference id="guide-return" title="Выход, смерть и сохранение">

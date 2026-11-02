@@ -608,9 +608,14 @@ export function mayHaveSeals(isBoss: boolean, threat: Threat): boolean {
 }
 
 /** Спавн монстра: уровень (этаж ±1, на первом этаже возможен 0), угроза (80/15/5). */
-export function spawnEnemy(floor: number, isBoss = false, rng: () => number = Math.random): SpawnedEnemy {
+export function spawnEnemy(
+  floor: number,
+  isBoss = false,
+  rng: () => number = Math.random,
+  forcedThreat?: Threat,
+): SpawnedEnemy {
   const def = isBoss ? rollBoss(floor) : rollEnemy(floor, rng);
-  const threat: Threat = isBoss ? "catastrophe" : rollThreat(rng);
+  const threat: Threat = isBoss ? "catastrophe" : forcedThreat ?? rollThreat(rng);
   const level = isBoss ? floor : rollMonsterLevel(floor, rng);
   const meta = THREAT_META[threat];
 
@@ -808,9 +813,17 @@ function flash(b: BattleState, target: "p" | "e", kind: "hit" | "guard" | "miss"
   b.flash = { id: ++flashSeq, target, kind, amount };
 }
 
-export function newBattle(pl: Player, floor: number, isBoss = false, biome: BiomeId = "classic", torchTurns = 0, initialBurning = 0): BattleState {
+export function newBattle(
+  pl: Player,
+  floor: number,
+  isBoss = false,
+  biome: BiomeId = "classic",
+  torchTurns = 0,
+  initialBurning = 0,
+  forcedThreat?: Threat,
+): BattleState {
   const d = derived(pl);
-  const s = spawnEnemy(floor, isBoss);
+  const s = spawnEnemy(floor, isBoss, Math.random, forcedThreat);
   const def = s.def;
   const firstRoundAp = d.ap + d.firstRoundApBonus +
     (pl.passives.includes("first_blood") ? 1 : 0) +

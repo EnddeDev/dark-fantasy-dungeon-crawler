@@ -170,6 +170,16 @@ export interface Cell {
   y: number;
 }
 
+/** Событие, закреплённое за комнатой: вход в комнату его и запускает. */
+export interface EventSpawn {
+  /** Индекс комнаты в maze.rooms. */
+  room: number;
+  /** Клетка-метка внутри комнаты: там рисуется значок. */
+  cell: number;
+  kind: "positive" | "neutral" | "negative";
+  eventId: string;
+}
+
 export interface Maze {
   size: number;
   /** Тип этажа. Необязателен для совместимости со старыми картами: отсутствие = классика. */
@@ -188,9 +198,14 @@ export interface Maze {
   openedChests: number[];
   keys: number[];
   takenKeys: number[];
-  /** Клетки-события с выбором: видны на карте до подхода. */
+  /** Клетки-события: метка комнаты, видна на карте до подхода. */
   events: number[];
   usedEvents: number[];
+  /**
+   * События по комнатам: одна комната — одно событие, вид задаёт значок.
+   * У старых сохранений поля нет — тогда работает прежний случайный выбор.
+   */
+  eventSpawns?: EventSpawn[];
   /** Постоянные обитатели карты: 1 монстр на 8 клеток, виден в свете факела. */
   monsters: number[];
   /** Ловушки: 1 на 16 клеток, обычно скрыты до момента обнаружения. */
@@ -246,5 +261,5 @@ export type ModalState =
   | { kind: "key" }
   | { kind: "stairs" }
   | { kind: "death"; cause: string; lost: number; lostGear: number }
-  | { kind: "event"; eventId: string; cell: number; result?: { title: string; good: string; bad: string } }
+  | { kind: "event"; eventId: string; cell: number; result?: { title: string; good: string; bad?: string } }
   | { kind: "note"; title: string; body: string };
