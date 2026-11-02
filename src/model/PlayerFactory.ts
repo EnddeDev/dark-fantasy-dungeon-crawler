@@ -1,4 +1,5 @@
 import { derived } from "../game/battle";
+import { DEFAULT_CHARACTER_NAME } from "../game/characterName";
 import { GEAR_BASES, ITEMS, RECIPES, createGearItem, isStarterItem, migrateGearItem } from "../game/content";
 import { normalizeStatMilestones } from "../game/statMilestones";
 import type { Player, Slot } from "../game/types";
@@ -17,7 +18,7 @@ export class PlayerFactory {
     const starterWeapon = { ...createGearItem({ baseId: "knife", wear: "worn", rarity: "common", identified: true }), noReq: true };
     const starterArmor = { ...createGearItem({ baseId: "rag", wear: "worn", rarity: "common", identified: true }), noReq: true };
     const player: Player = {
-      name: "Покоритель",
+      name: DEFAULT_CHARACTER_NAME,
       level: 1,
       xp: 0,
       statPoints: 3,
