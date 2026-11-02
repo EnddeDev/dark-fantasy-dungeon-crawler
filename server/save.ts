@@ -29,6 +29,7 @@ import { statMilestoneById } from "../src/game/statMilestones";
 import { ARCHETYPE_ORDER, type ArchetypeId } from "../src/game/archetypes";
 import { totalStatPoints } from "../src/game/progression";
 import { derived } from "../src/game/battle";
+import { CHARACTER_NAME_MAX, DEFAULT_CHARACTER_NAME } from "../src/game/characterName";
 import { SHOP_MAX_LEVEL } from "../src/game/world";
 import {
   SLOT_ORDER,
@@ -265,7 +266,9 @@ export function sanitizePlayer(raw: unknown, floors = 1): Player {
     ? [...new Set(input.knownRecipes.filter((id): id is string => typeof id === "string" && RECIPE_IDS.has(id)))]
     : [];
 
-  const name = typeof input.name === "string" && input.name.trim() ? input.name.trim().slice(0, 24) : "Покоритель";
+  const name = typeof input.name === "string" && input.name.trim()
+    ? input.name.trim().slice(0, CHARACTER_NAME_MAX)
+    : DEFAULT_CHARACTER_NAME;
 
   const player: Player = {
     name,

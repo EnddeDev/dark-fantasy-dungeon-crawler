@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from "react";
-import { Activity, Coins, LogOut, Sparkles } from "lucide-react";
+import { useState, type FormEvent, type ReactNode } from "react";
+import { Activity, Coins, LogOut, Pencil, Sparkles } from "lucide-react";
 import {
   ARCHETYPES,
   GEAR_BASES,
@@ -20,6 +20,7 @@ import { combatReadout, derived, equippedList, type BattleState } from "../game/
 import type { Player, Run } from "../game/types";
 import { Btn, Meter, Pips } from "./ui";
 import { isBattleCurse, trapBypassChance, trapDisarmChance } from "../game/traps";
+import { CHARACTER_NAME_MAX } from "../game/characterName";
 
 type EffectEntry = {
   id: string;
@@ -78,14 +79,39 @@ export function Rail({
   run,
   battle,
   onLeaveRun,
+  onRename,
 }: {
   player: Player;
   run: Run | null;
   battle: BattleState | null;
   onLeaveRun?: () => void;
+  /** Возвращает текст ошибки или null, если имя принято. */
+  onRename?: (name: string) => string | null;
 }) {
   const [section, setSection] = useState<"stats" | "effects">("stats");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [nameError, setNameError] = useState<string | null>(null);
+  const startRename = () => {
+    setDraftName(player.name);
+    setNameError(null);
+    setRenaming(true);
+  };
+  const cancelRename = () => {
+    setRenaming(false);
+    setNameError(null);
+  };
+  const submitRename = (e: FormEvent) => {
+    e.preventDefault();
+    const error = onRename?.(draftName) ?? null;
+    if (error) {
+      setNameError(error);
+      return;
+    }
+    setRenaming(false);
+    setNameError(null);
+  };
   const d = derived(player);
   const arch = player.archetype ? ARCHETYPES[player.archetype] : null;
   const readout = battle ? combatReadout(battle) : null;
@@ -235,7 +261,54 @@ export function Rail({
               <span className="font-mono text-[0.88rem] text-mute">Побед: {player.kills}</span>
             </div>
             <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-title text-[1.85rem] leading-tight text-flamehi">{player.name}</h2>
+              {renaming ? (
+                <form onSubmit={submitRename} className="min-w-0 flex-1" aria-label="Смена имени персонажа">
+                  <div className="flex items-center gap-2">
+                    <input
+                      autoFocus
+                      value={draftName}
+                      maxLength={CHARACTER_NAME_MAX}
+                      onChange={(e) => {
+                        setDraftName(e.target.value);
+                        setNameError(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") cancelRename();
+                      }}
+                      aria-label="Имя персонажа"
+                      aria-invalid={nameError ? true : undefined}
+                      aria-describedby={nameError ? "rail-name-error" : undefined}
+                      className="min-w-0 flex-1 border border-flamedim bg-black/30 px-2 py-1 font-title text-[1.4rem] leading-tight text-flamehi outline-none focus:border-flame"
+                    />
+                    <button type="submit" className="border border-flamedim px-2 py-1 font-display text-[0.8rem] uppercase tracking-[0.08em] text-flamehi hover:border-flame hover:bg-flame/15">
+                      Сохранить
+                    </button>
+                    <button type="button" onClick={cancelRename} className="px-1 py-1 font-display text-[0.8rem] uppercase tracking-[0.08em] text-mute hover:text-parch">
+                      Отмена
+                    </button>
+                  </div>
+                  {nameError && (
+                    <p id="rail-name-error" role="alert" className="mt-1 text-[0.85rem] text-rubric">
+                      {nameError}
+                    </p>
+                  )}
+                </form>
+              ) : (
+                <div className="flex min-w-0 items-center gap-2">
+                  <h2 className="truncate font-title text-[1.85rem] leading-tight text-flamehi">{player.name}</h2>
+                  {onRename && (
+                    <button
+                      type="button"
+                      onClick={startRename}
+                      aria-label="Сменить имя персонажа"
+                      title="Сменить имя персонажа"
+                      className="shrink-0 border border-transparent p-1 text-mute hover:border-flamedim hover:text-flamehi"
+                    >
+                      <Pencil size={15} aria-hidden />
+                    </button>
+                  )}
+                </div>
+              )}
               <span className="font-mono text-sm text-flame">Ур. {player.level}/{MAX_LEVEL}</span>
             </div>
             {/* Порядок по правилам экрана: здоровье, под ним негативные эффекты, затем опыт. */}

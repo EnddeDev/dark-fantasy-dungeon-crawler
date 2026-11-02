@@ -1,4 +1,5 @@
 import { derived } from "../game/battle";
+import { checkCharacterName } from "../game/characterName";
 import { rollShopStock } from "../game/content";
 import { BIOMES, biomeHealingAmount, biomeVision, mazeBiome } from "../game/biomes";
 import { genMaze, mazeSizeForFloor } from "../game/maze";
@@ -201,6 +202,14 @@ export class GameController {
       modal: null,
       toast: null,
     });
+  }
+
+  /** Смена имени героя из боковой панели. Возвращает текст ошибки или null, если имя сохранено. */
+  renameHero(raw: string): string | null {
+    const check = checkCharacterName(raw);
+    if (!check.ok) return check.error;
+    this.model.updatePlayer((p) => ({ ...p, name: check.name }));
+    return null;
   }
 
   leaveRun(): void {

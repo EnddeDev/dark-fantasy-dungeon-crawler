@@ -27,7 +27,7 @@ export function GameView({
 
   return (
     <div className="flex min-h-screen flex-col bg-soot lg:flex-row">
-      <Rail player={player} run={run} battle={battle} onLeaveRun={() => game.leaveRun()} />
+      <Rail player={player} run={run} battle={battle} onLeaveRun={() => game.leaveRun()} onRename={(name) => game.renameHero(name)} />
       <main className="order-2 min-w-0 flex-1">
         {screen === "lobby" && (
           <Lobby
