@@ -45,22 +45,23 @@ function renderGuide() {
   return renderToStaticMarkup(React.createElement(Guide, { onOpenShop: () => {}, onOpenArmory: () => {}, onOpenBestiary: () => {} }));
 }
 
-test("виды урона: физический, магический, четыре стихии и три периодических", () => {
+test("виды урона: физический, магический, четыре стихии и два периодических (горение — это огонь)", () => {
   assert.deepEqual(
     types.DAMAGE_TYPES.map((t) => t.name),
-    ["Физический", "Магический", "Огонь", "Лёд", "Кислота", "Свет", "Яд", "Горение", "Кровотечение"],
+    ["Физический", "Магический", "Огонь", "Лёд", "Кислота", "Свет", "Яд", "Кровотечение"],
   );
   const direct = types.DAMAGE_TYPES.filter((t) => t.group === "direct");
   const periodic = types.DAMAGE_TYPES.filter((t) => t.group === "periodic");
   assert.deepEqual(direct.map((t) => t.id), ["phys", "magic", "fire", "ice", "acid", "light"]);
-  assert.deepEqual(periodic.map((t) => t.id), ["poison", "burn", "bleed"]);
+  assert.deepEqual(periodic.map((t) => t.id), ["poison", "bleed"]);
+  assert.equal(types.DAMAGE_TYPES.some((t) => t.id === "burn"), false, "горения нет отдельным видом");
 });
 
 test("школы: физический режется бронёй, все стихии и магический — магическим сопротивлением", () => {
   const school = Object.fromEntries(types.DAMAGE_TYPES.map((t) => [t.id, t.school]));
   assert.equal(school.phys, "phys");
   for (const id of ["magic", "fire", "ice", "acid", "light"]) assert.equal(school[id], "magic", id);
-  for (const id of ["poison", "burn", "bleed"]) assert.equal(school[id], undefined, `${id} — периодический, школы нет`);
+  for (const id of ["poison", "bleed"]) assert.equal(school[id], undefined, `${id} — периодический, школы нет`);
 });
 
 test("тексты стихий называют родов, которые к ним уязвимы или иммунны", () => {
@@ -77,10 +78,8 @@ test("периодический урон: проценты совпадают �
   const text = (id) => types.DAMAGE_TYPES.find((t) => t.id === id).text;
   assert.ok(text("poison").startsWith("4% макс. ОЗ"));
   assert.ok(text("bleed").startsWith("5% макс. ОЗ"));
-  assert.ok(text("burn").startsWith("5% макс. ОЗ"));
   assert.ok(text("poison").includes("Не режется сопротивлениями"));
   assert.ok(text("bleed").includes("Не режется сопротивлениями"));
-  assert.ok(text("burn").includes("Не режется магическим сопротивлением"));
 });
 
 test("руководство выводит виды урона и не упоминает «чистый» урон", () => {

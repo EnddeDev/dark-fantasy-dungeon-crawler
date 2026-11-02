@@ -101,7 +101,6 @@ export const ITEM_ART: Readonly<Record<string, string>> = {
   "moss": "images/items/moss.jpg",
   "ninja_kusarigama": "images/items/ninja_kusarigama.jpg",
   "oil_acid": "images/items/oil_acid.jpg",
-  "oil_burn": "images/items/oil_burn.jpg",
   "oil_fire": "images/items/oil_fire.jpg",
   "oil_ice": "images/items/oil_ice.jpg",
   "oil_light": "images/items/oil_light.jpg",

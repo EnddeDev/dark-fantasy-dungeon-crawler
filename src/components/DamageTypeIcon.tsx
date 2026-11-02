@@ -6,7 +6,7 @@ import { ELEMENT_NAMES } from "../game/monsters";
 import { EffectGlyph } from "./EffectIcon";
 
 /**
- * Иконки видов урона и всплывающее окно с описанием. Яд, горение и кровотечение
+ * Иконки видов урона и всплывающее окно с описанием. Яд и кровотечение
  * берут глифы эффектов; остальные виды рисуются тонким контуром в своём цвете.
  * Наведение, фокус или тап раскрывают подсказку: школа, правило и текст.
  */
@@ -19,11 +19,10 @@ export const DAMAGE_COLOR: Record<DamageTypeId, string> = {
   acid: "#c4e04a",
   light: "#fbe7a1",
   poison: "#7fc45a",
-  burn: "#e0623c",
   bleed: "#d0404a",
 };
 
-const GLYPHS: Record<Exclude<DamageTypeId, "poison" | "burn" | "bleed">, ReactElement> = {
+const GLYPHS: Record<Exclude<DamageTypeId, "poison" | "bleed">, ReactElement> = {
   phys: (
     <>
       <path d="M14.6 4.2l5.2 5.2-9.4 9.4-5.2-5.2z" />
@@ -64,7 +63,7 @@ const GLYPHS: Record<Exclude<DamageTypeId, "poison" | "burn" | "bleed">, ReactEl
 };
 
 export function DamageGlyph({ id, size = 18 }: { id: DamageTypeId; size?: number }) {
-  if (id === "poison" || id === "burn" || id === "bleed") {
+  if (id === "poison" || id === "bleed") {
     return <EffectGlyph id={id} size={size} />;
   }
   return (
