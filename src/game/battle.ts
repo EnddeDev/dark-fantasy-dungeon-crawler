@@ -76,7 +76,18 @@ import {
   statTenacity,
 } from "./statFormulas";
 import { GEAR_EFFECTS } from "./gearEffects";
-import { CHILL_HEAL_MULT, magicTickDamage, oilTickDamage, statusTickDamage, type OilKind } from "./statusEffects";
+import {
+  CHILL_HEAL_MULT,
+  OIL_BLIND_MISS,
+  OIL_ROUNDS,
+  magicTickDamage,
+  oilAcidArmorCut,
+  oilHitDamage,
+  oilIceAttackCut,
+  oilTickDamage,
+  statusTickDamage,
+  type OilKind,
+} from "./statusEffects";
 import { damageTypeName, isDamageElement } from "./damageTypes";
 import type { ArchetypeId } from "./archetypes";
 import type { GearEffectId, GearPassiveId } from "./gearEffects";
@@ -1147,9 +1158,25 @@ function applyEnemyStatus(b: BattleState, key: "chill" | "bleed" | "poison" | "f
   }
 }
 /** Свойства оружия, которые срабатывают прямо от удара: кровотечение, яд, раскол. */
+/** Масло данного вида сейчас действует на враге (срок не вышел). */
+function enemyOil(b: BattleState, kind: OilKind): boolean {
+  return b.enemy.statuses.oilType === kind && b.enemy.statuses.oilRounds > 0;
+}
+
+/** Кислота под маслом снимает с брони врага 1 + ЛОВ героя. */
+function enemyOilArmorCut(b: BattleState): number {
+  return enemyOil(b, "acid") ? oilAcidArmorCut(b.p.stats.agi) : 0;
+}
+
+/** Лёд под маслом режет силу атаки и физических приёмов врага на 0.05 за очко ИНТ героя. */
+function enemyOilAttackMult(b: BattleState): number {
+  return enemyOil(b, "ice") ? 1 - oilIceAttackCut(b.p.stats.int) : 1;
+}
+
 /**
- * Удар смазанным оружием накладывает урон масла на 3 раунда. Пока масло на клинке
- * (1 раунд), каждый удар обновляет срок. Стихия, к которой род невосприимчив, не действует.
+ * Удар смазанным оружием накладывает вид масла на 3 раунда. Повторный удар обновляет срок.
+ * Разовый урон (магия 3 + 3×ИНТ, свет 2×ИНТ) проходит сразу. Стихия, к которой род
+ * невосприимчив, не действует.
  */
 function oilOnHit(b: BattleState) {
   const kind = b.p.statuses.oilType;
@@ -1160,17 +1187,19 @@ function oilOnHit(b: BattleState) {
     push(b, `${b.enemy.def.name} не поддаётся маслу: ${name} не действует.`, "sys", element);
     return;
   }
-  const renew = b.enemy.statuses.oilType === kind && b.enemy.statuses.oilRounds > 0;
+  const renew = enemyOil(b, kind);
   b.enemy.statuses.oilType = kind;
-  b.enemy.statuses.oilRounds = 3;
+  b.enemy.statuses.oilRounds = OIL_ROUNDS;
   push(
     b,
     renew
-      ? `Смазанный клинок обновляет ${name} на ${b.enemy.def.name}: 3 раунда.`
-      : `Смазанный клинок накладывает ${name} на ${b.enemy.def.name}: 3 раунда.`,
+      ? `Смазанный клинок обновляет ${name} на ${b.enemy.def.name}: ${OIL_ROUNDS} раунда.`
+      : `Смазанный клинок накладывает ${name} на ${b.enemy.def.name}: ${OIL_ROUNDS} раунда.`,
     "p",
     element,
   );
+  const raw = oilHitDamage(kind, b.p.stats.int);
+  if (raw > 0) elementalHit(b, raw, ` Масло: ${name}.`, element);
 }
 
 function weaponHitEffects(b: BattleState) {
@@ -1372,7 +1401,7 @@ function hitEnemy(
   }
   if (kind === "phys") {
     const pierce = rarePower(b, "pierce", "armor");
-    const effArmor = Math.max(0, b.enemy.armor - pierce);
+    const effArmor = Math.max(0, b.enemy.armor - pierce - enemyOilArmorCut(b));
     d -= effArmor;
     /* Каменная шкура и укрепление рода — врождённые свойства породы,
        а не эффекты: истощение их не снимает. */
@@ -1453,6 +1482,12 @@ function incoming(
   if (!ignoreDefense && strike && darkMiss > 0 && Math.random() < darkMiss) {
     flash(b, "p", "miss", 0);
     push(b, `Мрак скрывает тебя: ${src} — промах.`, "sys");
+    return false;
+  }
+  /* Световое масло на враге ослепляет его: каждый удар может уйти мимо. */
+  if (enemyOil(b, "light") && Math.random() < OIL_BLIND_MISS) {
+    flash(b, "p", "miss", 0);
+    push(b, `${b.enemy.def.name} ослеплён светом: ${src} — промах.`, "sys");
     return false;
   }
   if (b.p.statuses.fullGuard > 0) {
@@ -1691,10 +1726,13 @@ function advance(b: BattleState) {
       const kind = b.enemy.statuses.oilType;
       const element = isDamageElement(kind) ? kind : undefined;
       const mult = element ? raceElementMult(b.enemy.def.race, element) : 1;
-      const d = Math.max(1, Math.round(oilTickDamage(b.enemy.maxHp, kind, eChance(b, "magic_resist")) * mult));
-      b.enemy.hp -= d;
-      const weak = mult > 1 ? ` Уязвимость ×${mult}.` : "";
-      push(b, `${damageTypeName(kind)} масла отнимает ${d} ОЗ у ${b.enemy.def.name}.${weak}`, "p", element);
+      const raw = oilTickDamage(b.enemy.maxHp, kind, b.p.stats.agi, eChance(b, "magic_resist"));
+      if (raw > 0 && mult > 0) {
+        const d = Math.max(1, Math.round(raw * mult));
+        b.enemy.hp -= d;
+        const weak = mult > 1 ? ` Уязвимость ×${mult}.` : "";
+        push(b, `${damageTypeName(kind)} масла отнимает ${d} ОЗ у ${b.enemy.def.name}.${weak}`, "p", element);
+      }
     }
     if (b.enemy.passive?.id === "regen" && !raceCannotHeal(b.enemy.def.race) && b.enemy.hp > 0 && b.enemy.hp < b.enemy.maxHp) {
       const heal = healEnemy(b, 4);
@@ -2447,6 +2485,8 @@ function armEnemyCooldown(b: BattleState, move: EnemyMove): void {
 const MAGIC_MOVES: EnemyMove[] = ["curse", "drain", "bell_stun", "terror", "darkness", "cold_touch", "hell_force"];
 /** Прямые удары оружием и когтями. */
 const STRIKE_MOVES: EnemyMove[] = ["attack", "heavy", "multi"];
+/** Физические приёмы врага: на них действует лёд и броня героя. */
+const PHYS_ENEMY_MOVES: EnemyMove[] = ["attack", "heavy", "wound", "sunder", "poison", "multi"];
 
 /**
  * Родовые свойства удара: вампир лечится от попадания, а зверь, призрак,
@@ -2637,6 +2677,8 @@ export function enemyStep(b0: BattleState): BattleState {
   if (e.def.race === "beast" && e.hp > 0 && e.hp <= e.maxHp * 0.5 && isStrikeMove) {
     base = Math.round(base * 2);
   }
+  /* Лёд под маслом режет силу атаки и физических приёмов врага. */
+  if (PHYS_ENEMY_MOVES.includes(move)) base = Math.round(base * enemyOilAttackMult(b));
   /* Ярость дракона: двойной урон, пока держится. */
   if (e.def.race === "dragon" && e.fury > 0 && !effectsDepleted(b)) base = Math.round(base * 2);
   const resistChance = playerResistChance(b);
@@ -2962,7 +3004,7 @@ export function combatReadout(b: BattleState): CombatReadout {
 
   /* Что останется после брони и защит противника. */
   const pierce = b.p.rareAffixes.filter((x) => x === "pierce").length * 2;
-  const enemyArmor = Math.max(0, b.enemy.armor - pierce);
+  const enemyArmor = Math.max(0, b.enemy.armor - pierce - enemyOilArmorCut(b));
   const stoneHide = b.enemy.passive?.id === "stone_hide" ? 0.75 : 1;
   const guardMult = b.enemy.guard ? 0.5 : 1;
   const effMin = Math.max(1, Math.floor(Math.max(1, rawMin - enemyArmor) * stoneHide * guardMult));
