@@ -20,6 +20,37 @@ export type DotKind = keyof typeof STATUS_DOT;
  */
 export type OilKind = "magic" | "fire" | "ice" | "acid" | "light" | "poison";
 
+/**
+ * Эффекты, от которых героя защищает зелье иммунитета. Только те, что реально
+ * попадают на героя: проклятие, страх, раскол, оглушение, кровотечение, яд, горение,
+ * запрет лечения, мрак и три печати. Обморожение и увядание на героя не накладываются.
+ */
+export const IMMUNITY_EFFECTS = [
+  "bleed", "poison", "burn", "curse", "fear", "stun", "sunder",
+  "noHeal", "darkness", "sealItems", "sealSkills", "sealAttack",
+] as const;
+
+export type ImmunityEffect = (typeof IMMUNITY_EFFECTS)[number];
+
+/** Сколько ходов действует зелье иммунитета. */
+export const IMMUNITY_ROUNDS = 3;
+
+/** Название эффекта для журнала и подсказок: «Иммунитет: кровотечение не накладывается». */
+export const IMMUNITY_NAMES: Record<ImmunityEffect, string> = {
+  bleed: "кровотечение",
+  poison: "яд",
+  burn: "горение",
+  curse: "проклятие",
+  fear: "страх",
+  stun: "оглушение",
+  sunder: "раскол",
+  noHeal: "запрет лечения",
+  darkness: "мрак",
+  sealItems: "печать немоты",
+  sealSkills: "печать забвения",
+  sealAttack: "печать оков",
+};
+
 /** Срок масла на клинке врага после удара, в раундах. */
 export const OIL_ROUNDS = 3;
 

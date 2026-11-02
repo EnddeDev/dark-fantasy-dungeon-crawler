@@ -1,7 +1,7 @@
 import { SHOP_STARTER_GEAR } from "./shopStarters";
 import { raceImmuneTo } from "./monsters";
 import type { DamageElement, EffectKind, MonsterRace, MonsterType } from "./monsters";
-import type { OilKind } from "./statusEffects";
+import type { ImmunityEffect, OilKind } from "./statusEffects";
 import {
   EXTRA_BOSSES,
   EXTRA_ENEMIES,
@@ -2051,7 +2051,7 @@ export interface ItemDef {
       | "throw" | "poison" | "smoke" | "explosion" | "fear"
       | "haste" | "terror" | "stun_enemy" | "acid" | "stone"
       | "iron_tonic" | "blood_rage" | "quickblade" | "pact_elixir" | "scroll_creation"
-      | "bleed" | "blight" | "wither" | "buff_break" | "oil"
+      | "bleed" | "blight" | "wither" | "buff_break" | "oil" | "immunity"
       | "special_kit" | "special_lockpick" | "special_map" | "special_water" | "special_torch";
     power?: number;
     scale?: number;
@@ -2066,6 +2066,8 @@ export interface ItemDef {
     element?: DamageElement;
     /** Вид масла: какой урон получают удары смазанным оружием. */
     oil?: OilKind;
+    /** Какой негативный эффект снимает иммунитет зелья. */
+    effect?: ImmunityEffect;
   };
 }
 
@@ -2126,6 +2128,42 @@ export const ITEMS: Record<string, ItemDef> = Object.fromEntries(
     I({ id: "oil_poison", name: "Ядовитое масло", kind: "potion", price: 85,
       use: { type: "oil", oil: "poison" },
       desc: "Смазывает оружие ядом на 1 раунд: удар накладывает яд — 2% + 1%×ЛОВ макс. ОЗ за раунд, 3 раунда. Тратит ход." }),
+    I({ id: "immune_bleed", name: "Зелье от кровотечения", kind: "potion", price: 85,
+      use: { type: "immunity", effect: "bleed", rounds: 3 },
+      desc: "Тратит ход. Три хода эффект «Кровотечение» на тебя не накладывается." }),
+    I({ id: "immune_poison", name: "Зелье от яда", kind: "potion", price: 85,
+      use: { type: "immunity", effect: "poison", rounds: 3 },
+      desc: "Тратит ход. Три хода эффект «Яд» на тебя не накладывается." }),
+    I({ id: "immune_burn", name: "Зелье от горения", kind: "potion", price: 95,
+      use: { type: "immunity", effect: "burn", rounds: 3 },
+      desc: "Тратит ход. Три хода эффект «Горение» на тебя не накладывается." }),
+    I({ id: "immune_curse", name: "Зелье от проклятия", kind: "potion", price: 95,
+      use: { type: "immunity", effect: "curse", rounds: 3 },
+      desc: "Тратит ход. Три хода эффект «Проклятие» на тебя не накладывается." }),
+    I({ id: "immune_fear", name: "Зелье от страха", kind: "potion", price: 95,
+      use: { type: "immunity", effect: "fear", rounds: 3 },
+      desc: "Тратит ход. Три хода эффект «Страх» на тебя не накладывается." }),
+    I({ id: "immune_stun", name: "Зелье от оглушения", kind: "potion", price: 110,
+      use: { type: "immunity", effect: "stun", rounds: 3 },
+      desc: "Тратит ход. Три хода эффект «Оглушение» на тебя не накладывается." }),
+    I({ id: "immune_sunder", name: "Зелье от раскола", kind: "potion", price: 110,
+      use: { type: "immunity", effect: "sunder", rounds: 3 },
+      desc: "Тратит ход. Три хода эффект «Раскол» на тебя не накладывается." }),
+    I({ id: "immune_noHeal", name: "Зелье от запрета лечения", kind: "potion", price: 95,
+      use: { type: "immunity", effect: "noHeal", rounds: 3 },
+      desc: "Тратит ход. Три хода эффект «Запрет лечения» на тебя не накладывается." }),
+    I({ id: "immune_darkness", name: "Зелье от мрака", kind: "potion", price: 95,
+      use: { type: "immunity", effect: "darkness", rounds: 3 },
+      desc: "Тратит ход. Три хода эффект «Мрак» на тебя не накладывается." }),
+    I({ id: "immune_sealItems", name: "Зелье от печати немоты", kind: "potion", price: 110,
+      use: { type: "immunity", effect: "sealItems", rounds: 3 },
+      desc: "Тратит ход. Три хода эффект «Печать немоты» на тебя не накладывается." }),
+    I({ id: "immune_sealSkills", name: "Зелье от печати забвения", kind: "potion", price: 110,
+      use: { type: "immunity", effect: "sealSkills", rounds: 3 },
+      desc: "Тратит ход. Три хода эффект «Печать забвения» на тебя не накладывается." }),
+    I({ id: "immune_sealAttack", name: "Зелье от печати оков", kind: "potion", price: 110,
+      use: { type: "immunity", effect: "sealAttack", rounds: 3 },
+      desc: "Тратит ход. Три хода эффект «Печать оков» на тебя не накладывается." }),
     I({ id: "pact_elixir", name: "Эликсир пакта", kind: "potion", price: 140,
       use: { type: "pact_elixir", rounds: 3 },
       desc: "Колдун: сбрасывает перезарядку приёмов и даёт +25% урона приёмов на 3 раунда." }),
@@ -2143,6 +2181,7 @@ export const SUPPLY_LEVELS: Record<string, number> = {
   potion_stone: 3, scroll_terror: 3, scroll_snare: 4, acid_vial: 2, holy_water: 3,
   bomb_flash: 3, iron_tonic: 4, blood_rage: 4, quickblade_oil: 4,
   oil_fire: 2, oil_poison: 2, oil_ice: 3, oil_acid: 3, oil_magic: 4, oil_light: 4,
+  immune_bleed: 2, immune_poison: 2, immune_burn: 3, immune_curse: 3, immune_fear: 3, immune_stun: 4, immune_sunder: 4, immune_noHeal: 3, immune_darkness: 3, immune_sealItems: 4, immune_sealSkills: 4, immune_sealAttack: 4,
   pact_elixir: 5, scroll_creation: 5, serrated_knife: 2, frost_bomb: 3,
   scroll_dispel: 3, dispel_powder: 2,
   blight_powder: 4, wither_dust: 5,
@@ -2795,6 +2834,18 @@ const SUPPLY_POOL = [
   "oil_acid",
   "oil_magic",
   "oil_light",
+  "immune_bleed",
+  "immune_poison",
+  "immune_burn",
+  "immune_curse",
+  "immune_fear",
+  "immune_stun",
+  "immune_sunder",
+  "immune_noHeal",
+  "immune_darkness",
+  "immune_sealItems",
+  "immune_sealSkills",
+  "immune_sealAttack",
   "pact_elixir",
   "scroll_creation",
   "serrated_knife",
