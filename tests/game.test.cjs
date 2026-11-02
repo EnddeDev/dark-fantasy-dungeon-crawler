@@ -704,8 +704,18 @@ test("gear instances vary in damage spread, stat multiplier and weapon technique
 });
 
 test("recipe must be purchased, repeated ingredients are counted, failure consumes them", () => {
-  const r = content.RECIPES.find((recipe) => recipe.id === "r5");
-  assert.ok(r);
+  /* В настоящих рецептах повторов больше нет: повторные позиции заменены камнями. */
+  const real = content.RECIPES.find((recipe) => recipe.id === "r5");
+  assert.ok(real);
+  assert.equal(real.need.filter((id) => id === "moss").length, 1, "r5: мох один");
+  assert.ok(real.need.includes("stone_hematite"), "r5: второй мох заменён гематитом");
+  for (const rec of content.RECIPES) {
+    assert.equal(new Set(rec.need.filter((id) => !["vial", "parchment", "magic_ink", "scrap_metal"].includes(id))).size,
+      rec.need.filter((id) => !["vial", "parchment", "magic_ink", "scrap_metal"].includes(id)).length, `${rec.id}: повторов быть не должно`);
+  }
+
+  /* Механика повторов проверяется на синтетическом рецепте с двумя мхами. */
+  const r = { id: "test_repeat", out: "potion_l", count: 1, need: ["moss", "moss", "tear", "vial"], intReq: 4, price: 95 };
   const novice = player({
     stats: { str: 1, agi: 1, int: 4 },
     bag: { moss: 2, tear: 1, vial: 1 },
@@ -2313,7 +2323,8 @@ test("яд складывается: срок обновляется, урон �
   assert.equal(second.p.statuses.poisonStacks, 2, "два наложения");
 
   /* Тик: 4% от 100 = 4 ОЗ за наложение, два наложения — 8. */
-  const ticked = battle.playerAct(
+  /* Фиксируем генератор: новый раунд тянет случайную инициативу, а тик должен быть точным. */
+  const ticked = withRandom(() => battle.playerAct(
     {
       ...second,
       p: { ...second.p, hp: 100, maxHp: 100, statuses: { ...second.p.statuses, poison: 3, poisonStacks: 2 } },
@@ -2321,7 +2332,7 @@ test("яд складывается: срок обновляется, урон �
       idx: 0,
     },
     { type: "guard" },
-  );
+  ), 0.99);
   assert.equal(ticked.p.hp, 100 - 8, "урон яда удвоился от двух наложений");
 
   /* Предел наложений — MAX_DOT_STACKS. */
@@ -2341,7 +2352,7 @@ test("кровотечение складывается так же, как яд
   assert.equal(second.p.statuses.wound, 3);
   assert.equal(second.p.statuses.woundStacks, 2);
 
-  const ticked = battle.playerAct(
+  const ticked = withRandom(() => battle.playerAct(
     {
       ...second,
       p: { ...second.p, hp: 100, maxHp: 100, statuses: { ...second.p.statuses, wound: 3, woundStacks: 2 } },
@@ -2349,7 +2360,7 @@ test("кровотечение складывается так же, как яд
       idx: 0,
     },
     { type: "guard" },
-  );
+  ), 0.99);
   assert.equal(ticked.p.hp, 100 - 10, "5% × 2 наложения");
 });
 

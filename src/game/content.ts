@@ -7,6 +7,7 @@ import {
   EXTRA_GEAR,
   EXTRA_ITEMS,
   EXTRA_REAGENTS,
+  STONE_REAGENTS,
   EXTRA_RECIPES,
   rollFromTable,
   SHOP_MAX_LEVEL,
@@ -2194,8 +2195,8 @@ export const RECIPES: Recipe[] = [
   { id: "r2", out: "antidote", count: 1, need: ["bone", "moss"], intReq: 2, price: 45 },
   { id: "r3", out: "scroll_spark", count: 1, need: ["fire", "bone"], intReq: 2, price: 55 },
   { id: "r4", out: "rage", count: 1, need: ["fire", "moss", "bone"], intReq: 3, price: 70 },
-  { id: "r5", out: "potion_l", count: 1, need: ["moss", "moss", "tear"], intReq: 4, price: 95 },
-  { id: "r6", out: "scroll_fire", count: 1, need: ["fire", "fire", "bone"], intReq: 4, price: 95 },
+  { id: "r5", out: "potion_l", count: 1, need: ["moss", "stone_hematite", "tear"], intReq: 4, price: 95 },
+  { id: "r6", out: "scroll_fire", count: 1, need: ["fire", "stone_onyx", "bone"], intReq: 4, price: 95 },
   { id: "r7", out: "scroll_frost", count: 1, need: ["tear", "bone"], intReq: 5, price: 110 },
   { id: "r8", out: "scroll_bolt", count: 1, need: ["tear", "fire", "bone"], intReq: 6, price: 140 },
   ...EXTRA_RECIPES,
@@ -2547,7 +2548,13 @@ export function pick<T>(arr: T[], rng: () => number = Math.random): T {
   return arr[Math.floor(rng() * arr.length)];
 }
 
-export const REAGENTS = ["moss", "bone", "fire", "tear", ...EXTRA_REAGENTS];
+export const REAGENTS = ["moss", "bone", "fire", "tear", ...EXTRA_REAGENTS, ...STONE_REAGENTS];
+
+/** Реагенты, которые могут выпасть на этаже: камень своего уровня и ниже, остальные — всегда. */
+export function reagentPoolForFloor(floor: number): string[] {
+  const pool = REAGENTS.filter((id) => !STONE_REAGENTS.includes(id) || supplyLevel(id) <= floor);
+  return pool.length ? pool : REAGENTS;
+}
 
 /* ─────────────  УГРОЗЫ, УРОВНИ МОНСТРОВ, ТАБЛИЦЫ ВЫПАДЕНИЯ  ───────────── */
 
@@ -2798,8 +2805,9 @@ export function rollEnemyLoot(
     return out;
   }
   if (category === "reagents") {
-    out.items.push(pick(REAGENTS, rng));
-    if (rng() < 0.25) out.items.push(pick(REAGENTS, rng));
+    const pool = reagentPoolForFloor(floor);
+    out.items.push(pick(pool, rng));
+    if (rng() < 0.25) out.items.push(pick(pool, rng));
     return out;
   }
   if (category === "supplies") {
