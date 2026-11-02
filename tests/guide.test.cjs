@@ -138,8 +138,8 @@ test("guide keeps the current combat and crafting numbers", () => {
   assert.ok(html.includes("+2 на 7–8"));
   assert.ok(html.includes("+3 на 9–10"));
   assert.match(html, /250 × текущий уровень/);
-  assert.match(html, /качество 25\/50\/75%/);
-  assert.match(html, /изношенность 30\/60%/);
+  assert.match(html, /качество 100 \/ 500 \/ 1000 золота/);
+  assert.match(html, /изношенность 100 \/ 375/);
   assert.match(html, /шанс успеха 80%/);
 });
 
@@ -194,9 +194,9 @@ test("guide documents reset, declining enemy scaling, traps, specials and new re
   assert.ok(html.includes("магические чернила"));
   assert.ok(html.includes("металлолом"));
   assert.ok(html.includes("фляга"));
-  assert.ok(html.includes("10% + 5% × (текущий уровень предмета − 1)"));
-  assert.ok(html.includes("Отдельного шанса успеха нет"));
-  assert.ok(html.includes("Риск уничтожения"));
+  assert.ok(html.includes("2 реагента за каждый уровень предмета"));
+  assert.ok(html.includes("Неудача вещь не ломает"));
+  assert.ok(html.includes("шанс неудачи"));
   assert.ok(html.includes("5%"));
   assert.ok(html.includes("1–3 реагента"));
   assert.ok(html.includes("6 вариантов"));

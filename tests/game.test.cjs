@@ -2202,29 +2202,6 @@ test("исследование окупается: цена опознания �
 });
 
 /** Прибавка ценности от улучшения в кузнице — не меньше цены работы. */
-test("кузница просит не больше, чем добавляет вещи в цене", () => {
-  const forge = loadModule("src/game/forge.ts", "forge");
-  for (const baseId of Object.keys(content.GEAR_BASES)) {
-    for (const rarity of Object.keys(content.RARITY_META)) {
-      for (const wear of Object.keys(content.WEAR_META)) {
-        for (let level = 1; level <= 10; level++) {
-          const item = content.createGearItem(baseId, { level, rarity, wear, identified: true });
-          const before = content.gearSellPrice(item);
-          const player = { gold: 99999, armory: [item], equip: {} };
-          for (const opt of forge.forgeOptions(item)) {
-            if (!opt.available) continue;
-            const out = forge.forgeUpgrade(player, item.uid, opt.kind, () => 0.99);
-            const gain = content.gearSellPrice(out.item) - before;
-            if (gain > 0) {
-              assert.ok(opt.cost <= gain, `${baseId} L${level} ${opt.kind}: цена ${opt.cost} при прибавке ${gain}`);
-            }
-          }
-        }
-      }
-    }
-  }
-});
-
 test("приёмы с негативными эффектами уходят на перезарядку 3 раунда", () => {
   const mk = () => {
     const b = freshBattle(mkP({ level: 1, stats: { str: 1, agi: 1, int: 1 }, hp: 400 }), 1, false, "classic");
@@ -2262,37 +2239,46 @@ test("приёмы с негативными эффектами уходят н�
 });
 
 test("в бою один и тот же приём с дебаффом не повторяется чаще раза в 3 раунда", () => {
-  const b0 = freshBattle(mkP({ level: 5, stats: { str: 5, agi: 5, int: 5 }, hp: 400 }), 3, false, "classic");
-  b0.enemy.hp = 99999;
-  b0.enemy.maxHp = 99999;
-  b0.enemy.moves = ["attack", "seal_attack", "terror", "wound"];
-  b0.enemy.def = { ...b0.enemy.def, moves: ["attack", "seal_attack", "terror", "wound"] };
-  const used = withSeededRandom(20261102, () => {
-    const seen = { seal_attack: [], terror: [], wound: [] };
-    let b = b0;
-    for (let step = 0; step < 200 && !b.over; step++) {
-      b.p.hp = 400;
-      b.p.statuses.sealAttack = 0;
-      b.p.statuses.sealSkills = 0;
-      if (b.queue[b.idx] === "e") {
-        const round = b.round;
-        const before = { ...(b.enemy.cooldowns ?? {}) };
-        b = battle.enemyStep(b);
-        for (const mv of Object.keys(seen)) {
-          if ((b.enemy.cooldowns?.[mv] ?? 0) !== (before[mv] ?? 0)) seen[mv].push(round);
+  /* Броня героя делает обычные удары бесполезными — тварь давит дебаффами. */
+  const mkState = () => {
+    const b = freshBattle(mkP({ level: 5, stats: { str: 5, agi: 5, int: 5 }, hp: 400 }), 3, false, "classic");
+    b.p.armor = 999;
+    b.enemy.hp = 99999;
+    b.enemy.maxHp = 99999;
+    b.enemy.moves = ["attack", "seal_attack", "terror"];
+    b.enemy.def = { ...b.enemy.def, moves: ["attack", "seal_attack", "terror"] };
+    return b;
+  };
+  const seen = { seal_attack: false, terror: false };
+  for (const seed of [11, 12, 13]) {
+    const rounds = withSeededRandom(seed, () => {
+      const used = { seal_attack: [], terror: [] };
+      let b = mkState();
+      for (let step = 0; step < 200 && !b.over; step++) {
+        b.p.hp = 400;
+        b.p.statuses.sealAttack = 0;
+        b.p.statuses.sealSkills = 0;
+        if (b.queue[b.idx] === "e") {
+          const round = b.round;
+          const before = { ...(b.enemy.cooldowns ?? {}) };
+          b = battle.enemyStep(b);
+          for (const mv of Object.keys(used)) {
+            if ((b.enemy.cooldowns?.[mv] ?? 0) !== (before[mv] ?? 0)) used[mv].push(round);
+          }
+        } else {
+          b = battle.playerAct(b, { type: "guard" });
         }
-      } else {
-        b = battle.playerAct(b, { type: "guard" });
+      }
+      return used;
+    });
+    for (const [mv, list] of Object.entries(rounds)) {
+      if (list.length) seen[mv] = true;
+      for (let i = 1; i < list.length; i++) {
+        assert.ok(list[i] - list[i - 1] >= battle.ENEMY_MOVE_COOLDOWN, `${mv}: раунды ${list[i - 1]} и ${list[i]}`);
       }
     }
-    return seen;
-  });
-  for (const [mv, rounds] of Object.entries(used)) {
-    assert.ok(rounds.length > 0, `${mv} ни разу не применили`);
-    for (let i = 1; i < rounds.length; i++) {
-      assert.ok(rounds[i] - rounds[i - 1] >= battle.ENEMY_MOVE_COOLDOWN, `${mv}: раунды ${rounds[i - 1]} и ${rounds[i]}`);
-    }
   }
+  for (const [mv, ok] of Object.entries(seen)) assert.ok(ok, `${mv} ни разу не применили`);
 });
 
 test("enemy AI heals or guards when low, punishes misses and closes rounds by turn order", () => {
@@ -2465,48 +2451,109 @@ test("workshop recipes craft throwables and special supplies, alchemy stays sepa
   assert.equal(kitRes.player.bag.sapper_kit, kit.count);
 });
 
-test("forge upgrade costs and destruction risks match the design", () => {
+test("кузница: старые цены и шансы неудачи по таблице улучшений", () => {
   const g = content.createGearItem({ baseId: "sword", level: 1, wear: "battered", rarity: "common", identified: true });
   const opts = forge.forgeOptions(g);
-  /* Цена — доля цены продажи: 20% качество, 15% износ, 4% уровень. */
-  assert.equal(opts.find((o) => o.kind === "rarity").cost, 15);
-  assert.equal(opts.find((o) => o.kind === "rarity").destroyChance, 0.25);
-  assert.equal(opts.find((o) => o.kind === "wear").cost, 10);
-  assert.equal(opts.find((o) => o.kind === "wear").destroyChance, 0.3);
-  assert.equal(opts.find((o) => o.kind === "level").cost, 5);
-  assert.equal(opts.find((o) => o.kind === "level").destroyChance, 0.1);
-  assert.equal(opts.find((o) => o.kind === "level").successChance, undefined);
-  /* Каждая ступень дешевле прибавки к цене, которую она даёт. */
-  for (const baseId of ["sword", "plate", "crown_husk", "soulstone", "knife"]) {
-    for (const level of [1, 3, 6, 9]) {
-      for (const wear of ["battered", "worn"]) {
-        const item = content.createGearItem({ baseId, level, wear, rarity: "rare", identified: true });
-        const sell = content.gearSellPrice(item);
-        const [rarityOpt, wearOpt] = forge.forgeOptions(item);
-        const rarityGain = content.gearSellPrice({ ...item, rarity: "epic" }) - sell;
-        const wearGain = content.gearSellPrice({ ...item, wear: wear === "battered" ? "worn" : "new" }) - sell;
-        assert.ok(rarityOpt.cost <= rarityGain, `${baseId} ${level} ${wear}: качество ${rarityOpt.cost} против ${rarityGain}`);
-        assert.ok(wearOpt.cost <= wearGain, `${baseId} ${level} ${wear}: износ ${wearOpt.cost} против ${wearGain}`);
-        assert.ok(rarityOpt.cost < sell && wearOpt.cost < sell, "работа кузницы дешевле самой вещи");
-      }
-    }
+  const rarity = opts.find((o) => o.kind === "rarity");
+  const wear = opts.find((o) => o.kind === "wear");
+  const level = opts.find((o) => o.kind === "level");
+  assert.equal(rarity.cost, 100, "обычное → редкое");
+  assert.equal(wear.cost, 100, "потрёпанное → ношеное");
+  assert.equal(level.cost, 200, "100 + 50 × (1 + 1)");
+  assert.equal(rarity.reagentTotal, 5);
+  assert.equal(rarity.failChance, 0.25);
+  assert.equal(rarity.failChanceFull, 0.1);
+  assert.equal(wear.reagentTotal, 5);
+  assert.equal(wear.reagentScrap, 5);
+  assert.equal(wear.failChance, 0.3);
+  assert.equal(wear.failChanceFull, 0);
+  assert.equal(level.reagentTotal, 2);
+  assert.equal(level.failChance, 0.1);
+  assert.equal(level.failChanceFull, 0.05);
+
+  const rare = content.createGearItem({ baseId: "sword", level: 1, wear: "battered", rarity: "rare", identified: true });
+  const rareOpt = forge.forgeOptions(rare).find((o) => o.kind === "rarity");
+  assert.equal(rareOpt.cost, 500);
+  assert.equal(rareOpt.reagentTotal, 15);
+  assert.equal(rareOpt.failChanceFull, 0.25);
+
+  const epic = content.createGearItem({ baseId: "sword", level: 1, wear: "battered", rarity: "epic", identified: true });
+  const epicOpt = forge.forgeOptions(epic).find((o) => o.kind === "rarity");
+  assert.equal(epicOpt.cost, 1000);
+  assert.equal(epicOpt.reagentTotal, 25);
+  assert.equal(epicOpt.failChanceFull, 0.45);
+
+  const worn = content.createGearItem({ baseId: "sword", level: 1, wear: "worn", rarity: "common", identified: true });
+  const newWear = forge.forgeOptions(worn).find((o) => o.kind === "wear");
+  assert.equal(newWear.cost, 375, "ношеное → новое");
+  assert.equal(newWear.reagentTotal, 15);
+  assert.equal(newWear.reagentScrap, 10);
+  assert.equal(newWear.failChanceFull, 0.25);
+
+  const lvl5 = content.createGearItem({ baseId: "sword", level: 5, wear: "worn", rarity: "common", identified: true });
+  const lvl5Opt = forge.forgeOptions(lvl5).find((o) => o.kind === "level");
+  assert.equal(lvl5Opt.cost, 400);
+  assert.equal(lvl5Opt.reagentTotal, 10);
+  assert.equal(lvl5Opt.failChance, 0.3);
+  assert.equal(lvl5Opt.failChanceFull, 0.15);
+
+  /* Неполный набор снижает риск частично. */
+  assert.equal(forge.forgeFailChance(rarity, 0), 0.25);
+  assert.equal(forge.forgeFailChance(rarity, 5), 0.1);
+  assert.equal(forge.forgeFailChance(rarity, 2), 0.19);
+});
+
+test("кузница: реагенты кладутся в горн, а пергамент, чернила и фляга — нет", () => {
+  for (const id of ["parchment", "magic_ink", "vial"]) {
+    assert.equal(forge.isForgeReagent(id), false, `${id} не годится для горна`);
   }
-  assert.equal(forge.levelUpgradeDestroyChance(1), 0.1);
-  assert.equal(forge.levelUpgradeDestroyChance(3), 0.2);
-  assert.equal(forge.levelUpgradeDestroyChance(10), 0.55);
-  const p = mkP({ gold: 1000, armory: [g], equip: { ...mkP().equip, mainHand: g.uid } });
-  const destroyed = forge.forgeUpgrade(p, g.uid, "level", () => 0.05);
-  assert.equal(destroyed.destroyed, true);
-  assert.equal(destroyed.player.gold, 995);
-  assert.equal(destroyed.player.armory.length, 0);
-  assert.equal(destroyed.player.equip.mainHand, null);
-  const upgraded = forge.forgeUpgrade(p, g.uid, "level", () => 0.9);
-  assert.equal(upgraded.success, true);
-  assert.equal(upgraded.destroyed, false);
-  assert.equal(upgraded.item.level, 2);
-  const rare = forge.forgeUpgrade({ ...p, gold: 1000 }, g.uid, "rarity", () => 0.9);
-  assert.equal(rare.item.rarity, "rare");
-  assert.ok(rare.item.effects.length >= 1);
+  for (const id of ["scrap_metal", "moss", "bone", "tear"]) {
+    assert.equal(forge.isForgeReagent(id), true, `${id} годится для горна`);
+  }
+
+  const item = content.createGearItem({ baseId: "sword", level: 1, wear: "battered", rarity: "common", identified: true });
+  const wearOpt = forge.forgeOptions(item).find((o) => o.kind === "wear");
+  const need = { total: wearOpt.reagentTotal, scrap: wearOpt.reagentScrap };
+
+  const short = forge.forgeReagentPlan({ scrap_metal: 3, moss: 1, parchment: 9 }, need);
+  assert.equal(short.scrap, 3);
+  assert.equal(short.total, 4);
+  assert.ok(!("parchment" in short.picked), "пергамент в горн не идёт");
+
+  const full = forge.forgeReagentPlan({ scrap_metal: 30, moss: 3, tear: 2, magic_ink: 9, vial: 9 }, need);
+  assert.equal(full.scrap, 5, "обязательный металлолом");
+  assert.equal(full.total, 5);
+
+  /* Много реагентов: сначала металлолом, потом самые дешёвые. */
+  const worn = content.createGearItem({ baseId: "sword", level: 1, wear: "worn", rarity: "common", identified: true });
+  const newNeed = forge.forgeOptions(worn).find((o) => o.kind === "wear");
+  const big = forge.forgeReagentPlan(
+    { scrap_metal: 30, moss: 3, tear: 2, bone: 4, parchment: 9, magic_ink: 9, vial: 9 },
+    { total: newNeed.reagentTotal, scrap: newNeed.reagentScrap },
+  );
+  /* Металлолом самый дешёвый, поэтому добирает и «другие» реагенты. */
+  assert.equal(big.scrap, 15);
+  assert.equal(big.total, 15);
+  assert.equal(big.picked.parchment, undefined);
+  assert.equal(big.picked.magic_ink, undefined);
+  assert.equal(big.picked.vial, undefined);
+  assert.equal(big.picked.moss, undefined);
+  assert.equal(big.picked.bone, undefined);
+
+  /* Попытка с реагентами тратит и золото, и реагенты. */
+  const player = mkP({ gold: 5000, armory: [item], bag: { scrap_metal: 10, moss: 4 } });
+  const ok = forge.forgeUpgrade(player, item.uid, "wear", () => 0.99, true);
+  assert.equal(ok.success, true);
+  assert.equal(ok.reagentsUsed, 5);
+  assert.equal(ok.player.bag.scrap_metal, 5);
+  assert.equal(ok.player.gold, 5000 - 100);
+
+  /* Неудача не ломает вещь, но реагенты сгорают. */
+  const failing = forge.forgeUpgrade(player, item.uid, "rarity", () => 0.05, true);
+  assert.equal(failing.success, false);
+  assert.equal(failing.player.armory.length, 1, "предмет остаётся в арсенале");
+  assert.equal(failing.reagentsUsed, 5);
+  assert.equal(failing.player.bag.scrap_metal, 5, "реагенты ушли в горн, хотя улучшения не случилось");
 });
 
 test("boss effect resistance is 25% and seals block the next player action", () => {

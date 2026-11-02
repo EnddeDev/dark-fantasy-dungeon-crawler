@@ -223,8 +223,8 @@ export class LobbyController {
       : "Алхимия не удалась: реагенты потрачены, результата нет.";
   }
 
-  forge(uid: string, kind: ForgeUpgradeKind): string {
-    const res = forgeUpgrade(this.player, uid, kind);
+  forge(uid: string, kind: ForgeUpgradeKind, useReagents = false): string {
+    const res = forgeUpgrade(this.player, uid, kind, Math.random, useReagents);
     const maxHp = derived(res.player).maxHp;
     this.model.setPlayer({ ...res.player, hp: Math.min(res.player.hp, maxHp) });
     return res.message;

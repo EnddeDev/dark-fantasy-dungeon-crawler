@@ -141,20 +141,21 @@ test("new reagents are required by scrolls, potions and throwables", () => {
   }
 });
 
-test("forge level upgrade has only a destruction risk of 10% + 5% per current level above one", () => {
-  assert.equal(forge.levelUpgradeDestroyChance(1), 0.1);
-  assert.equal(forge.levelUpgradeDestroyChance(2), 0.15);
-  assert.equal(forge.levelUpgradeDestroyChance(5), 0.3);
+test("кузница: неудача больше не уничтожает вещь, уровень рискует 10% + 5% за уровень сверх первого", () => {
+  assert.equal(forge.levelFailChance(1), 0.1);
+  assert.equal(forge.levelFailChance(2), 0.15);
+  assert.equal(forge.levelFailChance(5), 0.3);
   const g = content.createGearItem({ baseId: "sword", level: 1, wear: "worn", rarity: "common", identified: true });
-  assert.equal(forge.forgeOptions(g).find((o) => o.kind === "level").destroyChance, 0.1);
-  assert.equal(forge.forgeOptions(g).find((o) => o.kind === "level").successChance, undefined);
+  const opt = forge.forgeOptions(g).find((o) => o.kind === "level");
+  assert.equal(opt.failChance, 0.1);
+  assert.equal(opt.cost, 200);
   const p = mkP({ gold: 1000, armory: [g] });
-  const destroyed = forge.forgeUpgrade(p, g.uid, "level", () => 0.05);
-  assert.equal(destroyed.success, false);
-  assert.equal(destroyed.destroyed, true);
+  const failed = forge.forgeUpgrade(p, g.uid, "level", () => 0.05);
+  assert.equal(failed.success, false);
+  assert.equal(failed.player.armory.length, 1, "вещь остаётся в арсенале");
+  assert.equal(failed.player.gold, 1000 - opt.cost);
   const ok = forge.forgeUpgrade(p, g.uid, "level", () => 0.2);
   assert.equal(ok.success, true);
-  assert.equal(ok.destroyed, false);
   assert.equal(ok.item.level, 2);
 });
 
