@@ -269,6 +269,66 @@ const crackle = (env: AmbientEnv, gain: number) =>
 const ICE_BELLS = [1174.7, 1396.9, 880, 1046.5];
 
 /**
+ * Файлы из звукового пака TomMusic (public/music). Пути относительные: сборка идёт с base "./".
+ * Проверяются тестом: каждый файл должен существовать.
+ */
+const PACK = "music/Free Fantasy SFX Pack By TomMusic/OGG Files/";
+export const AMBIENT_SAMPLES = {
+  forestRain: `${PACK}BGS Loops/Forest Night/Forest Night Rain.ogg`,
+  cave: `${PACK}BGS Loops/Cave/Cave.ogg`,
+  torch: `${PACK}SFX/Torch/Torch Loop.ogg`,
+} as const;
+
+const sampleCache = new Map<string, Promise<AudioBuffer | null>>();
+
+/** Загружает и декодирует файл один раз. Ошибка сети или формата даёт null: сцена играет без него. */
+function loadSample(ctx: AudioContext, url: string): Promise<AudioBuffer | null> {
+  let pending = sampleCache.get(url);
+  if (!pending) {
+    pending = fetch(encodeURI(url))
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.arrayBuffer();
+      })
+      .then((data) => ctx.decodeAudioData(data))
+      .catch(() => null);
+    sampleCache.set(url, pending);
+  }
+  return pending;
+}
+
+/** Зацикленный файл из пака. Стартует, когда файл декодирован; если сцену уже сменили — не стартует. */
+function loopSample(env: AmbientEnv, url: string, gain: number): void {
+  const { ctx, out } = env;
+  const g = ctx.createGain();
+  g.gain.value = gain;
+  g.connect(out);
+  let stopped = false;
+  let src: AudioBufferSourceNode | null = null;
+  env.track(() => {
+    stopped = true;
+    if (src) {
+      try {
+        src.stop();
+      } catch {
+        /* уже остановлен */
+      }
+      src.disconnect();
+    }
+    g.disconnect();
+  });
+  void loadSample(ctx, url).then((buf) => {
+    if (stopped || !buf) return;
+    src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    src.connect(g);
+    // Случайная точка старта: два одинаковых файла не звучат синхронно.
+    src.start(0, Math.random() * Math.max(0, buf.duration - 1));
+  });
+}
+
+/**
  * Эхо каменного зала: сухой звук идёт как есть, а часть уходит в линию задержки
  * с затуханием в фильтре. Возвращает окружение, где out — вход эха.
  */
@@ -303,24 +363,6 @@ function owl(env: AmbientEnv): void {
   blip(env, { freq: f, endFreq: f * 0.93, dur: 0.45, gain: 0.02 });
   blip(env, { freq: f, endFreq: f * 0.9, dur: 0.7, gain: 0.018, at: 0.7 });
 }
-
-/** Треск углей: короткий хлопок с низким тоном. */
-function pop(env: AmbientEnv, gain: number): void {
-  noiseShot(env, { type: "bandpass", freq: rnd(500, 1000), q: 2, dur: 0.07, gain, pan: rnd(-0.5, 0.5) });
-  blip(env, { freq: 160, endFreq: 60, dur: 0.08, gain: gain * 0.5 });
-}
-
-/** Шорох листвы на ветру. */
-const rustle = (env: AmbientEnv) =>
-  noiseShot(env, { type: "highpass", freq: rnd(3500, 6000), q: 0.6, dur: rnd(0.04, 0.1), gain: 0.006, pan: rnd(-0.8, 0.8) });
-
-/** Капли дождя по листьям и камню. */
-const patter = (env: AmbientEnv) =>
-  noiseShot(env, { type: "highpass", freq: rnd(4000, 7000), dur: 0.02, gain: 0.005, pan: rnd(-0.9, 0.9) });
-
-/** Далёкий гром: низкий рокот, медленно набирающий силу. */
-const thunder = (env: AmbientEnv) =>
-  noiseShot(env, { type: "lowpass", freq: 150, q: 0.5, dur: rnd(3.5, 5), gain: 0.05, pan: rnd(-0.3, 0.3) });
 
 /**
  * Лапки мышей по каменным кирпичам: серия коротких сухих цоканий с затуханием,
@@ -459,30 +501,18 @@ const BATTLE: Record<BiomeId, BattleConfig> = {
 /** Рецепты по сценам (экспорт для тестов: все сцены должны иметь рецепт). */
 export const AMBIENT_RECIPES: Readonly<Record<AmbientScene, Recipe>> = {
   /**
-   * Лагерь в лесу под дождём у костра: треск углей, шум ветра в кронах,
-   * шорох листвы, капли по листьям, уханье совы и далёкий гром.
+   * Лагерь в лесу под дождём у костра: ночной лес с дождём из пака, треск костра
+   * из пака и редкое уханье совы (синтез).
    */
   lobby(env) {
-    // Костёр: гул пламени, треск и редкие хлопки углей.
-    noiseBed(env, { type: "lowpass", freq: 380, q: 0.7, gain: 0.02, sweepHz: 0.13, sweepDepth: 120 });
-    every(env, 0.06, 0.35, () => crackle(env, 0.012));
-    every(env, 1.2, 3.5, () => pop(env, 0.025));
-    // Лес: ветер в кронах с порывами и шорох листвы.
-    noiseBed(env, { type: "bandpass", freq: 600, q: 0.4, gain: 0.014, sweepHz: 0.05, sweepDepth: 250 });
-    every(env, 0.08, 0.25, () => rustle(env));
+    loopSample(env, AMBIENT_SAMPLES.forestRain, 0.5);
+    loopSample(env, AMBIENT_SAMPLES.torch, 0.3);
     every(env, 25, 45, () => owl(env));
-    // Дождь: ровный шелест с меняющейся силой и отдельные капли.
-    noiseBed(env, { type: "highpass", freq: 2500, q: 0.5, gain: 0.01, sweepHz: 0.03, sweepDepth: 800 });
-    every(env, 0.02, 0.12, () => patter(env));
-    every(env, 40, 70, () => thunder(env));
   },
 
-  /**
-   * Каменный лабиринт: далёкое эхо капель, лапки мышей по кирпичам,
-   * осыпающиеся камушки и тихий воздух подземелья.
-   */
+  /** Классический лабиринт: воздух пещеры из пака, капли с эхом, лапки мышей и камушки (синтез). */
   classic(env) {
-    noiseBed(env, { type: "lowpass", freq: 160, q: 0.6, gain: 0.01, sweepHz: 0.03, sweepDepth: 30 });
+    loopSample(env, AMBIENT_SAMPLES.cave, 0.35);
     const cave = withEcho(env, 0.37, 0.4, 0.5);
     every(cave, 1.5, 5, () => drip(cave, 0.03));
     every(env, 6, 14, () => scurry(env));
@@ -521,12 +551,11 @@ export const AMBIENT_RECIPES: Readonly<Record<AmbientScene, Recipe>> = {
     every(env, 35, 50, () => gong(env, 73.4, 0.016));
   },
 
-  /** Огненные недра: треск, низкий гул, вспышки искр и далёкий гонг. */
+  /** Огненные недра: треск факела из пака, низкий гул, редкие вспышки искр и далёкий гонг. */
   fire(env) {
-    noiseBed(env, { type: "lowpass", freq: 420, q: 0.7, gain: 0.025, sweepHz: 0.13, sweepDepth: 120 });
+    loopSample(env, AMBIENT_SAMPLES.torch, 0.4);
     drone(env, 73.4, "triangle", 0.008, { swell: 5 });
     drone(env, 110, "triangle", 0.004, { lfoHz: 0.17 });
-    every(env, 0.08, 0.4, () => crackle(env, 0.01));
     every(env, 5, 10, () => noiseShot(env, { type: "highpass", freq: 900, q: 0.6, dur: 0.08, gain: 0.025 }));
     every(env, 40, 60, () => gong(env, 98, 0.014));
   },
