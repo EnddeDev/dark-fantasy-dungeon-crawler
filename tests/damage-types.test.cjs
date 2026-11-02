@@ -120,10 +120,12 @@ test("уязвимости и иммунитеты родов выводятся
 test("значок вида урона открывает подсказку с названием, школой и текстом", () => {
   const { renderToStaticMarkup: render } = require("react-dom/server");
   const fire = render(React.createElement(ui.DamageTypeTag, { id: "fire" }));
-  assert.ok(fire.includes('aria-label="Огонь: подробнее"'), "кнопка с подписью");
+  assert.ok(fire.includes('role="img"'), "значок — картинка, не кнопка (его кладут внутрь кнопки предмета)");
+  assert.ok(!fire.includes("<button"), "внутри значка нет кнопки");
+  assert.ok(fire.includes('aria-label="Огонь: вид урона, подробнее по наведению"'), "подпись для скринридера");
   assert.ok(fire.includes("<svg"), "иконка нарисована");
   const bleed = render(React.createElement(ui.DamageTypeTag, { id: "bleed" }));
-  assert.ok(bleed.includes('aria-label="Кровотечение: подробнее"'));
+  assert.ok(bleed.includes('aria-label="Кровотечение: вид урона, подробнее по наведению"'));
   const row = render(React.createElement(ui.ElementRow, { label: "уязвим к:", elements: ["fire", "ice"] }));
   assert.ok(row.includes("Огонь") && row.includes("Лёд") && row.includes("уязвим к:"), "строка стихий рода");
   assert.equal(render(React.createElement(ui.ElementRow, { label: "x", elements: [] })), "", "пустая строка не выводится");
