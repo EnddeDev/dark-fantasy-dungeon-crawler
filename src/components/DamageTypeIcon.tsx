@@ -1,4 +1,5 @@
-import { useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
+import { createPortal } from "react-dom";
 import { DAMAGE_TYPES, isDamageElement, type DamageTypeId, type DamageTypeInfo } from "../game/damageTypes";
 import type { DamageElement } from "../game/monsters";
 import { ELEMENT_NAMES } from "../game/monsters";
@@ -92,25 +93,56 @@ export function damageKindLabel(info: DamageTypeInfo): string {
   return "магический";
 }
 
-function DamageTip({ info }: { info: DamageTypeInfo }) {
+/** Ширина подсказки и отступ от краёв экрана. */
+const TIP_WIDTH = 304;
+const TIP_GAP = 8;
+
+interface TipPlace {
+  left: number;
+  top?: number;
+  bottom?: number;
+}
+
+/**
+ * Место подсказки у кнопки. Окно выносится в body через портал: контейнеры
+ * с прокруткой (меню предметов, журнал) его не обрежут. Открывается под кнопкой,
+ * а у нижнего края экрана — над ней; по горизонтали держится внутри экрана.
+ */
+function placeTip(rect: DOMRect): TipPlace {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const width = Math.min(TIP_WIDTH, vw - TIP_GAP * 2);
+  const left = Math.max(TIP_GAP, Math.min(rect.left, vw - width - TIP_GAP));
+  if (rect.bottom > vh * 0.6) return { left, bottom: vh - rect.top + TIP_GAP };
+  return { left, top: rect.bottom + TIP_GAP };
+}
+
+function DamageTip({ info, place }: { info: DamageTypeInfo; place: TipPlace }) {
   const color = DAMAGE_COLOR[info.id];
-  return (
+  return createPortal(
     <div
       role="tooltip"
-      className="pointer-events-none absolute left-0 top-full z-50 mt-2 w-[min(19rem,72vw)] border bg-black/95 p-2.5 text-left shadow-[0_10px_30px_rgba(0,0,0,0.75)]"
-      style={{ borderColor: color }}
+      className="pointer-events-none fixed z-[100] border bg-black/95 p-2.5 text-left shadow-[0_10px_30px_rgba(0,0,0,0.75)]"
+      style={{
+        left: place.left,
+        top: place.top,
+        bottom: place.bottom,
+        width: `min(${TIP_WIDTH}px, calc(100vw - ${TIP_GAP * 2}px))`,
+        borderColor: color,
+      }}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span className="flex h-6 w-6 shrink-0 items-center justify-center" style={{ color }}>
           <DamageGlyph id={info.id} size={17} />
         </span>
-        <span className="min-w-0 flex-1 font-display text-[0.92rem] uppercase tracking-[0.06em]" style={{ color }}>
+        <span className="min-w-0 flex-1 break-words font-display text-[0.92rem] uppercase tracking-[0.06em]" style={{ color }}>
           {info.name}
         </span>
-        <span className="shrink-0 font-mono text-[0.66rem] uppercase text-mute">{damageKindLabel(info)}</span>
+        <span className="whitespace-nowrap font-mono text-[0.66rem] uppercase text-mute">{damageKindLabel(info)}</span>
       </div>
       <p className="mt-1.5 border-t border-line/70 pt-1.5 text-[0.84rem] leading-snug text-parch/90">{info.text}</p>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -126,22 +158,47 @@ export function DamageTypeTag({
   showName?: boolean;
   className?: string;
 }) {
-  const [open, setOpen] = useState(false);
+  const [place, setPlace] = useState<TipPlace | null>(null);
+  const buttonRef = useRef<HTMLSpanElement>(null);
+  const open = place !== null;
   const info = DAMAGE_TYPES.find((t) => t.id === id);
+
+  /* Прокрутка сдвигает кнопку, а подсказка стоит на месте: закрываем её. */
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setPlace(null);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [open]);
+
   if (!info) return null;
   const color = DAMAGE_COLOR[id];
+  const show = () => {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (rect) setPlace(placeTip(rect));
+  };
+  const hide = () => setPlace(null);
+  /* Значок часто стоит внутри кнопки предмета: клик не должен выбирать предмет,
+     поэтому это не кнопка, а картинка с подсказкой. */
   return (
     <span className={`relative inline-flex align-middle ${className}`}>
-      <button
-        type="button"
-        aria-label={`${info.name}: подробнее`}
-        aria-expanded={open}
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
-        onClick={() => setOpen((v) => !v)}
-        className="inline-flex cursor-help items-center gap-1 leading-none focus:outline-none focus-visible:ring-1 focus-visible:ring-flame"
+      <span
+        ref={buttonRef}
+        role="img"
+        aria-label={`${info.name}: вид урона, подробнее по наведению`}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          if (open) hide();
+          else show();
+        }}
+        className="inline-flex cursor-help items-center gap-1 leading-none"
         style={{ color }}
       >
         <span
@@ -158,8 +215,8 @@ export function DamageTypeTag({
         {showName && (
           <span className="font-display text-[0.8rem] uppercase tracking-[0.06em] text-parch">{info.name}</span>
         )}
-      </button>
-      {open && <DamageTip info={info} />}
+      </span>
+      {open && place && <DamageTip info={info} place={place} />}
     </span>
   );
 }
