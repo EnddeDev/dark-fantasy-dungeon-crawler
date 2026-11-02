@@ -1075,8 +1075,8 @@ test("weapon technique multiplier stays inside the affinity range", () => {
       const g = content.createGearItem({ baseId: bases[stat], wear: "worn", identified: true });
       const ws = content.weaponSkillFor(g);
       const [lo, hi] = ranges[stat];
-      /* Диапазон задан для 1 уровня: с уровнем множитель растёт как 1 + 0.17 × уровень. */
-      const factor = 1 + 0.17 * (g.level ?? 1);
+      /* Диапазон задан для 1 уровня: с уровнем множитель растёт сложным процентом ×1.17. */
+      const factor = Math.pow(1.17, (g.level ?? 1) - 1);
       assert.equal(ws.scaleStat, stat);
       assert.ok(
         ws.scaleMult >= lo * factor - 0.02 && ws.scaleMult <= hi * factor + 0.02,
@@ -1254,7 +1254,7 @@ test("knives are always light and every knife/rapier technique scales from Agili
       assert.equal(item.gearClass, "light");
       const ws = content.weaponSkillFor(item);
       assert.equal(ws.scaleStat, "agi", `${baseId}/${skillId}`);
-      const factor = 1 + 0.17 * (item.level ?? 1);
+      const factor = Math.pow(1.17, (item.level ?? 1) - 1);
       assert.ok(ws.scaleMult >= 1.5 * factor - 0.02 && ws.scaleMult <= 2.5 * factor + 0.02);
       assert.ok(ws.desc.includes("×ЛОВ"), ws.desc);
       assert.ok(ws.passiveNote.includes("×ЛОВ"), ws.passiveNote);
@@ -1775,10 +1775,18 @@ test("armor and accessories give defense by weight and stat; weapons give none",
   assert.ok(geared.maxHp > plain.maxHp, "лёгкая броня добавляет здоровье");
 });
 
-test("уровень предмета: параметры +50%, эффекты и свойства +17%", () => {
+test("уровень предмета: параметры линейно +50%, эффекты сложным процентом ×1.17/×1.25", () => {
   const scaling = loadGameModule("gearScaling");
   assert.equal(scaling.GEAR_STAT_RATE, 0.5);
   assert.equal(scaling.GEAR_EFFECT_RATE, 0.17);
+  assert.equal(scaling.GEAR_EFFECT_GROWTH_MAIN, 1.17);
+  assert.equal(scaling.GEAR_EFFECT_GROWTH_HIGH, 1.25);
+  /* сложный процент: 5 → 6 → 8 → 10 … на десятом уровне 31 */
+  assert.equal(scaling.scaleByLevel(5, 1), 5);
+  assert.equal(scaling.scaleByLevel(5, 2), 6);
+  assert.equal(scaling.scaleByLevel(5, 3), 8);
+  assert.equal(scaling.scaleByLevel(5, 10), 31);
+  assert.equal(scaling.scaleCompoundByLevel(5, 10, 1.25), 48);
   /* множители уровня: 1 + rate × уровень */
   assert.equal(scaling.levelFactor(1, 0.17), 1.17);
   assert.equal(Math.round(scaling.levelFactor(10, 0.17) * 100) / 100, 2.7);
@@ -1788,8 +1796,8 @@ test("уровень предмета: параметры +50%, эффекты �
   assert.equal(scaling.scaleIntegerByLevel(10, 1), 10);
   assert.equal(scaling.scaleIntegerByLevel(10, 2), 12);
   assert.equal(scaling.scaleIntegerByLevel(10, 3), 14);
-  assert.equal(scaling.scalePercentByLevel(3, 2), 5);
-  assert.equal(scaling.scaleMultByLevel(1.8, 2), 2.42);
+  assert.equal(scaling.scalePercentByLevel(3, 2), 4);
+  assert.equal(scaling.scaleMultByLevel(1.8, 2), 2.11);
   assert.equal(scaling.scaleGearStatByLevel(10, 1), 15);
   assert.equal(scaling.scaleGearStatByLevel(10, 3), 25);
 
@@ -1803,8 +1811,8 @@ test("уровень предмета: параметры +50%, эффекты �
   assert.ok(high.armor > low.armor);
   assert.ok(high.hp > low.hp);
   assert.equal(scaling.effectMagnitude("damage_resist", 3), 4);
-  assert.equal(scaling.passiveMagnitude("fortress", "resist", 3), 31);
-  assert.equal(scaling.legendaryMagnitude("executioner", "damage", 2), 47);
+  assert.equal(scaling.passiveMagnitude("fortress", "resist", 3), 29);
+  assert.equal(scaling.legendaryMagnitude("executioner", "damage", 2), 41);
 
   const weapon = content.createGearItem({ baseId: "sword", level: 1, wear: "worn", rarity: "common", identified: true });
   const ws1 = content.weaponSkillFor(weapon);
