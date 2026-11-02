@@ -2254,8 +2254,8 @@ test("в бою дебаффы монстра идут не чаще раза в
     b.p.armor = 999;
     b.enemy.hp = 99999;
     b.enemy.maxHp = 99999;
-    b.enemy.moves = ["attack", "seal_attack", "terror", "wound"];
-    b.enemy.def = { ...b.enemy.def, moves: ["attack", "seal_attack", "terror", "wound"] };
+    b.enemy.moves = ["attack", "curse", "terror", "wound"];
+    b.enemy.def = { ...b.enemy.def, moves: ["attack", "curse", "terror", "wound"] };
     return b;
   };
   const applied = new Set();
@@ -2397,47 +2397,89 @@ test("раскол складывается, сила растёт с уровн
   assert.equal(strong.p.statuses.sundered, 3, "монстр 9 уровня снимает три пункта за наложение");
 });
 
-test("enemy AI heals or guards when low, punishes misses and closes rounds by turn order", () => {
+test("enemy AI picks the move with the highest expected damage to the hero", () => {
   const base = () => {
     const b = freshBattle(mkP({ level: 1, stats: { str: 1, agi: 1, int: 1 }, hp: 60 }), 1, false, "classic");
     b.enemy.hp = 100; b.enemy.maxHp = 100;
     b.biome = "classic";
-    b.enemy.moves = ["attack", "drain", "wound"];
-    b.enemy.def = { ...b.enemy.def, moves: ["attack", "drain", "wound"] };
     return b;
   };
-  /* Мало ОЗ — лечащий приём, а без него защитная стойка. */
-  const low = base();
-  low.enemy.hp = 20;
-  assert.equal(battle.chooseEnemyMove(low), "drain");
-  const lowNoHeal = base();
-  lowNoHeal.enemy.hp = 20;
-  lowNoHeal.enemy.moves = ["attack", "wound"];
-  assert.equal(battle.chooseEnemyMove(lowNoHeal), "guard");
+  /* Тяжёлый удар бьёт сильнее обычного: 1.7× против 1× при той же броне. */
+  const heavy = base();
+  heavy.enemy.moves = ["attack", "heavy"];
+  heavy.enemy.def = { ...heavy.enemy.def, moves: ["attack", "heavy"] };
+  assert.equal(battle.chooseEnemyMove(heavy), "heavy");
 
-  /* Промах — следующий ход приём, при магии именно магический. */
+  /* При толстой броне физика бессильна — выбирается магия, даже если она слабее по множителю. */
+  const armored = base();
+  armored.p.armor = 999;
+  armored.enemy.moves = ["attack", "curse", "heavy"];
+  armored.enemy.def = { ...armored.enemy.def, moves: ["attack", "curse", "heavy"] };
+  assert.equal(battle.chooseEnemyMove(armored), "curse");
+
+  /* Стойка и печати урона не дают — их не выбирают, пока есть приём с уроном. */
+  const noDamageOnly = base();
+  noDamageOnly.enemy.moves = ["guard", "seal_attack", "attack"];
+  noDamageOnly.enemy.def = { ...noDamageOnly.enemy.def, moves: ["guard", "seal_attack", "attack"] };
+  assert.equal(battle.chooseEnemyMove(noDamageOnly), "attack");
+
+  /* Промах на прошлом ходу и порядок ходов не меняют выбор: решает только урон. */
   const missed = base();
   missed.enemy.lastMiss = true;
-  missed.enemy.moves = ["attack", "heavy", "wound", "terror"];
-  assert.equal(battle.chooseEnemyMove(missed), "terror");
-  const missedNoMagic = base();
-  missedNoMagic.enemy.lastMiss = true;
-  missedNoMagic.enemy.moves = ["attack", "heavy", "wound"];
-  assert.equal(battle.chooseEnemyMove(missedNoMagic), "wound");
-
-  /* Последний ход раунда: меньше ходов — защита, больше — удар или приём. */
+  missed.enemy.moves = ["attack", "heavy"];
+  missed.enemy.def = { ...missed.enemy.def, moves: ["attack", "heavy"] };
+  assert.equal(battle.chooseEnemyMove(missed), "heavy");
   const slower = base();
   slower.queue = ["p", "p", "e"]; slower.idx = 2;
-  assert.equal(battle.chooseEnemyMove(slower), "guard");
-  const faster = base();
-  faster.queue = ["e", "e", "p"]; faster.idx = 1;
-  assert.ok(["attack", "drain", "wound"].includes(battle.chooseEnemyMove(faster)));
+  slower.enemy.moves = ["attack", "heavy"];
+  slower.enemy.def = { ...slower.enemy.def, moves: ["attack", "heavy"] };
+  assert.equal(battle.chooseEnemyMove(slower), "heavy");
 
-  /* Слабый обычный удар — приёмы на негативные эффекты. */
-  const weak = base();
-  weak.p.armor = 999;
-  weak.enemy.moves = ["attack", "wound"];
-  assert.equal(battle.chooseEnemyMove(weak), "wound");
+  /* Если герой закрыт полной защитой, урона нет ни у одного приёма — берётся обычный удар. */
+  const blocked = base();
+  blocked.p.statuses.fullGuard = 2;
+  blocked.enemy.moves = ["attack", "heavy", "curse"];
+  blocked.enemy.def = { ...blocked.enemy.def, moves: ["attack", "heavy", "curse"] };
+  assert.equal(battle.chooseEnemyMove(blocked), "attack");
+});
+
+test("enemy move choice is the argmax of expected damage across random hero states", () => {
+  const allMoves = ["attack", "heavy", "wound", "poison", "sunder", "multi", "curse", "drain", "bell_stun", "terror", "hell_force", "cold_touch", "guard", "seal_attack"];
+  withSeededRandom(77, () => {
+    for (let i = 0; i < 60; i++) {
+      const b = freshBattle(mkP({ level: 1 + (i % 9), stats: { str: 4, agi: 4, int: 4 }, hp: 200 }), 1 + (i % 10), false, "classic");
+      b.p.armor = (i * 7) % 40;
+      b.enemy.moves = allMoves.filter((_, k) => (k + i) % 3 !== 0);
+      b.enemy.def = { ...b.enemy.def, moves: [...b.enemy.moves] };
+      const chosen = battle.chooseEnemyMove(b);
+      const best = Math.max(...b.enemy.moves.map((m) => battle.enemyExpectedMoveDamage(b, m)));
+      assert.ok(battle.enemyExpectedMoveDamage(b, chosen) >= best - 1e-6, `${chosen} хуже лучшего: ${best}`);
+    }
+  });
+});
+
+test("expected enemy damage matches the average of real enemy turns", () => {
+  const moves = ["attack", "heavy", "wound", "poison", "sunder", "multi", "curse", "drain", "bell_stun", "terror", "hell_force", "cold_touch"];
+  for (const m of moves) {
+    const trials = 1500;
+    /* Один и тот же монстр и герой: enemyStep копирует состояние, поэтому можно повторять ход. */
+    const fixed = freshBattle(mkP({ level: 5, stats: { str: 4, agi: 4, int: 4 }, hp: 1e9 }), 5, false, "classic");
+    fixed.enemy.moves = [m];
+    fixed.enemy.def = { ...fixed.enemy.def, moves: [m] };
+    fixed.enemy.specialCooldown = 0;
+    fixed.queue = ["e", "p"];
+    fixed.idx = 0;
+    const expectedFixed = battle.enemyExpectedMoveDamage(fixed, m);
+    const actual = withSeededRandom(5, () => {
+      let sum = 0;
+      for (let i = 0; i < trials; i++) {
+        const after = battle.enemyStep(fixed);
+        sum += fixed.p.hp - after.p.hp;
+      }
+      return sum / trials;
+    });
+    assert.ok(Math.abs(actual - expectedFixed) <= Math.max(1, expectedFixed * 0.06), `${m}: ожидалось ${expectedFixed.toFixed(2)}, по ходам ${actual.toFixed(2)}`);
+  }
 });
 
 test("trap cells near the entrance are never placed right after a descent", () => {
@@ -3596,14 +3638,14 @@ test("истощение не трогает обычные параметры: 
   assert.deepEqual(depleted.atk, normal.atk, "удар не ослабевает");
 });
 
-test("истощённый враг по-прежнему уходит в защиту", () => {
+test("истощённый враг по-прежнему выбирает удар: истощение не мешает приёму урона", () => {
   const b = depletionSeed();
   b.enemy.depleted = 2;
   b.enemy.moves = ["attack"];
   b.enemy.hp = Math.floor(b.enemy.maxHp * 0.2);
   b.queue = ["p", "e", "p", "e"];
   b.idx = 1;
-  assert.equal(battle.chooseEnemyMove(b), "guard", "стойка — обычное действие, не эффект");
+  assert.equal(battle.chooseEnemyMove(b), "attack", "удар — основной способ нанести урон");
 });
 
 test("истощение спадает через два раунда, свиток и прах накладывают его сразу", () => {
@@ -3711,12 +3753,13 @@ test("шипы героя отвечают на физическую атаку 
   assert.ok(!cursed.log.some((l) => l.text.includes("Шипы возвращают")), "шипы сработали на магию врага");
 });
 
-test("враг с магией выбирает её, когда у героя шипы", () => {
+test("враг с магией выбирает её, когда физический удар бессилен", () => {
   const b = freshBattle(mkP({ level: 5, stats: { str: 6, agi: 2, int: 2 }, hp: 200 }), 1);
   b.enemy.moves = ["attack", "curse"];
+  b.enemy.def = { ...b.enemy.def, moves: ["attack", "curse"] };
   b.enemy.effectPower = {};
-  b.p.effectPower = { thorns: 9 };
+  b.p.armor = 999;
   b.p.hp = 300;
   const move = battle.chooseEnemyMove(b);
-  assert.equal(move, "curse", `при шипах тварь бьёт магией, а выбрала ${move}`);
+  assert.equal(move, "curse", `при огромной броне урон даёт магия, а выбрана ${move}`);
 });

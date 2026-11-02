@@ -1521,6 +1521,51 @@ function elementalHit(
 }
 
 /** false означает, что враг промахнулся: побочные эффекты атаки тоже не срабатывают. */
+/** Урон по герою после всех защит: броня, укрепление, сопротивления, стойка. Без бросков и побочных эффектов. */
+function damageAfterPlayerDefense(
+  b: BattleState,
+  raw: number,
+  kind: "phys" | "magic",
+  strike: boolean,
+  ignoreDefense: boolean,
+): number {
+  let d = raw;
+  if (strike) d = Math.round(d * biomeStrikeMult(b.biome));
+  const effArmor = Math.max(0, b.p.armor + b.p.statuses.tempArmor + (b.p.statuses.ironTonic > 0 ? 4 : 0) - b.p.statuses.sundered);
+  if (kind === "phys") {
+    if (!ignoreDefense) {
+      d -= effArmor;
+      d = Math.round(d * (1 - combatChance(b.p.chanceLayers.fortify)));
+    }
+  } else if (!ignoreDefense) {
+    d = Math.round(d * (1 - combatChance(b.p.chanceLayers.magicResist)));
+  }
+  if (!ignoreDefense) d -= effectPower(b, "damage_resist");
+  if (b.p.statuses.stone > 0) d = Math.round(d * 0.7);
+  if (b.p.guard) d = Math.floor(d / 2);
+  let guardMult = 1;
+  if (b.p.guard) {
+    guardMult -= effectPower(b, "guard_bonus") / 100;
+    if (hasPassive(b, "arch_bulwark_5")) guardMult -= 0.15;
+    if (hasGearPassive(b, "bulwark_wall")) guardMult -= passivePower(b, "bulwark_wall", "guard") / 100;
+  }
+  d = Math.round(d * Math.max(0.2, guardMult));
+  if (hasGearPassive(b, "fortress")) d = Math.round(d * (1 - passivePower(b, "fortress", "resist") / 100));
+  d = Math.max(1, d);
+  return d;
+}
+
+/** Шанс, что удар по герою вообще попадёт (промахи мрака, ослепления, уклонения). Блокировки, которые срабатывают всегда, дают 0. */
+function playerHitChance(b: BattleState, kind: "phys" | "magic", strike: boolean, ignoreDefense: boolean): number {
+  if (b.p.statuses.fullGuard > 0 || b.p.statuses.dodgeNext > 0 || b.p.statuses.smoke > 0) return 0;
+  let p = 1;
+  const darkMiss = (b.torchTurns ?? 0) > 0 ? 0 : biomeMissChance(b.biome);
+  if (!ignoreDefense && strike) p *= 1 - darkMiss;
+  if (enemyOil(b, "light")) p *= 1 - OIL_BLIND_MISS;
+  if (!ignoreDefense && kind === "phys") p *= 1 - combatChance(b.p.chanceLayers.evade);
+  return p;
+}
+
 function incoming(
   b: BattleState,
   raw: number,
@@ -1567,29 +1612,7 @@ function incoming(
     grantDodgeAction(b);
     return false;
   }
-  let d = raw;
-  if (strike) d = Math.round(d * biomeStrikeMult(b.biome));
-  const effArmor = Math.max(0, b.p.armor + b.p.statuses.tempArmor + (b.p.statuses.ironTonic > 0 ? 4 : 0) - b.p.statuses.sundered);
-  if (kind === "phys") {
-    if (!ignoreDefense) {
-      d -= effArmor;
-      d = Math.round(d * (1 - combatChance(b.p.chanceLayers.fortify)));
-    }
-  } else if (!ignoreDefense) {
-    d = Math.round(d * (1 - combatChance(b.p.chanceLayers.magicResist)));
-  }
-  if (!ignoreDefense) d -= effectPower(b, "damage_resist");
-  if (b.p.statuses.stone > 0) d = Math.round(d * 0.7);
-  if (b.p.guard) d = Math.floor(d / 2);
-  let guardMult = 1;
-  if (b.p.guard) {
-    guardMult -= effectPower(b, "guard_bonus") / 100;
-    if (hasPassive(b, "arch_bulwark_5")) guardMult -= 0.15;
-    if (hasGearPassive(b, "bulwark_wall")) guardMult -= passivePower(b, "bulwark_wall", "guard") / 100;
-  }
-  d = Math.round(d * Math.max(0.2, guardMult));
-  if (hasGearPassive(b, "fortress")) d = Math.round(d * (1 - passivePower(b, "fortress", "resist") / 100));
-  d = Math.max(1, d);
+  const d = damageAfterPlayerDefense(b, raw, kind, strike, ignoreDefense);
   b.p.hp -= d;
   flash(b, "p", b.p.guard ? "guard" : "hit", d);
   push(b, `${src} — тебе ${d} урона.`, "e");
@@ -2539,8 +2562,6 @@ function armEnemyCooldown(b: BattleState, move: EnemyMove): void {
   if (!ENEMY_COOLDOWN_MOVES.includes(move)) return;
   b.enemy.specialCooldown = b.round + ENEMY_MOVE_COOLDOWN;
 }
-/** Приёмы, которые бьют по духу и считаются магическими. */
-const MAGIC_MOVES: EnemyMove[] = ["curse", "drain", "bell_stun", "terror", "darkness", "cold_touch", "hell_force"];
 /** Прямые удары оружием и когтями. */
 const STRIKE_MOVES: EnemyMove[] = ["attack", "heavy", "multi"];
 /** Физические приёмы врага: на них действует лёд и броня героя. */
@@ -2591,16 +2612,6 @@ function applyRaceStrike(b: BattleState, isStrike: boolean, rawBase: number, res
   }
 }
 
-/** Порог «мало здоровья» для перехода в лечение или защитную стойку. */
-export const ENEMY_LOW_HP_RATIO = 0.35;
-
-/** Сколько ходов осталось у врага до конца раунда (включая текущий). */
-function enemyTurnsLeft(b: BattleState): number {
-  let n = 0;
-  for (let i = b.idx; i < b.queue.length; i++) if (b.queue[i] === "e") n++;
-  return n;
-}
-
 /** Шипы героя: физический удар по нему ранит самого нападающего. */
 function playerThorns(b: BattleState): number {
   return (
@@ -2611,77 +2622,108 @@ function playerThorns(b: BattleState): number {
   );
 }
 
+/** Коэффициенты приёмов врага по урону: множитель к базовому удару, тип удара и число ударов. Приёмы без урона здесь не перечислены. */
+const ENEMY_MOVE_SHAPE: Partial<Record<EnemyMove, { mult: number; kind: "phys" | "magic"; hits?: number; ignoreDefense?: boolean }>> = {
+  attack: { mult: 1, kind: "phys" },
+  heavy: { mult: 1.7, kind: "phys" },
+  wound: { mult: 0.9, kind: "phys" },
+  poison: { mult: 0.85, kind: "phys" },
+  sunder: { mult: 1.15, kind: "phys" },
+  multi: { mult: 0.65, kind: "phys", hits: 2 },
+  curse: { mult: 0.7, kind: "magic" },
+  drain: { mult: 0.95, kind: "magic" },
+  bell_stun: { mult: 1.1, kind: "magic" },
+  terror: { mult: 0.6, kind: "magic" },
+  hell_force: { mult: 2, kind: "magic" },
+  cold_touch: { mult: 1.1, kind: "magic", ignoreDefense: true },
+};
+
+/** Ослабление/усиление удара от состояния врага (ледяное проклятие, порча). */
+function enemyChill(b: BattleState): number {
+  return (b.enemy.statuses.blight > 0 ? 0.8 : 1) * (b.enemy.statuses.curse > 0 ? 1 - (b.enemy.statuses.cursePower ?? 30) / 100 : 1);
+}
+
+/** Усиления базового удара от эффектов врага, без критического броска. Истощение эффектов их отключает. */
+function enemyEffectDamage(b: BattleState, base0: number): number {
+  if (effectsDepleted(b)) return base0;
+  const e = b.enemy;
+  let base = base0;
+  base = Math.round(base * (1 + (eEffect(b, "rage") / 100) * Math.min(10, Math.floor(enemyMissingRatio(b) * 10))));
+  base = Math.round(base * (1 + (e.level * eEffect(b, "might")) / 100));
+  base = Math.round(base * (1 + eEffect(b, "missing_hp_damage") / 100 * Math.min(10, Math.floor(enemyMissingRatio(b) * 10))));
+  base = Math.round(base * (1 + eEffect(b, "enemy_missing_damage") / 100 * Math.min(10, Math.floor(missingHpRatio(b) * 10))));
+  if (b.round <= 2) base = Math.round(base * (1 + eEffect(b, "first_strike") / 100));
+  base += Math.round(e.armor * eEffect(b, "armor_damage") / 100);
+  return base;
+}
+
+/** Множители хода: тип монстра, агрессия зверя, масло, ярость дракона. */
+function enemyMoveDamage(b: BattleState, move: EnemyMove, isStrikeMove: boolean, base0: number): number {
+  const e = b.enemy;
+  let base = base0;
+  /* Тип задаёт, на чём держится урон: у умных приёмы бьют в 1.45× сильнее. */
+  const typeMeta = MONSTER_TYPE_META[e.mtype] ?? MONSTER_TYPE_META.strong;
+  if (!isStrikeMove && move !== "guard") base = Math.round(base * typeMeta.movePower);
+  /* Агрессия зверя: ниже половины здоровья бьёт вдвое. */
+  if (e.def.race === "beast" && e.hp > 0 && e.hp <= e.maxHp * 0.5 && isStrikeMove) base = Math.round(base * 2);
+  /* Лёд под маслом режет силу атаки и физических приёмов врага. */
+  if (PHYS_ENEMY_MOVES.includes(move)) base = Math.round(base * enemyOilAttackMult(b));
+  /* Ярость дракона: двойной урон, пока держится. */
+  if (e.def.race === "dragon" && e.fury > 0 && !effectsDepleted(b)) base = Math.round(base * 2);
+  return base;
+}
+
 /**
- * Решение монстра на его ход. Приоритеты:
- * 1. Мало ОЗ — лечащий приём (похищение жизни) либо защитная стойка.
- * 2. Промах на прошлом ходу — приём; при наличии магии именно магический удар.
- * 3. У героя шипы: бьёт магией, а на последнем ходу раунда — защита.
- * 4. Последний ход раунда: ходов больше — атака или приём, ходов меньше — защита.
- * 5. Обычная атака бьёт слабо — приёмы на негативные эффекты.
- * 6. Иначе — обычный случайный выбор из доступных приёмов.
+ * Ожидаемый урон приёма врага по герою прямо сейчас: среднее от броска, ожидание крита,
+ * шанс попасть и все защиты героя. Без бросков и побочных эффектов.
+ */
+export function enemyExpectedMoveDamage(b: BattleState, move: EnemyMove): number {
+  const shape = ENEMY_MOVE_SHAPE[move];
+  if (!shape) return 0;
+  const e = b.enemy;
+  const isStrikeMove = STRIKE_MOVES.includes(move);
+  let base = enemyEffectDamage(b, Math.round((e.atk[0] + e.atk[1]) / 2));
+  if (!effectsDepleted(b)) {
+    const c = eChance(b, "crit_chance");
+    if (c > 0) base = base * (1 - c) + base * (2 + eEffect(b, "crit_mult") / 100) * c;
+  }
+  base = enemyMoveDamage(b, move, isStrikeMove, base);
+  const raw = Math.round(base * shape.mult * enemyChill(b));
+  const strike = shape.kind === "phys";
+  const ignore = !!shape.ignoreDefense;
+  const p = playerHitChance(b, shape.kind, strike, ignore);
+  if (p <= 0) return 0;
+  const d = damageAfterPlayerDefense(b, raw, shape.kind, strike, ignore);
+  /* Второй удар приходит, только если первый попал. */
+  let total = 0;
+  let reach = 1;
+  for (let i = 0; i < (shape.hits ?? 1); i++) {
+    reach *= p;
+    total += reach * d;
+  }
+  return total;
+}
+
+/**
+ * Выбор приёма: монстр берёт тот приём, который даст наибольший ожидаемый урон по герою сейчас.
+ * Приёмы без урона (стойка, печати, мрак, запугивание) выбираются только если урона не даёт ни один приём.
  */
 export function chooseEnemyMove(b: BattleState): EnemyMove {
   const e = b.enemy;
-  /* Приёмы с негативными эффектами уходят на перезарядку: пока она идёт,
-     враг выбирает из того, что осталось, — обычный удар или стойку. */
   const moves = (e.moves.length ? e.moves : e.def.moves).filter((m) => enemyMoveReady(b, m));
-  const has = (m: EnemyMove) => moves.includes(m);
-  const debuffs = moves.filter((m) => DEBUFF_MOVES.includes(m));
-  const magics = moves.filter((m) => MAGIC_MOVES.includes(m));
-  const strikes = moves.filter((m) => STRIKE_MOVES.includes(m));
-  const hpRatio = e.hp / Math.max(1, e.maxHp);
-  const turnsLeft = enemyTurnsLeft(b);
-  const enemyTurns = b.queue.filter((s) => s === "e").length;
-  const playerTurns = b.queue.filter((s) => s === "p").length;
-
-  /* 1. Мало здоровья: лечимся похищением жизни либо держим стойку. */
-  if (hpRatio <= ENEMY_LOW_HP_RATIO) {
-    if (has("drain") && e.hp < e.maxHp) {
-      return "drain";
-    }
-    return "guard";
-  }
-
-  /* 2. Промахнулся — следующий ход приём; с магией бьёт именно магией. */
-  if (e.lastMiss) {
-    if (magics.length) {
-      return pick(magics);
-    }
-    if (debuffs.length) {
-      return pick(debuffs);
-    }
-    if (has("heavy")) return "heavy";
-  }
-
-  /* 3. У героя шипы: вплотную бить накладно, поэтому при наличии магии тварь
-     бьёт магией, а на последнем ходу раунда без дебаффов держит стойку. */
-  if (playerThorns(b) > 0) {
-    if (magics.length) return pick(magics);
-    if (turnsLeft === 1 && !debuffs.length) {
-      return "guard";
+  let best = 0;
+  let top: EnemyMove[] = [];
+  for (const m of moves) {
+    const v = enemyExpectedMoveDamage(b, m);
+    if (v > best + 1e-9) {
+      best = v;
+      top = [m];
+    } else if (best > 0 && v >= best - 1e-9) {
+      top.push(m);
     }
   }
-
-  /* 4. Последний ход раунда: кто быстрее, тот и распоряжается концовкой. */
-  if (turnsLeft === 1) {
-    if (enemyTurns < playerTurns) {
-      return "guard";
-    }
-    if (enemyTurns > playerTurns) {
-      const options = [...strikes, ...debuffs];
-      if (options.length) return pick(options);
-      return "attack";
-    }
-  }
-
-  /* 5. Обычная атака почти не пробивает героя — давим негативными эффектами. */
-  const plain = Math.round((e.atk[0] + e.atk[1]) / 2) - Math.max(0, b.p.armor);
-  if (plain <= Math.max(2, Math.round(b.p.maxHp * 0.05)) && debuffs.length) {
-    return pick(debuffs);
-  }
-
-  /* 6. Обычный выбор. */
-  return moves.length ? pick(moves) : "attack";
+  if (!top.length) return moves.includes("attack") ? "attack" : (moves[0] ?? "attack");
+  return pick(top);
 }
 
 export function enemyStep(b0: BattleState): BattleState {
@@ -2713,38 +2755,22 @@ export function enemyStep(b0: BattleState): BattleState {
     return b;
   }
 
-  const chill = (e.statuses.blight > 0 ? 0.8 : 1) * (e.statuses.curse > 0 ? 1 - (e.statuses.cursePower ?? 30) / 100 : 1);
+  const chill = enemyChill(b);
   const move = chooseEnemyMove(b);
   armEnemyCooldown(b, move);
   const isStrikeMove = STRIKE_MOVES.includes(move);
   /* Промах запоминается только на один ход: после решения флаг снимаем. */
   e.lastMiss = false;
   /* Базовый удар — обычный параметр; усиления от эффектов при истощении не работают. */
-  let base = randInt(e.atk[0], e.atk[1]);
+  let base = enemyEffectDamage(b, randInt(e.atk[0], e.atk[1]));
   if (!effectsDepleted(b)) {
-    base = Math.round(base * (1 + (eEffect(b, "rage") / 100) * Math.min(10, Math.floor(enemyMissingRatio(b) * 10))));
-    base = Math.round(base * (1 + (e.level * eEffect(b, "might")) / 100));
-    base = Math.round(base * (1 + eEffect(b, "missing_hp_damage") / 100 * Math.min(10, Math.floor(enemyMissingRatio(b) * 10))));
-    base = Math.round(base * (1 + eEffect(b, "enemy_missing_damage") / 100 * Math.min(10, Math.floor(missingHpRatio(b) * 10))));
-    if (b.round <= 2) base = Math.round(base * (1 + eEffect(b, "first_strike") / 100));
-    base += Math.round(e.armor * eEffect(b, "armor_damage") / 100);
     const eCritChance = eChance(b, "crit_chance");
     if (eCritChance > 0 && Math.random() < eCritChance) {
       base = Math.round(base * (2 + eEffect(b, "crit_mult") / 100));
       push(b, `${e.def.name} наносит критический удар!`, "e");
     }
   }
-  /* Тип задаёт, на чём держится урон: у умных приёмы бьют в 1.45× сильнее. */
-  const typeMeta = MONSTER_TYPE_META[e.mtype] ?? MONSTER_TYPE_META.strong;
-  if (!isStrikeMove && move !== "guard") base = Math.round(base * typeMeta.movePower);
-  /* Агрессия зверя: ниже половины здоровья бьёт вдвое. */
-  if (e.def.race === "beast" && e.hp > 0 && e.hp <= e.maxHp * 0.5 && isStrikeMove) {
-    base = Math.round(base * 2);
-  }
-  /* Лёд под маслом режет силу атаки и физических приёмов врага. */
-  if (PHYS_ENEMY_MOVES.includes(move)) base = Math.round(base * enemyOilAttackMult(b));
-  /* Ярость дракона: двойной урон, пока держится. */
-  if (e.def.race === "dragon" && e.fury > 0 && !effectsDepleted(b)) base = Math.round(base * 2);
+  base = enemyMoveDamage(b, move, isStrikeMove, base);
   const resistChance = playerResistChance(b);
   const hpBeforeMove = b.p.hp;
 
