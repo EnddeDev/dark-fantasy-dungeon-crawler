@@ -3321,6 +3321,85 @@ test("уязвимость рода к стихии попадает в журн
   assert.equal(weak.dmg, "fire", "строка уязвимости несёт огонь");
 });
 
+test("масла: семь видов без физического и кровотечения, тратят ход и стоят в расходниках", () => {
+  const oils = Object.values(content.ITEMS).filter((i) => i.use?.type === "oil");
+  assert.deepEqual(oils.map((i) => i.use.oil).sort(), ["acid", "burn", "fire", "ice", "light", "magic", "poison"]);
+  for (const i of oils) {
+    assert.equal(i.kind, "potion", `${i.id}: расходник`);
+    assert.ok(i.price > 0 && i.desc.length > 0, `${i.id}: есть цена и описание`);
+    assert.ok(i.id in content.SUPPLY_LEVELS, `${i.id}: есть уровень припаса`);
+  }
+});
+
+test("масло на клинке: действует на ближайший раунд и истекает без удара", () => {
+  const b = quietEnemy(freshBattle(mkP({ level: 1, stats: { str: 1, agi: 1, int: 1 }, hp: 100, bag: { oil_fire: 1 } }), 1, false, "classic"));
+  b.enemy.hp = 9999;
+  b.enemy.maxHp = 9999;
+  const oiled = battle.playerAct({ ...b, queue: ["p", "e"], idx: 0 }, { type: "item", id: "oil_fire" });
+  assert.equal(oiled.p.statuses.oilType, "fire", "клинок смазан огнём");
+  assert.equal(oiled.p.statuses.oilRounds, 2, "остаток раунда и следующий");
+  assert.equal(oiled.bag.oil_fire ?? 0, 0, "масло израсходовано");
+
+  const endRound = (st) => withRandom(() => battle.playerAct({ ...st, queue: ["p"], idx: 0 }, { type: "guard" }), 0.99);
+  const r1 = endRound(oiled);
+  assert.equal(r1.p.statuses.oilRounds, 1);
+  const r2 = endRound(r1);
+  assert.equal(r2.p.statuses.oilType, null, "без удара масло высохло");
+  assert.equal(r2.p.statuses.oilRounds, 0);
+});
+
+test("удар смазанным оружием накладывает урон масла на 3 раунда и тикает каждый раунд", () => {
+  const b = quietEnemy(freshBattle(mkP({ level: 1, stats: { str: 1, agi: 1, int: 1 }, hp: 100, bag: { oil_fire: 1 } }), 1, false, "classic"));
+  b.enemy.hp = 9999;
+  b.enemy.maxHp = 9999;
+  const oiled = battle.playerAct({ ...b, queue: ["p", "e"], idx: 0 }, { type: "item", id: "oil_fire" });
+
+  const hit = withRandom(() => battle.playerAct({ ...oiled, queue: ["p", "e"], idx: 0 }, { type: "attack" }), 0.99);
+  assert.equal(hit.enemy.statuses.oilType, "fire", "удар наложил огонь");
+  assert.equal(hit.enemy.statuses.oilRounds, 3, "на 3 раунда");
+
+  const endRound = (st) => withRandom(() => battle.playerAct({ ...st, queue: ["p"], idx: 0 }, { type: "guard" }), 0.99);
+  let st = hit;
+  const ticks = [];
+  for (let i = 0; i < 3; i++) {
+    const before = st.enemy.hp;
+    st = endRound(st);
+    ticks.push(before - st.enemy.hp);
+  }
+  assert.deepEqual(ticks, [300, 300, 300], "огонь: 3% от 9999 за раунд");
+  assert.equal(st.enemy.statuses.oilType, null, "после трёх раундов масло угасло");
+  const line = st.log.find((l) => l.text.includes("Огонь масла отнимает 300 ОЗ"));
+  assert.ok(line, "тик урона записан в журнал");
+  assert.equal(line.dmg, "fire", "строка тика несёт метку огня");
+});
+
+test("стихия масла учитывает род: конструкт получает ×1.5, зверь не получает света", () => {
+  const constructB = monsterBattle("construct", "strong", ["attack"], { player: { bag: { oil_fire: 1 } } });
+  constructB.enemy.hp = 9999;
+  constructB.enemy.maxHp = 9999;
+  const oiled = battle.playerAct({ ...constructB, queue: ["p", "e"], idx: 0 }, { type: "item", id: "oil_fire" });
+  const hit = withRandom(() => battle.playerAct({ ...oiled, queue: ["p", "e"], idx: 0 }, { type: "attack" }), 0.99);
+  const ended = withRandom(() => battle.playerAct({ ...hit, queue: ["p"], idx: 0 }, { type: "guard" }), 0.99);
+  assert.ok(ended.log.some((l) => l.text.includes("Огонь масла отнимает 450 ОЗ") && l.text.includes("Уязвимость ×1.5")), "огонь бьёт конструкт ×1.5");
+
+  const beastB = monsterBattle("beast", "agile", ["attack"], { player: { bag: { oil_light: 1 } } });
+  beastB.enemy.hp = 9999;
+  beastB.enemy.maxHp = 9999;
+  const lit = battle.playerAct({ ...beastB, queue: ["p", "e"], idx: 0 }, { type: "item", id: "oil_light" });
+  const beastHit = withRandom(() => battle.playerAct({ ...lit, queue: ["p", "e"], idx: 0 }, { type: "attack" }), 0.99);
+  assert.equal(beastHit.enemy.statuses.oilType, null, "зверь невосприимчив к свету: масло не накладывается");
+  assert.ok(beastHit.log.some((l) => l.text.includes("не поддаётся маслу")), "в журнале сказано почему");
+});
+
+test("формула тика масла: яд и горение не режутся, магия и стихии режутся", () => {
+  const status = loadGameModule("statusEffects");
+  assert.equal(status.oilTickDamage(1000, "poison", 0.5), 40, "яд 4% без сопротивления");
+  assert.equal(status.oilTickDamage(1000, "burn", 0.5), 50, "горение 5% без сопротивления");
+  assert.equal(status.oilTickDamage(1000, "fire", 0), 30, "огонь 3%");
+  assert.equal(status.oilTickDamage(1000, "fire", 0.5), 15, "огонь режется магическим сопротивлением");
+  assert.equal(status.oilTickDamage(1000, "magic", 0.99), 1, "минимум 1 урона");
+});
+
 function withRandom(fn, value = 0.5) {
   const rnd = Math.random;
   Math.random = () => value;

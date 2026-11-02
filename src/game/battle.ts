@@ -76,7 +76,8 @@ import {
   statTenacity,
 } from "./statFormulas";
 import { GEAR_EFFECTS } from "./gearEffects";
-import { CHILL_HEAL_MULT, magicTickDamage, statusTickDamage } from "./statusEffects";
+import { CHILL_HEAL_MULT, magicTickDamage, oilTickDamage, statusTickDamage, type OilKind } from "./statusEffects";
+import { damageTypeName, isDamageElement } from "./damageTypes";
 import type { ArchetypeId } from "./archetypes";
 import type { GearEffectId, GearPassiveId } from "./gearEffects";
 import {
@@ -160,6 +161,9 @@ export interface BattleState {
       /** Наложения кровотечения и яда: урон за тик складывается. */
       bleedStacks?: number;
       poisonStacks?: number;
+      /** Урон масла с клинка: один слот, новое масло заменяет старое. */
+      oilType: OilKind | null;
+      oilRounds: number;
     };
     guard: boolean;
     /** Раунды, в которые враг вынужден держать защиту (свиток ужаса, бомба). */
@@ -233,6 +237,9 @@ export interface BattleState {
       bloodRage: number;
       /** Ассасин: масло быстрого клинка. */
       quickblade: number;
+      /** Смазанный клинок: вид урона масла и раунды, в которые оружие смазано (1). */
+      oilType: OilKind | null;
+      oilRounds: number;
       /** Колдун: эликсир пакта (урон приёмов). */
       pactElixir: number;
       /** Полная защита от урона (свитки/приёмы мудреца). */
@@ -877,6 +884,7 @@ export function newBattle(
       statuses: {
         chill: 0, bleed: 0, poison: 0, fear: 0, stunAp: 0, blight: 0, wither: 0, burning: 0,
         burn: 0, curse: 0, cursePower: 30, sundered: 0, bleedStacks: 0, poisonStacks: 0,
+        oilType: null, oilRounds: 0,
       },
       guard: false,
       forceGuard: 0,
@@ -935,6 +943,8 @@ export function newBattle(
         ironTonic: 0,
         bloodRage: 0,
         quickblade: 0,
+        oilType: null,
+        oilRounds: 0,
         pactElixir: 0,
         fullGuard: 0,
         tempArmor: 0,
@@ -997,7 +1007,7 @@ function enemyMissingRatio(b: BattleState) {
 }
 function enemyDebuffCount(b: BattleState) {
   const s = b.enemy.statuses;
-  return (s.chill > 0 ? 1 : 0) + (s.bleed > 0 ? 1 : 0) + (s.poison > 0 ? 1 : 0) + (s.fear > 0 ? 1 : 0) + (s.stunAp > 0 ? 1 : 0) + (s.blight > 0 ? 1 : 0) + (s.wither > 0 ? 1 : 0) + (s.burn > 0 ? 1 : 0) + (s.curse > 0 ? 1 : 0);
+  return (s.chill > 0 ? 1 : 0) + (s.bleed > 0 ? 1 : 0) + (s.poison > 0 ? 1 : 0) + (s.fear > 0 ? 1 : 0) + (s.stunAp > 0 ? 1 : 0) + (s.blight > 0 ? 1 : 0) + (s.wither > 0 ? 1 : 0) + (s.burn > 0 ? 1 : 0) + (s.curse > 0 ? 1 : 0) + (s.oilRounds > 0 ? 1 : 0);
 }
 function techValue(ws: WeaponSkillDef, base: number, precision = 1): number {
   return scaleByLevel(base, ws.level ?? 1, precision);
@@ -1137,6 +1147,32 @@ function applyEnemyStatus(b: BattleState, key: "chill" | "bleed" | "poison" | "f
   }
 }
 /** Свойства оружия, которые срабатывают прямо от удара: кровотечение, яд, раскол. */
+/**
+ * Удар смазанным оружием накладывает урон масла на 3 раунда. Пока масло на клинке
+ * (1 раунд), каждый удар обновляет срок. Стихия, к которой род невосприимчив, не действует.
+ */
+function oilOnHit(b: BattleState) {
+  const kind = b.p.statuses.oilType;
+  if (!kind || b.p.statuses.oilRounds <= 0 || b.enemy.hp <= 0) return;
+  const element = isDamageElement(kind) ? kind : undefined;
+  const name = damageTypeName(kind);
+  if (element && raceElementMult(b.enemy.def.race, element) <= 0) {
+    push(b, `${b.enemy.def.name} не поддаётся маслу: ${name} не действует.`, "sys", element);
+    return;
+  }
+  const renew = b.enemy.statuses.oilType === kind && b.enemy.statuses.oilRounds > 0;
+  b.enemy.statuses.oilType = kind;
+  b.enemy.statuses.oilRounds = 3;
+  push(
+    b,
+    renew
+      ? `Смазанный клинок обновляет ${name} на ${b.enemy.def.name}: 3 раунда.`
+      : `Смазанный клинок накладывает ${name} на ${b.enemy.def.name}: 3 раунда.`,
+    "p",
+    element,
+  );
+}
+
 function weaponHitEffects(b: BattleState) {
   if (b.enemy.hp <= 0) return;
   const chanceOf = (id: GearEffectId) => Math.min(0.95, effectPower(b, id) / 100);
@@ -1651,6 +1687,15 @@ function advance(b: BattleState) {
       b.enemy.hp -= d;
       push(b, `Порча разъедает ${b.enemy.def.name}: −${d} ОЗ.`, "p");
     }
+    if (b.enemy.statuses.oilType && b.enemy.statuses.oilRounds > 0 && b.enemy.hp > 0) {
+      const kind = b.enemy.statuses.oilType;
+      const element = isDamageElement(kind) ? kind : undefined;
+      const mult = element ? raceElementMult(b.enemy.def.race, element) : 1;
+      const d = Math.max(1, Math.round(oilTickDamage(b.enemy.maxHp, kind, eChance(b, "magic_resist")) * mult));
+      b.enemy.hp -= d;
+      const weak = mult > 1 ? ` Уязвимость ×${mult}.` : "";
+      push(b, `${damageTypeName(kind)} масла отнимает ${d} ОЗ у ${b.enemy.def.name}.${weak}`, "p", element);
+    }
     if (b.enemy.passive?.id === "regen" && !raceCannotHeal(b.enemy.def.race) && b.enemy.hp > 0 && b.enemy.hp < b.enemy.maxHp) {
       const heal = healEnemy(b, 4);
       push(b, `${b.enemy.def.name} затягивает раны (+${heal} ОЗ).`, "e");
@@ -1708,6 +1753,21 @@ function advance(b: BattleState) {
     if (prevPoison > 0 && b.p.statuses.poison === 0)
       push(b, "Яд вышел из крови.", "sys");
 
+    if (b.p.statuses.oilRounds > 0) {
+      b.p.statuses.oilRounds -= 1;
+      if (b.p.statuses.oilRounds === 0) {
+        b.p.statuses.oilType = null;
+        push(b, "Масло на клинке высохло.", "sys");
+      }
+    }
+    if (b.enemy.statuses.oilRounds > 0) {
+      b.enemy.statuses.oilRounds -= 1;
+      if (b.enemy.statuses.oilRounds === 0) {
+        const name = b.enemy.statuses.oilType ? damageTypeName(b.enemy.statuses.oilType) : "";
+        b.enemy.statuses.oilType = null;
+        if (name) push(b, `${name} масла на ${b.enemy.def.name} угасло.`, "sys");
+      }
+    }
     b.enemy.statuses.chill = Math.max(0, b.enemy.statuses.chill - 1);
     b.enemy.statuses.bleed = Math.max(0, b.enemy.statuses.bleed - 1);
     b.enemy.statuses.poison = Math.max(0, b.enemy.statuses.poison - 1);
@@ -1859,6 +1919,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
       const { d, crit } = calcWeaponRoll(b);
       const dealt = hitEnemy(b, d, "phys", crit ? " Критический удар!" : "");
       applyVamp(b, dealt, 0, "weapon");
+      if (dealt > 0) oilOnHit(b);
       b.p.firstAttackDone = true;
       weaponHitEffects(b);
       if (crit && hasPassive(b, "arch_assassin_10")) {
@@ -1912,6 +1973,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
         const dealt = hitEnemy(b, d, hitKind, ` [Приём: ${ws.name}${crit ? ", КРИТ!" : ""}${hits > 1 ? ` ${i + 1}/${hits}` : ""}]`, true);
         dealtTotal += dealt;
         applyVamp(b, dealt, 0, "weapon", trueDamage ? "phys" : hitKind);
+        if (dealt > 0) oilOnHit(b);
         if (crit && hasPassive(b, "arch_assassin_10")) {
           healPlayer(b, Math.max(1, Math.round(dealt * 0.15)));
         }
@@ -2210,6 +2272,21 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
           b.p.statuses.rage = statusRounds(b, u.rounds ?? 4);
           b.p.statuses.bloodRage = statusRounds(b, u.rounds ?? 4);
           push(b, `${def.name}: ярость и +15% вампиризма оружием на ${u.rounds} раунда.`, "p");
+          break;
+        }
+        case "oil": {
+          if (!u.oil) break;
+          /* Счётчик уменьшается в конце каждого раунда: 2 = остаток текущего раунда
+             и следующий, то есть масло действует на удары в ближайшем раунде. */
+          b.p.statuses.oilType = u.oil;
+          b.p.statuses.oilRounds = 2;
+          const name = damageTypeName(u.oil);
+          push(
+            b,
+            `${def.name}: клинок смазан на ближайший раунд. Удар оружием накладывает ${name} на 3 раунда.`,
+            "p",
+            isDamageElement(u.oil) ? u.oil : undefined,
+          );
           break;
         }
         case "quickblade": {

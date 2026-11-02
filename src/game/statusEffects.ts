@@ -13,6 +13,23 @@ export const STATUS_DOT = {
 
 export type DotKind = keyof typeof STATUS_DOT;
 
+/**
+ * Виды масла для оружия: магический урон, четыре стихии, яд и горение.
+ * Кровотечение и физический урон маслом не наносятся.
+ */
+export type OilKind = "magic" | "fire" | "ice" | "acid" | "light" | "poison" | "burn";
+
+/** Периодический урон масла магического рода (магия и стихии): доля макс. ОЗ за раунд. */
+export const OIL_DOT = 0.03;
+
+/** Урон масла за тик. Яд и горение — по своим таблицам; магия и стихии режутся магическим сопротивлением. */
+export function oilTickDamage(maxHp: number, kind: OilKind, magicResist: number): number {
+  if (kind === "poison") return statusTickDamage(maxHp, "poison");
+  if (kind === "burn") return statusTickDamage(maxHp, "burn");
+  const raw = Math.max(1, Math.ceil(Math.max(0, maxHp) * OIL_DOT));
+  return Math.max(1, Math.round(raw * (1 - Math.max(0, Math.min(0.99, magicResist)))));
+}
+
 export const CHILL_HEAL_MULT = 0.5;
 export const CURSE_DAMAGE_MULT = 0.7;
 export const BLIGHT_DAMAGE_MULT = 0.8;
