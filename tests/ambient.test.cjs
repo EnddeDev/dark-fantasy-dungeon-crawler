@@ -147,3 +147,27 @@ test("файлы из звукового пака существуют и леж
     assert.ok(fs2.statSync(file).size > 10000, `${name}: файл подозрительно мал`);
   }
 });
+
+test("погода лобби: сухо чаще дождя, шторм редок", () => {
+  const { rollWeather } = engine;
+  assert.equal(rollWeather(0), "clear");
+  assert.equal(rollWeather(0.59), "clear");
+  assert.equal(rollWeather(0.6), "rain");
+  assert.equal(rollWeather(0.92), "rain");
+  assert.equal(rollWeather(0.93), "storm");
+  assert.equal(rollWeather(0.999), "storm");
+  // Выборка на равномерном генераторе совпадает с заданными долями (60 / 33 / 7 %).
+  const counts = { clear: 0, rain: 0, storm: 0 };
+  const n = 10000;
+  for (let i = 0; i < n; i++) counts[rollWeather((i + 0.5) / n)]++;
+  assert.ok(Math.abs(counts.clear / n - 0.6) < 0.01, JSON.stringify(counts));
+  assert.ok(Math.abs(counts.rain / n - 0.33) < 0.01, JSON.stringify(counts));
+  assert.ok(Math.abs(counts.storm / n - 0.07) < 0.01, JSON.stringify(counts));
+});
+
+test("лобби использует записи Interior Night, а не лесную", () => {
+  const samples = engine.AMBIENT_SAMPLES;
+  assert.match(samples.interior, /Interior Night\/Inside Night\.ogg$/);
+  assert.match(samples.interiorRain, /Interior Night\/Inside Night Rain\.ogg$/);
+  assert.match(samples.interiorStorm, /Interior Night\/Inside Night Storm\.ogg$/);
+});

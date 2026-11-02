@@ -274,7 +274,9 @@ const ICE_BELLS = [1174.7, 1396.9, 880, 1046.5];
  */
 const PACK = "music/Free Fantasy SFX Pack By TomMusic/OGG Files/";
 export const AMBIENT_SAMPLES = {
-  forestRain: `${PACK}BGS Loops/Forest Night/Forest Night Rain.ogg`,
+  interior: `${PACK}BGS Loops/Interior Night/Inside Night.ogg`,
+  interiorRain: `${PACK}BGS Loops/Interior Night/Inside Night Rain.ogg`,
+  interiorStorm: `${PACK}BGS Loops/Interior Night/Inside Night Storm.ogg`,
   cave: `${PACK}BGS Loops/Cave/Cave.ogg`,
   torch: `${PACK}SFX/Torch/Torch Loop.ogg`,
 } as const;
@@ -297,8 +299,11 @@ function loadSample(ctx: AudioContext, url: string): Promise<AudioBuffer | null>
   return pending;
 }
 
-/** Зацикленный файл из пака. Стартует, когда файл декодирован; если сцену уже сменили — не стартует. */
-function loopSample(env: AmbientEnv, url: string, gain: number): void {
+/**
+ * Зацикленный файл из пака с регулируемой громкостью. Стартует, когда файл декодирован;
+ * если сцену уже сменили — не стартует. Возвращает гейн: им управляют сцены (например, погода).
+ */
+function sampleVoice(env: AmbientEnv, url: string, gain: number): GainNode {
   const { ctx, out } = env;
   const g = ctx.createGain();
   g.gain.value = gain;
@@ -326,7 +331,50 @@ function loopSample(env: AmbientEnv, url: string, gain: number): void {
     // Случайная точка старта: два одинаковых файла не звучат синхронно.
     src.start(0, Math.random() * Math.max(0, buf.duration - 1));
   });
+  return g;
 }
+
+/** Зацикленный файл из пака с постоянной громкостью. */
+function loopSample(env: AmbientEnv, url: string, gain: number): void {
+  sampleVoice(env, url, gain);
+}
+
+/**
+ * Погода в лобби по папке Interior Night: сухо (чаще всего), дождь (заметно реже)
+ * и редкий шторм. Каждая версия — полная запись, поэтому переход — кроссфейд между ними.
+ */
+const WEATHER_FADE_S = 6;
+const WEATHER_LEVEL = { clear: 0.5, rain: 0.5, storm: 0.45 } as const;
+type Weather = keyof typeof WEATHER_LEVEL;
+
+/** Вероятности выбора погоды при каждом броске: 60 % сухо, 33 % дождь, 7 % шторм. */
+export function rollWeather(r: number): Weather {
+  if (r < 0.6) return "clear";
+  if (r < 0.93) return "rain";
+  return "storm";
+}
+
+function lobbyWeather(env: AmbientEnv): void {
+  const { ctx } = env;
+  const voices: Record<Weather, GainNode> = {
+    clear: sampleVoice(env, AMBIENT_SAMPLES.interior, 0),
+    rain: sampleVoice(env, AMBIENT_SAMPLES.interiorRain, 0),
+    storm: sampleVoice(env, AMBIENT_SAMPLES.interiorStorm, 0),
+  };
+  const set = (target: Weather) => {
+    const now = ctx.currentTime;
+    for (const key of Object.keys(voices) as Weather[]) {
+      const g = voices[key].gain;
+      g.cancelScheduledValues(now);
+      g.setValueAtTime(g.value, now);
+      g.linearRampToValueAtTime(key === target ? WEATHER_LEVEL[key] : 0, now + WEATHER_FADE_S);
+    }
+  };
+  // Сцена начинается сухо, затем погода меняется примерно раз в 40–90 с.
+  set("clear");
+  every(env, 40, 90, () => set(rollWeather(Math.random())));
+}
+
 
 /**
  * Эхо каменного зала: сухой звук идёт как есть, а часть уходит в линию задержки
@@ -355,13 +403,6 @@ function withEcho(env: AmbientEnv, delayS: number, feedback: number, wet: number
     [input, delay, damp, fb, wetGain].forEach((n) => n.disconnect());
   });
   return { ...env, out: input };
-}
-
-/** Уханье совы: две ноты, вторая ниже и длиннее. */
-function owl(env: AmbientEnv): void {
-  const f = rnd(380, 430);
-  blip(env, { freq: f, endFreq: f * 0.93, dur: 0.45, gain: 0.02 });
-  blip(env, { freq: f, endFreq: f * 0.9, dur: 0.7, gain: 0.018, at: 0.7 });
 }
 
 /**
@@ -501,13 +542,12 @@ const BATTLE: Record<BiomeId, BattleConfig> = {
 /** Рецепты по сценам (экспорт для тестов: все сцены должны иметь рецепт). */
 export const AMBIENT_RECIPES: Readonly<Record<AmbientScene, Recipe>> = {
   /**
-   * Лагерь в лесу под дождём у костра: ночной лес с дождём из пака, треск костра
-   * из пака и редкое уханье совы (синтез).
+   * Лагерь: погода по записи Interior Night (сухо, редкий дождь, очень редкий шторм)
+   * и треск костра из пака.
    */
   lobby(env) {
-    loopSample(env, AMBIENT_SAMPLES.forestRain, 0.5);
+    lobbyWeather(env);
     loopSample(env, AMBIENT_SAMPLES.torch, 0.3);
-    every(env, 25, 45, () => owl(env));
   },
 
   /** Классический лабиринт: воздух пещеры из пака, капли с эхом, лапки мышей и камушки (синтез). */
