@@ -2643,6 +2643,17 @@ export function lootTableFor(level: number, floor: number, threat: Threat): Loot
   return t;
 }
 
+/**
+ * Доля золота, которую подземелье отдаёт на руки.
+ * Все источники дохода в забеге (монстры, босс, сундуки, находки) урезаны вдвое.
+ */
+export const DUNGEON_GOLD_SHARE = 0.5;
+
+/** Применяет долю подземелья к сумме золота: минимум одна монета. */
+export function dungeonGold(value: number): number {
+  return Math.max(1, Math.floor(value * DUNGEON_GOLD_SHARE));
+}
+
 export function lootCategoryForRoll(table: LootTable, roll: number): keyof LootTable {
   let r = Math.max(0, Math.min(0.999999, roll)) * 100;
   const order: (keyof LootTable)[] = ["nothing", "gold", "reagents", "supplies", "gear"];
@@ -2749,7 +2760,7 @@ export function rollEnemyLoot(
 
   if (category === "nothing") return out;
   if (category === "gold") {
-    out.gold = randInt(6 + level * 3, 14 + level * 6, rng);
+    out.gold = dungeonGold(randInt(6 + level * 3, 14 + level * 6, rng));
     return out;
   }
   if (category === "reagents") {
