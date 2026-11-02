@@ -46,6 +46,7 @@ import {
 } from "../game/content";
 import type { LobbyController } from "../controllers/LobbyController";
 import { recipePrice } from "../model/pricing";
+import { damageTypeName } from "../game/damageTypes";
 import { SLOT_META, SLOT_ORDER } from "../game/types";
 import type { RarityTier, Slot } from "../game/types";
 import { derived } from "../game/battle";
@@ -280,6 +281,11 @@ function effectSummary(def: ItemDef): { what: string; when: string } {
       return { what: "Снимает горение на карте в Огненных недрах.", when: "Используется на карте, когда есть горение." };
     case "special_torch":
       return { what: "+1 к видимости; в Тёмном подземелье снимает штраф мрака.", when: `Действует ${u.rounds ?? 5} ходов по карте.` };
+    case "oil":
+      return {
+        what: `Смазывает оружие: удар накладывает ${u.oil ? damageTypeName(u.oil) : "урон"} на 3 раунда.`,
+        when: "Тратит ход. Действует на ближайший раунд; только в бою.",
+      };
     default:
       return { what: def.desc, when: "Мгновенно." };
   }

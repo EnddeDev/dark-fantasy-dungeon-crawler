@@ -1,6 +1,7 @@
 import { SHOP_STARTER_GEAR } from "./shopStarters";
 import { raceImmuneTo } from "./monsters";
 import type { DamageElement, EffectKind, MonsterRace, MonsterType } from "./monsters";
+import type { OilKind } from "./statusEffects";
 import {
   EXTRA_BOSSES,
   EXTRA_ENEMIES,
@@ -2050,7 +2051,7 @@ export interface ItemDef {
       | "throw" | "poison" | "smoke" | "explosion" | "fear"
       | "haste" | "terror" | "stun_enemy" | "acid" | "stone"
       | "iron_tonic" | "blood_rage" | "quickblade" | "pact_elixir" | "scroll_creation"
-      | "bleed" | "blight" | "wither" | "buff_break"
+      | "bleed" | "blight" | "wither" | "buff_break" | "oil"
       | "special_kit" | "special_lockpick" | "special_map" | "special_water" | "special_torch";
     power?: number;
     scale?: number;
@@ -2063,6 +2064,8 @@ export interface ItemDef {
     vs?: MonsterRace;
     /** Стихия урона: уязвимости и иммунитеты рода считаются по ней. */
     element?: DamageElement;
+    /** Вид масла: какой урон получают удары смазанным оружием. */
+    oil?: OilKind;
   };
 }
 
@@ -2103,6 +2106,29 @@ export const ITEMS: Record<string, ItemDef> = Object.fromEntries(
     I({ id: "quickblade_oil", name: "Масло быстрого клинка", kind: "potion", price: 125,
       use: { type: "quickblade", rounds: 3 },
       desc: "Ассасин: +25% шанса крита и +50% силы крита на 3 раунда." }),
+    /* Масла: тратят ход, смазывают оружие на 1 раунд. Удар смазанным оружием
+       накладывает свой вид урона на 3 раунда. */
+    I({ id: "oil_magic", name: "Магическое масло", kind: "potion", price: 105,
+      use: { type: "oil", oil: "magic" },
+      desc: "Смазывает оружие магией на 1 раунд: удар накладывает магический урон (3% макс. ОЗ за раунд, 3 раунда). Тратит ход." }),
+    I({ id: "oil_fire", name: "Огненное масло", kind: "potion", price: 90,
+      use: { type: "oil", oil: "fire" },
+      desc: "Смазывает оружие огнём на 1 раунд: удар накладывает огонь (3% макс. ОЗ за раунд, 3 раунда). Конструкты уязвимы. Тратит ход." }),
+    I({ id: "oil_ice", name: "Ледяное масло", kind: "potion", price: 95,
+      use: { type: "oil", oil: "ice" },
+      desc: "Смазывает оружие льдом на 1 раунд: удар накладывает лёд (3% макс. ОЗ за раунд, 3 раунда). Конструкты уязвимы. Тратит ход." }),
+    I({ id: "oil_acid", name: "Кислотное масло", kind: "potion", price: 100,
+      use: { type: "oil", oil: "acid" },
+      desc: "Смазывает оружие кислотой на 1 раунд: удар накладывает кислоту (3% макс. ОЗ за раунд, 3 раунда). Конструкты уязвимы. Тратит ход." }),
+    I({ id: "oil_light", name: "Световое масло", kind: "potion", price: 110,
+      use: { type: "oil", oil: "light" },
+      desc: "Смазывает оружие светом на 1 раунд: удар накладывает свет (3% макс. ОЗ за раунд, 3 раунда). Вампиры уязвимы, звери невосприимчивы. Тратит ход." }),
+    I({ id: "oil_poison", name: "Ядовитое масло", kind: "potion", price: 85,
+      use: { type: "oil", oil: "poison" },
+      desc: "Смазывает оружие ядом на 1 раунд: удар накладывает яд (4% макс. ОЗ за раунд, 3 раунда). Тратит ход." }),
+    I({ id: "oil_burn", name: "Горючее масло", kind: "potion", price: 80,
+      use: { type: "oil", oil: "burn" },
+      desc: "Смазывает оружие горючей смесью на 1 раунд: удар накладывает горение (5% макс. ОЗ за раунд, 3 раунда). Тратит ход." }),
     I({ id: "pact_elixir", name: "Эликсир пакта", kind: "potion", price: 140,
       use: { type: "pact_elixir", rounds: 3 },
       desc: "Колдун: сбрасывает перезарядку приёмов и даёт +25% урона приёмов на 3 раунда." }),
@@ -2119,6 +2145,7 @@ export const SUPPLY_LEVELS: Record<string, number> = {
   scroll_shadow: 3, scroll_frost: 3, scroll_bolt: 4, potion_l: 3, potion_haste: 3,
   potion_stone: 3, scroll_terror: 3, scroll_snare: 4, acid_vial: 2, holy_water: 3,
   bomb_flash: 3, iron_tonic: 4, blood_rage: 4, quickblade_oil: 4,
+  oil_fire: 2, oil_poison: 2, oil_ice: 3, oil_acid: 3, oil_burn: 3, oil_magic: 4, oil_light: 4,
   pact_elixir: 5, scroll_creation: 5, serrated_knife: 2, frost_bomb: 3,
   scroll_dispel: 3, dispel_powder: 2,
   blight_powder: 4, wither_dust: 5,
@@ -2765,6 +2792,13 @@ const SUPPLY_POOL = [
   "iron_tonic",
   "blood_rage",
   "quickblade_oil",
+  "oil_fire",
+  "oil_poison",
+  "oil_ice",
+  "oil_acid",
+  "oil_burn",
+  "oil_magic",
+  "oil_light",
   "pact_elixir",
   "scroll_creation",
   "serrated_knife",

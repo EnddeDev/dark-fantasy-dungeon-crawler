@@ -136,3 +136,8 @@ export function itemDamageType(use: { type?: string; element?: DamageElement } |
   if (use.type === "bleed") return "bleed";
   return undefined;
 }
+
+/** Название вида урона для журнала и подсказок. */
+export function damageTypeName(id: DamageTypeId): string {
+  return DAMAGE_TYPES.find((t) => t.id === id)?.name ?? id;
+}
