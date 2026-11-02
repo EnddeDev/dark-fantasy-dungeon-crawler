@@ -1467,8 +1467,7 @@ export function weaponSkillFor(item: GearItem | null | undefined): WeaponSkillDe
   const scaleMult = scaleMultByLevel(baseMult, level);
   const intReq = techniqueIntReq(level, scaleStat);
   const short = STAT_META[scaleStat].short;
-  /* Бонус приёма = 2 × (ИНТ + множитель): в описании показываем ту же запись. */
-  const desc = raw.desc.replace(/(\d+(?:\.\d+)?)×(?:ЛОВ|СИЛ|ИНТ)/g, `2×(ИНТ + ${scaleMult})`);
+  const desc = raw.desc.replace(/(\d+(?:\.\d+)?)×(?:ЛОВ|СИЛ|ИНТ)/g, `${scaleMult}×${short}`);
   const passiveBonus = scaleMultByLevel(baseMult * 0.35, level);
   const passiveNote = `При ИНТ ≥ ${intReq} обычные удары получают +${passiveBonus.toFixed(2)}×${short} к урону.`;
   /* Посох и волшебная палочка бьют приёмами магией, а не сталью. */
