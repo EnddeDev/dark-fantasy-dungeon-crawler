@@ -219,7 +219,7 @@ export function Bestiary() {
                       .map((mv) => `${MOVE_LABELS[mv] ?? mv}${ENEMY_COOLDOWN_MOVES.includes(mv) ? " ⟳" : ""}`)
                       .join(" · ")}
                     {[...new Set(enemy.moves)].some((mv) => ENEMY_COOLDOWN_MOVES.includes(mv)) &&
-                      ` · ⟳ перезарядка ${ENEMY_MOVE_COOLDOWN} раунда`}
+                      ` · ⟳ общая перезарядка ${ENEMY_MOVE_COOLDOWN} раунда`}
                   </p>
                   <p className="mt-0.5 text-[0.84rem] text-mute">{MONSTER_RACE_META[enemy.race].note}</p>
                   <p className="mt-0.5 font-mono text-[0.82rem] text-parch/60">

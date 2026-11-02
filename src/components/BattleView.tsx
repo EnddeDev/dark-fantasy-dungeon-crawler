@@ -760,8 +760,8 @@ export function BattleView({
                           return (
                             <div className="mt-0.5 font-mono text-[0.8rem] text-rubric/85">
                               {left > 0
-                                ? `перезарядка: ещё ${left} ${left === 1 ? "раунд" : "раунда"}`
-                                : `перезарядка ${ENEMY_MOVE_COOLDOWN} раунда после применения`}
+                                ? `приёмы с дебаффами на перезарядке: ещё ${left} ${left === 1 ? "раунд" : "раунда"}`
+                                : `общая перезарядка ${ENEMY_MOVE_COOLDOWN} раунда после любого такого приёма`}
                             </div>
                           );
                         })()}
