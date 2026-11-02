@@ -111,3 +111,28 @@ export const DAMAGE_TYPES: DamageTypeInfo[] = [
     text: `${percent(STATUS_DOT.bleed)} макс. ОЗ в конце раунда за каждый стек. Повторное наложение продлевает срок и складывает урон. Не режется сопротивлениями.`,
   },
 ];
+
+/** Стихии: всегда магический урон с меткой стихии. */
+export const DAMAGE_ELEMENTS: DamageElement[] = ["fire", "ice", "acid", "light"];
+
+export function isDamageElement(id: DamageTypeId): id is DamageElement {
+  return (DAMAGE_ELEMENTS as string[]).includes(id);
+}
+
+/** Стихии, к которым род уязвим или иммунен — для карточек врага и бестиария. */
+export function raceElementRows(race: MonsterRace): { weak: DamageElement[]; immune: DamageElement[] } {
+  const meta = MONSTER_RACE_META[race];
+  return {
+    weak: meta.vulnerable ?? [],
+    immune: meta.immuneElements ?? [],
+  };
+}
+
+/** Вид урона предмета по его применению: стихия, яд или кровотечение. */
+export function itemDamageType(use: { type?: string; element?: DamageElement } | undefined): DamageTypeId | undefined {
+  if (!use) return undefined;
+  if (use.element) return use.element;
+  if (use.type === "poison") return "poison";
+  if (use.type === "bleed") return "bleed";
+  return undefined;
+}

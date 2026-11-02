@@ -3295,6 +3295,32 @@ test("созданный свиток льда несёт стихию льда:
   assert.ok(Math.abs(construct / plain - monsters.ELEMENT_WEAKNESS_MULT) < 0.05, `уязвимость ×1.5: ${plain} → ${construct}`);
 });
 
+test("стихийный урон магический: броню игнорирует, а в журнал попадает его стихия", () => {
+  const fire = (armor) => {
+    const b = monsterBattle("none", "strong", ["attack"], { player: { bag: { scroll_fire: 1 }, stats: { str: 2, agi: 1, int: 5 } } });
+    b.enemy.hp = 400;
+    b.enemy.armor = armor;
+    return battle.playerAct(b, { type: "item", id: "scroll_fire" });
+  };
+  const soft = fire(0);
+  const armored = fire(40);
+  const lossSoft = 400 - soft.enemy.hp;
+  const lossArmored = 400 - armored.enemy.hp;
+  assert.ok(lossSoft > 0, "огонь наносит урон");
+  assert.equal(lossArmored, lossSoft, "броня врага не режет стихийный урон");
+  const line = soft.log.find((l) => l.dmg === "fire" && l.text.includes("получает"));
+  assert.ok(line, "в журнале есть строка удара с меткой огня");
+});
+
+test("уязвимость рода к стихии попадает в журнал с меткой стихии", () => {
+  const b = monsterBattle("construct", "strong", ["attack"], { player: { bag: { scroll_fire: 1 }, stats: { str: 2, agi: 1, int: 5 } } });
+  b.enemy.hp = 400;
+  const after = battle.playerAct(b, { type: "item", id: "scroll_fire" });
+  const weak = after.log.find((l) => l.text.includes("Уязвимость к стихии"));
+  assert.ok(weak, "уязвимость названа в журнале");
+  assert.equal(weak.dmg, "fire", "строка уязвимости несёт огонь");
+});
+
 function withRandom(fn, value = 0.5) {
   const rnd = Math.random;
   Math.random = () => value;

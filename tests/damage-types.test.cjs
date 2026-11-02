@@ -10,13 +10,24 @@ const { renderToStaticMarkup } = require("react-dom/server");
 const temp = fs.mkdtempSync(path.join(process.cwd(), "node_modules", ".sumrak-damage-tests-"));
 process.on("exit", () => fs.rmSync(temp, { recursive: true, force: true }));
 
-function load(entry, name) {
+function load(entry, name, extra = {}) {
   const outfile = path.join(temp, `${name}.cjs`);
-  buildSync({ entryPoints: [entry], outfile, bundle: true, platform: "node", format: "cjs", logLevel: "silent" });
+  buildSync({
+    entryPoints: [entry],
+    outfile,
+    bundle: true,
+    platform: "node",
+    format: "cjs",
+    jsx: "automatic",
+    logLevel: "silent",
+    ...extra,
+  });
   return require(outfile);
 }
 
 const types = load("src/game/damageTypes.ts", "damage-types");
+const ui = load("src/components/DamageTypeIcon.tsx", "damage-icon", { external: ["react", "react-dom", "react/jsx-runtime"] });
+const content = load("src/game/content.ts", "damage-content");
 
 function renderGuide() {
   const outfile = path.join(temp, "guide.cjs");
@@ -79,3 +90,45 @@ test("руководство выводит виды урона и не упом
   assert.ok(html.includes("Магический урон."), "правило про магический урон");
   assert.ok(!/чисты/i.test(html), "слова «чистый/чистого» в руководстве нет");
 });
+
+test("все стихии — магический урон", () => {
+  assert.deepEqual(types.DAMAGE_ELEMENTS, ["fire", "ice", "acid", "light"]);
+  const school = Object.fromEntries(types.DAMAGE_TYPES.map((t) => [t.id, t.school]));
+  for (const id of types.DAMAGE_ELEMENTS) assert.equal(school[id], "magic", `${id} — магический`);
+  for (const id of types.DAMAGE_ELEMENTS) assert.equal(types.isDamageElement(id), true, id);
+  assert.equal(types.isDamageElement("phys"), false);
+  assert.equal(types.isDamageElement("poison"), false);
+});
+
+test("вид урона предмета: стихия, яд и кровотечение", () => {
+  const items = content.ITEMS;
+  assert.equal(types.itemDamageType(items.scroll_fire.use), "fire");
+  assert.equal(types.itemDamageType(items.scroll_frost.use), "ice");
+  assert.equal(types.itemDamageType(items.poison_dart.use), "poison");
+  assert.equal(types.itemDamageType(items.holy_water.use), "light");
+  assert.equal(types.itemDamageType(items.scroll_bolt.use), undefined, "молния — без стихии");
+  assert.equal(types.itemDamageType(undefined), undefined);
+});
+
+test("уязвимости и иммунитеты родов выводятся из таблицы рода", () => {
+  assert.deepEqual(types.raceElementRows("construct"), { weak: ["fire", "ice", "acid"], immune: [] });
+  assert.deepEqual(types.raceElementRows("vampire"), { weak: ["light"], immune: [] });
+  assert.deepEqual(types.raceElementRows("beast"), { weak: [], immune: ["light"] });
+  assert.deepEqual(types.raceElementRows("none"), { weak: [], immune: [] });
+});
+
+test("значок вида урона открывает подсказку с названием, школой и текстом", () => {
+  const { renderToStaticMarkup: render } = require("react-dom/server");
+  const fire = render(React.createElement(ui.DamageTypeTag, { id: "fire" }));
+  assert.ok(fire.includes('aria-label="Огонь: подробнее"'), "кнопка с подписью");
+  assert.ok(fire.includes("<svg"), "иконка нарисована");
+  const bleed = render(React.createElement(ui.DamageTypeTag, { id: "bleed" }));
+  assert.ok(bleed.includes('aria-label="Кровотечение: подробнее"'));
+  const row = render(React.createElement(ui.ElementRow, { label: "уязвим к:", elements: ["fire", "ice"] }));
+  assert.ok(row.includes("Огонь") && row.includes("Лёд") && row.includes("уязвим к:"), "строка стихий рода");
+  assert.equal(render(React.createElement(ui.ElementRow, { label: "x", elements: [] })), "", "пустая строка не выводится");
+  assert.equal(ui.damageKindLabel(types.DAMAGE_TYPES[2]), "магический · стихия");
+  assert.equal(ui.damageKindLabel(types.DAMAGE_TYPES[0]), "физический");
+  assert.equal(ui.damageKindLabel(types.DAMAGE_TYPES[6]), "периодический");
+});
+

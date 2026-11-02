@@ -45,6 +45,7 @@ import { GEAR_EFFECT_BASE, GEAR_EFFECT_GROWTH_MAIN, GEAR_EFFECT_SPREAD } from ".
 import { effectDetail } from "../game/gearEffects";
 import { NEGATIVE_EFFECTS } from "../game/statusEffects";
 import { DAMAGE_TYPES } from "../game/damageTypes";
+import { DamageTypeTag } from "./DamageTypeIcon";
 import { MAX_DOT_STACKS } from "../game/battle";
 import { CHANCE_CAP } from "../game/chances";
 import type { RarityTier, StatKey, WearTier } from "../game/types";
@@ -528,8 +529,11 @@ export function Guide({
           <h5 className="font-display text-[1.08rem] uppercase tracking-[0.08em] text-flamehi">Виды урона</h5>
           <ul className="mt-2 space-y-2 text-[0.96rem] leading-snug">
             {DAMAGE_TYPES.map((t) => (
-              <li key={t.id}>
-                <b className="text-parch">{t.name}.</b> {t.text}
+              <li key={t.id} className="flex gap-2">
+                <DamageTypeTag id={t.id} size={16} className="mt-0.5 shrink-0" />
+                <span>
+                  <b className="text-parch">{t.name}.</b> {t.text}
+                </span>
               </li>
             ))}
           </ul>
