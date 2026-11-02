@@ -1,12 +1,20 @@
 /**
- * Рост снаряжения.
- * Новые свойства предметов и базовые ОЗ/броня растут сложно: ×1.5 или ×1.25 за уровень,
- * с округлением вверх на каждом шаге. Приёмы и пассивные способности пока живут по старому ×1.2.
+ * Рост снаряжения — линейный, без сложного процента.
+ *
+ *   основные параметры (урон, броня, ОЗ, уклонение): ×(1 + 0.5 × уровень);
+ *   эффекты, свойства, приёмы, пассивки и цены:        ×(1 + 0.17 × уровень).
+ *
+ * Уровень берётся как есть (1…10), значение округляется вверх один раз — на итоговом шаге.
  */
 import type { GearEffectId, GearPassiveId } from "./gearEffects";
 import type { EpicSkillId, LegendaryPassiveId, RareAffixId } from "./types";
 
-export const GEAR_LEVEL_GROWTH = 1.2;
+/** Шаг эффектов, свойств и цен: +17% от базового значения за каждый уровень. */
+export const GEAR_EFFECT_RATE = 0.17;
+/** Шаг основных параметров: +50% от базового значения за каждый уровень. */
+export const GEAR_STAT_RATE = 0.5;
+/** Прежнее имя шага эффектов. */
+export const GEAR_LEVEL_GROWTH = GEAR_EFFECT_RATE;
 /**
  * Двуручное оружие бьёт вдвое сильнее одноручного аналога.
  * Раньше коэффициент был ×3 — теперь базовый урон двуручников пересчитан на ×2.
@@ -18,50 +26,50 @@ export const TWO_HAND_DAMAGE_SCALE = TWO_HAND_VS_ONE_HAND / TWO_HAND_LEGACY_FACT
 export const MAX_EXTRA_AP = 3;
 /** Уровень предмета, с которого может выпасть свойство дополнительного хода. */
 export const EXTRA_AP_MIN_LEVEL = 5;
-export const GEAR_STAT_GROWTH = 1.5;
-export const GEAR_EFFECT_FAST_GROWTH = 1.5;
-export const GEAR_EFFECT_SLOW_GROWTH = 1.25;
+export const GEAR_STAT_GROWTH = GEAR_STAT_RATE;
 export const MAX_GEAR_LEVEL = 10;
 
 export function clampGearLevel(level: number | undefined): number {
   return Math.max(1, Math.min(MAX_GEAR_LEVEL, Math.floor(level ?? 1)));
 }
 
-/** Итеративный рост: значение каждого следующего уровня = ceil(предыдущее × 1.2). */
+/** Множитель уровня: 1 + rate × уровень. */
+export function levelFactor(level: number, rate: number): number {
+  return 1 + rate * clampGearLevel(level);
+}
+
+/** Эффекты и свойства: ceil(значение × (1 + 0.17 × уровень)). */
 export function scaleByLevel(value: number, level: number, precision = 1): number {
-  let v = value;
-  const target = clampGearLevel(level);
-  for (let l = 1; l < target; l++) {
-    v = Math.ceil(v * GEAR_LEVEL_GROWTH * precision - 1e-9) / precision;
-  }
-  return v;
+  return Math.ceil(value * levelFactor(level, GEAR_EFFECT_RATE) * precision - 1e-9) / precision;
 }
 
+/**
+ * Дискретные количества (число ударов приёма, лишние предметы) считаются от базы:
+ * 1 + 0.17 × (уровень − 1). Иначе «двойной удар» на первом уровне бил бы три раза.
+ */
 export function scaleIntegerByLevel(value: number, level: number): number {
-  return scaleByLevel(Math.ceil(value), level, 1);
+  const factor = 1 + GEAR_EFFECT_RATE * (clampGearLevel(level) - 1);
+  return Math.ceil(Math.ceil(value) * factor - 1e-9);
 }
 
-/** Сложный рост целой характеристики предмета: ceil на каждом уровне. */
-export function scaleGearStatByLevel(value: number, level: number, growth = GEAR_STAT_GROWTH): number {
-  let v = Math.ceil(value);
-  const target = clampGearLevel(level);
-  for (let l = 1; l < target; l++) v = Math.ceil(v * growth - 1e-9);
-  return v;
+/** Основные параметры предмета: ceil(значение × (1 + 0.5 × уровень)). */
+export function scaleGearStatByLevel(value: number, level: number): number {
+  return Math.ceil(Math.ceil(value) * levelFactor(level, GEAR_STAT_RATE));
 }
 
-/** Процент хранится как целое число процентных пунктов: 3 → 4 → 5 → 6 → 8… */
+/** Процент хранится как целое число процентных пунктов: 5 → 7 → 9 → 10… */
 export function scalePercentByLevel(percent: number, level: number): number {
   return scaleByLevel(percent, level, 1);
 }
 
-/** Множитель хранится в сотых: 1.80 → 2.16 → 2.60 → 3.12… */
+/** Множитель хранится в сотых: 1.8 на 2 уровне → 2.41. */
 export function scaleMultByLevel(mult: number, level: number): number {
   return scaleByLevel(Math.round(mult * 100), level, 1) / 100;
 }
 
-/** Непрерывный множитель для цен и сравнений; боевые числа используют scaleByLevel. */
+/** Множитель уровня для цен и сравнений: 1 + 0.17 × уровень. */
 export function gearLevelMultiplier(level: number): number {
-  return Math.pow(GEAR_LEVEL_GROWTH, clampGearLevel(level) - 1);
+  return levelFactor(level, GEAR_EFFECT_RATE);
 }
 
 type NumericDef = { value: number; precision?: number };
@@ -122,13 +130,6 @@ export const GEAR_EFFECT_SPREAD: Partial<Record<GearEffectId, number>> = {
   poison_damage: 6, bleed: 7, sunder: 6,
 };
 
-export const GEAR_EFFECT_GROWTH: Partial<Record<GearEffectId, number>> = {
-  vamp: 1.5, magic_vamp: 1.5, crit_chance: 1.25, crit_mult: 1.5, regen: 1.5,
-  fortify: 1.25, magic_resist: 1.25, armor_damage: 1.5, rage: 1.5,
-  wisdom: 1.5, might: 1.5, precision: 1.5, thorns: 1.5,
-  poison_damage: 1.25, bleed: 1.25, sunder: 1.25,
-};
-
 export function rollEffectBase(id: GearEffectId, rng: () => number = Math.random): number {
   const base = GEAR_EFFECT_BASE[id]?.value ?? 0;
   const spread = GEAR_EFFECT_SPREAD[id] ?? 0;
@@ -145,8 +146,7 @@ export function effectMagnitude(id: GearEffectId, level: number, rolledBase?: nu
   }
   const def = GEAR_EFFECT_BASE[id];
   const base = rolledBase ?? def.value;
-  const growth = GEAR_EFFECT_GROWTH[id];
-  if (growth) return scaleGearStatByLevel(base, level, growth);
+  /* Базовые значения свойств заданы на 1 уровне: дальше +17% за каждый уровень. */
   return scaleByLevel(base, level, def.precision ?? 1);
 }
 
