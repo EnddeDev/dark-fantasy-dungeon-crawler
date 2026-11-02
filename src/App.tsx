@@ -3,8 +3,11 @@ import { useOnline } from "./net/online";
 import { useSaveSync } from "./net/useSaveSync";
 import { AuthView } from "./views/AuthView";
 import { CommunityView } from "./views/CommunityView";
+import { AmbientToggle } from "./components/AmbientToggle";
+import { mazeBiome } from "./game/biomes";
 import { GameView } from "./views/GameView";
 import { TitleView } from "./views/TitleView";
+import { useAmbient } from "./views/hooks/useAmbient";
 import { useGame } from "./views/hooks/useGame";
 
 /**
@@ -18,6 +21,7 @@ export default function App() {
   const online = useOnline();
   const [community, setCommunity] = useState(false);
   useSaveSync(controller, online);
+  useAmbient(state.screen, state.run ? mazeBiome(state.run.maze) : null);
 
   return (
     <>
@@ -40,6 +44,7 @@ export default function App() {
           }}
         />
       )}
+      <AmbientToggle />
       {/* Форма входа, а при недоступном сервере — объяснение, почему онлайн не работает. */}
       {online.authOpen && <AuthView />}
     </>
