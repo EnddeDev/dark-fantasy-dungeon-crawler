@@ -1,4 +1,13 @@
-import { readAmbientMuted, writeAmbientMuted, type AmbientScene } from "./ambientScenes";
+import {
+  MUSIC_VOLUME_KEY,
+  SOUND_VOLUME_KEY,
+  clampVolume,
+  readMusicVolume,
+  readSoundVolume,
+  writeVolume,
+  type AmbientScene,
+  type MusicTrackId,
+} from "./ambientScenes";
 import type { BiomeId } from "../game/biomes";
 
 /**
@@ -11,8 +20,10 @@ import type { BiomeId } from "../game/biomes";
  * В бою добавляется метроном: барабан, перкуссия и остинато — звук напряжённее и быстрее.
  */
 
-/** Общая громкость. Низкое значение: звук лежит под интерфейсом, а не поверх него. */
-const MASTER_LEVEL = 0.35;
+/** Множитель шины звуков при 100 %. Низкое значение: звук лежит под интерфейсом, а не поверх него. */
+const SOUND_LEVEL = 0.35;
+/** Множитель музыкальной шины при 100 %: дорожка мастерится громче фона. */
+const MUSIC_LEVEL = 0.6;
 const FADE_IN_S = 3;
 const FADE_OUT_S = 2.5;
 const GESTURE_EVENTS = ["pointerdown", "keydown", "touchstart"] as const;
@@ -273,6 +284,13 @@ const ICE_BELLS = [1174.7, 1396.9, 880, 1046.5];
  * Проверяются тестом: каждый файл должен существовать.
  */
 const PACK = "music/Free Fantasy SFX Pack By TomMusic/OGG Files/";
+
+/**
+ * Музыкальные дорожки. Witchcraft — CC BY 4.0 (Makoto Hiramatsu): атрибуция указана в настройках звука.
+ */
+export const MUSIC_TRACKS: Readonly<Record<MusicTrackId, string>> = {
+  lobby: "music/Witchcraft_mp3/Witchcraft(loop - fantasy - guitar - piano).mp3",
+};
 export const AMBIENT_SAMPLES = {
   interior: `${PACK}BGS Loops/Interior Night/Inside Night.ogg`,
   interiorRain: `${PACK}BGS Loops/Interior Night/Inside Night Rain.ogg`,
@@ -608,21 +626,28 @@ export const AMBIENT_RECIPES: Readonly<Record<AmbientScene, Recipe>> = {
 };
 
 // ---------------------------------------------------------------------------
-// Движок: контекст, мастер-гейн, кроссфейд, выключатель, старт по жесту.
+// Движок: контекст, две шины громкости (звуки и музыка), кроссфейд, старт по жесту.
 // ---------------------------------------------------------------------------
 
+/** Слой, который звучит сейчас: фоновая сцена или музыкальная дорожка. */
 interface Playing {
-  scene: AmbientScene;
+  key: string;
   bus: GainNode;
   stop: () => void;
 }
 
 let ctx: AudioContext | null = null;
-let master: GainNode | null = null;
+/** Шина звуков: фон сцен и эффекты. Громкость задаёт ползунок «Звуки». */
+let soundBus: GainNode | null = null;
+/** Шина музыки: отдельная дорожка. Громкость задаёт ползунок «Музыка». */
+let musicBus: GainNode | null = null;
 let noiseBuf: AudioBuffer | null = null;
-let current: Playing | null = null;
-let wanted: AmbientScene | null = null;
-let muted: boolean | null = null;
+let currentScene: Playing | null = null;
+let currentMusic: Playing | null = null;
+let wantedScene: AmbientScene | null = null;
+let wantedMusic: MusicTrackId | null = null;
+let soundPct: number | null = null;
+let musicPct: number | null = null;
 let listening = false;
 
 function storage(): Storage | null {
@@ -633,9 +658,16 @@ function storage(): Storage | null {
   }
 }
 
-export function isAmbientMuted(): boolean {
-  if (muted === null) muted = readAmbientMuted(storage());
-  return muted;
+/** Громкость звуков (фон и эффекты), 0–100. */
+export function getSoundVolume(): number {
+  if (soundPct === null) soundPct = readSoundVolume(storage());
+  return soundPct;
+}
+
+/** Громкость музыки, 0–100. */
+export function getMusicVolume(): number {
+  if (musicPct === null) musicPct = readMusicVolume(storage());
+  return musicPct;
 }
 
 function makeNoise(c: AudioContext): AudioBuffer {
@@ -646,7 +678,7 @@ function makeNoise(c: AudioContext): AudioBuffer {
   return buf;
 }
 
-/** Создаёт AudioContext только тогда, когда звук включён и API доступен. */
+/** Создаёт AudioContext и шины. Вызывается только когда API доступен и нужен звук. */
 function ensureContext(): AudioContext | null {
   if (ctx) return ctx;
   if (typeof window === "undefined") return null;
@@ -658,9 +690,12 @@ function ensureContext(): AudioContext | null {
   } catch {
     return null;
   }
-  master = ctx.createGain();
-  master.gain.value = isAmbientMuted() ? 0 : MASTER_LEVEL;
-  master.connect(ctx.destination);
+  soundBus = ctx.createGain();
+  soundBus.gain.value = (SOUND_LEVEL * getSoundVolume()) / 100;
+  soundBus.connect(ctx.destination);
+  musicBus = ctx.createGain();
+  musicBus.gain.value = (MUSIC_LEVEL * getMusicVolume()) / 100;
+  musicBus.connect(ctx.destination);
   noiseBuf = makeNoise(ctx);
   return ctx;
 }
@@ -689,74 +724,127 @@ function detachGestures(): void {
   for (const ev of GESTURE_EVENTS) window.removeEventListener(ev, unlock);
 }
 
-/** Кроссфейд: старую сцену гасим за FADE_OUT_S, новую поднимаем за FADE_IN_S. */
-function crossfade(scene: AmbientScene | null): void {
-  if (!ctx || !master || !noiseBuf) return;
-  if ((current?.scene ?? null) === scene) return;
-  const c = ctx;
+/** Запускает слой (сцену или дорожку) в шине с нуля: нарастание за FADE_IN_S. */
+function startLayer(c: AudioContext, parent: AudioNode, key: string, build: (env: AmbientEnv) => void): Playing {
+  const bus = c.createGain();
   const now = c.currentTime;
-  if (current) {
-    const old = current;
-    current = null;
-    old.bus.gain.cancelScheduledValues(now);
-    old.bus.gain.setValueAtTime(old.bus.gain.value, now);
-    old.bus.gain.linearRampToValueAtTime(0, now + FADE_OUT_S);
-    window.setTimeout(() => {
-      old.stop();
-      old.bus.disconnect();
-    }, (FADE_OUT_S + 0.2) * 1000);
+  bus.gain.setValueAtTime(0, now);
+  bus.gain.linearRampToValueAtTime(1, now + FADE_IN_S);
+  bus.connect(parent);
+  const stops: Array<() => void> = [];
+  build({
+    ctx: c,
+    out: bus,
+    noise: noiseBuf as AudioBuffer,
+    track: (stop) => stops.push(stop),
+  });
+  return { key, bus, stop: () => stops.forEach((s) => s()) };
+}
+
+/** Гасит слой за FADE_OUT_S и освобождает его после затухания. */
+function fadeOutLayer(c: AudioContext, layer: Playing): void {
+  const now = c.currentTime;
+  layer.bus.gain.cancelScheduledValues(now);
+  layer.bus.gain.setValueAtTime(layer.bus.gain.value, now);
+  layer.bus.gain.linearRampToValueAtTime(0, now + FADE_OUT_S);
+  window.setTimeout(() => {
+    layer.stop();
+    layer.bus.disconnect();
+  }, (FADE_OUT_S + 0.2) * 1000);
+}
+
+/** Кроссфейд между слоями одного канала. null — тишина в канале. */
+function crossfadeLayer(
+  c: AudioContext,
+  parent: AudioNode,
+  prev: Playing | null,
+  key: string | null,
+  build: (key: string, env: AmbientEnv) => void,
+): Playing | null {
+  if ((prev?.key ?? null) === key) return prev;
+  if (prev) fadeOutLayer(c, prev);
+  if (key === null) return null;
+  return startLayer(c, parent, key, (env) => build(key, env));
+}
+
+function crossfadeScene(scene: AmbientScene | null): void {
+  if (!ctx || !soundBus || !noiseBuf) return;
+  currentScene = crossfadeLayer(ctx, soundBus, currentScene, scene, (key, env) => AMBIENT_RECIPES[key as AmbientScene](env));
+}
+
+function crossfadeMusic(track: MusicTrackId | null): void {
+  if (!ctx || !musicBus || !noiseBuf) return;
+  currentMusic = crossfadeLayer(ctx, musicBus, currentMusic, track, (key, env) => {
+    sampleVoice(env, MUSIC_TRACKS[key as MusicTrackId], 1);
+  });
+}
+
+function ensureRunning(c: AudioContext): void {
+  if (c.state === "running") return;
+  void c.resume().catch(() => undefined);
+  attachGestures();
+}
+
+/** Громкость звуков: 0 — звуки и фон полностью останавливаются, без нагрузки на процессор. */
+export function setSoundVolume(pct: number): void {
+  soundPct = clampVolume(pct);
+  writeVolume(storage(), SOUND_VOLUME_KEY, soundPct);
+  if (soundPct === 0) {
+    if (ctx) crossfadeScene(null);
+    return;
   }
-  if (scene) {
-    const bus = c.createGain();
-    bus.gain.setValueAtTime(0, now);
-    bus.gain.linearRampToValueAtTime(1, now + FADE_IN_S);
-    bus.connect(master);
-    const stops: Array<() => void> = [];
-    AMBIENT_RECIPES[scene]({
-      ctx: c,
-      out: bus,
-      noise: noiseBuf,
-      track: (stop) => stops.push(stop),
-    });
-    current = { scene, bus, stop: () => stops.forEach((s) => s()) };
+  const c = ensureContext();
+  if (!c || !soundBus) return;
+  soundBus.gain.setTargetAtTime((SOUND_LEVEL * soundPct) / 100, c.currentTime, 0.1);
+  crossfadeScene(wantedScene);
+  ensureRunning(c);
+}
+
+/** Громкость музыки: 0 — дорожка останавливается. */
+export function setMusicVolume(pct: number): void {
+  musicPct = clampVolume(pct);
+  writeVolume(storage(), MUSIC_VOLUME_KEY, musicPct);
+  if (musicPct === 0) {
+    if (ctx) crossfadeMusic(null);
+    return;
   }
+  const c = ensureContext();
+  if (!c || !musicBus) return;
+  musicBus.gain.setTargetAtTime((MUSIC_LEVEL * musicPct) / 100, c.currentTime, 0.1);
+  crossfadeMusic(wantedMusic);
+  ensureRunning(c);
 }
 
 /**
- * Выход для эффектов (сундуки, снаряжение, торговля). Идёт через тот же мастер-гейн,
- * поэтому общий выключатель звука действует и на них. Без Web Audio или при выключенном звуке — null.
+ * Выход для эффектов (сундуки, снаряжение, торговля). Идёт через шину звуков,
+ * поэтому ползунок «Звуки» действует и на них. Без Web Audio или при нулевой громкости — null.
  */
 export function sfxOutput(): { ctx: AudioContext; out: AudioNode } | null {
-  if (isAmbientMuted()) return null;
+  if (getSoundVolume() === 0) return null;
   const c = ensureContext();
-  if (!c || !master) return null;
-  return { ctx: c, out: master };
+  if (!c || !soundBus) return null;
+  return { ctx: c, out: soundBus };
 }
 
 /** Вызывается из View при смене экрана или биома. null — тишина. */
 export function setAmbientScene(scene: AmbientScene | null): void {
-  wanted = scene;
-  if (isAmbientMuted()) return;
+  wantedScene = scene;
+  if (getSoundVolume() === 0) return;
   // Тишина без текущей сцены не требует контекста: не создаём его до жеста пользователя.
-  if (!scene && !current) return;
-  if (!ensureContext()) return;
-  crossfade(scene);
-  if (ctx && ctx.state !== "running") attachGestures();
+  if (!scene && !currentScene) return;
+  const c = ensureContext();
+  if (!c) return;
+  crossfadeScene(scene);
+  ensureRunning(c);
 }
 
-/** Переключатель звука. Включение — это жест пользователя, поэтому контекст можно запускать сразу. */
-export function setAmbientMuted(value: boolean): void {
-  muted = value;
-  writeAmbientMuted(storage(), value);
-  if (value) {
-    if (ctx && master) master.gain.setTargetAtTime(0, ctx.currentTime, 0.2);
-    return;
-  }
-  if (!ensureContext() || !ctx || !master) return;
-  master.gain.setTargetAtTime(MASTER_LEVEL, ctx.currentTime, 0.2);
-  crossfade(wanted);
-  if (ctx.state !== "running") {
-    void ctx.resume().catch(() => undefined);
-    attachGestures();
-  }
+/** Музыкальная дорожка экрана. null — дорожка гаснет. */
+export function setMusicTrack(track: MusicTrackId | null): void {
+  wantedMusic = track;
+  if (getMusicVolume() === 0) return;
+  if (!track && !currentMusic) return;
+  const c = ensureContext();
+  if (!c) return;
+  crossfadeMusic(track);
+  ensureRunning(c);
 }
