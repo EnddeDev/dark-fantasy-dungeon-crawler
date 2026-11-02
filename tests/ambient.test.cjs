@@ -136,3 +136,14 @@ test("все сцены запускаются и гаснут в заглушк
     globalThis.window = prevWindow;
   }
 });
+
+test("файлы из звукового пака существуют и лежат в public/", () => {
+  const fs2 = require("node:fs");
+  const samples = require(path.join(temp, "ambientEngine.cjs")).AMBIENT_SAMPLES;
+  assert.ok(samples && Object.keys(samples).length >= 3, "AMBIENT_SAMPLES экспортирован");
+  for (const [name, rel] of Object.entries(samples)) {
+    const file = path.join("public", rel);
+    assert.ok(fs2.existsSync(file), `${name}: нет файла ${file}`);
+    assert.ok(fs2.statSync(file).size > 10000, `${name}: файл подозрительно мал`);
+  }
+});
