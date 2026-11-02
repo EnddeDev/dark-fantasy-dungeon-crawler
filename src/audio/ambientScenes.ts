@@ -18,7 +18,7 @@ export const AMBIENT_SCENES: readonly AmbientScene[] = [
 ];
 
 /** Музыкальные дорожки (отдельный слой, не привязан к сценам фона). */
-export type MusicTrackId = "lobby";
+export type MusicTrackId = "lobby" | "forest";
 
 /**
  * Какая сцена звучит на экране.
@@ -32,9 +32,14 @@ export function ambientSceneFor(screen: Screen, biome: BiomeId | null | undefine
   return null;
 }
 
-/** Музыка играет только в лобби: её дорожка звучит отдельно от фона и эффектов. */
-export function musicTrackFor(screen: Screen): MusicTrackId | null {
-  return screen === "lobby" ? "lobby" : null;
+/**
+ * Музыкальная дорожка экрана: отдельный слой, звучит поверх фона и эффектов.
+ * Лобби — «Witchcraft»; классическое подземелье — «Forest». В бою и в других биомах музыки нет.
+ */
+export function musicTrackFor(screen: Screen, biome?: BiomeId | null): MusicTrackId | null {
+  if (screen === "lobby") return "lobby";
+  if (screen === "dungeon" && biome === "classic") return "forest";
+  return null;
 }
 
 /* ─────────────  ГРОМКОСТЬ  ───────────── */
