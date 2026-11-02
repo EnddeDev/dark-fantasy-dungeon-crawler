@@ -13,8 +13,17 @@ import type { BattleState } from "./battle";
 import { combatChance } from "./chances";
 import { enemyChance } from "./enemyEffects";
 import { fireBurnDamage } from "./biomes";
-import { MONSTER_RACE_META, raceCannotHeal, raceImmuneTo } from "./monsters";
-import { CHILL_HEAL_MULT, magicTickDamage, statusTickDamage } from "./statusEffects";
+import { MONSTER_RACE_META, raceCannotHeal, raceElementMult, raceImmuneTo } from "./monsters";
+import {
+  CHILL_HEAL_MULT,
+  IMMUNITY_EFFECTS,
+  IMMUNITY_NAMES,
+  magicTickDamage,
+  oilAcidArmorCut,
+  oilIceAttackCut,
+  oilTickDamage,
+  statusTickDamage,
+} from "./statusEffects";
 import { isBattleCurse } from "./traps";
 
 /* ─────────────────────────────  ИКОНКИ  ───────────────────────────── */
@@ -24,7 +33,7 @@ export const EFFECT_ICON_IDS = [
   "sunder", "stun", "rage", "haste", "stone", "iron", "blood", "quickblade",
   "pact", "fullGuard", "tempArmor", "dodge", "smoke", "shadow", "darkness",
   "noHeal", "sealItems", "sealSkills", "sealAttack", "guard", "fury",
-  "depleted", "regen", "thorns", "unknown",
+  "depleted", "regen", "thorns", "oil", "frost", "acid", "blind", "unknown",
 ] as const;
 
 export type EffectIconId = (typeof EFFECT_ICON_IDS)[number];
@@ -48,6 +57,9 @@ export const EFFECT_COLORS = {
   darkness: "#6f6f8a",
   depleted: "#8c7b5a",
   plain: "#8a8a8a",
+  frost: "#8fd3ff",
+  acid: "#b5c53a",
+  blind: "#d8c46a",
 } as const;
 
 /* ─────────────────────────────  ТИПЫ  ───────────────────────────── */
@@ -128,6 +140,16 @@ function tickDot(
     stacks: Math.max(1, stacks),
   };
 }
+
+/** Что делает масло на клинке: короткая строка для подсказки. */
+const OIL_BLADE_TEXT = {
+  magic: "при каждом ударе сразу 3 + 3×ИНТ магического урона",
+  fire: "5 + 1% макс. ОЗ огня за раунд",
+  ice: "3 урона льдом за раунд и −5% силы атаки врага за очко ИНТ",
+  acid: "10 урона кислотой за раунд и броня врага −(1 + ЛОВ)",
+  light: "при каждом ударе сразу 2×ИНТ света и 25% промахов врага",
+  poison: "2% + 1% за очко ЛОВ макс. ОЗ яда за раунд",
+} as const;
 
 /** Строка «сколько это в числах» для подсказки. */
 export function dotSummary(dot: EffectDot): string {
@@ -376,6 +398,27 @@ export function playerEffectChips(b: BattleState): EffectChip[] {
     });
   }
 
+  /* ── Смазанный клинок: положительный, синяя рамка ── */
+  if (s.oilType && s.oilRounds > 0) {
+    chips.push({
+      id: "oil", name: "Смазанный клинок", polarity: "good", rounds: s.oilRounds,
+      details: [`Удар накладывает ${OIL_BLADE_TEXT[s.oilType]}.`],
+      boosts: [], color: EFFECT_COLORS.buff,
+    });
+  }
+
+  /* ── Зелья иммунитета: щит, срок в ходах ── */
+  for (const key of IMMUNITY_EFFECTS) {
+    const left = s.immune?.[key] ?? 0;
+    if (left <= 0) continue;
+    chips.push({
+      id: key, name: `Иммунитет: ${IMMUNITY_NAMES[key]}`, polarity: "good", immune: true,
+      rounds: left, unit: "ход",
+      details: [`Эффект «${IMMUNITY_NAMES[key]}» на тебя не накладывается.`],
+      boosts: [], color: EFFECT_COLORS.immunity,
+    });
+  }
+
   /* ── Иммунитеты героя ── */
   if (b.p.legendaryPassives.includes("titan_heart")) {
     chips.push({
@@ -512,6 +555,55 @@ export function enemyEffectChips(b: BattleState): EffectChip[] {
       details: ["Тварь не может выйти из защиты."],
       boosts: [], color: EFFECT_COLORS.fear,
     });
+  }
+
+  /* ── Масло на твари: дебаффы от смазанного клинка героя ── */
+  if (s.oilType && s.oilRounds > 0) {
+    const kind = s.oilType;
+    const element = kind === "fire" || kind === "ice" || kind === "acid" || kind === "light" ? kind : undefined;
+    const mult = element ? raceElementMult(e.def.race, element) : 1;
+    const agi = b.p.stats.agi;
+    const int = b.p.stats.int;
+    const tick = (raw: number, type: EffectDot["type"]): EffectDot => {
+      const perTick = Math.max(1, Math.round(raw * mult));
+      return { perTick, ticks: s.oilRounds, total: perTick * s.oilRounds, type, when: "в конце раунда" };
+    };
+    const oilName = { fire: "Огонь масла", poison: "Яд масла", ice: "Лёд масла", acid: "Кислота масла", light: "Ослепление" }[kind as "fire" | "poison" | "ice" | "acid" | "light"] ?? "Масло";
+    if (kind === "fire") {
+      chips.push({
+        id: "burn", name: oilName, polarity: "bad", rounds: s.oilRounds,
+        details: ["Огонь масла: 5 + 1% макс. ОЗ за раунд."],
+        boosts: [], dot: tick(oilTickDamage(e.maxHp, "fire", agi, magicRes), "огонь"), color: EFFECT_COLORS.burn,
+      });
+    } else if (kind === "poison") {
+      chips.push({
+        id: "poison", name: oilName, polarity: "bad", rounds: s.oilRounds,
+        details: ["Яд масла: 2% + 1% за очко ЛОВ героя от макс. ОЗ за раунд."],
+        boosts: [], dot: tick(oilTickDamage(e.maxHp, "poison", agi, 0), "физический"), color: EFFECT_COLORS.poison,
+      });
+    } else if (kind === "ice") {
+      const cut = oilIceAttackCut(int);
+      chips.push({
+        id: "frost", name: oilName, polarity: "bad", rounds: s.oilRounds,
+        details: [`Сила атаки и физических приёмов −${Math.round(cut * 100)}% (5% за очко ИНТ героя).`],
+        boosts: [{ stat: "Атака", value: `−${Math.round(cut * 100)}%` }],
+        dot: tick(oilTickDamage(e.maxHp, "ice", agi, magicRes), "магический"), color: EFFECT_COLORS.frost,
+      });
+    } else if (kind === "acid") {
+      const cut = oilAcidArmorCut(agi);
+      chips.push({
+        id: "acid", name: oilName, polarity: "bad", rounds: s.oilRounds,
+        details: [`Броня твари снижена на ${cut} (1 + ЛОВ героя).`],
+        boosts: [{ stat: "Броня", value: `−${cut}` }], highlight: "armor",
+        dot: tick(oilTickDamage(e.maxHp, "acid", agi, magicRes), "магический"), color: EFFECT_COLORS.acid,
+      });
+    } else if (kind === "light") {
+      chips.push({
+        id: "blind", name: oilName, polarity: "bad", rounds: s.oilRounds,
+        details: ["Тварь ослеплена светом: её удары промахиваются с шансом 25%."],
+        boosts: [{ stat: "Удары", value: "промах 25%" }], color: EFFECT_COLORS.blind,
+      });
+    }
   }
 
   /* Эффекты от снаряжения самой твари. */

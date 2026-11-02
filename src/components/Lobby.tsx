@@ -47,6 +47,7 @@ import {
 import type { LobbyController } from "../controllers/LobbyController";
 import { recipePrice } from "../model/pricing";
 import { damageTypeName } from "../game/damageTypes";
+import { IMMUNITY_NAMES } from "../game/statusEffects";
 import { SLOT_META, SLOT_ORDER } from "../game/types";
 import type { RarityTier, Slot } from "../game/types";
 import { derived } from "../game/battle";
@@ -285,6 +286,11 @@ function effectSummary(def: ItemDef): { what: string; when: string } {
       return {
         what: `Смазывает оружие: удар накладывает ${u.oil ? damageTypeName(u.oil) : "урон"} на 3 раунда.`,
         when: "Тратит ход. Действует на ближайший раунд; только в бою.",
+      };
+    case "immunity":
+      return {
+        what: u.effect ? `Три хода эффект «${IMMUNITY_NAMES[u.effect]}» на тебя не накладывается.` : "Иммунитет к эффекту.",
+        when: "Тратит ход. Действует в бою, срок 3 хода.",
       };
     default:
       return { what: def.desc, when: "Мгновенно." };

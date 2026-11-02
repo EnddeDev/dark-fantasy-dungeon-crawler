@@ -78,6 +78,10 @@ import {
 import { GEAR_EFFECTS } from "./gearEffects";
 import {
   CHILL_HEAL_MULT,
+  IMMUNITY_EFFECTS,
+  IMMUNITY_NAMES,
+  IMMUNITY_ROUNDS,
+  type ImmunityEffect,
   OIL_BLIND_MISS,
   OIL_ROUNDS,
   magicTickDamage,
@@ -244,6 +248,8 @@ export interface BattleState {
       stone: number;
       /** Бастион: тоник железной кожи. */
       ironTonic: number;
+      /** Зелья иммунитета: сколько ходов защищает от каждого эффекта. */
+      immune: Partial<Record<ImmunityEffect, number>>;
       /** Варвар: кровавая ярость (вампиризм оружием). */
       bloodRage: number;
       /** Ассасин: масло быстрого клинка. */
@@ -828,7 +834,7 @@ function clone(b: BattleState): BattleState {
       legendaryPower: Object.fromEntries(Object.entries(b.p.legendaryPower).map(([k, v]) => [k, { ...v }])),
       epicSkillLevels: { ...b.p.epicSkillLevels },
       passives: [...b.p.passives],
-      statuses: { ...b.p.statuses },
+      statuses: { ...b.p.statuses, immune: { ...b.p.statuses.immune } },
     },
     bag: { ...b.bag },
     log: b.log.slice(-70),
@@ -956,6 +962,7 @@ export function newBattle(
         quickblade: 0,
         oilType: null,
         oilRounds: 0,
+        immune: {},
         pactElixir: 0,
         fullGuard: 0,
         tempArmor: 0,
@@ -1088,6 +1095,18 @@ function bossResists(b: BattleState): boolean {
 /** Предел наложений периодических эффектов: урон за тик складывается. */
 export const MAX_DOT_STACKS = 5;
 
+/** Зелье иммунитета сейчас защищает героя от этого эффекта. */
+function playerImmune(b: BattleState, id: ImmunityEffect): boolean {
+  return (b.p.statuses.immune[id] ?? 0) > 0;
+}
+
+/** Иммунитет срабатывает: эффект не накладывается, в журнале видно почему. */
+function immuneNote(b: BattleState, id: ImmunityEffect): boolean {
+  if (!playerImmune(b, id)) return false;
+  push(b, `Иммунитет: ${IMMUNITY_NAMES[id]} не накладывается.`, "p");
+  return true;
+}
+
 /** Сколько наложений яда или кровотечения висит на герое. */
 function playerDotStacks(b: BattleState, kind: "poison" | "wound"): number {
   const rounds = kind === "poison" ? b.p.statuses.poison : b.p.statuses.wound;
@@ -1101,6 +1120,7 @@ function playerDotStacks(b: BattleState, kind: "poison" | "wound"): number {
  * а урон за тик складывается. Больше MAX_DOT_STACKS наложений не держится.
  */
 function applyPlayerDot(b: BattleState, kind: "poison" | "wound", rounds: number): number {
+  if (immuneNote(b, kind === "poison" ? "poison" : "bleed")) return 0;
   const key = kind === "poison" ? "poisonStacks" : "woundStacks";
   const active = kind === "poison" ? b.p.statuses.poison > 0 : b.p.statuses.wound > 0;
   const prev = active ? (b.p.statuses[key] ?? 1) : 0;
@@ -1545,7 +1565,7 @@ function incoming(
   // Ядовитый враг отравляет игрока физическим уроном.
   if (b.enemy.passive?.id === "venom" && kind === "phys" && b.p.hp > 0 && !tryResist(b, "яд")) {
     const stacks = applyPlayerDot(b, "poison", 2);
-    push(b, `Яд врага попал в кровь: отравление на 2 раунда, наложений ${stacks}.`, "e");
+    if (stacks > 0) push(b, `Яд врага попал в кровь: отравление на 2 раунда, наложений ${stacks}.`, "e");
   }
 
   /* Шипы отвечают только на физическую атаку: магический выпад тварь
@@ -1781,6 +1801,12 @@ function advance(b: BattleState) {
     b.p.statuses.quickblade = Math.max(0, b.p.statuses.quickblade - 1);
     b.p.statuses.pactElixir = Math.max(0, b.p.statuses.pactElixir - 1);
     b.p.statuses.fullGuard = Math.max(0, b.p.statuses.fullGuard - 1);
+    for (const k of IMMUNITY_EFFECTS) {
+      const left = b.p.statuses.immune[k] ?? 0;
+      if (left <= 0) continue;
+      b.p.statuses.immune[k] = left - 1;
+      if (left === 1) push(b, `Иммунитет: ${IMMUNITY_NAMES[k]} снова может накладываться.`, "sys");
+    }
 
     if (prevCurse > 0 && b.p.statuses.curse === 0)
       push(b, "Проклятие рассеялось! Твой урон вернулся к норме.", "sys");
@@ -2327,6 +2353,12 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
           );
           break;
         }
+        case "immunity": {
+          if (!u.effect) break;
+          b.p.statuses.immune[u.effect] = Math.max(b.p.statuses.immune[u.effect] ?? 0, IMMUNITY_ROUNDS);
+          push(b, `${def.name}: ${IMMUNITY_NAMES[u.effect]} не накладывается ${IMMUNITY_ROUNDS} хода.`, "p");
+          break;
+        }
         case "quickblade": {
           b.p.statuses.quickblade = statusRounds(b, u.rounds ?? 3);
           push(b, `${def.name}: +25% шанса крита и +50% силы крита на ${u.rounds} раунда.`, "p");
@@ -2504,25 +2536,31 @@ function applyRaceStrike(b: BattleState, isStrike: boolean, rawBase: number, res
   const lands = () => Math.random() > resistChance;
   if (race === "vampire" && lands()) {
     const stacks = applyPlayerDot(b, "wound", 3);
-    push(b, `Клыки рвут плоть: кровотечение на 3 раунда, наложений ${stacks}.`, "e");
+    if (stacks > 0) push(b, `Клыки рвут плоть: кровотечение на 3 раунда, наложений ${stacks}.`, "e");
   } else if (race === "ghost" && lands()) {
-    b.p.statuses.fear = Math.max(b.p.statuses.fear, 2);
-    push(b, "Прикосновение призрака сеет страх на 2 раунда.", "e");
+    if (!immuneNote(b, "fear")) {
+      b.p.statuses.fear = Math.max(b.p.statuses.fear, 2);
+      push(b, "Прикосновение призрака сеет страх на 2 раунда.", "e");
+    }
   } else if (race === "beast" && lands()) {
     if (Math.random() < 0.5) {
       const stacks = applyPlayerDot(b, "wound", 3);
-      push(b, `Зверь рвёт когтями: кровотечение на 3 раунда, наложений ${stacks}.`, "e");
+      if (stacks > 0) push(b, `Зверь рвёт когтями: кровотечение на 3 раунда, наложений ${stacks}.`, "e");
     } else {
       const stacks = applyPlayerDot(b, "poison", 3);
-      push(b, `Яд зверя в крови: 3 раунда отравления, наложений ${stacks}.`, "e");
+      if (stacks > 0) push(b, `Яд зверя в крови: 3 раунда отравления, наложений ${stacks}.`, "e");
     }
   } else if (race === "demon" && lands()) {
     if (Math.random() < 0.5) {
-      b.p.statuses.burn = Math.max(b.p.statuses.burn, statusRounds(b, 3));
-      push(b, "Адское пламя липнет к коже: горение на 3 раунда.", "e");
+      if (!immuneNote(b, "burn")) {
+        b.p.statuses.burn = Math.max(b.p.statuses.burn, statusRounds(b, 3));
+        push(b, "Адское пламя липнет к коже: горение на 3 раунда.", "e");
+      }
     } else {
-      b.p.statuses.fear = Math.max(b.p.statuses.fear, 2);
-      push(b, "Взгляд демона парализует волю: страх на 2 раунда.", "e");
+      if (!immuneNote(b, "fear")) {
+        b.p.statuses.fear = Math.max(b.p.statuses.fear, 2);
+        push(b, "Взгляд демона парализует волю: страх на 2 раунда.", "e");
+      }
     }
   }
 }
@@ -2702,7 +2740,7 @@ export function enemyStep(b0: BattleState): BattleState {
       if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0 && !hasLeg(b, "titan_heart") && Math.random() > resistChance) {
         const stacks = applyPlayerDot(b, "wound", 3);
-        push(b, `Открылось кровотечение на 3 раунда, наложений ${stacks}.`, "e");
+        if (stacks > 0) push(b, `Открылось кровотечение на 3 раунда, наложений ${stacks}.`, "e");
       } else if (landed && b.p.hp > 0) {
         push(b, "Твоя сила сдерживает рану — кровотечения нет.", "p");
       }
@@ -2712,9 +2750,11 @@ export function enemyStep(b0: BattleState): BattleState {
       const landed = incoming(b, Math.round(base * 0.7 * chill), "magic", `${e.def.name} шепчет анафему`);
       if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0 && Math.random() > resistChance) {
-        b.p.statuses.curse = Math.max(b.p.statuses.curse, 3);
-        b.p.statuses.cursePower = Math.max(b.p.statuses.cursePower ?? 0, 30);
-        push(b, "Проклятие висит 3 раунда: твой урон снижен на 30%.", "e");
+        if (!immuneNote(b, "curse")) {
+          b.p.statuses.curse = Math.max(b.p.statuses.curse, 3);
+          b.p.statuses.cursePower = Math.max(b.p.statuses.cursePower ?? 0, 30);
+          push(b, "Проклятие висит 3 раунда: твой урон снижен на 30%.", "e");
+        }
       } else if (landed && b.p.hp > 0) {
         push(b, "Стойкость отбрасывает проклятие.", "p");
       }
@@ -2732,9 +2772,11 @@ export function enemyStep(b0: BattleState): BattleState {
       const landed = incoming(b, Math.round(base * 1.15 * chill), "phys", `${e.def.name} бьёт по швам доспеха`);
       if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0) {
-        const breakAmount = enemySunderBreak(b.enemy.level);
-        b.p.statuses.sundered = Math.min(8, b.p.statuses.sundered + breakAmount);
-        push(b, `Твоя броня промята (−${breakAmount} к защите, всего −${b.p.statuses.sundered} до конца боя).`, "e");
+        if (!immuneNote(b, "sunder")) {
+          const breakAmount = enemySunderBreak(b.enemy.level);
+          b.p.statuses.sundered = Math.min(8, b.p.statuses.sundered + breakAmount);
+          push(b, `Твоя броня промята (−${breakAmount} к защите, всего −${b.p.statuses.sundered} до конца боя).`, "e");
+        }
       }
       break;
     }
@@ -2742,30 +2784,38 @@ export function enemyStep(b0: BattleState): BattleState {
       const landed = incoming(b, Math.round(base * 1.1 * chill), "magic", `${e.def.name} бьёт в погребальный колокол`);
       if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0 && Math.random() > resistChance) {
-        b.p.statuses.stunAp = 1;
-        push(b, "Звон парализует волю: −1 ход в следующем раунде!", "e");
+        if (!immuneNote(b, "stun")) {
+          b.p.statuses.stunAp = 1;
+          push(b, "Звон парализует волю: −1 ход в следующем раунде!", "e");
+        }
       } else if (landed && b.p.hp > 0) {
         push(b, "Ты выдерживаешь удар колокола без потери хода.", "p");
       }
       break;
     }
     case "intimidate": {
-      b.p.statuses.sealAttack = 1;
-      b.p.statuses.sealSkills = 1;
-      push(b, `${e.def.name} давит волей: в следующий ход нельзя ни атаковать, ни применять приёмы.`, "e");
+      const blockAttack = immuneNote(b, "sealAttack");
+      const blockSkills = immuneNote(b, "sealSkills");
+      if (!blockAttack) b.p.statuses.sealAttack = 1;
+      if (!blockSkills) b.p.statuses.sealSkills = 1;
+      if (!blockAttack || !blockSkills) push(b, `${e.def.name} давит волей: в следующий ход нельзя ни атаковать, ни применять приёмы.`, "e");
       break;
     }
     case "darkness": {
-      b.p.statuses.darkness = 1;
-      push(b, `${e.def.name} сгущает мрак: до конца раунда половина твоих атак уходит в пустоту.`, "e");
+      if (!immuneNote(b, "darkness")) {
+        b.p.statuses.darkness = 1;
+        push(b, `${e.def.name} сгущает мрак: до конца раунда половина твоих атак уходит в пустоту.`, "e");
+      }
       break;
     }
     case "cold_touch": {
       const landed = incoming(b, Math.round(base * 1.1 * chill), "magic", `${e.def.name} касается холодом`, false, true);
       if (landed) {
         push(b, "Холодное касание проходит сквозь броню и любое сопротивление.", "e");
-        b.p.statuses.noHeal = Math.max(b.p.statuses.noHeal, 2);
-        if (b.p.hp > 0) push(b, "Стужа в костях: два хода лечение не действует.", "e");
+        if (!immuneNote(b, "noHeal")) {
+          b.p.statuses.noHeal = Math.max(b.p.statuses.noHeal, 2);
+          if (b.p.hp > 0) push(b, "Стужа в костях: два хода лечение не действует.", "e");
+        }
       }
       break;
     }
@@ -2773,8 +2823,10 @@ export function enemyStep(b0: BattleState): BattleState {
       const landed = incoming(b, Math.round(base * 2 * chill), "magic", `${e.def.name} обрушивает силу ада`);
       if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0 && Math.random() > resistChance) {
-        b.p.statuses.burn = Math.max(b.p.statuses.burn, statusRounds(b, 4));
-        push(b, "Сила ада поджигает: 4 раунда горения.", "e");
+        if (!immuneNote(b, "burn")) {
+          b.p.statuses.burn = Math.max(b.p.statuses.burn, statusRounds(b, 4));
+          push(b, "Сила ада поджигает: 4 раунда горения.", "e");
+        }
       }
       break;
     }
@@ -2783,7 +2835,7 @@ export function enemyStep(b0: BattleState): BattleState {
       if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0 && !hasLeg(b, "titan_heart") && Math.random() > resistChance) {
         const stacks = applyPlayerDot(b, "poison", 3);
-        push(b, `Яд разъедает кровь: отравление на 3 раунда, наложений ${stacks}.`, "e");
+        if (stacks > 0) push(b, `Яд разъедает кровь: отравление на 3 раунда, наложений ${stacks}.`, "e");
       } else if (landed && b.p.hp > 0) {
         push(b, "Кровь выжигает яд на лету.", "p");
       }
@@ -2800,28 +2852,36 @@ export function enemyStep(b0: BattleState): BattleState {
       break;
     }
     case "seal_items": {
-      b.p.statuses.sealItems = 1;
-      push(b, `${e.def.name} накладывает Печать немоты: расходники запрещены в твой следующий ход.`, "e");
+      if (!immuneNote(b, "sealItems")) {
+        b.p.statuses.sealItems = 1;
+        push(b, `${e.def.name} накладывает Печать немоты: расходники запрещены в твой следующий ход.`, "e");
+      }
       break;
     }
     case "seal_skills": {
-      b.p.statuses.sealSkills = 1;
-      push(b, `${e.def.name} накладывает Печать забвения: приёмы запрещены в твой следующий ход.`, "e");
+      if (!immuneNote(b, "sealSkills")) {
+        b.p.statuses.sealSkills = 1;
+        push(b, `${e.def.name} накладывает Печать забвения: приёмы запрещены в твой следующий ход.`, "e");
+      }
       break;
     }
     case "seal_attack": {
-      b.p.statuses.sealAttack = 1;
-      push(b, `${e.def.name} накладывает Печать оков: обычная атака запрещена в твой следующий ход.`, "e");
+      if (!immuneNote(b, "sealAttack")) {
+        b.p.statuses.sealAttack = 1;
+        push(b, `${e.def.name} накладывает Печать оков: обычная атака запрещена в твой следующий ход.`, "e");
+      }
       break;
     }
     case "terror": {
       const landed = incoming(b, Math.round(base * 0.6 * chill), "magic", `${e.def.name} рычит тебе в лицо`);
       if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0 && Math.random() > resistChance) {
-        b.p.statuses.fear = Math.max(b.p.statuses.fear, 2);
+        if (!immuneNote(b, "fear")) {
+          b.p.statuses.fear = Math.max(b.p.statuses.fear, 2);
+          push(b, "Страх на 2 раунда: в свой ход ты автоматически уходишь в защиту.", "e");
+        }
         e.guard = true;
         flash(b, "e", "guard", 0);
-        push(b, "Страх на 2 раунда: в свой ход ты автоматически уходишь в защиту.", "e");
       }
       break;
     }
@@ -2843,8 +2903,10 @@ export function enemyStep(b0: BattleState): BattleState {
   }
   const eStun = eChance(b, "stun_chance");
   if (eStun > 0 && b.p.hp > 0 && Math.random() < eStun) {
-    b.p.statuses.stunAp = Math.max(b.p.statuses.stunAp, 1);
-    push(b, `${e.def.name} оглушает тебя: −1 ход в следующем раунде.`, "e");
+    if (!immuneNote(b, "stun")) {
+      b.p.statuses.stunAp = Math.max(b.p.statuses.stunAp, 1);
+      push(b, `${e.def.name} оглушает тебя: −1 ход в следующем раунде.`, "e");
+    }
   }
   if (b.over) return b;
   advance(b);
