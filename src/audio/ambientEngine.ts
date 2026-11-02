@@ -1,12 +1,18 @@
 import { readAmbientMuted, writeAmbientMuted, type AmbientScene } from "./ambientScenes";
+import type { BiomeId } from "../game/biomes";
 
 /**
  * Фоновый звук, синтезированный в браузере через Web Audio API.
  * Один мастер-гейн, кроссфейд между сценами, старт по первому жесту пользователя
  * (политика автовоспроизведения). Выключенный звук не создаёт AudioContext.
+ *
+ * Характер: минорные тональности (D-минор, фригийский лад), медленно нарастающие пэды,
+ * далёкие гонги и колокола — для загадочного и грандиозного настроения.
+ * В бою добавляется метроном: барабан, перкуссия и остинато — звук напряжённее и быстрее.
  */
 
-const MASTER_LEVEL = 0.7;
+/** Общая громкость. Низкое значение: звук лежит под интерфейсом, а не поверх него. */
+const MASTER_LEVEL = 0.35;
 const FADE_IN_S = 3;
 const FADE_OUT_S = 2.5;
 const GESTURE_EVENTS = ["pointerdown", "keydown", "touchstart"] as const;
@@ -25,13 +31,13 @@ type Recipe = (env: AmbientEnv) => void;
 const rnd = (min: number, max: number) => min + Math.random() * (max - min);
 const pick = <T,>(items: readonly T[]): T => items[Math.floor(Math.random() * items.length)];
 
-/** Непрерывный тон (дрон), с необязательным медленным дрожанием громкости. */
+/** Непрерывный тон (дрон или пэд), с необязательным нарастанием и дрожанием громкости. */
 function drone(
   env: AmbientEnv,
   freq: number,
   type: OscillatorType,
   gain: number,
-  opts: { detune?: number; lfoHz?: number } = {},
+  opts: { detune?: number; lfoHz?: number; swell?: number } = {},
 ): void {
   const { ctx, out } = env;
   const osc = ctx.createOscillator();
@@ -39,7 +45,14 @@ function drone(
   osc.frequency.value = freq;
   osc.detune.value = opts.detune ?? 0;
   const g = ctx.createGain();
-  g.gain.value = gain;
+  if (opts.swell) {
+    // Медленное нарастание: звук «всплывает» из тишины, как далёкий орган.
+    const now = ctx.currentTime;
+    g.gain.setValueAtTime(0, now);
+    g.gain.linearRampToValueAtTime(gain, now + opts.swell);
+  } else {
+    g.gain.value = gain;
+  }
   osc.connect(g);
   g.connect(out);
   if (opts.lfoHz) modulate(env, opts.lfoHz, gain * 0.6, g.gain);
@@ -48,6 +61,13 @@ function drone(
     osc.stop();
     osc.disconnect();
     g.disconnect();
+  });
+}
+
+/** Аккорд-пэд: несколько тонов с лёгкой расстройкой, медленное дыхание громкости. */
+function pad(env: AmbientEnv, freqs: readonly number[], gain: number, opts: { swell?: number; lfoHz?: number } = {}): void {
+  freqs.forEach((f, i) => {
+    drone(env, f, "sine", gain, { detune: i % 2 ? 6 : -6, lfoHz: opts.lfoHz, swell: opts.swell });
   });
 }
 
@@ -68,7 +88,7 @@ function modulate(env: AmbientEnv, hz: number, depth: number, target: AudioParam
   });
 }
 
-/** Непрерывный шум через фильтр (ветер, гул, шипение), с плавающей частотой фильтра. */
+/** Непрерывный шум через фильтр (ветер, гул, рокот), с плавающей частотой фильтра. */
 function noiseBed(
   env: AmbientEnv,
   o: { type: BiquadFilterType; freq: number; q?: number; gain: number; sweepHz?: number; sweepDepth?: number },
@@ -96,7 +116,7 @@ function noiseBed(
   });
 }
 
-/** Короткий тон с огибающей: капель, бульканье, звон, рычание. */
+/** Короткий тон с огибающей: капель, бульканье, звон, удар. */
 function blip(
   env: AmbientEnv,
   o: { freq: number; endFreq?: number; dur: number; gain: number; type?: OscillatorType; at?: number; pan?: number; lowpass?: number },
@@ -131,7 +151,7 @@ function blip(
   osc.onended = () => nodes.forEach((n) => n.disconnect());
 }
 
-/** Короткий всплеск шума через полосовой фильтр: шёпот, треск, шипение. */
+/** Короткий всплеск шума через фильтр: шёпот, треск, перкуссия. */
 function noiseShot(
   env: AmbientEnv,
   o: { type: BiquadFilterType; freq: number; q?: number; dur: number; gain: number; at?: number; pan?: number },
@@ -177,96 +197,246 @@ function every(env: AmbientEnv, minS: number, maxS: number, fire: () => void): v
   });
 }
 
-const drip = (env: AmbientEnv) =>
-  blip(env, { freq: rnd(1500, 2000), endFreq: rnd(800, 1000), dur: 0.2, gain: 0.05, pan: rnd(-0.6, 0.6) });
+/**
+ * Тактовый генератор для боя: шаги планируются по часам аудиоконтекста,
+ * поэтому ритм не плывёт, как при setTimeout-цепочке.
+ */
+function clock(env: AmbientEnv, stepSec: number, onStep: (step: number, at: number) => void): void {
+  const { ctx } = env;
+  let next = ctx.currentTime + 0.05;
+  let step = 0;
+  let id: ReturnType<typeof setTimeout> | undefined;
+  let alive = true;
+  const tick = () => {
+    if (!alive) return;
+    const horizon = ctx.currentTime + 0.2;
+    while (next < horizon) {
+      onStep(step++, Math.max(0, next - ctx.currentTime));
+      next += stepSec;
+    }
+    id = setTimeout(tick, 50);
+  };
+  tick();
+  env.track(() => {
+    alive = false;
+    if (id !== undefined) clearTimeout(id);
+  });
+}
 
-const bubble = (env: AmbientEnv) =>
-  blip(env, { freq: rnd(260, 380), endFreq: rnd(480, 620), dur: 0.12, gain: 0.03, pan: rnd(-0.7, 0.7) });
+const drip = (env: AmbientEnv, gain = 0.025) =>
+  blip(env, { freq: rnd(1500, 2000), endFreq: rnd(800, 1000), dur: 0.2, gain, pan: rnd(-0.6, 0.6) });
+
+const bubble = (env: AmbientEnv, gain = 0.012) =>
+  blip(env, { freq: rnd(260, 380), endFreq: rnd(480, 620), dur: 0.12, gain, pan: rnd(-0.7, 0.7) });
 
 const thump = (env: AmbientEnv, freq: number, gain: number, at = 0) =>
   blip(env, { freq: freq * 2, endFreq: freq * 0.6, dur: 0.3, gain, at });
 
-/** Звон: основной тон и квинта-кварта повыше, затухает. */
+/** Звон: основной тон и обертон повыше, долго затухает. */
 function chime(env: AmbientEnv, freq: number, gain: number, dur: number, pan = 0): void {
   blip(env, { freq, dur, gain, pan });
   blip(env, { freq: freq * 2.76, dur: dur * 0.5, gain: gain * 0.35, pan });
 }
 
+/**
+ * Гонг: инхармонические обертоны и долгое затухание.
+ * Даёт ощущение огромного пространства, далеко за пределами видимого.
+ */
+function gong(env: AmbientEnv, freq: number, gain: number, pan = 0): void {
+  const partials: Array<[number, number]> = [
+    [1, 1],
+    [2.0, 0.5],
+    [2.76, 0.35],
+    [5.4, 0.18],
+  ];
+  for (const [ratio, weight] of partials) {
+    blip(env, { freq: freq * ratio, dur: 7 / ratio, gain: gain * weight, pan });
+  }
+}
+
 /** Квакша: три низких хрипловатых выдоха. */
-function croak(env: AmbientEnv): void {
+function croak(env: AmbientEnv, gain: number): void {
   const base = rnd(120, 160);
   for (let i = 0; i < 3; i++) {
-    blip(env, { freq: base, endFreq: base * 0.7, dur: 0.22, gain: 0.035, type: "square", at: i * 0.3, lowpass: 420, pan: rnd(-0.4, 0.4) });
+    blip(env, { freq: base, endFreq: base * 0.7, dur: 0.22, gain, type: "square", at: i * 0.3, lowpass: 420, pan: rnd(-0.4, 0.4) });
   }
 }
 
 /** Треск костра: короткие разрывы шума, высокая полоса. */
-const crackle = (env: AmbientEnv) =>
-  noiseShot(env, { type: "highpass", freq: 2200, q: 0.8, dur: 0.05, gain: 0.04, pan: rnd(-0.8, 0.8) });
+const crackle = (env: AmbientEnv, gain: number) =>
+  noiseShot(env, { type: "highpass", freq: 2200, q: 0.8, dur: 0.05, gain, pan: rnd(-0.8, 0.8) });
 
-const ICE_CHIMES = [1319, 1567, 1760, 2093, 2637];
+const ICE_BELLS = [1174.7, 1396.9, 880, 1046.5];
 
-const RECIPES_TABLE: Record<AmbientScene, Recipe> = {
-  /** Лагерь у входа: тёплый низкий дрон, ветер и редкий далёкий колокол. */
-  lobby(env) {
-    drone(env, 55, "sine", 0.05);
-    drone(env, 82.4, "sine", 0.03, { detune: 4 });
-    drone(env, 110, "triangle", 0.012, { lfoHz: 0.05 });
-    noiseBed(env, { type: "bandpass", freq: 380, q: 0.6, gain: 0.05, sweepHz: 0.05, sweepDepth: 150 });
-    every(env, 9, 18, () => chime(env, 330, 0.035, 3.5, rnd(-0.5, 0.5)));
-  },
+/** Параметры боевой сцены: тональность, темп и ритм барабана. */
+interface BattleConfig {
+  root: number;
+  bpm: number;
+  kick: number;
+  notes: readonly number[];
+  noteType: OscillatorType;
+  noteGain: number;
+  lowpass?: number;
+  hats?: boolean;
+  /** Характерные добавки биома поверх ритма. */
+  extra?: (env: AmbientEnv) => void;
+}
 
-  /** Классический лабиринт: каменный дрон, рокот, редкая капель. */
-  classic(env) {
-    drone(env, 41.2, "sine", 0.09);
-    drone(env, 61.7, "triangle", 0.03, { detune: -6, lfoHz: 0.07 });
-    noiseBed(env, { type: "lowpass", freq: 140, q: 0.7, gain: 0.07, sweepHz: 0.03, sweepDepth: 40 });
-    every(env, 2.5, 6, () => drip(env));
-    every(env, 18, 32, () => thump(env, 55, 0.06));
-  },
-
-  /** Подземное болото: влажный шум, бульканье, квакши. */
-  swamp(env) {
-    drone(env, 65.4, "sine", 0.04);
-    drone(env, 98, "triangle", 0.015, { lfoHz: 0.11 });
-    noiseBed(env, { type: "lowpass", freq: 320, q: 0.9, gain: 0.09, sweepHz: 0.09, sweepDepth: 120 });
-    every(env, 1.2, 3.5, () => bubble(env));
-    every(env, 7, 14, () => croak(env));
-  },
-
-  /** Ледяные просторы: порывы ветра, высокие звоны, низкий тон. */
-  ice(env) {
-    drone(env, 55, "sine", 0.03);
-    drone(env, 82.5, "sine", 0.02, { detune: 3 });
-    noiseBed(env, { type: "highpass", freq: 1400, q: 0.5, gain: 0.05, sweepHz: 0.04, sweepDepth: 500 });
-    noiseBed(env, { type: "bandpass", freq: 3000, q: 2, gain: 0.01, sweepHz: 0.07, sweepDepth: 900 });
-    every(env, 3, 7, () => chime(env, pick(ICE_CHIMES), 0.03, 2.5, rnd(-0.7, 0.7)));
-  },
-
-  /** Тёмное подземелье: почти тихий саб-дрон, глухие удары сердца, шёпот. */
-  dark(env) {
-    drone(env, 36.7, "sine", 0.11, { lfoHz: 0.1 });
-    drone(env, 55, "sine", 0.02, { detune: 5 });
-    every(env, 6, 9, () => {
-      thump(env, 50, 0.1);
-      thump(env, 46, 0.08, 0.35);
+/**
+ * Боевая сцена: пульсирующий дрон, барабан на каждую долю, перкуссия на 2 и 4,
+ * остинато восьмыми. Характер меняется параметрами биома.
+ */
+function battleCore(env: AmbientEnv, cfg: BattleConfig): void {
+  drone(env, cfg.root, "sine", 0.012, { swell: 1.5 });
+  drone(env, cfg.root * 1.5, "triangle", 0.005, { lfoHz: 0.5 });
+  clock(env, 60 / cfg.bpm / 2, (i, at) => {
+    if (i % 4 === 0) thump(env, cfg.kick, 0.035, at);
+    if (i % 4 === 2) noiseShot(env, { type: "bandpass", freq: 1800, q: 1.2, dur: 0.12, gain: 0.008, at });
+    if (cfg.hats && i % 2 === 1) noiseShot(env, { type: "highpass", freq: 7000, dur: 0.03, gain: 0.003, at });
+    blip(env, {
+      freq: cfg.notes[i % cfg.notes.length],
+      dur: 0.18,
+      gain: cfg.noteGain,
+      type: cfg.noteType,
+      lowpass: cfg.lowpass,
+      at,
     });
-    every(env, 10, 20, () => noiseShot(env, { type: "bandpass", freq: 1100, q: 8, dur: 1.8, gain: 0.03, pan: rnd(-0.5, 0.5) }));
-    every(env, 16, 28, () => thump(env, 80, 0.07));
-  },
+  });
+  cfg.extra?.(env);
+}
 
-  /** Огненные недра: треск, низкий гул, редкие вспышки искр. */
-  fire(env) {
-    noiseBed(env, { type: "lowpass", freq: 420, q: 0.7, gain: 0.07, sweepHz: 0.13, sweepDepth: 150 });
-    drone(env, 73.4, "triangle", 0.02);
-    drone(env, 110, "triangle", 0.01, { lfoHz: 0.17 });
-    every(env, 0.05, 0.3, () => crackle(env));
-    every(env, 4, 9, () => noiseShot(env, { type: "highpass", freq: 900, q: 0.6, dur: 0.08, gain: 0.1 }));
+const BATTLE: Record<BiomeId, BattleConfig> = {
+  // Классика: D-минор, маршевый ритм.
+  classic: {
+    root: 73.4,
+    bpm: 112,
+    kick: 55,
+    notes: [146.8, 146.8, 174.6, 146.8, 220, 146.8, 130.8, 146.8],
+    noteType: "sawtooth",
+    noteGain: 0.006,
+    lowpass: 700,
+    extra: (env) => every(env, 22, 36, () => gong(env, 55, 0.02)),
+  },
+  // Болото: тяжёлый, вязкий ритм, пузыри и квакши.
+  swamp: {
+    root: 65.4,
+    bpm: 92,
+    kick: 46,
+    notes: [116.5, 116.5, 138.6, 116.5, 174.6, 116.5, 103.8, 116.5],
+    noteType: "sawtooth",
+    noteGain: 0.005,
+    lowpass: 420,
+    extra: (env) => {
+      every(env, 0.8, 2.5, () => bubble(env, 0.008));
+      every(env, 9, 16, () => croak(env, 0.012));
+    },
+  },
+  // Лёд: быстрые тарелки и высокие звоны-арпеджио.
+  ice: {
+    root: 55,
+    bpm: 132,
+    kick: 62,
+    notes: [587.3, 880, 698.5, 880, 1174.7, 880, 698.5, 880],
+    noteType: "sine",
+    noteGain: 0.005,
+    hats: true,
+    extra: (env) => every(env, 4, 8, () => chime(env, pick(ICE_BELLS), 0.006, 2.5, rnd(-0.7, 0.7))),
+  },
+  // Тьма: медленный, злой пульс, глухое ворчание и шёпот.
+  dark: {
+    root: 36.7,
+    bpm: 76,
+    kick: 40,
+    notes: [73.4, 73.4, 77.8, 73.4, 69.3, 73.4, 77.8, 73.4],
+    noteType: "sawtooth",
+    noteGain: 0.005,
+    lowpass: 260,
+    extra: (env) => every(env, 6, 10, () => noiseShot(env, { type: "bandpass", freq: 1100, q: 8, dur: 1.6, gain: 0.007, pan: rnd(-0.5, 0.5) })),
+  },
+  // Огонь: самый быстрый бой, треск и трескучие ударные.
+  fire: {
+    root: 73.4,
+    bpm: 150,
+    kick: 60,
+    notes: [293.7, 293.7, 349.2, 293.7, 440, 293.7, 349.2, 523.3],
+    noteType: "square",
+    noteGain: 0.004,
+    lowpass: 1200,
+    hats: true,
+    extra: (env) => every(env, 0.1, 0.5, () => crackle(env, 0.008)),
   },
 };
 
 /** Рецепты по сценам (экспорт для тестов: все сцены должны иметь рецепт). */
-export const AMBIENT_RECIPES: Readonly<Record<AmbientScene, Recipe>> = RECIPES_TABLE;
+export const AMBIENT_RECIPES: Readonly<Record<AmbientScene, Recipe>> = {
+  /** Лагерь у врат: далёкий гонг, колокол и медленный минорный пэд. */
+  lobby(env) {
+    drone(env, 73.4, "sine", 0.018, { swell: 8 });
+    drone(env, 110, "triangle", 0.005, { detune: 5, lfoHz: 0.04, swell: 10 });
+    pad(env, [146.8, 174.6, 220], 0.003, { swell: 12, lfoHz: 0.03 });
+    noiseBed(env, { type: "bandpass", freq: 280, q: 0.5, gain: 0.014, sweepHz: 0.04, sweepDepth: 120 });
+    every(env, 18, 30, () => gong(env, 73.4, 0.022, rnd(-0.3, 0.3)));
+    every(env, 8, 14, () => chime(env, 587.3, 0.006, 4.5, rnd(-0.6, 0.6)));
+  },
+
+  /** Классический лабиринт: каменный дрон, рокот, капли и далёкие гонги. */
+  classic(env) {
+    drone(env, 36.7, "sine", 0.025, { swell: 6 });
+    pad(env, [146.8, 174.6, 220], 0.003, { swell: 10, lfoHz: 0.03 });
+    noiseBed(env, { type: "lowpass", freq: 140, q: 0.7, gain: 0.025, sweepHz: 0.03, sweepDepth: 30 });
+    every(env, 2.5, 6, () => drip(env, 0.02));
+    every(env, 22, 36, () => gong(env, 55, 0.02));
+    every(env, 16, 28, () => thump(env, 55, 0.016));
+  },
+
+  /** Подземное болото: влажный шум, бульканье, квакши и глухой колокол. */
+  swamp(env) {
+    drone(env, 65.4, "sine", 0.016, { swell: 6 });
+    drone(env, 98, "triangle", 0.006, { lfoHz: 0.11 });
+    noiseBed(env, { type: "lowpass", freq: 320, q: 0.9, gain: 0.03, sweepHz: 0.09, sweepDepth: 100 });
+    every(env, 1.2, 3.5, () => bubble(env, 0.01));
+    every(env, 7, 14, () => croak(env, 0.014));
+    every(env, 25, 40, () => chime(env, 116.5, 0.009, 6));
+  },
+
+  /** Ледяные просторы: порывы ветра, стеклянные звоны и холодный пэд. */
+  ice(env) {
+    drone(env, 55, "sine", 0.012, { swell: 8 });
+    pad(env, [220, 293.7, 349.2], 0.002, { swell: 10, lfoHz: 0.03 });
+    noiseBed(env, { type: "highpass", freq: 1400, q: 0.5, gain: 0.016, sweepHz: 0.04, sweepDepth: 500 });
+    noiseBed(env, { type: "bandpass", freq: 3000, q: 2, gain: 0.003, sweepHz: 0.07, sweepDepth: 800 });
+    every(env, 3, 7, () => chime(env, pick(ICE_BELLS), 0.007, 3, rnd(-0.7, 0.7)));
+  },
+
+  /** Тёмное подземелье: почти тихий саб-дрон, глухие удары сердца, шёпот и редкий гонг. */
+  dark(env) {
+    drone(env, 36.7, "sine", 0.04, { lfoHz: 0.1 });
+    drone(env, 55, "sine", 0.008, { detune: 5, swell: 10 });
+    every(env, 7, 10, () => {
+      thump(env, 50, 0.03);
+      thump(env, 46, 0.024, 0.35);
+    });
+    every(env, 10, 20, () => noiseShot(env, { type: "bandpass", freq: 1100, q: 8, dur: 1.8, gain: 0.009, pan: rnd(-0.5, 0.5) }));
+    every(env, 16, 28, () => thump(env, 80, 0.02));
+    every(env, 35, 50, () => gong(env, 73.4, 0.016));
+  },
+
+  /** Огненные недра: треск, низкий гул, вспышки искр и далёкий гонг. */
+  fire(env) {
+    noiseBed(env, { type: "lowpass", freq: 420, q: 0.7, gain: 0.025, sweepHz: 0.13, sweepDepth: 120 });
+    drone(env, 73.4, "triangle", 0.008, { swell: 5 });
+    drone(env, 110, "triangle", 0.004, { lfoHz: 0.17 });
+    every(env, 0.08, 0.4, () => crackle(env, 0.01));
+    every(env, 5, 10, () => noiseShot(env, { type: "highpass", freq: 900, q: 0.6, dur: 0.08, gain: 0.025 }));
+    every(env, 40, 60, () => gong(env, 98, 0.014));
+  },
+
+  "battle-classic": (env) => battleCore(env, BATTLE.classic),
+  "battle-swamp": (env) => battleCore(env, BATTLE.swamp),
+  "battle-ice": (env) => battleCore(env, BATTLE.ice),
+  "battle-dark": (env) => battleCore(env, BATTLE.dark),
+  "battle-fire": (env) => battleCore(env, BATTLE.fire),
+};
 
 // ---------------------------------------------------------------------------
 // Движок: контекст, мастер-гейн, кроссфейд, выключатель, старт по жесту.

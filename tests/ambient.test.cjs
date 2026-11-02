@@ -22,9 +22,10 @@ const biomes = (() => {
   return require(outfile);
 })();
 
-test("сцены покрывают лобби и все биомы подземелья", () => {
-  assert.deepEqual([...scenes.AMBIENT_SCENES], ["lobby", ...biomes.BIOME_ORDER]);
-  assert.equal(scenes.AMBIENT_SCENES.length, 6);
+test("сцены покрывают лобби, исследование и бой в каждом биоме", () => {
+  const battle = biomes.BIOME_ORDER.map((b) => `battle-${b}`);
+  assert.deepEqual([...scenes.AMBIENT_SCENES], ["lobby", ...biomes.BIOME_ORDER, ...battle]);
+  assert.equal(scenes.AMBIENT_SCENES.length, 11);
 });
 
 test("рецепт звука есть для каждой сцены и нет лишних", () => {
@@ -40,10 +41,12 @@ test("выбор сцены по экрану и биому", () => {
   assert.equal(scenes.ambientSceneFor("title", "fire"), null);
   for (const biome of biomes.BIOME_ORDER) {
     assert.equal(scenes.ambientSceneFor("dungeon", biome), biome);
-    assert.equal(scenes.ambientSceneFor("battle", biome), biome);
+    // В бою звучит своя, более динамичная сцена того же биома.
+    assert.equal(scenes.ambientSceneFor("battle", biome), `battle-${biome}`);
   }
   assert.equal(scenes.ambientSceneFor("dungeon", null), null);
   assert.equal(scenes.ambientSceneFor("battle", undefined), null);
+  assert.equal(scenes.ambientSceneFor("battle", "unknown"), null);
   assert.equal(scenes.ambientSceneFor("dungeon", "unknown"), null);
 });
 
