@@ -2737,6 +2737,27 @@ test("кузница: набор реагентов — разные реаге�
   }
 });
 
+test("кузница: шанс неудачи падает с числом вложенных реагентов", () => {
+  const epic = content.createGearItem({ baseId: "sword", level: 1, wear: "battered", rarity: "epic", identified: true });
+  const leg = forge.forgeOptions(epic).find((o) => o.kind === "rarity");
+  assert.equal(leg.reagentTotal, 25);
+  assert.equal(forge.forgeFailChance(leg, 0), 0.75, "без реагентов риск максимальный");
+  assert.equal(forge.forgeFailChance(leg, 25), 0.45, "полный набор даёт таблицу");
+  assert.equal(forge.forgeFailChance(leg, 13), 0.59, "половина набора снижает риск частично");
+
+  const lvl3 = content.createGearItem({ baseId: "sword", level: 3, wear: "worn", rarity: "common", identified: true });
+  const lvlOpt = forge.forgeOptions(lvl3).find((o) => o.kind === "level");
+  assert.equal(lvlOpt.reagentTotal, 6, "2 реагента за каждый уровень предмета");
+  assert.equal(lvlOpt.failChance, 0.2);
+  assert.equal(lvlOpt.failChanceFull, 0.1, "полный набор — вдвое ниже обычного");
+
+  const lvl10 = content.createGearItem({ baseId: "sword", level: 10, wear: "worn", rarity: "common", identified: true });
+  const topOpt = forge.forgeOptions(lvl10).find((o) => o.kind === "level");
+  assert.equal(topOpt.reagentTotal, 20);
+  assert.equal(topOpt.failChance, 0.55);
+  assert.equal(topOpt.failChanceFull, 0.28);
+});
+
 test("boss effect resistance is 25% and seals block the next player action", () => {
   const pl = player({ hp: 500, stats: { str: 5, agi: 5, int: 5 }, bag: { potion_s: 3 } });
   const b = freshBattle(pl, 3, true);
