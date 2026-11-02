@@ -1,5 +1,6 @@
 import { derived, newBattle, rollConsumableLoot, rollGearDrop } from "../game/battle";
 import { biomeHealingAmount, mazeBiome } from "../game/biomes";
+import { playSfx } from "../audio/sfx";
 import { CHEST_RARITY_WEIGHTS, DUNGEON_GOLD_SHARE, GEAR_BASES, ITEMS, consumableIntReq, consumablePower, dungeonGold, equipItem, grantXp, pick, randInt, reagentPoolForFloor, scaledGearStats, unequipSlot } from "../game/content";
 import { rollStepEvent } from "../game/events";
 import { cellIdx, findPath, openDirs, roomIndexAt, wallBetween } from "../game/maze";
@@ -70,10 +71,12 @@ export class DungeonController {
     const name = item ? GEAR_BASES[item.baseId]?.name ?? "предмет" : "предмет";
     const after = derived(res.player).maxHp;
     this.model.setPlayer({ ...res.player, hp: Math.min(after, res.player.hp + Math.max(0, after - before)) });
+    if (res.player !== player) playSfx("equip");
     this.model.logRun(`Смена снаряжения: ${name} → ${SLOT_META[slot].name.toLowerCase()}${res.note ? `. ${res.note}` : "."}`);
   }
 
   unequip(slot: Slot): void {
+    if (this.state.player.equip[slot]) playSfx("unequip");
     this.model.updatePlayer((p) => {
       const before = derived(p).maxHp;
       const next = unequipSlot(p, slot);
@@ -575,6 +578,7 @@ export class DungeonController {
       this.model.setPlayer(grantXp(withLoot, chestXp).player);
       this.model.setRun(r);
       this.model.setModal({ kind: "chest", gold, items, gear: [droppedGear], xp: chestXp });
+      playSfx("chest");
       return;
     }
 

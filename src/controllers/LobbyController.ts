@@ -1,3 +1,4 @@
+import { playSfx } from "../audio/sfx";
 import { derived } from "../game/battle";
 import {
   ARCHETYPES,
@@ -90,6 +91,7 @@ export class LobbyController {
       gold: p.gold - price,
       bag: { ...p.bag, [def.id]: (p.bag[def.id] ?? 0) + 1 },
     }));
+    playSfx("buy");
     return `Куплено: ${def.name}`;
   }
 
@@ -102,6 +104,7 @@ export class LobbyController {
       if (bag[def.id] <= 0) delete bag[def.id];
       return { ...p, gold: p.gold + price, bag };
     });
+    playSfx("sell");
     return `Продано: ${def.name} за ${price} зол.`;
   }
 
@@ -142,6 +145,7 @@ export class LobbyController {
       armory: [{ ...item, identified: auto }, ...p.armory],
     }));
     this.model.setShopStock(this.model.getSnapshot().shopStock.filter((g) => g.uid !== item.uid));
+    playSfx("buy");
     return auto
       ? `Куплено и исследовано: ${scaledGearStats(item).base.name}`
       : `Куплено: ${scaledGearStats(item).base.name}`;
@@ -173,10 +177,12 @@ export class LobbyController {
     if (next === player) return note ?? "Не удалось надеть предмет.";
     const after = derived(next).maxHp;
     this.model.setPlayer({ ...next, hp: Math.min(after, next.hp + Math.max(0, after - before)) });
+    playSfx("equip");
     return note ?? `Надето: ${scaledGearStats(item).base.name} · ${SLOT_META[slot].name}`;
   }
 
   takeOff(slot: Slot): string {
+    if (this.player.equip[slot]) playSfx("unequip");
     this.model.updatePlayer((p) => {
       const next = unequipSlot(p, slot);
       return { ...next, hp: Math.min(derived(next).maxHp, next.hp) };
@@ -193,6 +199,7 @@ export class LobbyController {
       gold: p.gold + price,
       armory: p.armory.filter((g) => g.uid !== item.uid),
     }));
+    playSfx("sell");
     return `Продано за ${price} зол.`;
   }
 
@@ -205,6 +212,7 @@ export class LobbyController {
       gold: p.gold - price,
       knownRecipes: [...p.knownRecipes, recipe.id],
     }));
+    playSfx("buy");
     return `Рецепт изучен: ${ITEMS[recipe.out].name}`;
   }
 
