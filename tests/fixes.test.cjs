@@ -125,10 +125,13 @@ test("дуэль: приём бьёт той же формулой, что и в
   assert.equal(b.hp - result.b.hp, expected, `урон приёма ${b.hp - result.b.hp}, ожидалось ${expected}`);
 });
 
-test("бонус приёма оружия: урон приёма + (2 × (ХАР + множитель приёма + бонус навыков))", () => {
-  assert.equal(battle.weaponTechniqueBonus(10, 2.4), 2 * (10 + 2.4));
-  assert.equal(battle.weaponTechniqueBonus(10, 2.4, 0.8), 2 * (10 + 2.4 + 0.8));
+test("бонус приёма оружия: урон приёма + (ХАР × (ХАР + множитель приёма + бонус навыков)) / 2, ХАР до 10", () => {
+  assert.equal(battle.weaponTechniqueBonus(10, 2.4), (10 * (10 + 2.4)) / 2);
+  assert.equal(battle.weaponTechniqueBonus(10, 2.4, 0.8), (10 * (10 + 2.4 + 0.8)) / 2);
   assert.equal(battle.weaponTechniqueBonus(0, 0), 0);
+  assert.equal(battle.weaponTechniqueBonus(4, 2.4), 4 * (4 + 2.4) / 2, "при ХАР 4 старая и новая формулы совпадают");
+  assert.equal(battle.weaponTechniqueBonus(30, 2.4), battle.weaponTechniqueBonus(10, 2.4), "ХАР выше 10 не даёт бонуса");
+  assert.equal(battle.TECHNIQUE_STAT_CAP, 10);
   // ХАР — характеристика предмета: у приёма на ловкость растёт от ЛОВ, а не от ИНТ.
   const knife = content.createGearItem({ baseId: "knife", level: 1, wear: "worn", rarity: "common", identified: true });
   const knifePlayer = {
@@ -141,10 +144,10 @@ test("бонус приёма оружия: урон приёма + (2 × (ХА�
   const knifeFighter = duel.fighterFromPlayer("k", knifePlayer);
   assert.equal(knifeFighter.skill.scaleStat, "agi", "нож требует ловкость");
   assert.equal(knifeFighter.skillStat, 9, "ХАР ножа — ловкость героя, не интеллект");
-  assert.equal(battle.weaponTechniqueBonus(knifeFighter.skillStat, 2.2), 2 * (9 + 2.2));
-  // Линейно по каждой части: +1 к характеристике даёт +2 урона приёма, как и +1 к множителю.
-  assert.equal(battle.weaponTechniqueBonus(11, 2.4) - battle.weaponTechniqueBonus(10, 2.4), 2);
-  assert.equal(battle.weaponTechniqueBonus(10, 3.4) - battle.weaponTechniqueBonus(10, 2.4), 2);
+  assert.equal(battle.weaponTechniqueBonus(knifeFighter.skillStat, 2.2), (9 * (9 + 2.2)) / 2);
+  // Множитель приёма входит линейно: +1 к нему даёт ХАР / 2 урона приёма (при ХАР 10 — +5).
+  assert.equal(battle.weaponTechniqueBonus(11, 2.4), battle.weaponTechniqueBonus(10, 2.4), "ХАР 11 считается как 10");
+  assert.equal(battle.weaponTechniqueBonus(10, 3.4) - battle.weaponTechniqueBonus(10, 2.4), 5);
 });
 
 test("дуэль: при обоюдной смерти побеждает тот, у кого больше здоровья", () => {

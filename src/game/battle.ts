@@ -1035,7 +1035,7 @@ function skillCd(b: BattleState, base: number) {
   return Math.max(1, base - reduction);
 }
 function skillScaleBonus(b: BattleState) {
-  return effectPower(b, "skill_scale") + (hasPassive(b, "arch_warlock_10") ? 0.8 : 0);
+  return techniqueSkillScale(b.p.effectPower, b.p.passives);
 }
 function skillDamageMult(b: BattleState) {
   return 1 + effectPower(b, "skill_damage") / 100 + passivePower(b, "warlock_pact", "skillDamage") / 100 +
@@ -1046,13 +1046,20 @@ function skillDamageMult(b: BattleState) {
 export function techniqueDamage(int: number, coefficient = 1): number {
   return statTechniqueDamage(int) * coefficient;
 }
+/** Добавка «бонус навыков» к множителю приёма: свойство предметов и арх. чернокнижника 10. */
+export function techniqueSkillScale(effectPower: Partial<Record<GearEffectId, number>>, passives: readonly string[]): number {
+  return (effectPower.skill_scale ?? 0) + (passives.includes("arch_warlock_10") ? 0.8 : 0);
+}
+/** Предел ХАР в формуле бонуса приёма оружия. */
+export const TECHNIQUE_STAT_CAP = 10;
 /**
  * Бонус приёма оружия, который добавляется к урону оружия:
- * урон приёма + 2 × (ХАР + множитель приёма + бонус навыков).
- * ХАР — характеристика, которую требует предмет (СИЛ, ЛОВ или ИНТ).
+ * урон приёма + (ХАР × (ХАР + множитель приёма + бонус навыков)) / 2.
+ * ХАР — характеристика, которую требует предмет (СИЛ, ЛОВ или ИНТ), но не больше 10.
  */
 export function weaponTechniqueBonus(stat: number, scaleMult: number, skillScale = 0): number {
-  return 2 * (stat + scaleMult + skillScale);
+  const x = Math.min(stat, TECHNIQUE_STAT_CAP);
+  return (x * (x + scaleMult + skillScale)) / 2;
 }
 function rageBonus(b: BattleState): number {
   const steps = Math.min(10, Math.floor(missingHpRatio(b) * 10));
