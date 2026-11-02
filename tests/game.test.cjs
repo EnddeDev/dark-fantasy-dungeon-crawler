@@ -3280,6 +3280,21 @@ function withSeededRandom(seed, fn) {
   }
 }
 
+test("созданный свиток льда несёт стихию льда: конструкт получает уязвимость", () => {
+  /* Свиток сотворения при значении 0.6 создаёт и читает ледяные оковы (индекс 2 из 4). */
+  const cast = (race) => {
+    const b = monsterBattle(race, "strong", ["attack"], { player: { bag: { scroll_creation: 1 }, stats: { str: 2, agi: 1, int: 5 } } });
+    b.enemy.hp = 400;
+    const after = withRandom(() => battle.playerAct(b, { type: "item", id: "scroll_creation" }), 0.6);
+    assert.equal(after.enemy.statuses.chill, 3, "должен сработать свиток ледяных оков");
+    return 400 - after.enemy.hp;
+  };
+  const plain = cast("none");
+  const construct = cast("construct");
+  assert.ok(plain > 0, "обычная тварь получает урон");
+  assert.ok(Math.abs(construct / plain - monsters.ELEMENT_WEAKNESS_MULT) < 0.05, `уязвимость ×1.5: ${plain} → ${construct}`);
+});
+
 function withRandom(fn, value = 0.5) {
   const rnd = Math.random;
   Math.random = () => value;
