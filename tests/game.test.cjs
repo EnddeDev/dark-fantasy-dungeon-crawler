@@ -322,6 +322,45 @@ test("loot tables follow the stated percentages and scale with monster level", (
   assert.equal(content.lootCategoryForRoll(normal, 0.95), "gear");
 });
 
+test("золото подземелья приходит вполовину", () => {
+  assert.equal(content.DUNGEON_GOLD_SHARE, 0.5);
+  assert.equal(content.dungeonGold(30), 15);
+  assert.equal(content.dungeonGold(41), 20);
+  assert.equal(content.dungeonGold(1), 1);
+  assert.equal(content.dungeonGold(0), 1, "минимум одна монета");
+
+  /* С монстра: прежний потолок 14 + 6 × уровень урезан вдвое. */
+  const rng = lcg(77);
+  let seen = 0;
+  for (let level = 1; level <= 10; level++) {
+    for (let i = 0; i < 400; i++) {
+      const drop = content.rollEnemyLoot(level, level, "normal", rng);
+      if (!drop.gold) continue;
+      seen++;
+      assert.ok(drop.gold >= 1, `золото ${drop.gold} меньше монеты`);
+      assert.ok(drop.gold <= Math.floor((14 + level * 6) / 2), `золото ${drop.gold} выше половины при уровне ${level}`);
+    }
+  }
+  assert.ok(seen > 200, `золото должно выпадать, найдено ${seen}`);
+});
+
+test("события карты тоже отдают вдвое меньше золота", () => {
+  const world = loadGameModule("world");
+  let positives = 0;
+  for (const event of world.MAP_EVENTS) {
+    for (const choice of event.choices) {
+      for (const outcome of [choice.good, choice.bad]) {
+        for (const effect of outcome ?? []) {
+          if (effect.k !== "gold" || effect.v <= 0) continue;
+          assert.ok(effect.v <= 55, `событие ${event.id}: +${effect.v} золота больше половины прежнего максимума`);
+          positives++;
+        }
+      }
+    }
+  }
+  assert.ok(positives >= 5, `событий с золотом: ${positives}`);
+});
+
 test("качество добычи с монстров: 5/15/25 редкое, легендарного нет", () => {
   assert.deepEqual(content.rarityWeightsFor("normal"), { common: 95, rare: 5, epic: 0, legendary: 0 });
   assert.deepEqual(content.rarityWeightsFor("horror"), { common: 84, rare: 15, epic: 1, legendary: 0 });

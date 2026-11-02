@@ -1,5 +1,5 @@
 import { derived, newBattle, rollConsumableLoot, rollGearDrop } from "../game/battle";
-import { CHEST_RARITY_WEIGHTS } from "../game/content";
+import { CHEST_RARITY_WEIGHTS, DUNGEON_GOLD_SHARE, dungeonGold } from "../game/content";
 import { biomeHealingAmount, mazeBiome } from "../game/biomes";
 import { GEAR_BASES, ITEMS, REAGENTS, consumableIntReq, consumablePower, equipItem, grantXp, pick, randInt, scaledGearStats, unequipSlot } from "../game/content";
 import { rollStepEvent } from "../game/events";
@@ -418,7 +418,8 @@ export class DungeonController {
 
     if (m.chests.includes(idx) && !m.openedChests.includes(idx)) {
       const raw = 35 + Math.floor(Math.random() * 46);
-      const gold = Math.round((raw * (1 + (r.floor - 1) * 0.6)) / 5) * 5;
+      /* Золото подземелья урезано вдвое: множитель применяем до округления до пяти. */
+      const gold = Math.round((raw * DUNGEON_GOLD_SHARE * (1 + (r.floor - 1) * 0.6)) / 5) * 5;
       const items = rollConsumableLoot(r.floor, Math.random() < 0.55 ? 2 : 1);
       const droppedGear = rollGearDrop(r.floor, CHEST_RARITY_WEIGHTS);
       const chestXp = 6 + r.floor * 3;
@@ -496,7 +497,7 @@ export class DungeonController {
     const event = rollStepEvent(knownPath);
     if (event === "find") {
       if (Math.random() < 0.5) {
-        const foundGold = randInt(5 + r.floor * 2, 12 + r.floor * 4);
+        const foundGold = dungeonGold(randInt(5 + r.floor * 2, 12 + r.floor * 4));
         r.gold += foundGold;
         r.log.push(`Среди камней найдены ${foundGold} золотых монет.`);
         commitPlayer();
