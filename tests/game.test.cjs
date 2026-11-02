@@ -1465,7 +1465,6 @@ test("knives are always light and every knife/rapier technique scales from Agili
       const factor = Math.pow(1.17, (item.level ?? 1) - 1);
       assert.ok(ws.scaleMult >= 1.5 * factor - 0.02 && ws.scaleMult <= 2.5 * factor + 0.02);
       assert.ok(ws.desc.includes("ЛОВ × (ЛОВ + "), ws.desc);
-      assert.ok(ws.passiveNote.includes("×ЛОВ"), ws.passiveNote);
       assert.ok(!ws.desc.includes("×ИНТ") && !ws.desc.includes("×СИЛ"));
     }
   }
@@ -1484,7 +1483,6 @@ test("weapon technique descriptions show the bonus formula with the actual multi
         assert.ok(ws.desc.includes(`${short} × (${short} + ${ws.scaleMult} + бонус навыков) / 2`), `${baseId}/${skillId}: ${ws.desc}`);
         assert.ok(!/\d×(СИЛ|ЛОВ|ИНТ)/.test(ws.desc), `старый множитель «N×СТАТ» не должен остаться: ${ws.desc}`);
       }
-      assert.ok(ws.passiveNote.includes(`×${short}`), ws.passiveNote);
       const baseRange = ws.scaleStat === "int" ? [2, 4.5] : ws.scaleStat === "str" ? [1.5, 3.5] : [1.5, 2.5];
       assert.ok(ws.scaleMult >= baseRange[0], `${baseId}/${skillId}: ${ws.scaleMult}`);
     }

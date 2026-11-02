@@ -82,7 +82,6 @@ export const EXTRA_GEAR: GearBaseDef[] = [
       id: "cleave_double", name: "Рассечение надвое", intReq: 4, cooldown: 3,
       scaleStat: "str", scaleMult: 2.6, effect: "sunder",
       desc: "Двуручный взмах: урон оружия + 2.6×СИЛ, броня врага −3.",
-      passiveNote: "При ИНТ ≥ 4 обычные удары получают +0.9×СИЛ.",
     },
   }),
   G({
@@ -94,7 +93,6 @@ export const EXTRA_GEAR: GearBaseDef[] = [
       id: "long_reach", name: "Дальний выпад", intReq: 3, cooldown: 2,
       scaleStat: "agi", scaleMult: 2.2, effect: "pierce",
       desc: "Выпад с дистанции: урон оружия + 2.2×ЛОВ, игнорирует броню.",
-      passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.8×ЛОВ.",
     },
   }),
   G({
@@ -106,7 +104,6 @@ export const EXTRA_GEAR: GearBaseDef[] = [
       id: "quake", name: "Толчок", intReq: 5, cooldown: 3,
       scaleStat: "str", scaleMult: 3.0, effect: "stun",
       desc: "Удар в землю: урон оружия + 3.0×СИЛ и враг теряет ход.",
-      passiveNote: "При ИНТ ≥ 5 обычные удары получают +1.1×СИЛ.",
     },
   }),
 
@@ -120,7 +117,6 @@ export const EXTRA_GEAR: GearBaseDef[] = [
       id: "offhand_riposte", name: "Подхват", intReq: 3, cooldown: 2,
       scaleStat: "agi", scaleMult: 1.6, effect: "pierce",
       desc: "Второй удар наотмашь: +1.6×ЛОВ сквозь броню.",
-      passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.6×ЛОВ.",
     },
   }),
   G({
@@ -272,7 +268,6 @@ export const EXTRA_GEAR: GearBaseDef[] = [
       id: "ash_spark", name: "Пепельная искра", intReq: 3, cooldown: 2,
       scaleStat: "int", scaleMult: 2.2, effect: "chill",
       desc: "Взмах палочки: урон оружия + 2.2×ИНТ магией сквозь броню и озноб на 2 раунда.",
-      passiveNote: "При ИНТ ≥ 3 обычные удары палочкой получают +0.8×ИНТ.",
     },
   }),
 ];

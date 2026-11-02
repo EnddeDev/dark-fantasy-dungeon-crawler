@@ -446,7 +446,6 @@ export interface WeaponSkillDef {
     | "guaranteed_crit" | "first_strike" | "debuff_damage" | "dodge_action"
     | "skill_leech" | "curse_brand" | "create_scroll" | "full_guard" | "buff_break";
   desc: string;
-  passiveNote: string;
   /** Приём магический: урон считается магическим (посох и волшебная палочка). */
   magic?: boolean;
 }
@@ -514,7 +513,6 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
       scaleMult: 1.5,
       effect: "bleed",
       desc: "Урон оружия + 1.5×ЛОВ и глубокое кровотечение врагу (4 урона/раунд, 3 раунда).",
-      passiveNote: "При ИНТ ≥ 2 обычные удары получают +0.5×ЛОВ к урону.",
     },
   },
   rapier: {
@@ -537,7 +535,6 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
       scaleMult: 2.4,
       effect: "pierce",
       desc: "Точный выпад: урон оружия + 2.4×ЛОВ дополнительного урона, полностью игнорирует броню.",
-      passiveNote: "При ИНТ ≥ 3 обычные удары рапирой получают +0.8×ЛОВ доп. урона.",
     },
   },
   sword: {
@@ -560,7 +557,6 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
       scaleMult: 1.6,
       effect: "guard",
       desc: "Рубящий удар + 1.6×СИЛ и мгновенный переход в Защиту (входящий урон вдвое меньше).",
-      passiveNote: "При ИНТ ≥ 3 обычные удары мечом получают +0.6×СИЛ доп. урона.",
     },
   },
   staff: {
@@ -583,7 +579,6 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
       scaleMult: 2.5,
       effect: "chill",
       desc: "Удар посохом с выбросом разума (+2.5×ИНТ урона сквозь броню) и ослаблением врага на 2 раунда.",
-      passiveNote: "При ИНТ ≥ 3 обычные удары посохом получают +0.9×ИНТ доп. урона.",
     },
   },
   axe: {
@@ -606,7 +601,6 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
       scaleMult: 2.0,
       effect: "sunder",
       desc: "Сокрушительный удар (+2.0×СИЛ урона), раскалывающий броню врага на −2 до конца боя.",
-      passiveNote: "При ИНТ ≥ 4 обычные удары топором получают +0.7×СИЛ доп. урона.",
     },
   },
   hammer: {
@@ -629,7 +623,6 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
       scaleMult: 2.4,
       effect: "stun",
       desc: "Тяжёлый удар (+2.4×СИЛ), оглушающий врага: он теряет 1 ход в следующем раунде.",
-      passiveNote: "При ИНТ ≥ 5 обычные удары молотом получают +0.9×СИЛ доп. урона.",
     },
   },
   abyss: {
@@ -652,7 +645,6 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
       scaleMult: 2.8,
       effect: "leech",
       desc: "Разрез сквозь броню (+2.8×ИНТ урона), похищающий 40% нанесённого урона в здоровье.",
-      passiveNote: "При ИНТ ≥ 6 обычные удары клинком получают +1.0×ИНТ доп. урона.",
     },
   },
 
@@ -1147,14 +1139,14 @@ const ARCHETYPE_GEAR: GearBaseDef[] = [
     dmg: [6, 10], armor: 1, hp: 12, price: 420, level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 80,
     desc: "Короткая булава для боя за щитом. Чем тяжелее доспех, тем страшнее её ответ.",
     preferredEpic: "ash_aegis",
-    weaponSkill: { id: "bulwark_answer", name: "Ответ бастиона", intReq: 3, cooldown: 2, scaleStat: "str", scaleMult: 2.0, effect: "armor_damage", desc: "Удар щитом и булавой: урон оружия + 2.0×СИЛ и +50% брони к урону; включает Защиту.", passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.7×СИЛ." },
+    weaponSkill: { id: "bulwark_answer", name: "Ответ бастиона", intReq: 3, cooldown: 2, scaleStat: "str", scaleMult: 2.0, effect: "armor_damage", desc: "Удар щитом и булавой: урон оружия + 2.0×СИЛ и +50% брони к урону; включает Защиту." },
   },
   {
     id: "barbarian_greataxe", name: "Секира кровавого обета", slot: "mainHand", hands: 2, gearClass: "heavy", stat: "str", archetype: "barbarian",
     dmg: [24, 39], hp: 26, price: 760, level: 5, minFloor: 5, idIntReq: 5, idGoldCost: 120,
     desc: "Двуручная секира втрое тяжелее одноручного топора. Не защищает — заставляет бить первым и последним.",
     preferredEpic: "blood_lance",
-    weaponSkill: { id: "blood_reckoning", name: "Кровавый расчёт", intReq: 4, cooldown: 3, scaleStat: "str", scaleMult: 3.0, effect: "missing_hp", desc: "Урон оружия + 3.0×СИЛ; за каждые 10% недостающего здоровья +6% урона (до 60%).", passiveNote: "При ИНТ ≥ 4 обычные удары получают +1.1×СИЛ." },
+    weaponSkill: { id: "blood_reckoning", name: "Кровавый расчёт", intReq: 4, cooldown: 3, scaleStat: "str", scaleMult: 3.0, effect: "missing_hp", desc: "Урон оружия + 3.0×СИЛ; за каждые 10% недостающего здоровья +6% урона (до 60%)." },
   },
   {
     id: "blood_hide", name: "Шкура кровавого зверя", slot: "body", gearClass: "medium", stat: "str", archetype: "barbarian",
@@ -1167,28 +1159,28 @@ const ARCHETYPE_GEAR: GearBaseDef[] = [
     dmg: [5, 8], price: 480, level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 85,
     desc: "Тонкий клинок для первого удара. В начале боя находит щель в любой броне.",
     preferredEpic: "shadow_volley",
-    weaponSkill: { id: "death_mark", name: "Метка смерти", intReq: 3, cooldown: 3, scaleStat: "agi", scaleMult: 2.2, effect: "guaranteed_crit", desc: "Урон оружия + 2.2×ЛОВ; в первые 2 раунда крит гарантирован.", passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.8×ЛОВ." },
+    weaponSkill: { id: "death_mark", name: "Метка смерти", intReq: 3, cooldown: 3, scaleStat: "agi", scaleMult: 2.2, effect: "guaranteed_crit", desc: "Урон оружия + 2.2×ЛОВ; в первые 2 раунда крит гарантирован." },
   },
   {
     id: "ninja_kusarigama", name: "Кусаригама тени", slot: "mainHand", gearClass: "light", stat: "agi", archetype: "ninja",
     dmg: [5, 7], price: 460, level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 85,
     desc: "Серп на цепи. Не сильнее меча, но оставляет руку свободной для порохов и ядов.",
     preferredEpic: "shadow_volley",
-    weaponSkill: { id: "shadow_snare", name: "Теневой захват", intReq: 3, cooldown: 2, scaleStat: "agi", scaleMult: 1.8, effect: "debuff_damage", desc: "Урон оружия + 1.8×ЛОВ; +10% урона за каждый негативный эффект на враге (до 40%).", passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.6×ЛОВ." },
+    weaponSkill: { id: "shadow_snare", name: "Теневой захват", intReq: 3, cooldown: 2, scaleStat: "agi", scaleMult: 1.8, effect: "debuff_damage", desc: "Урон оружия + 1.8×ЛОВ; +10% урона за каждый негативный эффект на враге (до 40%)." },
   },
   {
     id: "warlock_scepter", name: "Скипетр тёмного пакта", slot: "mainHand", gearClass: "light", stat: "int", archetype: "warlock",
     dmg: [6, 9], price: 540, level: 4, minFloor: 4, idIntReq: 5, idGoldCost: 100,
     desc: "Не для удара — для печати. Каждый приём возвращает часть крови владельца.",
     preferredEpic: "fireball",
-    weaponSkill: { id: "pact_drain", name: "Отток пакта", intReq: 4, cooldown: 2, scaleStat: "int", scaleMult: 3.0, effect: "skill_leech", desc: "Урон оружия + 3.0×ИНТ сквозь броню; лечит на 25% нанесённого урона и сокращает откат этого приёма на 1.", passiveNote: "При ИНТ ≥ 4 обычные удары получают +1.1×ИНТ." },
+    weaponSkill: { id: "pact_drain", name: "Отток пакта", intReq: 4, cooldown: 2, scaleStat: "int", scaleMult: 3.0, effect: "skill_leech", desc: "Урон оружия + 3.0×ИНТ сквозь броню; лечит на 25% нанесённого урона и сокращает откат этого приёма на 1." },
   },
   {
     id: "sage_censer", name: "Кадило живого слова", slot: "mainHand", gearClass: "light", stat: "int", archetype: "sage",
     dmg: [5, 8], price: 560, level: 4, minFloor: 4, idIntReq: 5, idGoldCost: 100,
     desc: "Дым от кадла складывается в строки. Мудрец творит свитки прямо в бою.",
     preferredEpic: "ash_aegis",
-    weaponSkill: { id: "word_creation", name: "Слово творения", intReq: 4, cooldown: 3, scaleStat: "int", scaleMult: 2.4, effect: "create_scroll", desc: "Урон оружия + 2.4×ИНТ; создаёт 1 случайный свиток и сразу применяет его без траты хода.", passiveNote: "При ИНТ ≥ 4 обычные удары получают +0.8×ИНТ." },
+    weaponSkill: { id: "word_creation", name: "Слово творения", intReq: 4, cooldown: 3, scaleStat: "int", scaleMult: 2.4, effect: "create_scroll", desc: "Урон оружия + 2.4×ИНТ; создаёт 1 случайный свиток и сразу применяет его без траты хода." },
   },
 ];
 
@@ -1211,7 +1203,6 @@ const EXTRA_TECHNIQUES: WeaponSkillDef[] = [
     scaleMult: 1.8,
     effect: "pierce",
     desc: "Короткий укол сквозь броню: урон оружия + 1.8×ЛОВ.",
-    passiveNote: "При ИНТ ≥ 2 обычные удары получают +0.6×ЛОВ к урону.",
   },
   {
     id: "venom_edge",
@@ -1222,7 +1213,6 @@ const EXTRA_TECHNIQUES: WeaponSkillDef[] = [
     scaleMult: 1.4,
     effect: "poison",
     desc: "Режущий удар + 1.4×ЛОВ и отравление живой цели на 3 раунда.",
-    passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.5×ЛОВ к урону.",
   },
   {
     id: "disarming_thrust",
@@ -1233,7 +1223,6 @@ const EXTRA_TECHNIQUES: WeaponSkillDef[] = [
     scaleMult: 1.7,
     effect: "sunder",
     desc: "Выпад + 1.7×ЛОВ, раскалывающий броню врага на −2.",
-    passiveNote: "При ИНТ ≥ 3 обычные удары рапирой получают +0.7×ЛОВ к урону.",
   },
   {
     id: "duelist_guard",
@@ -1244,7 +1233,6 @@ const EXTRA_TECHNIQUES: WeaponSkillDef[] = [
     scaleMult: 1.9,
     effect: "guard",
     desc: "Укол + 1.9×ЛОВ и переход в Защиту до следующего хода.",
-    passiveNote: "При ИНТ ≥ 4 обычные удары рапирой получают +0.8×ЛОВ к урону.",
   },
   {
     id: "sweeping_cut",
@@ -1255,7 +1243,6 @@ const EXTRA_TECHNIQUES: WeaponSkillDef[] = [
     scaleMult: 1.5,
     effect: "bleed",
     desc: "Широкий взмах + 1.5×СИЛ и кровотечение на 3 раунда.",
-    passiveNote: "При ИНТ ≥ 3 обычные удары мечом получают +0.6×СИЛ к урону.",
   },
   {
     id: "ward_shatter",
@@ -1266,7 +1253,6 @@ const EXTRA_TECHNIQUES: WeaponSkillDef[] = [
     scaleMult: 1.9,
     effect: "buff_break",
     desc: "Урон оружия + 1.9×СИЛ и истощение на 2 хода: положительные эффекты врага гаснут.",
-    passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.7×СИЛ.",
   },
   {
     id: "ward_slice",
@@ -1277,7 +1263,6 @@ const EXTRA_TECHNIQUES: WeaponSkillDef[] = [
     scaleMult: 1.7,
     effect: "buff_break",
     desc: "Точный порез + 1.7×ЛОВ сквозь броню и истощение на 2 хода: эффекты врага гаснут.",
-    passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.6×ЛОВ.",
   },
   {
     id: "ward_unravel",
@@ -1288,7 +1273,6 @@ const EXTRA_TECHNIQUES: WeaponSkillDef[] = [
     scaleMult: 1.8,
     effect: "buff_break",
     desc: "Разряд + 1.8×ИНТ сквозь броню и истощение на 2 хода: эффекты врага гаснут.",
-    passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.6×ИНТ.",
   },
   {
     id: "sundering_blade",
@@ -1299,7 +1283,6 @@ const EXTRA_TECHNIQUES: WeaponSkillDef[] = [
     scaleMult: 1.9,
     effect: "sunder",
     desc: "Тяжёлый рубящий удар + 1.9×СИЛ, снижающий броню врага на −2.",
-    passiveNote: "При ИНТ ≥ 4 обычные удары мечом получают +0.7×СИЛ к урону.",
   },
   {
     id: "ember_strike",
@@ -1310,7 +1293,6 @@ const EXTRA_TECHNIQUES: WeaponSkillDef[] = [
     scaleMult: 2.2,
     effect: "bleed",
     desc: "Разряд посоха + 2.2×ИНТ и горение врага на 3 раунда.",
-    passiveNote: "При ИНТ ≥ 3 обычные удары посохом получают +0.8×ИНТ к урону.",
   },
   {
     id: "warding_strike",
@@ -1321,7 +1303,6 @@ const EXTRA_TECHNIQUES: WeaponSkillDef[] = [
     scaleMult: 1.8,
     effect: "guard",
     desc: "Удар + 1.8×ИНТ и Защитная стойка до следующего хода.",
-    passiveNote: "При ИНТ ≥ 4 обычные удары посохом получают +0.9×ИНТ к урону.",
   },
   {
     id: "reckless_swing",
@@ -1332,7 +1313,6 @@ const EXTRA_TECHNIQUES: WeaponSkillDef[] = [
     scaleMult: 2.3,
     effect: "stun",
     desc: "Мощный замах + 2.3×СИЛ, оглушающий врага на 1 ход.",
-    passiveNote: "При ИНТ ≥ 4 обычные удары топором получают +0.8×СИЛ к урону.",
   },
   {
     id: "rending_axe",
@@ -1343,7 +1323,6 @@ const EXTRA_TECHNIQUES: WeaponSkillDef[] = [
     scaleMult: 1.8,
     effect: "bleed",
     desc: "Рубящий удар + 1.8×СИЛ и кровотечение на 3 раунда.",
-    passiveNote: "При ИНТ ≥ 4 обычные удары топором получают +0.7×СИЛ к урону.",
   },
   {
     id: "crushing_blow",
@@ -1354,7 +1333,6 @@ const EXTRA_TECHNIQUES: WeaponSkillDef[] = [
     scaleMult: 2.7,
     effect: "sunder",
     desc: "Удар молотом + 2.7×СИЛ, раскалывающий броню на −3.",
-    passiveNote: "При ИНТ ≥ 5 обычные удары молотом получают +1.0×СИЛ к урону.",
   },
   {
     id: "bulwark_smash",
@@ -1365,7 +1343,6 @@ const EXTRA_TECHNIQUES: WeaponSkillDef[] = [
     scaleMult: 2.0,
     effect: "guard",
     desc: "Размашистый удар + 2.0×СИЛ и переход в Защиту.",
-    passiveNote: "При ИНТ ≥ 5 обычные удары молотом получают +0.9×СИЛ к урону.",
   },
   {
     id: "shadow_rend",
@@ -1376,7 +1353,6 @@ const EXTRA_TECHNIQUES: WeaponSkillDef[] = [
     scaleMult: 2.6,
     effect: "pierce",
     desc: "Теневой выпад + 2.6×ЛОВ, полностью игнорирующий броню.",
-    passiveNote: "При ИНТ ≥ 6 обычные удары клинком получают +1.0×ЛОВ к урону.",
   },
   {
     id: "soul_drink",
@@ -1387,23 +1363,22 @@ const EXTRA_TECHNIQUES: WeaponSkillDef[] = [
     scaleMult: 2.4,
     effect: "leech",
     desc: "Удар + 2.4×СИЛ, похищающий 40% нанесённого урона в здоровье.",
-    passiveNote: "При ИНТ ≥ 7 обычные удары клинком получают +1.0×СИЛ к урону.",
   },
 ];
 
 const ARCHETYPE_TECHNIQUES: WeaponSkillDef[] = [
-  { id: "bulwark_wall", name: "Стена щитов", intReq: 3, cooldown: 3, scaleStat: "str", scaleMult: 1.6, effect: "guard_wall", desc: "Урон оружия + 1.6×СИЛ; Защита на 2 хода и +4 брони до конца боя.", passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.6×СИЛ." },
-  { id: "bulwark_verdict", name: "Приговор лат", intReq: 4, cooldown: 2, scaleStat: "str", scaleMult: 2.2, effect: "armor_damage", desc: "Урон оружия + 2.2×СИЛ и +75% брони к урону.", passiveNote: "При ИНТ ≥ 4 обычные удары получают +0.8×СИЛ." },
-  { id: "rage_sweep", name: "Яростный размах", intReq: 4, cooldown: 3, scaleStat: "str", scaleMult: 2.4, effect: "double_attack", desc: "Два обычных удара подряд без дополнительного бонуса; каждый отдельно бросает крит, оглушение и эффекты от удара.", passiveNote: "При ИНТ ≥ 4 обычные удары получают +0.8×СИЛ." },
-  { id: "skull_split", name: "Раскол черепа", intReq: 5, cooldown: 3, scaleStat: "str", scaleMult: 3.2, effect: "enemy_missing", desc: "Урон оружия + 3.2×СИЛ; за каждые 10% недостающего здоровья врага +6% урона (до 60%).", passiveNote: "При ИНТ ≥ 5 обычные удары получают +1.1×СИЛ." },
-  { id: "twin_fangs", name: "Парные клыки", intReq: 3, cooldown: 2, scaleStat: "agi", scaleMult: 1.7, effect: "double_attack", desc: "Два обычных удара подряд без дополнительного бонуса; каждый отдельно бросает крит, оглушение и эффекты от удара.", passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.6×ЛОВ." },
-  { id: "opening_strike", name: "Удар открытия", intReq: 4, cooldown: 3, scaleStat: "agi", scaleMult: 2.4, effect: "first_strike", desc: "Урон оружия + 2.4×ЛОВ; в первые 2 раунда урон приёма удваивается.", passiveNote: "При ИНТ ≥ 4 обычные удары получают +0.8×ЛОВ." },
-  { id: "venom_chain", name: "Ядовитая цепь", intReq: 3, cooldown: 2, scaleStat: "agi", scaleMult: 1.6, effect: "poison", desc: "Урон оружия + 1.6×ЛОВ и отравление на 3 раунда.", passiveNote: "При ИНТ ≥ 3 обычные удары получают +0.6×ЛОВ." },
-  { id: "empty_step", name: "Пустой шаг", intReq: 4, cooldown: 3, scaleStat: "agi", scaleMult: 1.5, effect: "dodge_action", desc: "Урон оружия + 1.5×ЛОВ; следующая атака врага полностью ускользает, а в следующем раунде +1 ход.", passiveNote: "При ИНТ ≥ 4 обычные удары получают +0.5×ЛОВ." },
-  { id: "curse_brand", name: "Печать проклятия", intReq: 4, cooldown: 3, scaleStat: "int", scaleMult: 2.6, effect: "curse_brand", desc: "Урон оружия + 2.6×ИНТ; проклятие и холод на 3 раунда.", passiveNote: "При ИНТ ≥ 4 обычные удары получают +0.9×ИНТ." },
-  { id: "soul_reprise", name: "Реприза души", intReq: 5, cooldown: 4, scaleStat: "int", scaleMult: 3.4, effect: "skill_leech", desc: "Урон оружия + 3.4×ИНТ сквозь броню; лечит на 35% урона и сокращает откат на 2.", passiveNote: "При ИНТ ≥ 5 обычные удары получают +1.2×ИНТ." },
-  { id: "warding_word", name: "Слово защиты", intReq: 4, cooldown: 4, scaleStat: "int", scaleMult: 2.0, effect: "full_guard", desc: "Урон оружия + 2.0×ИНТ; полная защита от урона на 2 хода.", passiveNote: "При ИНТ ≥ 4 обычные удары получают +0.7×ИНТ." },
-  { id: "scroll_tempest", name: "Буря свитков", intReq: 5, cooldown: 4, scaleStat: "int", scaleMult: 2.8, effect: "create_scroll", desc: "Урон оружия + 2.8×ИНТ; создаёт 2 случайных свитка и сразу применяет один.", passiveNote: "При ИНТ ≥ 5 обычные удары получают +1.0×ИНТ." },
+  { id: "bulwark_wall", name: "Стена щитов", intReq: 3, cooldown: 3, scaleStat: "str", scaleMult: 1.6, effect: "guard_wall", desc: "Урон оружия + 1.6×СИЛ; Защита на 2 хода и +4 брони до конца боя." },
+  { id: "bulwark_verdict", name: "Приговор лат", intReq: 4, cooldown: 2, scaleStat: "str", scaleMult: 2.2, effect: "armor_damage", desc: "Урон оружия + 2.2×СИЛ и +75% брони к урону." },
+  { id: "rage_sweep", name: "Яростный размах", intReq: 4, cooldown: 3, scaleStat: "str", scaleMult: 2.4, effect: "double_attack", desc: "Два обычных удара подряд без дополнительного бонуса; каждый отдельно бросает крит, оглушение и эффекты от удара." },
+  { id: "skull_split", name: "Раскол черепа", intReq: 5, cooldown: 3, scaleStat: "str", scaleMult: 3.2, effect: "enemy_missing", desc: "Урон оружия + 3.2×СИЛ; за каждые 10% недостающего здоровья врага +6% урона (до 60%)." },
+  { id: "twin_fangs", name: "Парные клыки", intReq: 3, cooldown: 2, scaleStat: "agi", scaleMult: 1.7, effect: "double_attack", desc: "Два обычных удара подряд без дополнительного бонуса; каждый отдельно бросает крит, оглушение и эффекты от удара." },
+  { id: "opening_strike", name: "Удар открытия", intReq: 4, cooldown: 3, scaleStat: "agi", scaleMult: 2.4, effect: "first_strike", desc: "Урон оружия + 2.4×ЛОВ; в первые 2 раунда урон приёма удваивается." },
+  { id: "venom_chain", name: "Ядовитая цепь", intReq: 3, cooldown: 2, scaleStat: "agi", scaleMult: 1.6, effect: "poison", desc: "Урон оружия + 1.6×ЛОВ и отравление на 3 раунда." },
+  { id: "empty_step", name: "Пустой шаг", intReq: 4, cooldown: 3, scaleStat: "agi", scaleMult: 1.5, effect: "dodge_action", desc: "Урон оружия + 1.5×ЛОВ; следующая атака врага полностью ускользает, а в следующем раунде +1 ход." },
+  { id: "curse_brand", name: "Печать проклятия", intReq: 4, cooldown: 3, scaleStat: "int", scaleMult: 2.6, effect: "curse_brand", desc: "Урон оружия + 2.6×ИНТ; проклятие и холод на 3 раунда." },
+  { id: "soul_reprise", name: "Реприза души", intReq: 5, cooldown: 4, scaleStat: "int", scaleMult: 3.4, effect: "skill_leech", desc: "Урон оружия + 3.4×ИНТ сквозь броню; лечит на 35% урона и сокращает откат на 2." },
+  { id: "warding_word", name: "Слово защиты", intReq: 4, cooldown: 4, scaleStat: "int", scaleMult: 2.0, effect: "full_guard", desc: "Урон оружия + 2.0×ИНТ; полная защита от урона на 2 хода." },
+  { id: "scroll_tempest", name: "Буря свитков", intReq: 5, cooldown: 4, scaleStat: "int", scaleMult: 2.8, effect: "create_scroll", desc: "Урон оружия + 2.8×ИНТ; создаёт 2 случайных свитка и сразу применяет один." },
 ];
 
 export const WEAPON_TECHNIQUES: Record<string, WeaponSkillDef> = Object.fromEntries([
@@ -1468,11 +1443,9 @@ export function weaponSkillFor(item: GearItem | null | undefined): WeaponSkillDe
   const intReq = techniqueIntReq(level, scaleStat);
   const short = STAT_META[scaleStat].short;
   const desc = techniqueDescText(raw, scaleMult, short);
-  const passiveBonus = scaleMultByLevel(baseMult * 0.35, level);
-  const passiveNote = `При ИНТ ≥ ${intReq} обычные удары получают +${passiveBonus.toFixed(2)}×${short} к урону.`;
   /* Посох и волшебная палочка бьют приёмами магией, а не сталью. */
   const magic = weaponTypeOfBase(item) === "staff" || weaponTypeOfBase(item) === "wand";
-  return { ...raw, level, scaleStat, scaleMult, intReq, desc, passiveNote, magic };
+  return { ...raw, level, scaleStat, scaleMult, intReq, desc, magic };
 }
 
 /**
