@@ -1,4 +1,4 @@
-import { derived, techniqueDamage } from "./battle";
+import { derived, weaponTechniqueBonus } from "./battle";
 import type { Player } from "./types";
 
 /**
@@ -186,9 +186,8 @@ export function duelAction(state0: DuelState, side: DuelSide, action: DuelAction
         state.log.push(`${actor.name} пытается применить приём, но не хватает условий.`);
         break;
       }
-      /* Урон приёма считается той же формулой, что и в подземелье: основа от
-         Интеллекта, множитель — из самого приёма. */
-      const bonus = Math.round(techniqueDamage(actor.intStat, actor.skill.scaleMult));
+      /* Бонус приёма считается той же формулой, что и в подземелье: 2 × (ИНТ + множитель приёма). */
+      const bonus = Math.round(weaponTechniqueBonus(actor.intStat, actor.skill.scaleMult));
       const { dmg, text } = strike(actor, target, bonus, `приём «${actor.skill.name}»`);
       target.hp -= dmg;
       actor.cooldown = actor.skill.cooldown;

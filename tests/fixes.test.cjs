@@ -119,11 +119,19 @@ test("дуэль: приём бьёт той же формулой, что и в
   const state = { id: "d1", a, b, turn: "a", round: 1, apLeft: 4, winner: null, log: [], deadline: Date.now() + 20_000, seq: 0 };
   const result = withRandom(0.99, () => duel.duelAction(state, "a", { type: "technique" }, Date.now()));
 
-  const bonus = Math.round(battle.techniqueDamage(a.intStat, a.skill.scaleMult));
+  const bonus = Math.round(battle.weaponTechniqueBonus(a.intStat, a.skill.scaleMult));
   const plainHit = a.hit[1] + a.strFlat;
   const expected = Math.max(1, plainHit + bonus - Math.max(0, b.armor));
   assert.equal(b.hp - result.b.hp, expected, `урон приёма ${b.hp - result.b.hp}, ожидалось ${expected}`);
-  assert.ok(bonus > a.skill.scaleMult * a.intStat * 2, `бонус приёма ${bonus} вырос до формулы подземелья`);
+});
+
+test("бонус приёма оружия: урон приёма + 2 × (ИНТ + множитель приёма + бонус навыков)", () => {
+  assert.equal(battle.weaponTechniqueBonus(10, 2.4), 2 * (10 + 2.4));
+  assert.equal(battle.weaponTechniqueBonus(10, 2.4, 0.8), 2 * (10 + 2.4 + 0.8));
+  assert.equal(battle.weaponTechniqueBonus(0, 0), 0);
+  // Линейно по каждой части: +1 ИНТ даёт +2 урона приёма, как и +1 к множителю.
+  assert.equal(battle.weaponTechniqueBonus(11, 2.4) - battle.weaponTechniqueBonus(10, 2.4), 2);
+  assert.equal(battle.weaponTechniqueBonus(10, 3.4) - battle.weaponTechniqueBonus(10, 2.4), 2);
 });
 
 test("дуэль: при обоюдной смерти побеждает тот, у кого больше здоровья", () => {
