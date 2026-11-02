@@ -23,6 +23,7 @@ const content = load("src/game/content.ts", "content");
 const battle = load("src/game/battle.ts", "battle");
 const duel = load("src/game/duel.ts", "duel");
 const forge = load("src/game/forge.ts", "forge");
+const gearScaling = load("src/game/gearScaling.ts", "gear-scaling");
 const world = load("src/game/world.ts", "world");
 const mazeLib = load("src/game/maze.ts", "maze");
 const types = load("src/game/types.ts", "types");
@@ -365,4 +366,53 @@ test("трофеи, израсходованные в бою, не списыв�
   game.die("проверка штрафа");
   const afterDeath = game.model.getSnapshot();
   assert.equal(afterDeath.player.bag.potion_s, 1, "списан только оставшийся трофей, личное зелье цело");
+});
+
+test("число урона у приёма в меню совпадает с ударом приёма в бою", () => {
+  const cases = [
+    ["knife", { str: 2, agi: 14, int: 4 }],
+    ["sword", { str: 14, agi: 1, int: 4 }],
+    ["staff", { str: 8, agi: 1, int: 14 }],
+    ["barbarian_greataxe", { str: 14, agi: 1, int: 4 }],
+  ];
+  for (const [baseId, stats] of cases) {
+    const item = content.createGearItem({ baseId, level: 5, wear: "worn", rarity: "common", identified: true, rng: () => 0.5 });
+    item.effects = [];
+    item.effectRolls = {};
+    item.passive = undefined;
+    item.legendaryPassive = undefined;
+    const base = PlayerFactory.createInitial();
+    const player = {
+      ...base, level: 6, stats, statPoints: 0, armory: [item], bag: {}, passives: [], archetype: null, statMilestones: {},
+      equip: { ...emptyEquip(), mainHand: item.uid },
+    };
+    player.hp = battle.derived(player).maxHp;
+    // Монстр выбирается при Math.random = 0.5; ход и удар — при 0.99: без уклонения и крита, бросок максимальный.
+    let b = withRandom(0.5, () => battle.newBattle(player, 5, false, "classic", 0, 0));
+    b = withRandom(0.99, () => {
+      let guard = 0;
+      let s = b;
+      while (s.queue[s.idx] !== "p" && guard++ < 20) s = battle.enemyStep(s);
+      return s;
+    });
+    assert.ok(!b.over, `${baseId}: герой погиб до хода`);
+    const readout = battle.combatReadout(b);
+    assert.ok(readout.techMin !== null && readout.techMin <= readout.techMax, `${baseId}: диапазон приёма`);
+    const after = withRandom(0.99, () => battle.playerAct(b, { type: "weapon_skill" }));
+    const hits = after.log
+      .filter((l) => l.text.includes("[Приём:") && l.text.includes("получает"))
+      .map((l) => Number(/получает (\d+) урона/.exec(l.text)[1]));
+    assert.ok(hits.length > 0, `${baseId}: приём не ударил`);
+    const ws = content.weaponSkillFor(item);
+    if (ws.effect === "double_attack") {
+      /* Двойной удар: в меню — сумма всех ударов; бой может оборваться, если враг погиб раньше. */
+      const count = gearScaling.scaleIntegerByLevel(2, ws.level ?? 1);
+      assert.equal(readout.techMax % count, 0, `${baseId}: диапазон делится на число ударов`);
+      assert.equal(hits[0], readout.techMax / count, `${baseId}: один удар в меню ${readout.techMax / count}, в бою ${hits[0]}`);
+      assert.ok(hits.every((n) => n <= readout.techMax / count), `${baseId}: удары не выше превью`);
+    } else {
+      const dealt = hits.reduce((sum, n) => sum + n, 0);
+      assert.equal(dealt, readout.techMax, `${baseId}: в меню ${readout.techMin}–${readout.techMax}, в бою ${dealt}`);
+    }
+  }
 });

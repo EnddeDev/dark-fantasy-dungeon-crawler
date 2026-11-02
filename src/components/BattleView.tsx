@@ -525,8 +525,17 @@ export function BattleView({
                       className="flex items-center justify-between gap-3 border border-line bg-slab2 px-3 py-2 text-left transition-colors enabled:hover:border-flame enabled:hover:bg-flame/10 disabled:opacity-45"
                     >
                       <span>
-                        <span className="block font-display text-[1.02rem] uppercase tracking-[0.1em] text-flamehi">
-                          {ws.name} <span className="font-mono text-[0.82rem] text-mute">({b.p.weaponName})</span>
+                        <span className="flex flex-wrap items-baseline gap-x-2">
+                          <span className="font-display text-[1.02rem] uppercase tracking-[0.1em] text-flamehi">{ws.name}</span>
+                          {r.techMin !== null && r.techMax !== null && (
+                            <span
+                              className="font-mono text-[1rem] tab text-verd"
+                              title="Урон этого приёма по текущему противнику: с учётом его брони и защиты, твоих эффектов и бонуса приёма"
+                            >
+                              урон {r.techMin}–{r.techMax}
+                            </span>
+                          )}
+                          <span className="font-mono text-[0.82rem] text-mute">({b.p.weaponName})</span>
                         </span>
                         <span className="block text-[0.89rem] leading-snug text-mute">{ws.desc}</span>
                       </span>

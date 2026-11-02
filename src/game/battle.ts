@@ -1037,6 +1037,20 @@ function skillCd(b: BattleState, base: number) {
 function skillScaleBonus(b: BattleState) {
   return techniqueSkillScale(b.p.effectPower, b.p.passives);
 }
+/**
+ * Бонус приёма в текущем бою: формула по ХАР и множителю, а затем свойства конкретного приёма
+ * (броня, недостающее здоровье, добивание, мрак, первый удар). Бой и сводка берут одно и то же значение.
+ */
+export function techniqueBonusNow(b: BattleState, ws: WeaponSkillDef): number {
+  let bonus = Math.round(weaponTechniqueBonus(b.p.stats[ws.scaleStat], ws.scaleMult, skillScaleBonus(b)));
+  const eff = ws.effect;
+  if (eff === "armor_damage") bonus += Math.round(b.p.armor * techValue(ws, ws.id === "bulwark_verdict" ? 0.75 : 0.5, 100));
+  if (eff === "missing_hp") bonus = Math.round(bonus * (1 + Math.min(10, Math.floor(missingHpRatio(b) * 10)) * techValue(ws, 0.06, 100)));
+  if (eff === "enemy_missing") bonus = Math.round(bonus * (1 + Math.min(10, Math.floor(enemyMissingRatio(b) * 10)) * techValue(ws, 0.06, 100)));
+  if (eff === "debuff_damage") bonus = Math.round(bonus * (1 + Math.min(4, enemyDebuffCount(b)) * techValue(ws, 0.10, 100)));
+  if (eff === "first_strike" && b.round <= 2) bonus = Math.round(bonus * techValue(ws, 2, 100));
+  return bonus;
+}
 function skillDamageMult(b: BattleState) {
   return 1 + effectPower(b, "skill_damage") / 100 + passivePower(b, "warlock_pact", "skillDamage") / 100 +
     (hasPassive(b, "arch_warlock_5") ? 0.20 : 0) + (b.p.statuses.pactElixir > 0 ? 0.25 : 0) +
@@ -1401,6 +1415,39 @@ function applyVamp(b: BattleState, dealt: number, extraRatio = 0, source: "weapo
   if (heal > 0) push(b, `Похищение жизни: +${heal} здоровья.`, "p");
 }
 
+/**
+ * Урон, который доходит до врага после его брони, защит и эффектов.
+ * Бой и сводка («По противнику», урон приёма) считают одной функцией.
+ */
+export function damageAfterEnemyDefense(b: BattleState, raw: number, kind: "phys" | "magic"): number {
+  let d = raw;
+  if (hasLeg(b, "executioner") && kind !== "phys" && b.enemy.hp <= b.enemy.maxHp * 0.5) {
+    d = Math.round(d * (1 + legPower(b, "executioner", "damage") / 100));
+  }
+  if (kind === "phys") {
+    const pierce = rarePower(b, "pierce", "armor");
+    const effArmor = Math.max(0, b.enemy.armor - pierce - enemyOilArmorCut(b));
+    d -= effArmor;
+    /* Каменная шкура и укрепление рода — врождённые свойства породы,
+       а не эффекты: истощение их не снимает. */
+    if (b.enemy.passive?.id === "stone_hide") d = Math.round(d * 0.75);
+    const fortify = raceFortify(b.enemy.def.race);
+    if (fortify > 0) d = Math.round(d * (1 - fortify));
+    if (!effectsDepleted(b)) d = Math.round(d * (1 - eChance(b, "fortify")));
+  } else if (!effectsDepleted(b)) {
+    d = Math.round(d * (1 - eChance(b, "magic_resist")));
+  }
+  /* Стойка — действие, а не эффект: она режет урон и при истощении. */
+  if (b.enemy.guard) {
+    d = Math.floor(d / 2);
+    const guardBonus = eEffect(b, "guard_bonus") / 100 + raceGuardBonus(b.enemy.def.race);
+    d = Math.round(d * Math.max(0.2, 1 - guardBonus));
+  }
+  if (!effectsDepleted(b)) d -= eEffect(b, "damage_resist");
+  d = Math.max(1, d);
+  return d;
+}
+
 function hitEnemy(
   b: BattleState,
   raw: number,
@@ -1430,31 +1477,7 @@ function hitEnemy(
     push(b, `${b.enemy.def.name} уклоняется от удара.${note}`, "e");
     return 0;
   }
-  let d = raw;
-  if (hasLeg(b, "executioner") && kind !== "phys" && b.enemy.hp <= b.enemy.maxHp * 0.5) {
-    d = Math.round(d * (1 + legPower(b, "executioner", "damage") / 100));
-  }
-  if (kind === "phys") {
-    const pierce = rarePower(b, "pierce", "armor");
-    const effArmor = Math.max(0, b.enemy.armor - pierce - enemyOilArmorCut(b));
-    d -= effArmor;
-    /* Каменная шкура и укрепление рода — врождённые свойства породы,
-       а не эффекты: истощение их не снимает. */
-    if (b.enemy.passive?.id === "stone_hide") d = Math.round(d * 0.75);
-    const fortify = raceFortify(b.enemy.def.race);
-    if (fortify > 0) d = Math.round(d * (1 - fortify));
-    if (!effectsDepleted(b)) d = Math.round(d * (1 - eChance(b, "fortify")));
-  } else if (!effectsDepleted(b)) {
-    d = Math.round(d * (1 - eChance(b, "magic_resist")));
-  }
-  /* Стойка — действие, а не эффект: она режет урон и при истощении. */
-  if (b.enemy.guard) {
-    d = Math.floor(d / 2);
-    const guardBonus = eEffect(b, "guard_bonus") / 100 + raceGuardBonus(b.enemy.def.race);
-    d = Math.round(d * Math.max(0.2, 1 - guardBonus));
-  }
-  if (!effectsDepleted(b)) d -= eEffect(b, "damage_resist");
-  d = Math.max(1, d);
+  const d = damageAfterEnemyDefense(b, raw, kind);
   b.enemy.hp -= d;
   flash(b, "e", "hit", d);
   push(b, `${b.enemy.def.name} получает ${d} урона.${note}`, "p", element);
@@ -2031,13 +2054,8 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
       const req = Math.max(1, ws.intReq - b.p.intDiscount);
       if (b.p.stats.int < req) return err(`Для приёма «${ws.name}» требуется ИНТ ${req}.`);
 
-      let bonus = Math.round(weaponTechniqueBonus(b.p.stats[ws.scaleStat], ws.scaleMult, skillScaleBonus(b)));
+      const bonus = techniqueBonusNow(b, ws);
       const eff = ws.effect;
-      if (eff === "armor_damage") bonus += Math.round(b.p.armor * techValue(ws, ws.id === "bulwark_verdict" ? 0.75 : 0.5, 100));
-      if (eff === "missing_hp") bonus = Math.round(bonus * (1 + Math.min(10, Math.floor(missingHpRatio(b) * 10)) * techValue(ws, 0.06, 100)));
-      if (eff === "enemy_missing") bonus = Math.round(bonus * (1 + Math.min(10, Math.floor(enemyMissingRatio(b) * 10)) * techValue(ws, 0.06, 100)));
-      if (eff === "debuff_damage") bonus = Math.round(bonus * (1 + Math.min(4, enemyDebuffCount(b)) * techValue(ws, 0.10, 100)));
-      if (eff === "first_strike" && b.round <= 2) bonus = Math.round(bonus * techValue(ws, 2, 100));
       const trueDamage = eff === "pierce" || eff === "chill" || eff === "leech" || eff === "skill_leech";
       const magicSkill = !!ws.magic;
       const hits = eff === "double_attack" ? scaleIntegerByLevel(2, ws.level ?? 1) : 1;
@@ -2954,6 +2972,9 @@ export interface CombatReadout {
   /** Урон после брони и защит врага — то, что реально увидит противник. */
   effMin: number;
   effMax: number;
+  /** Урон текущего приёма по этому врагу сейчас (null, если приёма нет). */
+  techMin: number | null;
+  techMax: number | null;
   /** Что прилетит мне: диапазон после моей брони. */
   inMin: number;
   inMax: number;
@@ -3078,13 +3099,32 @@ export function combatReadout(b: BattleState): CombatReadout {
   const rawMin = Math.max(1, Math.round((baseMin + totalFlat) * totalMult));
   const rawMax = Math.max(1, Math.round((baseMax + totalFlat) * totalMult));
 
-  /* Что останется после брони и защит противника. */
-  const pierce = b.p.rareAffixes.filter((x) => x === "pierce").length * 2;
-  const enemyArmor = Math.max(0, b.enemy.armor - pierce - enemyOilArmorCut(b));
-  const stoneHide = b.enemy.passive?.id === "stone_hide" ? 0.75 : 1;
-  const guardMult = b.enemy.guard ? 0.5 : 1;
-  const effMin = Math.max(1, Math.floor(Math.max(1, rawMin - enemyArmor) * stoneHide * guardMult));
-  const effMax = Math.max(1, Math.floor(Math.max(1, rawMax - enemyArmor) * stoneHide * guardMult));
+  /* Что останется после брони и защит противника: тот же конвейер, что и при ударе. */
+  const effMin = damageAfterEnemyDefense(b, rawMin, "phys");
+  const effMax = damageAfterEnemyDefense(b, rawMax, "phys");
+
+  /* Приём сейчас: тот же бросок с бонусом приёма и множителем навыков. Магия и пробивание — без брони. */
+  const techSkill = b.p.weaponSkill;
+  let techMin: number | null = null;
+  let techMax: number | null = null;
+  if (techSkill) {
+    if (techSkill.effect === "double_attack") {
+      /* Каждый из ударов — обычная атака: без бонуса приёма и без пассивного раскрытия техники. */
+      const hits = scaleIntegerByLevel(2, techSkill.level ?? 1);
+      const passiveFlat = dmgMods.filter((m) => m.id === "weapon_passive").reduce((sum, m) => sum + (m.flat ?? 0), 0);
+      const hitMin = damageAfterEnemyDefense(b, Math.max(1, Math.round((baseMin + totalFlat - passiveFlat) * totalMult)), "phys");
+      const hitMax = damageAfterEnemyDefense(b, Math.max(1, Math.round((baseMax + totalFlat - passiveFlat) * totalMult)), "phys");
+      techMin = hitMin * hits;
+      techMax = hitMax * hits;
+    } else {
+      const magicHit = !!techSkill.magic || techSkill.effect === "pierce" || techSkill.effect === "chill" || techSkill.effect === "leech" || techSkill.effect === "skill_leech";
+      const kind = magicHit ? "magic" : "phys";
+      const tech = techniqueBonusNow(b, techSkill);
+      const skillM = skillDamageMult(b);
+      techMin = damageAfterEnemyDefense(b, Math.max(1, Math.round((baseMin + totalFlat + tech) * totalMult * skillM)), kind);
+      techMax = damageAfterEnemyDefense(b, Math.max(1, Math.round((baseMax + totalFlat + tech) * totalMult * skillM)), kind);
+    }
+  }
 
   /* Защита */
   const defMods: Modifier[] = [];
@@ -3259,6 +3299,8 @@ export function combatReadout(b: BattleState): CombatReadout {
     dmgAvg: Math.round((rawMin + rawMax) / 2),
     effMin,
     effMax,
+    techMin,
+    techMax,
     inMin: afterArmor(eMin),
     inMax: afterArmor(eMax),
     inGuardMin: Math.max(1, Math.floor(afterArmor(eMin) / 2)),
