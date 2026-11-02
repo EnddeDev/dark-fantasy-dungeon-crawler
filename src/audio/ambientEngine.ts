@@ -284,7 +284,7 @@ export const AMBIENT_SAMPLES = {
 const sampleCache = new Map<string, Promise<AudioBuffer | null>>();
 
 /** Загружает и декодирует файл один раз. Ошибка сети или формата даёт null: сцена играет без него. */
-function loadSample(ctx: AudioContext, url: string): Promise<AudioBuffer | null> {
+export function loadSample(ctx: AudioContext, url: string): Promise<AudioBuffer | null> {
   let pending = sampleCache.get(url);
   if (!pending) {
     pending = fetch(encodeURI(url))
@@ -720,6 +720,17 @@ function crossfade(scene: AmbientScene | null): void {
     });
     current = { scene, bus, stop: () => stops.forEach((s) => s()) };
   }
+}
+
+/**
+ * Выход для эффектов (сундуки, снаряжение, торговля). Идёт через тот же мастер-гейн,
+ * поэтому общий выключатель звука действует и на них. Без Web Audio или при выключенном звуке — null.
+ */
+export function sfxOutput(): { ctx: AudioContext; out: AudioNode } | null {
+  if (isAmbientMuted()) return null;
+  const c = ensureContext();
+  if (!c || !master) return null;
+  return { ctx: c, out: master };
 }
 
 /** Вызывается из View при смене экрана или биома. null — тишина. */
