@@ -41,7 +41,7 @@ import { BiomeIcon } from "./BiomeLabel";
 import { MAX_SIZE, MIN_SIZE, TORCH, chestCountForFloor, mazeSizeForFloor, monsterCountFor, trapCountFor } from "../game/maze";
 import { SLOT_META, SLOT_ORDER } from "../game/types";
 import { ACTIVE_GEAR_EFFECTS, GEAR_EFFECTS } from "../game/gearEffects";
-import { GEAR_EFFECT_BASE, GEAR_EFFECT_GROWTH, GEAR_EFFECT_SPREAD } from "../game/gearScaling";
+import { GEAR_EFFECT_BASE, GEAR_EFFECT_SPREAD } from "../game/gearScaling";
 import { effectDetail } from "../game/gearEffects";
 import { NEGATIVE_EFFECTS } from "../game/statusEffects";
 import { CHANCE_CAP } from "../game/chances";
@@ -142,9 +142,8 @@ const POSITIVE_EFFECT_ROWS = ACTIVE_GEAR_EFFECTS.map((id) => {
   const effect = GEAR_EFFECTS[id];
   const base = GEAR_EFFECT_BASE[id];
   const spread = GEAR_EFFECT_SPREAD[id];
-  const growth = GEAR_EFFECT_GROWTH[id];
   const range = id === "ap" ? "0 → 1 (ур. 3) → 2 (ур. 7) → 3 (ур. 10)" : `${base.value}${spread ? ` ±${spread}` : ""}`;
-  return { name: effect.name, text: effect.desc, range, growth: id === "ap" ? "пороги" : `×${growth}` };
+  return { name: effect.name, text: effect.desc, range, growth: id === "ap" ? "пороги" : "+17% за уровень" };
 });
 
 function GuideSection({
@@ -457,8 +456,10 @@ export function Guide({
         </div>
 
         <Note>
-          <b className="text-flamehi">Уровень предмета</b> — от 1 до 10. Каждый уровень усиливает характеристики и эффекты
-          примерно на 20% с округлением вверх. Надеть вещь можно, если уровень героя не ниже уровня предмета
+          <b className="text-flamehi">Уровень предмета</b> — от 1 до 10. Рост линейный:
+          <b className="text-parch"> основные параметры ×(1 + 0.5 × уровень)</b> (урон, броня, ОЗ, уклонение),
+          <b className="text-parch"> эффекты и свойства ×(1 + 0.17 × уровень)</b>. На 1 уровне это ×1.5 и ×1.17,
+          на 10 — ×6 и ×2.7. Надеть вещь можно, если уровень героя не ниже уровня предмета
           и набрана нужная характеристика. В кузнице качество, состояние и уровень можно улучшить,
           но неудачная попытка может уничтожить предмет.
         </Note>
@@ -579,7 +580,8 @@ export function Guide({
             </table>
           </div>
           <p className="mt-2 text-[0.93rem] text-mute">
-            Пример усиления: {effectDetail("vamp", 3, 5)}. Каждый уровень округляется вверх.
+            Пример усиления: {effectDetail("vamp", 3, 5)}. База указана для 1 уровня,
+            дальше значение растёт линейно на 17% и округляется вверх.
           </p>
         </div>
 
@@ -803,7 +805,8 @@ export function Guide({
               всегда, даже на обычной редкости, и берётся из пула требуемой характеристики.
             </p>
             <p>
-              Значения растут с уровнем предмета умножением на 1.5 с округлением вверх. Приёмы посоха и
+              Значения растут линейно: основные параметры — ×(1 + 0.5 × уровень), эффекты и свойства —
+              ×(1 + 0.17 × уровень); цены считаются по тому же шагу 17%. Приёмы посоха и
               волшебной палочки считаются магическими: их лечит магический вампиризм, а не физический.
             </p>
             <p>

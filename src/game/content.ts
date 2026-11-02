@@ -50,7 +50,7 @@ import {
   scaleGearStatByLevel,
   rollEffectBase,
   techniqueIntReq,
-  GEAR_STAT_GROWTH,
+  gearLevelMultiplier,
 } from "./gearScaling";
 import { statConsumableDamage, statTechniqueDamage } from "./statFormulas";
 import type { ArchetypeId } from "./archetypes";
@@ -1483,9 +1483,9 @@ function weaponTypeOfBase(item: GearItem): WeaponType | null {
 
 let gearSeq = 100;
 
-/** Рост характеристик с уровнем предмета: каждый уровень +20% с округлением вверх. */
+/** Множитель цены по уровню предмета: 1 + 0.17 × уровень (1-й — 1.17, 10-й — 2.7). */
 export function gearLevelMult(item: GearItem): number {
-  return Math.pow(GEAR_STAT_GROWTH, clampGearLevel(item.level ?? 1) - 1);
+  return gearLevelMultiplier(item.level ?? 1);
 }
 
 export function canTwoHandGrip(item: GearItem): boolean {

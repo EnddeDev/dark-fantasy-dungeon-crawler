@@ -97,16 +97,17 @@ test("negative effects tick from max HP and codify all nine effects", () => {
   assert.deepEqual(statuses.NEGATIVE_EFFECTS.map((e) => e.id), ["curse", "poison", "burn", "bleed", "chill", "wither", "stun", "fear", "sunder"]);
 });
 
-test("new gear effects roll base spread and grow compound with ceil each level", () => {
+test("new gear effects roll base spread and grow linearly by 17% per level", () => {
   assert.equal(scaling.rollEffectBase("vamp", () => 0), 3);
   assert.equal(scaling.rollEffectBase("vamp", () => 0.999), 7);
   assert.equal(scaling.rollEffectBase("crit_chance", () => 0), 2);
   assert.equal(scaling.rollEffectBase("crit_chance", () => 0.999), 8);
-  assert.equal(scaling.effectMagnitude("vamp", 1, 5), 5);
-  assert.equal(scaling.effectMagnitude("vamp", 2, 5), 8);
-  assert.equal(scaling.effectMagnitude("vamp", 3, 5), 12);
+  assert.equal(scaling.effectMagnitude("vamp", 1, 5), 6);
+  assert.equal(scaling.effectMagnitude("vamp", 2, 5), 7);
+  assert.equal(scaling.effectMagnitude("vamp", 3, 5), 8);
+  assert.equal(scaling.effectMagnitude("vamp", 10, 5), 14);
   assert.equal(scaling.effectMagnitude("crit_chance", 2, 5), 7);
-  assert.equal(scaling.effectMagnitude("crit_chance", 3, 5), 9);
+  assert.equal(scaling.effectMagnitude("crit_chance", 3, 5), 8);
   for (const [level, expected] of [[1, 0], [2, 0], [3, 0], [4, 0], [5, 1], [6, 1], [7, 2], [8, 2], [9, 3], [10, 3]]) {
     assert.equal(scaling.effectMagnitude("ap", level), expected);
   }
