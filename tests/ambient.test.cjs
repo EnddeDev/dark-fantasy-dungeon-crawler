@@ -22,10 +22,18 @@ const biomes = (() => {
   return require(outfile);
 })();
 
-test("сцены покрывают лобби, исследование и бой в каждом биоме", () => {
+test("сцены покрывают лобби, исследование биомов без классики и бой в каждом биоме", () => {
+  const dungeon = biomes.BIOME_ORDER.filter((b) => b !== "classic");
   const battle = biomes.BIOME_ORDER.map((b) => `battle-${b}`);
-  assert.deepEqual([...scenes.AMBIENT_SCENES], ["lobby", ...biomes.BIOME_ORDER, ...battle]);
-  assert.equal(scenes.AMBIENT_SCENES.length, 11);
+  assert.deepEqual([...scenes.AMBIENT_SCENES], ["lobby", ...dungeon, ...battle]);
+  assert.equal(scenes.AMBIENT_SCENES.length, 10);
+});
+
+test("классическое подземелье без фона: только музыка, бой сохраняет свою сцену", () => {
+  assert.equal(scenes.ambientSceneFor("dungeon", "classic"), null);
+  assert.equal(scenes.ambientSceneFor("dungeon", "swamp"), "swamp");
+  assert.equal(scenes.ambientSceneFor("battle", "classic"), "battle-classic");
+  assert.equal(scenes.musicTrackFor("dungeon", "classic"), "forest");
 });
 
 test("рецепт звука есть для каждой сцены и нет лишних", () => {
@@ -40,7 +48,8 @@ test("выбор сцены по экрану и биому", () => {
   assert.equal(scenes.ambientSceneFor("lobby", "fire"), "lobby");
   assert.equal(scenes.ambientSceneFor("title", "fire"), null);
   for (const biome of biomes.BIOME_ORDER) {
-    assert.equal(scenes.ambientSceneFor("dungeon", biome), biome);
+    // Классика на экране подземелья без фона (там только музыка); в остальных биомах фон биома.
+    assert.equal(scenes.ambientSceneFor("dungeon", biome), biome === "classic" ? null : biome);
     // В бою звучит своя, более динамичная сцена того же биома.
     assert.equal(scenes.ambientSceneFor("battle", biome), `battle-${biome}`);
   }

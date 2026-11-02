@@ -8,12 +8,19 @@ import type { Screen } from "../model/types";
 
 /** Боевая сцена биома: динамичнее исследования, с ритмом и тем же характером места. */
 export type BattleScene = `battle-${BiomeId}`;
-export type AmbientScene = "lobby" | BiomeId | BattleScene;
+/**
+ * Фон исследования подземелья. Классический лабиринт без фона: там звучит только музыка «Forest»,
+ * поэтому его сцены нет.
+ */
+export type DungeonScene = Exclude<BiomeId, "classic">;
+export type AmbientScene = "lobby" | DungeonScene | BattleScene;
 
-/** Все сцены: лобби, исследование каждого биома и бой в каждом биоме. */
+const DUNGEON_SCENES = BIOME_ORDER.filter((b): b is DungeonScene => b !== "classic");
+
+/** Все сцены: лобби, исследование биомов (кроме классики) и бой в каждом биоме. */
 export const AMBIENT_SCENES: readonly AmbientScene[] = [
   "lobby",
-  ...BIOME_ORDER,
+  ...DUNGEON_SCENES,
   ...BIOME_ORDER.map((b): BattleScene => `battle-${b}`),
 ];
 
@@ -22,12 +29,12 @@ export type MusicTrackId = "lobby" | "forest";
 
 /**
  * Какая сцена звучит на экране.
- * Титул — тишина; лобби — своя сцена; подземелье — сцена биома; бой — боевая сцена биома.
+ * Титул — тишина; лобби — своя сцена; подземелье — сцена биома (классика — тишина); бой — боевая сцена биома.
  */
 export function ambientSceneFor(screen: Screen, biome: BiomeId | null | undefined): AmbientScene | null {
   if (screen === "lobby") return "lobby";
   if (!biome || !BIOME_ORDER.includes(biome)) return null;
-  if (screen === "dungeon") return biome;
+  if (screen === "dungeon") return biome === "classic" ? null : biome;
   if (screen === "battle") return `battle-${biome}`;
   return null;
 }

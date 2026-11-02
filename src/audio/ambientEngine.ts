@@ -234,9 +234,6 @@ function clock(env: AmbientEnv, stepSec: number, onStep: (step: number, at: numb
   });
 }
 
-const drip = (env: AmbientEnv, gain = 0.025) =>
-  blip(env, { freq: rnd(1500, 2000), endFreq: rnd(800, 1000), dur: 0.2, gain, pan: rnd(-0.6, 0.6) });
-
 const bubble = (env: AmbientEnv, gain = 0.012) =>
   blip(env, { freq: rnd(260, 380), endFreq: rnd(480, 620), dur: 0.12, gain, pan: rnd(-0.7, 0.7) });
 
@@ -296,7 +293,6 @@ export const AMBIENT_SAMPLES = {
   interior: `${PACK}BGS Loops/Interior Night/Inside Night.ogg`,
   interiorRain: `${PACK}BGS Loops/Interior Night/Inside Night Rain.ogg`,
   interiorStorm: `${PACK}BGS Loops/Interior Night/Inside Night Storm.ogg`,
-  cave: `${PACK}BGS Loops/Cave/Cave.ogg`,
   torch: `${PACK}SFX/Torch/Torch Loop.ogg`,
 } as const;
 
@@ -399,66 +395,14 @@ function lobbyWeather(env: AmbientEnv): void {
  * Эхо каменного зала: сухой звук идёт как есть, а часть уходит в линию задержки
  * с затуханием в фильтре. Возвращает окружение, где out — вход эха.
  */
-function withEcho(env: AmbientEnv, delayS: number, feedback: number, wet: number): AmbientEnv {
-  const { ctx, out } = env;
-  const input = ctx.createGain();
-  const delay = ctx.createDelay(2);
-  delay.delayTime.value = delayS;
-  const damp = ctx.createBiquadFilter();
-  damp.type = "lowpass";
-  damp.frequency.value = 2200;
-  const fb = ctx.createGain();
-  fb.gain.value = feedback;
-  const wetGain = ctx.createGain();
-  wetGain.gain.value = wet;
-  input.connect(out);
-  input.connect(delay);
-  delay.connect(damp);
-  damp.connect(fb);
-  fb.connect(delay);
-  delay.connect(wetGain);
-  wetGain.connect(out);
-  env.track(() => {
-    [input, delay, damp, fb, wetGain].forEach((n) => n.disconnect());
-  });
-  return { ...env, out: input };
-}
-
 /**
  * Лапки мышей по каменным кирпичам: серия коротких сухих цоканий с затуханием,
  * иногда писк.
  */
-function scurry(env: AmbientEnv): void {
-  const steps = 4 + Math.floor(Math.random() * 5);
-  let at = 0;
-  for (let i = 0; i < steps; i++) {
-    const gain = 0.024 * (1 - (i / steps) * 0.6);
-    noiseShot(env, { type: "bandpass", freq: rnd(2600, 4200), q: 3, dur: 0.012, gain, at, pan: i % 2 ? 0.5 : -0.5 });
-    at += rnd(0.09, 0.15);
-  }
-  if (Math.random() < 0.4) {
-    const f = rnd(2800, 3600);
-    blip(env, { freq: f, endFreq: f * 1.15, dur: 0.08, gain: 0.006, at: rnd(0, at), pan: rnd(-0.6, 0.6) });
-  }
-}
-
 /**
  * Камушки осыпаются: сначала короткий шорох, затем каскад мелких «тиков»,
  * которые реже и тише с каждым ударом, пока камни не улягутся.
  */
-function pebbles(env: AmbientEnv): void {
-  const count = 2 + Math.floor(Math.random() * 3);
-  noiseShot(env, { type: "bandpass", freq: rnd(1800, 3000), q: 2, dur: 0.05, gain: 0.02, pan: rnd(-0.5, 0.5) });
-  let at = 0.05;
-  let spacing = rnd(0.12, 0.2);
-  for (let i = 0; i < count; i++) {
-    at += spacing;
-    spacing *= 0.7;
-    const f = rnd(1000, 2600);
-    blip(env, { freq: f, endFreq: f * 0.8, dur: 0.06, gain: 0.012 * (1 - i / count / 2), at, pan: rnd(-0.8, 0.8) });
-  }
-}
-
 /** Параметры боевой сцены: тональность, темп и ритм барабана. */
 interface BattleConfig {
   root: number;
@@ -567,15 +511,6 @@ export const AMBIENT_RECIPES: Readonly<Record<AmbientScene, Recipe>> = {
   lobby(env) {
     lobbyWeather(env);
     loopSample(env, AMBIENT_SAMPLES.torch, 0.3);
-  },
-
-  /** Классический лабиринт: воздух пещеры из пака, капли с эхом, лапки мышей и камушки (синтез). */
-  classic(env) {
-    loopSample(env, AMBIENT_SAMPLES.cave, 0.35);
-    const cave = withEcho(env, 0.37, 0.4, 0.5);
-    every(cave, 1.5, 5, () => drip(cave, 0.03));
-    every(env, 6, 14, () => scurry(env));
-    every(env, 15, 30, () => pebbles(env));
   },
 
   /** Подземное болото: влажный шум, бульканье, квакши и глухой колокол. */

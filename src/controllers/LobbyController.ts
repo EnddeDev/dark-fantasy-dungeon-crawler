@@ -235,6 +235,8 @@ export class LobbyController {
     const res = forgeUpgrade(this.player, uid, kind, Math.random, useReagents);
     const maxHp = derived(res.player).maxHp;
     this.model.setPlayer({ ...res.player, hp: Math.min(res.player.hp, maxHp) });
+    /* Звук только у реальной попытки: отказ («нет золота», «недостижимо») стоит 0 и молчит. */
+    if (res.cost > 0) playSfx(res.success ? "forgeSuccess" : "forgeFail");
     return res.message;
   }
 
