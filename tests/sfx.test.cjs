@@ -77,7 +77,7 @@ test("покупка и продажа синтезируют монеты че�
   const prevWindow = globalThis.window;
   globalThis.window = { AudioContext: FakeAudioContext, setTimeout, clearTimeout, addEventListener() {}, removeEventListener() {} };
   try {
-    engine.setAmbientMuted(false);
+    engine.setSoundVolume(100);
     calls.oscillators = 0;
     sfx.playSfx("buy");
     assert.equal(calls.oscillators, 3, "покупка: три монеты");
@@ -86,7 +86,7 @@ test("покупка и продажа синтезируют монеты че�
     assert.equal(calls.oscillators, 3, "продажа: три монеты");
 
     // Выключатель звука глушит и эффекты: ничего не создаётся.
-    engine.setAmbientMuted(true);
+    engine.setSoundVolume(0);
     calls.oscillators = 0;
     sfx.playSfx("buy");
     assert.equal(calls.oscillators, 0, "при выключенном звуке монеты не играют");

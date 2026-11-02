@@ -50,31 +50,74 @@ test("выбор сцены по экрану и биому", () => {
   assert.equal(scenes.ambientSceneFor("dungeon", "unknown"), null);
 });
 
-test("выключатель сохраняется в хранилище", () => {
+test("громкости звуков и музыки сохраняются и читаются", () => {
   const data = new Map();
   const storage = { getItem: (k) => (data.has(k) ? data.get(k) : null), setItem: (k, v) => data.set(k, String(v)) };
-  assert.equal(scenes.readAmbientMuted(storage), false);
-  scenes.writeAmbientMuted(storage, true);
-  assert.equal(data.get(scenes.AMBIENT_STORAGE_KEY), "off");
-  assert.equal(scenes.readAmbientMuted(storage), true);
-  scenes.writeAmbientMuted(storage, false);
-  assert.equal(scenes.readAmbientMuted(storage), false);
+  assert.equal(scenes.readSoundVolume(storage), scenes.DEFAULT_SOUND_VOLUME);
+  assert.equal(scenes.readMusicVolume(storage), scenes.DEFAULT_MUSIC_VOLUME);
+  scenes.writeVolume(storage, scenes.SOUND_VOLUME_KEY, 35);
+  assert.equal(data.get(scenes.SOUND_VOLUME_KEY), "35");
+  assert.equal(scenes.readSoundVolume(storage), 35);
+  scenes.writeVolume(storage, scenes.MUSIC_VOLUME_KEY, 250);
+  assert.equal(scenes.readMusicVolume(storage), 100, "сверху ограничено 100");
+  scenes.writeVolume(storage, scenes.MUSIC_VOLUME_KEY, -5);
+  assert.equal(scenes.readMusicVolume(storage), 0, "снизу ограничено 0");
+  scenes.writeVolume(storage, scenes.MUSIC_VOLUME_KEY, 42.4);
+  assert.equal(scenes.readMusicVolume(storage), 42, "дробные округляются");
+  data.set(scenes.MUSIC_VOLUME_KEY, "мусор");
+  assert.equal(scenes.readMusicVolume(storage), scenes.DEFAULT_MUSIC_VOLUME, "мусор заменяется значением по умолчанию");
 });
 
-test("недоступное хранилище не ломает звук", () => {
+test("прежний выключатель переносится в громкость звуков 0", () => {
+  const data = new Map([[scenes.AMBIENT_STORAGE_KEY, "off"]]);
+  const storage = { getItem: (k) => (data.has(k) ? data.get(k) : null), setItem: (k, v) => data.set(k, String(v)) };
+  assert.equal(scenes.readSoundVolume(storage), 0);
+  data.set(scenes.SOUND_VOLUME_KEY, "70");
+  assert.equal(scenes.readSoundVolume(storage), 70, "новый ключ важнее прежнего выключателя");
+  data.delete(scenes.SOUND_VOLUME_KEY);
+  data.set(scenes.AMBIENT_STORAGE_KEY, "on");
+  assert.equal(scenes.readSoundVolume(storage), scenes.DEFAULT_SOUND_VOLUME);
+});
+
+test("недоступное хранилище не ломает громкость", () => {
   const broken = { getItem: () => { throw new Error("denied"); }, setItem: () => { throw new Error("denied"); } };
-  assert.equal(scenes.readAmbientMuted(broken), false);
-  assert.doesNotThrow(() => scenes.writeAmbientMuted(broken, true));
-  assert.equal(scenes.readAmbientMuted(null), false);
+  assert.equal(scenes.readSoundVolume(broken), scenes.DEFAULT_SOUND_VOLUME);
+  assert.equal(scenes.readMusicVolume(broken), scenes.DEFAULT_MUSIC_VOLUME);
+  assert.doesNotThrow(() => scenes.writeVolume(broken, scenes.SOUND_VOLUME_KEY, 0));
+  assert.equal(scenes.readSoundVolume(null), scenes.DEFAULT_SOUND_VOLUME);
+});
+
+test("музыка играет только в лобби", () => {
+  assert.equal(scenes.musicTrackFor("lobby"), "lobby");
+  for (const screen of ["title", "dungeon", "battle"]) {
+    assert.equal(scenes.musicTrackFor(screen), null, screen);
+  }
+});
+
+test("дорожка лобби лежит в паке и не пустая", () => {
+  const file = path.join("public", engine.MUSIC_TRACKS.lobby);
+  assert.ok(fs.existsSync(file), `нет файла ${file}`);
+  assert.ok(fs.statSync(file).size > 100000, "файл подозрительно мал");
+});
+
+test("атрибуция автора музыки указана в настройках звука", () => {
+  const src = fs.readFileSync(path.join("src", "components", "AudioSettings.tsx"), "utf8");
+  assert.match(src, /Makoto Hiramatsu/);
+  assert.match(src, /CC BY 4\.0/);
+  assert.match(src, /makotohiramatsu\.itch\.io/);
 });
 
 test("без Web Audio движок безопасно молчит (Node без window)", () => {
   assert.equal(typeof window, "undefined");
   assert.doesNotThrow(() => engine.setAmbientScene("lobby"));
   assert.doesNotThrow(() => engine.setAmbientScene(null));
-  assert.doesNotThrow(() => engine.setAmbientMuted(true));
-  assert.equal(engine.isAmbientMuted(), true);
+  assert.doesNotThrow(() => engine.setSoundVolume(0));
+  assert.equal(engine.getSoundVolume(), 0);
   assert.doesNotThrow(() => engine.setAmbientScene("fire"));
+  assert.doesNotThrow(() => engine.setMusicVolume(50));
+  assert.doesNotThrow(() => engine.setMusicTrack("lobby"));
+  assert.doesNotThrow(() => engine.setMusicTrack(null));
+  assert.equal(engine.getMusicVolume(), 50);
 });
 
 /** Заглушка Web Audio: любой метод и свойство существуют, вызовы ничего не делают. */
@@ -119,7 +162,7 @@ test("все сцены запускаются и гаснут в заглушк
   const prevWindow = globalThis.window;
   globalThis.window = { AudioContext: FakeAudioContext, setTimeout, clearTimeout, addEventListener() {}, removeEventListener() {} };
   try {
-    engine.setAmbientMuted(false);
+    engine.setSoundVolume(100);
     for (const scene of scenes.AMBIENT_SCENES) {
       assert.doesNotThrow(() => engine.setAmbientScene(scene), scene);
     }
@@ -127,8 +170,9 @@ test("все сцены запускаются и гаснут в заглушк
     await new Promise((resolve) => setTimeout(resolve, 2900));
     assert.doesNotThrow(() => engine.setAmbientScene(null));
     await new Promise((resolve) => setTimeout(resolve, 2900));
-    assert.doesNotThrow(() => engine.setAmbientMuted(true));
-    assert.doesNotThrow(() => engine.setAmbientMuted(false));
+    assert.doesNotThrow(() => engine.setSoundVolume(0));
+    assert.doesNotThrow(() => engine.setSoundVolume(100));
+    assert.doesNotThrow(() => engine.setMusicTrack("lobby"));
     // Каждая сцена создаёт хотя бы один тон и один шумовой источник.
     assert.ok(calls.oscillators >= scenes.AMBIENT_SCENES.length * 2, `oscillators=${calls.oscillators}`);
     assert.ok(calls.sources >= scenes.AMBIENT_SCENES.length, `sources=${calls.sources}`);

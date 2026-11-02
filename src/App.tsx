@@ -3,7 +3,7 @@ import { useOnline } from "./net/online";
 import { useSaveSync } from "./net/useSaveSync";
 import { AuthView } from "./views/AuthView";
 import { CommunityView } from "./views/CommunityView";
-import { AmbientToggle } from "./components/AmbientToggle";
+import { AudioSettings } from "./components/AudioSettings";
 import { mazeBiome } from "./game/biomes";
 import { GameView } from "./views/GameView";
 import { TitleView } from "./views/TitleView";
@@ -44,7 +44,7 @@ export default function App() {
           }}
         />
       )}
-      <AmbientToggle />
+      <AudioSettings />
       {/* Форма входа, а при недоступном сервере — объяснение, почему онлайн не работает. */}
       {online.authOpen && <AuthView />}
     </>
