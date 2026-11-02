@@ -12,6 +12,7 @@ import {
 import type { Threat } from "../game/types";
 import { mazeSizeForFloor } from "../game/maze";
 import { MONSTER_RACE_META, MONSTER_TYPE_META, raceTraits } from "../game/monsters";
+import { ENEMY_COOLDOWN_MOVES, ENEMY_MOVE_COOLDOWN } from "../game/battle";
 import { FoePortrait } from "./FoeArt";
 import { RARITY_TEXT } from "./ui";
 
@@ -214,7 +215,11 @@ export function Bestiary() {
                   </div>
                   <p className="mt-1 text-[0.92rem] italic leading-snug text-mute">{enemy.flavor}</p>
                   <p className="mt-1 font-mono text-[0.84rem] text-parch/75">
-                    {[...new Set(enemy.moves)].map((mv) => MOVE_LABELS[mv] ?? mv).join(" · ")}
+                    {[...new Set(enemy.moves)]
+                      .map((mv) => `${MOVE_LABELS[mv] ?? mv}${ENEMY_COOLDOWN_MOVES.includes(mv) ? " ⟳" : ""}`)
+                      .join(" · ")}
+                    {[...new Set(enemy.moves)].some((mv) => ENEMY_COOLDOWN_MOVES.includes(mv)) &&
+                      ` · ⟳ перезарядка ${ENEMY_MOVE_COOLDOWN} раунда`}
                   </p>
                   <p className="mt-0.5 text-[0.84rem] text-mute">{MONSTER_RACE_META[enemy.race].note}</p>
                   <p className="mt-0.5 font-mono text-[0.82rem] text-parch/60">

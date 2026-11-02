@@ -15,7 +15,15 @@ import {
 import { GEAR_EFFECTS, GEAR_PASSIVES, effectDetail } from "../game/gearEffects";
 import { MONSTER_RACE_META, MONSTER_TYPE_META, monsterEvade, raceTraits } from "../game/monsters";
 import { epicSkillDesc } from "../game/content";
-import { combatReadout, queuePreview, type BattleState, type PlayerAction } from "../game/battle";
+import {
+  ENEMY_COOLDOWN_MOVES,
+  ENEMY_MOVE_COOLDOWN,
+  combatReadout,
+  enemyMoveCooldownLeft,
+  queuePreview,
+  type BattleState,
+  type PlayerAction,
+} from "../game/battle";
 import { FoePortrait } from "./FoeArt";
 import { ItemArt } from "./ItemArt";
 import { Btn, Meter, Tag } from "./ui";
@@ -747,6 +755,16 @@ export function BattleView({
                       <li key={mv} className="border-l-2 border-rubric/70 pl-3">
                         <span className="font-display uppercase tracking-[0.08em] text-flamehi">{meta.name}</span>
                         <div className="text-mute">{meta.desc}</div>
+                        {ENEMY_COOLDOWN_MOVES.includes(mv) && (() => {
+                          const left = enemyMoveCooldownLeft(b, mv);
+                          return (
+                            <div className="mt-0.5 font-mono text-[0.8rem] text-rubric/85">
+                              {left > 0
+                                ? `перезарядка: ещё ${left} ${left === 1 ? "раунд" : "раунда"}`
+                                : `перезарядка ${ENEMY_MOVE_COOLDOWN} раунда после применения`}
+                            </div>
+                          );
+                        })()}
                       </li>
                     );
                   })}
