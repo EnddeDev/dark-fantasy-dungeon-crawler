@@ -1,7 +1,6 @@
 import { derived, newBattle, rollConsumableLoot, rollGearDrop } from "../game/battle";
-import { CHEST_RARITY_WEIGHTS, DUNGEON_GOLD_SHARE, dungeonGold } from "../game/content";
 import { biomeHealingAmount, mazeBiome } from "../game/biomes";
-import { GEAR_BASES, ITEMS, REAGENTS, consumableIntReq, consumablePower, equipItem, grantXp, pick, randInt, scaledGearStats, unequipSlot } from "../game/content";
+import { CHEST_RARITY_WEIGHTS, DUNGEON_GOLD_SHARE, GEAR_BASES, ITEMS, consumableIntReq, consumablePower, dungeonGold, equipItem, grantXp, pick, randInt, reagentPoolForFloor, scaledGearStats, unequipSlot } from "../game/content";
 import { rollStepEvent } from "../game/events";
 import { cellIdx, findPath, openDirs, roomIndexAt, wallBetween } from "../game/maze";
 import { pruneRunLoot } from "../game/runLoot";
@@ -117,7 +116,7 @@ export class DungeonController {
         case "curse": statuses.curse = Math.max(statuses.curse, e.v ?? 0); break;
         case "poison": statuses.poison = Math.max(statuses.poison, e.v ?? 0); break;
         case "cleanse": statuses.curse = 0; statuses.poison = 0; break;
-        case "reagent": for (let i = 0; i < (e.v ?? 1); i++) gainedItems.push(pick(REAGENTS)); break;
+        case "reagent": for (let i = 0; i < (e.v ?? 1); i++) gainedItems.push(pick(reagentPoolForFloor(ctx.floor))); break;
         case "supply": for (let i = 0; i < (e.v ?? 1); i++) gainedItems.push(pick(["potion_s", "antidote", "scroll_spark", "throwing_knife"])); break;
         case "gear": for (let i = 0; i < (e.v ?? 1); i++) gainedGear.push(rollGearDrop(ctx.floor, CHEST_RARITY_WEIGHTS, ctx.floor)); break;
         case "stat": if (e.stat) stats[e.stat] = Math.min(10, (stats[e.stat] ?? 1) + (e.v ?? 1)); break;
@@ -515,7 +514,7 @@ export class DungeonController {
     if (!knownPath && Math.random() < 0.05) {
       const count = randInt(1, 3);
       const found: string[] = [];
-      for (let i = 0; i < count; i++) found.push(pick(REAGENTS));
+      for (let i = 0; i < count; i++) found.push(pick(reagentPoolForFloor(r.floor)));
       r = { ...r, loot: [...r.loot, ...found] };
       r.log.push(`Под камнями найдены реагенты: ${found.map((id) => ITEMS[id].name).join(", ")}.`);
       found.forEach((id) => (stepBag[id] = (stepBag[id] ?? 0) + 1));
@@ -659,7 +658,7 @@ export class DungeonController {
         r.log.push(`Среди камней найдены ${foundGold} золотых монет.`);
         commitPlayer();
       } else {
-        const reagent = pick(REAGENTS);
+        const reagent = pick(reagentPoolForFloor(r.floor));
         r = { ...r, loot: [...r.loot, reagent] };
         r.log.push(`В щели найден реагент: ${ITEMS[reagent].name}.`);
         stepBag[reagent] = (stepBag[reagent] ?? 0) + 1;

@@ -519,6 +519,12 @@ export const EXTRA_REAGENTS: string[] = [
   "parchment", "magic_ink", "scrap_metal", "vial",
 ];
 
+/** Камни: десять видов, по два на уровень 1–5. Выпадают только с этажа своего уровня. */
+export const STONE_REAGENTS: string[] = [
+  "stone_river", "stone_slate", "stone_moon", "stone_flint", "stone_obsidian",
+  "stone_jet", "stone_hematite", "stone_onyx", "stone_carnelian", "stone_diamond",
+];
+
 export const EXTRA_ITEMS: ItemDef[] = [
   /* реагенты */
   { id: "powder", name: "Порох", kind: "reagent", price: 40, reagentCat: "mineral",
@@ -545,6 +551,28 @@ export const EXTRA_ITEMS: ItemDef[] = [
     desc: "Обломки клинков и лат. Из них собирают боеприпасы." },
   { id: "vial", name: "Фляга", kind: "reagent", price: 18, reagentCat: "mineral",
     desc: "Пустая стеклянная фляга. Нужна для любого зелья." },
+
+  /* камни: по два на каждый уровень (уровень = этаж, с которого камень выпадает и появляется в лавке) */
+  { id: "stone_river", name: "Речная галька", kind: "reagent", price: 26, reagentCat: "mineral", level: 1,
+    desc: "Гладкая, как отполированная ладонью. Течение носило её дольше, чем помнят реки." },
+  { id: "stone_slate", name: "Чёрный шифер", kind: "reagent", price: 30, reagentCat: "mineral", level: 1,
+    desc: "Пластинки слоями, легко раскалываются по нужной линии." },
+  { id: "stone_moon", name: "Лунный камень", kind: "reagent", price: 44, reagentCat: "mineral", level: 2,
+    desc: "Внутри него блестит голубоватое сияние, которого нет на свету." },
+  { id: "stone_flint", name: "Кремень", kind: "reagent", price: 48, reagentCat: "mineral", level: 2,
+    desc: "Один удар — и искра. Больше ничего от него не требуется." },
+  { id: "stone_obsidian", name: "Обсидиан", kind: "reagent", price: 60, reagentCat: "mineral", level: 3,
+    desc: "Вулканическое стекло. Край острее любого клинка из стали." },
+  { id: "stone_jet", name: "Гагат", kind: "reagent", price: 66, reagentCat: "mineral", level: 3,
+    desc: "Чёрный, матовый и тёплый на ощупь. Легко горит, если поднести огонь." },
+  { id: "stone_hematite", name: "Гематит", kind: "reagent", price: 74, reagentCat: "mineral", level: 4,
+    desc: "Тяжёлый, с серебристым металлическим блеском. Пыль оставляет на пальцах ржавчину." },
+  { id: "stone_onyx", name: "Оникс", kind: "reagent", price: 80, reagentCat: "mineral", level: 4,
+    desc: "Слоистый камень: чёрные и кремовые полосы. Режется по слоям." },
+  { id: "stone_carnelian", name: "Сердолик", kind: "reagent", price: 92, reagentCat: "mineral", level: 5,
+    desc: "Полупрозрачный, оранжево-красный, будто внутри тлеет угольная жилка." },
+  { id: "stone_diamond", name: "Алмазная крошка", kind: "reagent", price: 100, reagentCat: "mineral", level: 5,
+    desc: "Осколки и пыль самого твёрдого камня. Режет всё, кроме себя." },
 
   /* специальные предметы */
   { id: "sapper_kit", name: "Снаряжение сапёра", kind: "special", price: 85, level: 2, minFloor: 2,

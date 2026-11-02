@@ -908,6 +908,14 @@ export function Guide({
               </span>
             </p>
             <p className="flex items-start gap-2">
+              <FlaskConical size={15} className="mt-1 shrink-0 text-flame" aria-hidden />
+              <span>
+                Камни — десять видов реагентов, по два на каждый уровень от 1 до 5. Камень уровня N выпадает
+                с этажа N и продаётся в лавке, когда её уровень не ниже N. В рецепте «Большого зелья лечения»
+                второй мох заменён гематитом, а в рецепте «Свитка огня» второй огненный гриб — ониксом.
+              </span>
+            </p>
+            <p className="flex items-start gap-2">
               <ScrollText size={15} className="mt-1 shrink-0 text-flame" aria-hidden />
               <span>
                 Рецепты покупаются у торговца и остаются навсегда. Создание возможно в лобби при нужном Интеллекте;
