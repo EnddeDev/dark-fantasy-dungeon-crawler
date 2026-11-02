@@ -290,6 +290,7 @@ const PACK = "music/Free Fantasy SFX Pack By TomMusic/OGG Files/";
  */
 export const MUSIC_TRACKS: Readonly<Record<MusicTrackId, string>> = {
   lobby: "music/Witchcraft_mp3/Witchcraft(loop - fantasy - guitar - piano).mp3",
+  forest: "music/Witchcraft_mp3/Forest(guitar - piano - anxiety - mysterious).mp3",
 };
 export const AMBIENT_SAMPLES = {
   interior: `${PACK}BGS Loops/Interior Night/Inside Night.ogg`,

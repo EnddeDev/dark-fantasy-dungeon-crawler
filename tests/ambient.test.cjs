@@ -87,17 +87,23 @@ test("недоступное хранилище не ломает громкос
   assert.equal(scenes.readSoundVolume(null), scenes.DEFAULT_SOUND_VOLUME);
 });
 
-test("музыка играет только в лобби", () => {
-  assert.equal(scenes.musicTrackFor("lobby"), "lobby");
-  for (const screen of ["title", "dungeon", "battle"]) {
-    assert.equal(scenes.musicTrackFor(screen), null, screen);
+test("музыка: лобби и классическое подземелье, в остальных местах тишина", () => {
+  assert.equal(scenes.musicTrackFor("lobby", null), "lobby");
+  assert.equal(scenes.musicTrackFor("lobby", "fire"), "lobby");
+  assert.equal(scenes.musicTrackFor("dungeon", "classic"), "forest");
+  for (const biome of ["swamp", "ice", "dark", "fire", null]) {
+    assert.equal(scenes.musicTrackFor("dungeon", biome), null, `dungeon/${biome}`);
   }
+  assert.equal(scenes.musicTrackFor("battle", "classic"), null, "в бою музыки нет");
+  assert.equal(scenes.musicTrackFor("title", null), null);
 });
 
-test("дорожка лобби лежит в паке и не пустая", () => {
-  const file = path.join("public", engine.MUSIC_TRACKS.lobby);
-  assert.ok(fs.existsSync(file), `нет файла ${file}`);
-  assert.ok(fs.statSync(file).size > 100000, "файл подозрительно мал");
+test("все музыкальные дорожки лежат в паке и не пустые", () => {
+  for (const [id, rel] of Object.entries(engine.MUSIC_TRACKS)) {
+    const file = path.join("public", rel);
+    assert.ok(fs.existsSync(file), `${id}: нет файла ${file}`);
+    assert.ok(fs.statSync(file).size > 100000, `${id}: файл подозрительно мал`);
+  }
 });
 
 test("атрибуция автора музыки указана в настройках звука", () => {

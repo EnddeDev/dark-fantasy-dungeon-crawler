@@ -72,7 +72,7 @@ export function AudioSettings() {
           <VolumeSlider
             id="volume-music"
             label="Музыка"
-            hint="Дорожка лобби"
+            hint="Лобби и классическое подземелье"
             value={music}
             onChange={(v) => {
               setMusic(v);
@@ -80,7 +80,7 @@ export function AudioSettings() {
             }}
           />
           <p className="mt-2 border-t border-flamedim pt-2 text-[0.68rem] leading-snug text-mute">
-            Музыка лобби: «Witchcraft», Makoto Hiramatsu,{" "}
+            Музыка: «Witchcraft» и «Forest», Makoto Hiramatsu,{" "}
             <a
               href="https://makotohiramatsu.itch.io/"
               target="_blank"
