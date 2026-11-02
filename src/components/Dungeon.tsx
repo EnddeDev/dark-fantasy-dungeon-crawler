@@ -364,11 +364,32 @@ export function Dungeon({
                   );
                 })}
 
-              {/* события карты: руна-значок, виден до подхода */}
+              {/* события карты: у каждого вида свой значок, виден до подхода.
+                  Положительное — зелёная капля, нейтральное — янтарная руна,
+                  негативное — багровый треугольник. */}
               {m.events
                 .filter((i) => !m.usedEvents.includes(i) && visAt(i % S, Math.floor(i / S)) > 0)
                 .map((i) => {
                   const { cx, cy } = center(i);
+                  const spawn = m.eventSpawns?.find((sp) => sp.cell === i);
+                  const kind = spawn?.kind ?? "neutral";
+                  if (kind === "positive") {
+                    return (
+                      <g key={`e${i}`} transform={`translate(${cx} ${cy})`} className="breathe">
+                        <circle r={12} fill="#123a2c" fillOpacity="0.85" stroke="#7fd0a8" strokeWidth="2.2" />
+                        <path d="M0 -6c4 5 6 7 6 10a6 6 0 0 1-12 0c0-3 2-5 6-10z" fill="#9fe0c0" stroke="#123a2c" strokeWidth="1.2" />
+                        <path d="M-7 9h14" stroke="#7fd0a8" strokeWidth="1.8" strokeLinecap="round" />
+                      </g>
+                    );
+                  }
+                  if (kind === "negative") {
+                    return (
+                      <g key={`e${i}`} transform={`translate(${cx} ${cy})`} className="breathe">
+                        <path d="M0 -12L11 8H-11z" fill="#3a100c" stroke="#e0695a" strokeWidth="2.2" />
+                        <path d="M-5 1c2-3 8-3 10 0M-3 4h6" stroke="#e0695a" strokeWidth="1.8" strokeLinecap="round" fill="none" />
+                      </g>
+                    );
+                  }
                   return (
                     <g key={`e${i}`} transform={`translate(${cx} ${cy}) rotate(45)`} className="breathe">
                       <rect x={-9} y={-9} width={18} height={18} fill={colors.wash} stroke={colors.accent} strokeWidth="2.4" />
@@ -465,10 +486,14 @@ export function Dungeon({
                   )}
                   {m.events.filter((i) => !m.usedEvents.includes(i) && !visAt(i % S, Math.floor(i / S))).map((i) => {
                     const { cx, cy } = center(i);
+                    const kind = m.eventSpawns?.find((sp) => sp.cell === i)?.kind ?? "neutral";
+                    const tint = kind === "positive" ? "#7fd0a8" : kind === "negative" ? "#e0695a" : "#5aa9e6";
                     return (
                       <g key={`re${i}`} transform={`translate(${cx} ${cy})`}>
-                        <circle r="12" fill="none" stroke="#5aa9e6" strokeWidth="1.6" strokeDasharray="4 3" />
-                        <text textAnchor="middle" dy="5" fontSize="15" fill="#5aa9e6">?</text>
+                        <circle r="12" fill="none" stroke={tint} strokeWidth="1.6" strokeDasharray="4 3" />
+                        <text textAnchor="middle" dy="5" fontSize="15" fill={tint}>
+                          {kind === "positive" ? "+" : kind === "negative" ? "!" : "?"}
+                        </text>
                       </g>
                     );
                   })}

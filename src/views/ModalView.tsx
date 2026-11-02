@@ -4,8 +4,35 @@ import type { GameController } from "../controllers/GameController";
 import { BIOMES, biomeVision, mazeBiome } from "../game/biomes";
 import { ITEMS, WEAR_META, scaledGearStats } from "../game/content";
 import { lockpickChance, TRAP_META } from "../game/traps";
-import { mapEventById } from "../game/world";
+import { choiceChance, mapEventById, type MapEventKind } from "../game/world";
 import type { GameState } from "../model/types";
+
+/** Как выглядит событие каждого вида в окне: цвет, бейдж и подпись. */
+const EVENT_LOOK: Record<MapEventKind, { badge: string; sub: string; resultSub: string; accent: string; border: string }> = {
+  positive: {
+    badge: "дар",
+    sub: "Положительное событие: награда без подвоха, взять можно один раз",
+    resultSub: "Дар остался с тобой",
+    accent: "text-verd",
+    border: "border-verd/50 hover:border-verd",
+  },
+  neutral: {
+    badge: "проверка",
+    sub: "Нейтральное событие: две проверки характеристик и уход",
+    resultSub: "Что осталось после твоего выбора",
+    accent: "text-flame",
+    border: "border-flamedim/70 hover:border-flame",
+  },
+  negative: {
+    badge: "беда",
+    sub: "Негативное событие: оно срабатывает само, выбора нет",
+    resultSub: "Чем это обошлось",
+    accent: "text-rubric",
+    border: "border-rubric/60 hover:border-rubric",
+  },
+};
+
+const STAT_NAME: Record<"str" | "agi" | "int", string> = { str: "СИЛ", agi: "ЛОВ", int: "ИНТ" };
 
 /** View модальных окон: только отображение и вызов команд Controller. */
 export function ModalView({ game, state }: { game: GameController; state: GameState }) {
@@ -41,6 +68,11 @@ export function ModalView({ game, state }: { game: GameController; state: GameSt
             </li>
             <li>
               <b className="text-flame">Пустая клетка:</b> 10% небольшая находка, знакомый путь — тишина.
+            </li>
+            <li>
+              <b className="text-flame">События в комнатах:</b> один зал — одно событие. Зелёная капля —
+              дар без подвоха, янтарная руна — проверка характеристики с выбором, багровый треугольник —
+              беда: она срабатывает сама, едва ты войдёшь.
             </li>
             <li>
               <b className="text-rubric">Страж перед лестницей:</b> спуск на следующий ярус охраняет Босс со
@@ -222,39 +254,67 @@ export function ModalView({ game, state }: { game: GameController; state: GameSt
         return (
           <Modal
             title={modal.result.title}
-            sub="Что осталось после твоего выбора"
+            sub={EVENT_LOOK[ev.kind].resultSub}
             actions={<Btn tone="flame" onClick={close}>Продолжить путь</Btn>}
           >
             <p className="dropcap">{modal.result.good}</p>
-            <p className="mt-3 border-l-2 border-rubric/70 pl-3 text-mute">{modal.result.bad}</p>
+            {modal.result.bad ? (
+              <p className="mt-3 border-l-2 border-rubric/70 pl-3 text-mute">{modal.result.bad}</p>
+            ) : null}
           </Modal>
         );
       }
+      const look = EVENT_LOOK[ev.kind];
+      const acts = ev.choices.filter((c) => !c.leave);
+      const leave = ev.choices.find((c) => c.leave);
       return (
         <Modal
           title={ev.name}
-          sub="Значок на карте. Выбор один — и у каждого исхода две стороны"
-          actions={<span className="font-mono text-[0.7rem] text-mute">Итог смешивает дар и потерю</span>}
-        >
-          <p className="mb-4 italic text-mute">{ev.prompt}</p>
-          <div className="grid gap-2">
-            {ev.choices.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => game.dungeon.resolveEvent(ev.id, c.id, modal.cell)}
-                className="group border border-line bg-black/30 px-3 py-2.5 text-left transition-colors hover:border-flame hover:bg-flame/10"
+          sub={look.sub}
+          actions={
+            leave ? (
+              <Btn
+                onClick={() => game.dungeon.resolveEvent(ev.id, leave.id, modal.cell)}
+                title="Событие останется на карте до следующего захода"
               >
-                <span className="flex items-baseline justify-between gap-3">
-                  <span className="font-display text-[0.95rem] uppercase tracking-[0.1em] text-flamehi group-hover:text-flame">
-                    {c.label}
+                {leave.label}
+              </Btn>
+            ) : (
+              <span className="font-mono text-[0.7rem] text-mute">Выбора нет — оно уже случилось</span>
+            )
+          }
+        >
+          <p className={`mb-4 italic text-mute`}>
+            <span className={`mr-2 font-mono text-[0.72rem] uppercase tracking-[0.14em] ${look.accent}`}>{look.badge}</span>
+            {ev.prompt}
+          </p>
+          <div className="grid gap-2">
+            {acts.map((c) => {
+              const chance = choiceChance(c, player.stats);
+              const statName = c.stat ? STAT_NAME[c.stat] : null;
+              const statValue = c.stat ? player.stats[c.stat] : null;
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => game.dungeon.resolveEvent(ev.id, c.id, modal.cell)}
+                  className={`group border bg-black/30 px-3 py-2.5 text-left transition-colors ${look.border} hover:bg-flame/10`}
+                >
+                  <span className="flex items-baseline justify-between gap-3">
+                    <span className="font-display text-[0.95rem] uppercase tracking-[0.1em] text-flamehi group-hover:text-flame">
+                      {c.label}
+                    </span>
+                    {statName && c.chance < 1 ? (
+                      <span className="shrink-0 font-mono text-[0.7rem] text-mute">
+                        {statName} {statValue} → удача {Math.round(chance * 100)}%
+                      </span>
+                    ) : (
+                      <span className="shrink-0 font-mono text-[0.7rem] text-verd">без броска</span>
+                    )}
                   </span>
-                  <span className="shrink-0 font-mono text-[0.7rem] text-mute">
-                    удача {Math.round(c.chance * 100)}%
-                  </span>
-                </span>
-                <span className="mt-1 block font-mono text-[0.7rem] text-verd">{c.detail}</span>
-              </button>
-            ))}
+                  <span className="mt-1 block font-mono text-[0.7rem] text-verd">{c.detail}</span>
+                </button>
+              );
+            })}
           </div>
         </Modal>
       );

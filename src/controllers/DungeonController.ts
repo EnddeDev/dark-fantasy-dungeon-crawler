@@ -3,13 +3,14 @@ import { CHEST_RARITY_WEIGHTS, DUNGEON_GOLD_SHARE, dungeonGold } from "../game/c
 import { biomeHealingAmount, mazeBiome } from "../game/biomes";
 import { GEAR_BASES, ITEMS, REAGENTS, consumableIntReq, consumablePower, equipItem, grantXp, pick, randInt, scaledGearStats, unequipSlot } from "../game/content";
 import { rollStepEvent } from "../game/events";
-import { cellIdx, findPath, wallBetween } from "../game/maze";
+import { cellIdx, findPath, openDirs, roomIndexAt, wallBetween } from "../game/maze";
 import { pruneRunLoot } from "../game/runLoot";
 import { CHILL_HEAL_MULT, magicTickDamage, statusTickDamage } from "../game/statusEffects";
 import { applyTrapOutcome, isBattleCurse, lockpickChance, makeTrap, resolveTrap, rollTrapKind, type TrapAction } from "../game/traps";
-import type { GearItem, Player, Run, Slot } from "../game/types";
+import type { Cell, GearItem, Maze, Player, Run, Slot } from "../game/types";
 import { SLOT_META } from "../game/types";
-import { MAP_EVENTS, mapEventById, type MapEffect } from "../game/world";
+import { MAP_EVENTS, choiceChance, mapEventById, type MapEffect, type MapEvent } from "../game/world";
+import type { EventSpawn } from "../game/types";
 import type { GameModel } from "../model/GameModel";
 import type { GameController } from "./GameController";
 
@@ -83,75 +84,99 @@ export class DungeonController {
     this.model.logRun(`${SLOT_META[slot].name}: снято.`);
   }
 
+  /**
+   * Общий расчёт последствий события. Возвращает новые значения, ничего не
+   * записывая в модель: этим пользуются и выборы, и негативные события.
+   */
+  private applyMapEffects(
+    effects: MapEffect[],
+    ctx: { player: Player; hp: number; statuses: Player["statuses"]; floor: number; run: Run },
+  ) {
+    const d = derived(ctx.player);
+    const biome = mazeBiome(ctx.run.maze);
+    let hp = ctx.hp;
+    const statuses = { ...ctx.statuses };
+    const stats = { ...ctx.player.stats } as Record<string, number>;
+    const gainedItems: string[] = [];
+    const gainedGear: GearItem[] = [];
+    let goldDelta = 0;
+    let xpGain = 0;
+    let torchDelta = 0;
+
+    for (const e of effects) {
+      switch (e.k) {
+        case "hp": hp += e.v ?? 0; break;
+        case "heal": hp = Math.min(d.maxHp, hp + biomeHealingAmount(biome, e.v ?? 0)); break;
+        case "heal_full": hp = d.maxHp; break;
+        case "heal_pct": hp = Math.min(d.maxHp, hp + Math.round(d.maxHp * ((e.v ?? 0) / 100))); break;
+        case "dmg_pct": hp -= Math.round(d.maxHp * ((e.v ?? 0) / 100)); break;
+        case "gold": goldDelta += e.v ?? 0; break;
+        case "gold_loss": goldDelta -= e.v ?? 0; break;
+        case "gold_pct": goldDelta -= Math.round(ctx.run.gold * ((e.v ?? 0) / 100)); break;
+        case "xp": xpGain += e.v ?? 0; break;
+        case "curse": statuses.curse = Math.max(statuses.curse, e.v ?? 0); break;
+        case "poison": statuses.poison = Math.max(statuses.poison, e.v ?? 0); break;
+        case "cleanse": statuses.curse = 0; statuses.poison = 0; break;
+        case "reagent": for (let i = 0; i < (e.v ?? 1); i++) gainedItems.push(pick(REAGENTS)); break;
+        case "supply": for (let i = 0; i < (e.v ?? 1); i++) gainedItems.push(pick(["potion_s", "antidote", "scroll_spark", "throwing_knife"])); break;
+        case "gear": for (let i = 0; i < (e.v ?? 1); i++) gainedGear.push(rollGearDrop(ctx.floor, CHEST_RARITY_WEIGHTS, ctx.floor)); break;
+        case "stat": if (e.stat) stats[e.stat] = Math.min(10, (stats[e.stat] ?? 1) + (e.v ?? 1)); break;
+        case "torch": torchDelta += e.v ?? 0; break;
+      }
+    }
+    hp = Math.min(hp, derived({ ...ctx.player, stats: stats as Player["stats"] }).maxHp);
+    return { hp, statuses, stats: stats as Player["stats"], gainedItems, gainedGear, goldDelta, xpGain, torchDelta };
+  }
+
   resolveEvent(eventId: string, choiceId: string, cell?: number): void {
     const { run, player } = this.state;
     const ev = mapEventById(eventId);
     if (!ev || !run) return;
     const choice = ev.choices.find((c) => c.id === choiceId);
     if (!choice) return;
-    const good = Math.random() < choice.chance;
-    const effects: MapEffect[] = good ? choice.good : choice.bad;
-    const floor = run.floor;
 
-    let hp = player.hp;
-    let xpGain = 0;
-    const statuses = { ...player.statuses };
-    const gainedItems: string[] = [];
-    const gainedGear: GearItem[] = [];
-    const statUp: Partial<Record<Slot | string, number>> = {};
-    let goldDelta = 0;
-
-    for (const e of effects) {
-      switch (e.k) {
-        case "hp": hp += e.v ?? 0; break;
-        case "heal": hp = Math.min(derived(player).maxHp, hp + biomeHealingAmount(mazeBiome(run.maze), e.v ?? 0)); break;
-        case "gold": goldDelta += e.v ?? 0; break;
-        case "gold_loss": goldDelta -= e.v ?? 0; break;
-        case "xp": xpGain += e.v ?? 0; break;
-        case "curse": statuses.curse = Math.max(statuses.curse, e.v ?? 0); break;
-        case "poison": statuses.poison = Math.max(statuses.poison, e.v ?? 0); break;
-        case "reagent": for (let i = 0; i < (e.v ?? 1); i++) gainedItems.push(pick(REAGENTS)); break;
-        case "supply": for (let i = 0; i < (e.v ?? 1); i++) gainedItems.push(pick(["potion_s", "antidote", "scroll_spark", "throwing_knife"])); break;
-        case "gear": for (let i = 0; i < (e.v ?? 1); i++) gainedGear.push(rollGearDrop(floor, CHEST_RARITY_WEIGHTS)); break;
-        case "stat": if (e.stat) statUp[e.stat] = (statUp[e.stat] ?? 0) + (e.v ?? 1); break;
-      }
+    /* «Не сейчас»: событие остаётся на карте и ждёт возвращения. */
+    if (choice.leave) {
+      this.model.setModal(null);
+      this.model.logRun(`${ev.name}: оставлено на потом.`);
+      return;
     }
 
-    const stats = { ...player.stats } as Record<string, number>;
-    Object.entries(statUp).forEach(([k, v]) => { stats[k] = Math.min(10, (stats[k] ?? 1) + (v ?? 0)); });
-    hp = Math.min(hp, derived({ ...player, stats: stats as typeof player.stats }).maxHp);
+    const good = Math.random() < choiceChance(choice, player.stats);
+    const effects: MapEffect[] = good ? choice.good : choice.bad;
+    const res = this.applyMapEffects(effects, { player, hp: player.hp, statuses: player.statuses, floor: run.floor, run });
 
-    const deathCausesHp = hp <= 0;
     const nextPlayer: Player = {
       ...player,
-      hp: deathCausesHp ? 0 : Math.max(1, hp),
-      stats: stats as typeof player.stats,
-      statuses,
+      hp: res.hp <= 0 ? 0 : Math.max(1, res.hp),
+      stats: res.stats,
+      statuses: res.statuses,
       bag: (() => {
         const bag = { ...player.bag };
-        gainedItems.forEach((id) => (bag[id] = (bag[id] ?? 0) + 1));
+        res.gainedItems.forEach((id) => (bag[id] = (bag[id] ?? 0) + 1));
         return bag;
       })(),
-      armory: [...gainedGear, ...player.armory],
+      armory: [...res.gainedGear, ...player.armory],
     };
-    const withXp = xpGain > 0 ? grantXp(nextPlayer, xpGain).player : nextPlayer;
-    this.model.setPlayer(withXp);
+    this.model.setPlayer(res.xpGain > 0 ? grantXp(nextPlayer, res.xpGain).player : nextPlayer);
 
-    /* Помечаем ту клетку, где герой стоит (или которую передал интерфейс):
-       раньше здесь искалась «первая неиспользованная клетка с тем же
-       событием», и при совпадении типов гасилась чужая клетка. */
+    /* Метка комнаты, где стоит герой (или та, что передал интерфейс). */
     const here = cell ?? cellIdx(run.pos.x, run.pos.y, run.maze.size);
     const merged: Run = { ...run };
     if (run.maze.events.includes(here) && !run.maze.usedEvents.includes(here)) {
       merged.maze = { ...run.maze, usedEvents: [...run.maze.usedEvents, here] };
     }
-    if (goldDelta !== 0) merged.gold = Math.max(0, run.gold + goldDelta);
-    if (gainedItems.length) merged.loot = [...run.loot, ...gainedItems];
-    if (gainedGear.length) merged.gearLoot = [...gainedGear, ...run.gearLoot];
-    merged.log = [...run.log, `${ev.name}: ${good ? "удача" : "неудача"} — ${good ? choice.goodText : choice.badText}`];
+    if (res.goldDelta !== 0) merged.gold = Math.max(0, run.gold + res.goldDelta);
+    if (res.gainedItems.length) merged.loot = [...run.loot, ...res.gainedItems];
+    if (res.gainedGear.length) merged.gearLoot = [...res.gainedGear, ...run.gearLoot];
+    if (res.torchDelta) merged.torchTurns = Math.max(0, (run.torchTurns ?? 0) + res.torchDelta);
+    merged.log = [
+      ...run.log,
+      `${ev.name}: ${good ? "удача" : "неудача"} — ${good ? choice.goodText : choice.badText}`,
+    ];
     this.model.setRun(merged);
 
-    if (deathCausesHp) {
+    if (res.hp <= 0) {
       this.game.die("Событие подземелья забрало последние силы.");
       return;
     }
@@ -159,8 +184,120 @@ export class DungeonController {
       kind: "event",
       eventId,
       cell: here,
-      result: { title: ev.name, good: choice.goodText, bad: choice.badText },
+      result: good
+        ? { title: ev.name, good: choice.goodText }
+        : { title: ev.name, good: choice.badText },
     });
+  }
+
+  /**
+   * Негативное событие: выбора нет, всё случается при входе в комнату.
+   * Часть таких событий призывает тварей — бой сразу или стая на карте.
+   */
+  private fireNegativeEvent(spawn: EventSpawn, ev: MapEvent): void {
+    const { run, player } = this.state;
+    if (!run) return;
+    const res = this.applyMapEffects(ev.effects ?? [], {
+      player,
+      hp: player.hp,
+      statuses: player.statuses,
+      floor: run.floor,
+      run,
+    });
+
+    const nextPlayer: Player = {
+      ...player,
+      hp: res.hp <= 0 ? 0 : Math.max(1, res.hp),
+      statuses: res.statuses,
+      stats: res.stats,
+      bag: (() => {
+        const bag = { ...player.bag };
+        res.gainedItems.forEach((id) => (bag[id] = (bag[id] ?? 0) + 1));
+        return bag;
+      })(),
+      armory: [...res.gainedGear, ...player.armory],
+    };
+    this.model.setPlayer(res.xpGain > 0 ? grantXp(nextPlayer, res.xpGain).player : nextPlayer);
+
+    let next: Run = {
+      ...run,
+      maze: { ...run.maze, usedEvents: [...run.maze.usedEvents, spawn.cell] },
+      gold: res.goldDelta !== 0 ? Math.max(0, run.gold + res.goldDelta) : run.gold,
+      loot: res.gainedItems.length ? [...run.loot, ...res.gainedItems] : run.loot,
+      gearLoot: res.gainedGear.length ? [...res.gainedGear, ...run.gearLoot] : run.gearLoot,
+      torchTurns: res.torchDelta ? Math.max(0, (run.torchTurns ?? 0) + res.torchDelta) : run.torchTurns,
+      log: [...run.log, `${ev.name}: ${ev.text ?? "событие сработало."}`],
+    };
+
+    /* Стая появляется рядом с героем прямо на карте. */
+    if (ev.summon && "pack" in ev.summon) {
+      const spawned = this.packCells(next, ev.summon.pack);
+      next = {
+        ...next,
+        maze: { ...next.maze, monsters: [...next.maze.monsters, ...spawned] },
+        clearedMonsters: (next.clearedMonsters ?? []).filter((c) => !spawned.includes(c)),
+      };
+      next.log = [...next.log, spawned.length ? `Рядом объявились твари: ${spawned.length}.` : "Твари рычат где-то рядом, но в комнату не входят."];
+    }
+
+    this.model.setRun(next);
+    this.model.setPath([]);
+
+    if (res.hp <= 0) {
+      this.game.die(`${ev.name}: последние силы остались в этой комнате.`);
+      return;
+    }
+
+    /* Катастрофа и ужас бьют сразу — это бой, а не значок на карте. */
+    if (ev.summon && "battle" in ev.summon) {
+      const np = this.state.player;
+      this.model.setRun({ ...next, battleCell: null });
+      this.model.setBattle(
+        newBattle({ ...np, hp: Math.max(1, np.hp) }, next.floor, false, mazeBiome(next.maze), next.torchTurns ?? 0, 0, ev.summon.battle),
+      );
+      this.model.setScreen("battle");
+      return;
+    }
+
+    this.model.setModal({ kind: "event", eventId: ev.id, cell: spawn.cell, result: { title: ev.name, good: ev.text ?? "" } });
+  }
+
+  /** Событие комнаты, в которую герой только что вошёл (или null). */
+  private roomEventOnEnter(m: Maze, from: Cell, to: Cell): EventSpawn | null {
+    const spawns = m.eventSpawns;
+    if (!spawns?.length) return null;
+    const toRoom = roomIndexAt(m, to.x, to.y);
+    if (toRoom < 0) return null;
+    if (roomIndexAt(m, from.x, from.y) === toRoom) return null;
+    return spawns.find((s) => s.room === toRoom) ?? null;
+  }
+
+  /** Свободные клетки в двух-трёх шагах от героя — для стаи из негативного события. */
+  private packCells(run: Run, count: number): number[] {
+    const m = run.maze;
+    const size = m.size;
+    const taken = new Set<number>([
+      ...m.monsters,
+      ...m.traps,
+      ...m.events,
+      ...m.chests,
+      ...m.doors,
+      ...m.keys,
+      cellIdx(run.pos.x, run.pos.y, size),
+      cellIdx(m.boss.x, m.boss.y, size),
+      cellIdx(m.stairs.x, m.stairs.y, size),
+    ]);
+    const cands: { cell: number; dist: number }[] = [];
+    for (let y = 0; y < size; y++)
+      for (let x = 0; x < size; x++) {
+        const cell = cellIdx(x, y, size);
+        if (taken.has(cell) || openDirs(m, x, y).length === 0) continue;
+        const way = findPath(m, run.pos, { x, y });
+        if (!way || way.length < 1 || way.length > 3) continue;
+        cands.push({ cell, dist: way.length });
+      }
+    cands.sort((a, b) => a.dist - b.dist || Math.random() - 0.5);
+    return cands.slice(0, count).map((c) => c.cell);
   }
 
   takeTrap(action: TrapAction): void {
@@ -455,9 +592,27 @@ export class DungeonController {
       return;
     }
 
-    if (m.events.includes(idx) && !m.usedEvents.includes(idx)) {
-      /* Тип события случаен, а не выводится из индекса клетки: иначе два
-         события на этаже слишком часто оказываются одним и тем же. */
+    /* События живут в комнатах: вход в комнату запускает её событие.
+       Негативное срабатывает само, положительное и нейтральное — через выбор. */
+    const roomSpawn = this.roomEventOnEnter(m, src.pos, { x: nx, y: ny });
+    if (roomSpawn && !m.usedEvents.includes(roomSpawn.cell)) {
+      const ev = mapEventById(roomSpawn.eventId);
+      if (ev) {
+        commitPlayer();
+        this.model.setRun(r);
+        this.model.setPath([]);
+        if (ev.kind === "negative") {
+          this.fireNegativeEvent(roomSpawn, ev);
+          return;
+        }
+        this.model.setRun({ ...r, log: [...r.log, `Событие: ${ev.name}.`] });
+        this.model.setModal({ kind: "event", eventId: ev.id, cell: roomSpawn.cell });
+        return;
+      }
+    }
+
+    /* Старые карты без привязки к комнатам: событие срабатывает на клетке. */
+    if (!m.eventSpawns?.length && m.events.includes(idx) && !m.usedEvents.includes(idx)) {
       const ev = MAP_EVENTS[Math.floor(Math.random() * MAP_EVENTS.length)];
       commitPlayer();
       this.model.setRun({

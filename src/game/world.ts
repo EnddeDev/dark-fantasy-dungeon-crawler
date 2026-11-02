@@ -6,7 +6,7 @@
  * поэтому циклической зависимости при слиянии данных не возникает.
  */
 import type { EnemyDef, GearBaseDef, ItemDef, Recipe } from "./content";
-import type { RarityTier, StatKey, WearTier } from "./types";
+import type { RarityTier, WearTier } from "./types";
 
 /* ═══════════════  ЛАВКА: 10 УРОВНЕЙ  ═══════════════ */
 
@@ -629,236 +629,19 @@ export const EXTRA_RECIPES: Recipe[] = [
 
 /* ═══════════════  СОБЫТИЯ КАРТЫ  ═══════════════ */
 
-export type MapEffectKind =
-  | "hp"
-  | "heal"
-  | "gold"
-  | "gold_loss"
-  | "xp"
-  | "curse"
-  | "poison"
-  | "reagent"
-  | "supply"
-  | "gear"
-  | "stat";
-
-export interface MapEffect {
-  k: MapEffectKind;
-  v?: number;
-  stat?: StatKey;
-}
-
-export interface MapEventChoice {
-  id: string;
-  label: string;
-  detail: string;
-  /** Шанс хорошего исхода; при неудаче срабатывает bad. */
-  chance: number;
-  good: MapEffect[];
-  bad: MapEffect[];
-  goodText: string;
-  badText: string;
-}
-
-export interface MapEvent {
-  id: string;
-  name: string;
-  prompt: string;
-  choices: MapEventChoice[];
-}
-
-/**
- * Каждый исход несёт и плюс, и минус: выигрыш всегда оплачен чем-то,
- * проигрыш никогда не бывает пустым.
- */
-export const MAP_EVENTS: MapEvent[] = [
-  {
-    id: "altar",
-    name: "Алтарь неизвестного",
-    prompt: "Камень тёплый, а на нём — свежая влага. Кто-то успел раньше тебя.",
-    choices: [
-      {
-        id: "blood",
-        label: "Пролить кровь",
-        detail: "Кровь за дар",
-        chance: 0.6,
-        good: [{ k: "xp", v: 70 }, { k: "hp", v: -18 }],
-        bad: [{ k: "xp", v: 26 }, { k: "hp", v: -34 }],
-        goodText: "Алтарь принимает дар и отвечает: прорыв опыта, но плечо гудит ещё долго.",
-        badText: "Алтарь пьёт молча и почти ничего за это не даёт — плечо ноет.",
-      },
-      {
-        id: "coins",
-        label: "Собрать монеты",
-        detail: "Золото с жертвенника",
-        chance: 0.55,
-        good: [{ k: "gold", v: 45 }, { k: "poison", v: 2 }],
-        bad: [{ k: "gold", v: 18 }, { k: "curse", v: 3 }],
-        goodText: "Монеты целы и тяжелы — но под ними блестит жало, и рука немеет.",
-        badText: "Монет меньше, чем хотелось бы, и первая же отравлена.",
-      },
-      {
-        id: "smash",
-        label: "Разбить идола",
-        detail: "Сломать угол",
-        chance: 0.5,
-        good: [{ k: "reagent", v: 1 }, { k: "xp", v: 30 }],
-        bad: [{ k: "hp", v: -26 }, { k: "poison", v: 2 }],
-        goodText: "Внутри — алые кристаллы. Края обломка крошатся в порох.",
-        badText: "Осколок отскакивает и впечатывается в лицо; кровь идёт из носа.",
-      },
-    ],
-  },
-  {
-    id: "well",
-    name: "Колодец без дна",
-    prompt: "Верёвка на блоке, ведро внизу. Оттуда тянет холодом и медом.",
-    choices: [
-      {
-        id: "drink",
-        label: "Напиться",
-        detail: "Вода или что-то вместо неё",
-        chance: 0.6,
-        good: [{ k: "heal", v: 40 }, { k: "supply", v: 1 }],
-        bad: [{ k: "heal", v: 14 }, { k: "poison", v: 3 }],
-        goodText: "Вода освежает, а на дне ведра — забытый фляжник с припасами.",
-        badText: "Вода стояла. Тяжело, горько и не проходит — начинается тяжёлый вечер.",
-      },
-      {
-        id: "bucket",
-        label: "Поднять ведро",
-        detail: "Что там внизу?",
-        chance: 0.5,
-        good: [{ k: "gold", v: 55 }, { k: "hp", v: -12 }],
-        bad: [{ k: "reagent", v: 1 }, { k: "curse", v: 2 }],
-        goodText: "В ведре — кожаный мешочек. Рыба сгнила, монеты остались.",
-        badText: "Мешочек пуст, зато снизу донеслось, как тебя зовут по имени.",
-      },
-      {
-        id: "rope",
-        label: "Спуститься по верёвке",
-        detail: "К нижним камерам",
-        chance: 0.45,
-        good: [{ k: "gear", v: 1 }, { k: "hp", v: -22 }],
-        bad: [{ k: "supply", v: 2 }, { k: "hp", v: -30 }],
-        goodText: "Внизу лежит снаряжение проигравшего. Верёвка рвётся на середине.",
-        badText: "Ниже темно и гулко. Ты поднимаешься с припасами, но с воспалённым плечом.",
-      },
-    ],
-  },
-  {
-    id: "mirror",
-    name: "Обсидиановое зеркало",
-    prompt: "В чёрном стекле отражается комната, но без тебя.",
-    choices: [
-      {
-        id: "touch",
-        label: "Прикоснуться",
-        detail: "Отражение подождёт",
-        chance: 0.55,
-        good: [{ k: "xp", v: 65 }, { k: "gold", v: -13 }],
-        bad: [{ k: "xp", v: 24 }, { k: "curse", v: 3 }],
-        goodText: "Стекло холодное, а в голове — сразу готовая мысль. Ты понимаешь больше.",
-        badText: "Отражение не моргнуло. Взамен ты получаешь задержку в размышлениях и порчу.",
-      },
-      {
-        id: "break",
-        label: "Разбить зеркало",
-        detail: "Металл о стекло",
-        chance: 0.5,
-        good: [{ k: "reagent", v: 2 }, { k: "xp", v: 25 }],
-        bad: [{ k: "reagent", v: 1 }, { k: "hp", v: -20 }],
-        goodText: "Осколки режутся чисто — оба осколка можно унести.",
-        badText: "Осколок рвёт ладонь: часть руны потеряна, но один осколок цел.",
-      },
-      {
-        id: "turn",
-        label: "Отвернуться",
-        detail: "Не манит",
-        chance: 1,
-        good: [{ k: "supply", v: 1 }],
-        bad: [{ k: "gold", v: -8 }],
-        goodText: "Мимо полки с чужими тряпками: один бинт выходит целым.",
-        badText: "Мешок задевает стену и по краю высыпаются мелкие монеты — так, чтоб не ронять.",
-      },
-    ],
-  },
-  {
-    id: "cache",
-    name: "Ниша с проходом",
-    prompt: "За камнем — чья-то выемка с записками на корой.",
-    choices: [
-      {
-        id: "read",
-        label: "Прочитать жилетки",
-        detail: "Записки прохожих",
-        chance: 0.6,
-        good: [{ k: "xp", v: 55 }, { k: "poison", v: 1 }],
-        bad: [{ k: "xp", v: 22 }, { k: "curse", v: 2 }],
-        goodText: "Записки ведут до клада в соседнем коридоре — и разбирают подземелье, как ладонь.",
-        badText: "Почерк разборчив, но последняя строка — твоя фамилия, выведенная заранее.",
-      },
-      {
-        id: "grab",
-        label: "Забрать всё",
-        detail: "Корой, верёвка, мелочь",
-        chance: 0.55,
-        good: [{ k: "gold", v: 38 }, { k: "reagent", v: 1 }],
-        bad: [{ k: "gold", v: 15 }, { k: "hp", v: -18 }],
-        goodText: "В верёвке — мешочек с золотом и сухой мох.",
-        badText: "Верёвка срывается натягом, рванувший узел бьёт по виску.",
-      },
-      {
-        id: "leave",
-        label: "Оставить прибор нетронутым",
-        detail: "Чужое — чужое",
-        chance: 1,
-        good: [{ k: "heal", v: 16 }],
-        bad: [{ k: "xp", v: -12 }],
-        goodText: "Ты отдыхаешь у ниши: дышится легче, но воспоминания чужого прогулки уходят.",
-        badText: "Ниша не помогла ни в чём — кроме привычки считать шаги.",
-      },
-    ],
-  },
-  {
-    id: "mark",
-    name: "Клеймённая колонна",
-    prompt: "На камне — символ, нарисованный так часто, что стёрся в ямку.",
-    choices: [
-      {
-        id: "take",
-        label: "Принять клеймо",
-        detail: "Рука на символ",
-        chance: 0.55,
-        good: [{ k: "stat", v: 1, stat: "str" }, { k: "hp", v: -24 }],
-        bad: [{ k: "xp", v: 40 }, { k: "curse", v: 3 }],
-        goodText: "Тело твердеет: сила в пригоршне, но шрам уже не сойдёт.",
-        badText: "Клеймо не легло — осталась лишь печать усталости и чужое неудовольствие.",
-      },
-      {
-        id: "scrape",
-        label: "Соскоблить символ",
-        detail: "Порох в ямку",
-        chance: 0.6,
-        good: [{ k: "reagent", v: 2 }, { k: "gold", v: 23 }],
-        bad: [{ k: "hp", v: -14 }, { k: "reagent", v: 1 }],
-        goodText: "Порох из выемки сходит слоями: два горстья и мелочь наверху.",
-        badText: "Камень хрупок: руку рвёт об осколок, но одна горсть пороха цела.",
-      },
-      {
-        id: "pray",
-        label: "Помолиться по-своему",
-        detail: "Без свидетелей",
-        chance: 0.65,
-        good: [{ k: "heal", v: 30 }, { k: "supply", v: 1 }],
-        bad: [{ k: "poison", v: 2 }, { k: "gold", v: -10 }],
-        goodText: "Тихо и неловко, но рана подтягивается, а кто-то оставил флягу у колонны.",
-        badText: "Символ не расслышал зато под кожу лёг сквозняк, а мешок меньше на четверть.",
-      },
-    ],
-  },
-];
-
-export function mapEventById(id: string): MapEvent | undefined {
-  return MAP_EVENTS.find((e) => e.id === id);
-}
+/* Сами события живут в mapEvents.ts: три вида, по десять каждого.
+   Здесь оставлен реэкспорт, чтобы старые импорты из world.ts продолжали работать. */
+export {
+  MAP_EVENTS,
+  POSITIVE_EVENTS,
+  NEUTRAL_EVENTS,
+  NEGATIVE_EVENTS,
+  STAT_CHECK_BASE,
+  STAT_CHECK_STEP,
+  choiceChance,
+  drawEventsForPlan,
+  eventsOfKind,
+  mapEventById,
+  rollFloorEventPlan,
+} from "./mapEvents";
+export type { MapEffect, MapEffectKind, MapEvent, MapEventChoice, MapEventKind, MapSummon } from "./mapEvents";

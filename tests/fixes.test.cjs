@@ -162,22 +162,24 @@ test("лавка: бесплатного обновления прилавка �
   assert.notEqual(snap.shopStock.map((g) => g.uid).join(","), before, "прилавок обновился");
 });
 
-/** Карта, где событие стоит в клетке (1,0) сразу справа от входа. */
-function gameWithEvent() {
+/**
+ * Карта, где событие закреплено за комнатой справа от входа: клетки (1,0)…(2,1).
+ * Событие срабатывает при входе в комнату, а не на отдельной клетке.
+ */
+function gameWithEvent(overrides = {}) {
   const game = new GameController(new MemoryStorage());
   game.startRun(1);
   game.model.setModal(null);
-  /* События могут отнимать здоровье: даём герою запас, чтобы тест проверял
-     пометку клетки, а не гибель от случайного исхода. */
   game.model.updatePlayer((p) => ({ ...p, stats: { ...p.stats, str: 10 }, hp: 500 }));
   const run = game.model.getSnapshot().run;
-  /* Оставляем на карте только события: сундуки, ключи и твари в клетке (1,0)
-     перехватили бы шаг раньше. */
   const size = run.maze.size;
+  const room = { x: 1, y: 0, w: 2, h: 2, kind: "hall", name: "Зал", tone: "plain", pillars: [] };
   const maze = {
     ...run.maze,
-    events: [1, 2],
+    rooms: [room],
+    events: [1],
     usedEvents: [],
+    eventSpawns: [{ room: 0, cell: 1, kind: "neutral", eventId: "altar", ...overrides }],
     chests: [],
     doors: [],
     keys: [],
@@ -185,40 +187,98 @@ function gameWithEvent() {
     traps: [],
   };
   maze.v = run.maze.v.map((row) => [...row]);
+  maze.h = run.maze.h.map((row) => [...row]);
+  /* комната открыта: вход (0,0)→(1,0) и все стены внутри зала убраны */
   maze.v[0][1] = false;
-  /* Страж или лестница иногда стоят ровно в этой клетке — уводим их. */
+  maze.v[0][2] = false;
+  maze.v[1][1] = false;
+  maze.v[1][2] = false;
+  maze.h[1][1] = false;
+  maze.h[1][2] = false;
   if (maze.boss.x === 1 && maze.boss.y === 0) maze.boss = { x: size - 1, y: size - 2 };
   if (maze.stairs.x === 1 && maze.stairs.y === 0) maze.stairs = { x: size - 1, y: size - 1 };
   game.model.setRun({ ...run, maze });
   return game;
 }
 
-test("событие помечает только свою клетку и не гасит соседнее", () => {
+test("событие срабатывает при входе в комнату и помечает только свою комнату", () => {
   const game = gameWithEvent();
   withRandom(0.99, () => game.dungeon.move(1, 0));
   const modal = game.model.getSnapshot().modal;
   assert.equal(modal.kind, "event");
-  assert.equal(modal.cell, 1, "в окне записана клетка события");
+  assert.equal(modal.cell, 1, "в окне записана метка комнаты");
+  assert.equal(modal.eventId, "altar", "событие взято из комнаты");
 
-  const ev = world.mapEventById(modal.eventId);
-  assert.ok(ev, "событие известно");
-  /* Фиксируем исход «удача», иначе плохая ветка может убить героя. */
-  withRandom(0, () => game.dungeon.resolveEvent(ev.id, ev.choices[0].id, modal.cell));
+  /* «Уйти» не тратит событие: оно ждёт следующего захода. */
+  const leave = world.mapEventById("altar").choices.find((c) => c.leave);
+  game.dungeon.resolveEvent("altar", leave.id, modal.cell);
+  assert.deepEqual(game.model.getSnapshot().run.maze.usedEvents, [], "уход не гасит событие");
+  assert.equal(game.model.getSnapshot().modal, null);
+
+  /* Второй заход в ту же комнату снова открывает выбор. */
+  withRandom(0.99, () => game.dungeon.move(-1, 0));
+  withRandom(0.99, () => game.dungeon.move(1, 0));
+  assert.equal(game.model.getSnapshot().modal.kind, "event", "событие вернулось");
+
+  const choice = world.mapEventById("altar").choices.find((c) => !c.leave);
+  withRandom(0, () => game.dungeon.resolveEvent("altar", choice.id, modal.cell));
   const after = game.model.getSnapshot().run;
-  assert.deepEqual(after.maze.usedEvents, [1], "использована ровно одна клетка");
-  assert.ok(!after.maze.usedEvents.includes(2), "соседнее событие осталось на карте");
+  assert.deepEqual(after.maze.usedEvents, [1], "использована метка комнаты");
 });
 
-test("тип события не привязан к индексу клетки", () => {
-  const ids = new Set();
-  for (let i = 0; i < 30; i++) {
-    const game = gameWithEvent();
-    game.dungeon.move(1, 0);
-    const modal = game.model.getSnapshot().modal;
-    assert.equal(modal.kind, "event");
-    ids.add(modal.eventId);
+test("вид события берётся из комнаты, а не из индекса клетки", () => {
+  const positive = gameWithEvent({ kind: "positive", eventId: "life_spring" });
+  withRandom(0.99, () => positive.dungeon.move(1, 0));
+  assert.equal(positive.model.getSnapshot().modal.eventId, "life_spring");
+
+  const negative = gameWithEvent({ kind: "negative", eventId: "ceiling_collapse" });
+  const hpBefore = negative.model.getSnapshot().player.hp;
+  withRandom(0.99, () => negative.dungeon.move(1, 0));
+  const snap = negative.model.getSnapshot();
+  assert.equal(snap.modal.kind, "event");
+  assert.ok(snap.modal.result, "негативное событие сразу показывает исход");
+  assert.ok(snap.run.maze.usedEvents.includes(1), "негативное событие сработало сразу");
+  assert.ok(snap.player.hp < hpBefore, "обвал снял здоровье");
+});
+
+test("положительное событие лечит полностью и помечается использованным", () => {
+  const game = gameWithEvent({ kind: "positive", eventId: "life_spring" });
+  game.model.updatePlayer((p) => ({ ...p, hp: 40 }));
+  withRandom(0.99, () => game.dungeon.move(1, 0));
+  const modal = game.model.getSnapshot().modal;
+  game.dungeon.resolveEvent("life_spring", "drink", modal.cell);
+  const snap = game.model.getSnapshot();
+  assert.equal(snap.player.hp, battle.derived(snap.player).maxHp, "источник восстанавливает всё здоровье");
+  assert.ok(snap.run.maze.usedEvents.includes(1));
+});
+
+test("негативное событие призывает четырёх тварей рядом с героем", () => {
+  const game = gameWithEvent({ kind: "negative", eventId: "pack_ambush" });
+  const before = game.model.getSnapshot().run.maze.monsters.length;
+  withRandom(0.99, () => game.dungeon.move(1, 0));
+  const snap = game.model.getSnapshot();
+  assert.equal(snap.run.maze.monsters.length, before + 4, "стая вышла на карту");
+  assert.ok(snap.run.maze.usedEvents.includes(1), "событие одноразовое");
+  assert.equal(snap.screen, "dungeon", "стая не начинает бой сама");
+  /* новые твари стоят рядом: в трёх шагах от героя */
+  const fresh = snap.run.maze.monsters.slice(before);
+  for (const cell of fresh) {
+    const x = cell % snap.run.maze.size;
+    const y = Math.floor(cell / snap.run.maze.size);
+    const dist = Math.max(Math.abs(x - snap.run.pos.x), Math.abs(y - snap.run.pos.y));
+    assert.ok(dist <= 3, `тварь на карте слишком далеко: ${dist}`);
   }
-  assert.ok(ids.size >= 2, `на одной и той же клетке выпало ${ids.size} вид(ов) событий`);
+});
+
+test("негативное событие с катастрофой сразу начинает бой", () => {
+  const game = gameWithEvent({ kind: "negative", eventId: "rift_summon" });
+  withRandom(0.99, () => game.dungeon.move(1, 0));
+  const snap = game.model.getSnapshot();
+  assert.equal(snap.screen, "battle", "катастрофа бьёт сразу");
+  assert.ok(snap.battle, "бой создан");
+  assert.equal(snap.battle.enemy.threat, "catastrophe");
+  assert.equal(snap.battle.isBoss, false, "это не Страж лестницы");
+  assert.ok(snap.run.maze.usedEvents.includes(1));
 });
 
 test("список добычи сокращается, когда найденное потрачено", () => {

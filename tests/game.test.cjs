@@ -111,7 +111,26 @@ test("mazes stay solvable and carry the right number of chests and events", () =
       assert.equal(m.chests.length, wantChests, `сундуков на этаже ${floor}`);
       assert.equal(m.doors.length, wantChests);
       assert.equal(m.keys.length, m.doors.length);
-      assert.ok(m.events.length >= 1 && m.events.length <= 2, `событий ${m.events.length} на этаже ${floor}`);
+      /* события живут в комнатах: одна комната — одно событие, состав по этажу */
+      const spawns = m.eventSpawns ?? [];
+      assert.equal(m.events.length, spawns.length, "метки событий совпадают с привязкой к комнатам");
+      assert.equal(new Set(spawns.map((sp) => sp.room)).size, spawns.length, `две события в одной комнате на этаже ${floor}`);
+      const kindOf = (kind) => spawns.filter((sp) => sp.kind === kind).length;
+      assert.equal(kindOf("positive"), 1, `положительных событий на этаже ${floor}`);
+      if (floor <= 2) {
+        assert.equal(kindOf("neutral"), 1, `на этаже ${floor} одно нейтральное событие`);
+        assert.equal(kindOf("negative"), 0, `на этаже ${floor} нет негативных событий`);
+      } else {
+        assert.ok(kindOf("neutral") >= 1 && kindOf("neutral") <= 2, `нейтральных событий ${kindOf("neutral")} на этаже ${floor}`);
+        assert.equal(kindOf("negative"), 1, `негативное событие на этаже ${floor}`);
+      }
+      for (const sp of spawns) {
+        const room = m.rooms[sp.room];
+        const x = sp.cell % size;
+        const y = Math.floor(sp.cell / size);
+        assert.ok(x >= room.x && x < room.x + room.w && y >= room.y && y < room.y + room.h, "метка стоит внутри своей комнаты");
+        assert.ok(!room.pillars.some(([px, py]) => px === x && py === y), "метка не в колонне");
+      }
 
       const boss = maze.cellIdx(m.boss.x, m.boss.y, size);
       const stairs = maze.cellIdx(m.stairs.x, m.stairs.y, size);
@@ -345,6 +364,77 @@ test("золото подземелья приходит вполовину", ()
     }
   }
   assert.ok(seen > 200, `золото должно выпадать, найдено ${seen}`);
+});
+
+test("события: по десять каждого вида, виды не пересекаются", () => {
+  const m = loadGameModule("mapEvents");
+  assert.equal(m.POSITIVE_EVENTS.length, 10);
+  assert.equal(m.NEUTRAL_EVENTS.length, 10);
+  assert.equal(m.NEGATIVE_EVENTS.length, 10);
+  assert.equal(m.MAP_EVENTS.length, 30);
+  assert.equal(new Set(m.MAP_EVENTS.map((e) => e.id)).size, 30, "идентификаторы событий уникальны");
+  for (const e of m.POSITIVE_EVENTS) assert.equal(e.kind, "positive");
+  for (const e of m.NEUTRAL_EVENTS) assert.equal(e.kind, "neutral");
+  for (const e of m.NEGATIVE_EVENTS) assert.equal(e.kind, "negative");
+});
+
+test("положительное событие: один дар без подвоха и «не сейчас»", () => {
+  const m = loadGameModule("mapEvents");
+  for (const ev of m.POSITIVE_EVENTS) {
+    const acts = ev.choices.filter((c) => !c.leave);
+    const leaves = ev.choices.filter((c) => c.leave);
+    assert.equal(acts.length, 1, `${ev.id}: ровно один дар`);
+    assert.equal(leaves.length, 1, `${ev.id}: есть выбор «не брать сейчас»`);
+    assert.equal(acts[0].chance, 1, `${ev.id}: дар не бросает кубик`);
+    assert.deepEqual(acts[0].bad, [], `${ev.id}: плохого исхода нет`);
+    assert.ok(acts[0].good.length > 0, `${ev.id}: дар что-то даёт`);
+    assert.equal(leaves[0].good.length + leaves[0].bad.length, 0, `${ev.id}: уход ничего не тратит`);
+  }
+});
+
+test("нейтральное событие: две проверки характеристик и уход", () => {
+  const m = loadGameModule("mapEvents");
+  for (const ev of m.NEUTRAL_EVENTS) {
+    assert.equal(ev.choices.length, 3, `${ev.id}: три варианта`);
+    const acts = ev.choices.filter((c) => !c.leave);
+    const leaves = ev.choices.filter((c) => c.leave);
+    assert.equal(acts.length, 2, `${ev.id}: два рабочих варианта`);
+    assert.equal(leaves.length, 1, `${ev.id}: третий — уйти`);
+    for (const c of acts) {
+      assert.ok(c.stat && ["str", "agi", "int"].includes(c.stat), `${ev.id}/${c.id}: проверка идёт через характеристику`);
+      assert.ok(c.chance > 0 && c.chance < 1, `${ev.id}/${c.id}: есть шанс`);
+      assert.ok(c.good.length > 0 && c.bad.length > 0, `${ev.id}/${c.id}: у обоих исходов есть последствия`);
+    }
+    const stats = new Set(acts.map((c) => c.stat));
+    assert.equal(stats.size, 2, `${ev.id}: две разные характеристики`);
+  }
+});
+
+test("шанс проверки растёт с характеристикой", () => {
+  const m = loadGameModule("mapEvents");
+  const choice = m.NEUTRAL_EVENTS[0].choices[0];
+  const low = m.choiceChance(choice, { str: 3, agi: 3, int: 3 });
+  const mid = m.choiceChance(choice, { str: 6, agi: 6, int: 6 });
+  const high = m.choiceChance(choice, { str: 10, agi: 10, int: 10 });
+  assert.equal(low, choice.chance);
+  assert.ok(mid > low && high > mid, `шаг проверки сломан: ${low} / ${mid} / ${high}`);
+  assert.ok(high <= 0.95 && low >= 0.05, "шанс остаётся в разумных границах");
+  /* проверка читает именно свою характеристику */
+  const strChoice = { ...choice, stat: "str" };
+  assert.ok(m.choiceChance(strChoice, { str: 10, agi: 3, int: 3 }) > m.choiceChance(strChoice, { str: 3, agi: 10, int: 10 }));
+});
+
+test("негативное событие срабатывает само: последствия или призыв", () => {
+  const m = loadGameModule("mapEvents");
+  for (const ev of m.NEGATIVE_EVENTS) {
+    assert.equal(ev.choices.length, 0, `${ev.id}: выбора нет`);
+    assert.ok((ev.effects?.length ?? 0) > 0 || ev.summon, `${ev.id}: должно что-то делать`);
+    assert.ok(ev.text && ev.text.length > 10, `${ev.id}: исход описан текстом`);
+  }
+  const packs = m.NEGATIVE_EVENTS.filter((e) => e.summon && "pack" in e.summon);
+  assert.ok(packs.some((e) => e.summon.pack >= 4), "есть призыв четырёх тварей на карту");
+  const battles = m.NEGATIVE_EVENTS.filter((e) => e.summon && "battle" in e.summon);
+  assert.ok(battles.some((e) => e.summon.battle === "catastrophe"), "есть призыв катастрофы");
 });
 
 test("события карты тоже отдают вдвое меньше золота", () => {
