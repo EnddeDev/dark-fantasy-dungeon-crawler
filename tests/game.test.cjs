@@ -2548,12 +2548,25 @@ test("кузница: реагенты кладутся в горн, а перг
   assert.equal(ok.player.bag.scrap_metal, 5);
   assert.equal(ok.player.gold, 5000 - 100);
 
-  /* Неудача не ломает вещь, но реагенты сгорают. */
+  /* С реагентами неудача не ломает вещь, но реагенты сгорают. */
   const failing = forge.forgeUpgrade(player, item.uid, "rarity", () => 0.05, true);
   assert.equal(failing.success, false);
+  assert.equal(failing.destroyed, false);
   assert.equal(failing.player.armory.length, 1, "предмет остаётся в арсенале");
   assert.equal(failing.reagentsUsed, 5);
   assert.equal(failing.player.bag.scrap_metal, 5, "реагенты ушли в горн, хотя улучшения не случилось");
+
+  /* Без реагентов та же неудача уничтожает предмет. */
+  const bare = forge.forgeUpgrade(player, item.uid, "rarity", () => 0.05, false);
+  assert.equal(bare.success, false);
+  assert.equal(bare.destroyed, true);
+  assert.equal(bare.player.armory.length, 0, "предмет уничтожен");
+  assert.equal(bare.reagentsUsed, 0);
+  assert.equal(bare.player.bag.scrap_metal, 10, "без реагентов сумка не тронута");
+
+  /* Пустая сумка = попытка без реагентов, значит риск уничтожения. */
+  const empty = forge.forgeUpgrade({ ...player, bag: {} }, item.uid, "rarity", () => 0.05, true);
+  assert.equal(empty.destroyed, true);
 });
 
 test("boss effect resistance is 25% and seals block the next player action", () => {
