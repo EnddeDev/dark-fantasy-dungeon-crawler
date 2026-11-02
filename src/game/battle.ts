@@ -1046,13 +1046,16 @@ function skillDamageMult(b: BattleState) {
 export function techniqueDamage(int: number, coefficient = 1): number {
   return statTechniqueDamage(int) * coefficient;
 }
+/** Предел ХАР в формуле бонуса приёма оружия. */
+export const TECHNIQUE_STAT_CAP = 10;
 /**
  * Бонус приёма оружия, который добавляется к урону оружия:
- * урон приёма + 2 × (ХАР + множитель приёма + бонус навыков).
- * ХАР — характеристика, которую требует предмет (СИЛ, ЛОВ или ИНТ).
+ * урон приёма + (ХАР × (ХАР + множитель приёма + бонус навыков)) / 2.
+ * ХАР — характеристика, которую требует предмет (СИЛ, ЛОВ или ИНТ), но не больше 10.
  */
 export function weaponTechniqueBonus(stat: number, scaleMult: number, skillScale = 0): number {
-  return 2 * (stat + scaleMult + skillScale);
+  const x = Math.min(stat, TECHNIQUE_STAT_CAP);
+  return (x * (x + scaleMult + skillScale)) / 2;
 }
 function rageBonus(b: BattleState): number {
   const steps = Math.min(10, Math.floor(missingHpRatio(b) * 10));
