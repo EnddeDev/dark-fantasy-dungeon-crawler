@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowDownUp,
   BookOpen,
@@ -85,6 +86,91 @@ const RECIPE_GROUPS: { id: RecipeGroup; label: string }[] = [
   { id: "scroll", label: "Свитки" },
   { id: "special", label: "Спец. предметы" },
 ];
+
+/**
+ * Плитка «реагенты» в кузнице: при наведении или фокусе показывает,
+ * из каких реагентов и в каких долях складывается набор.
+ * Подсказка рисуется порталом, чтобы её не срезал прокручиваемый список.
+ */
+function ReagentNeedTag({
+  total,
+  required,
+  parts,
+  bag,
+  tone,
+  scrap,
+  forbidScrap,
+}: {
+  total: number;
+  required: number;
+  parts: { id: string; count: number }[];
+  bag: Record<string, number>;
+  tone: "mute" | "verd" | "rubric" | "flame";
+  scrap: number;
+  forbidScrap: boolean;
+}) {
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const ref = useRef<HTMLSpanElement>(null);
+  const full = required > 0 && total >= required;
+  const open = () => {
+    const rect = ref.current?.getBoundingClientRect();
+    if (rect) setPos({ x: rect.left, y: rect.bottom + 6 });
+  };
+  const close = () => setPos(null);
+  const width = 288;
+  const left = pos ? Math.max(8, Math.min(pos.x, (typeof window === "undefined" ? 1024 : window.innerWidth) - width - 8)) : 0;
+  return (
+    <span
+      ref={ref}
+      className="inline-block cursor-help focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flame"
+      onMouseEnter={open}
+      onMouseLeave={close}
+      onFocus={open}
+      onBlur={close}
+      tabIndex={0}
+    >
+      <Tag tone={tone}>
+        реагенты {total}/{required}
+        {scrap > 0 ? ` (металлолом ${scrap})` : forbidScrap ? " (без металлолома)" : ""}
+      </Tag>
+      {pos &&
+        createPortal(
+          <div
+            role="tooltip"
+            className="pointer-events-none fixed z-[60] border border-line bg-black/95 p-2 text-left shadow-[0_10px_30px_rgba(0,0,0,0.8)]"
+            style={{ left, top: pos.y, width }}
+          >
+            <div className="font-display text-[0.9rem] uppercase tracking-[0.06em] text-flamehi">
+              Состав набора · {required}
+            </div>
+            <div className="mt-1 space-y-0.5 font-mono text-[0.8rem]">
+              {parts.map((part) => {
+                const have = bag[part.id] ?? 0;
+                const enough = have >= part.count;
+                return (
+                  <div key={part.id} className="flex items-baseline justify-between gap-2">
+                    <span className={enough ? "text-verd" : "text-parch/90"}>
+                      {ITEMS[part.id]?.name ?? part.id} × {part.count}
+                    </span>
+                    <span className={enough ? "text-verd" : "text-rubric"}>есть {have}</span>
+                  </div>
+                );
+              })}
+            </div>
+            {!full && (
+              <div className="mt-1 font-mono text-[0.76rem] text-mute">
+                Не хватает — набор добьётся другими реагентами из сумки.
+              </div>
+            )}
+            <div className="mt-1 font-mono text-[0.76rem] text-mute">
+              Пергамент, магические чернила и фляга в горн не идут.
+            </div>
+          </div>,
+          document.body,
+        )}
+    </span>
+  );
+}
 
 function groupOfKind(kind: string): SupplyGroup {
   return kind === "scroll" ? "scroll" : kind === "throwable" ? "throwable" : kind === "special" ? "special" : "potion";
@@ -1300,11 +1386,7 @@ export function Lobby({
                           </button>
                           {forgeOptions(item).map((opt) => {
                             const plan = useReagents
-                              ? forgeReagentPlan(player.bag, {
-                                  total: opt.reagentTotal,
-                                  scrap: opt.reagentScrap,
-                                  forbidScrap: opt.reagentForbidScrap,
-                                })
+                              ? forgeReagentPlan(player.bag, opt)
                               : { picked: {}, total: 0, scrap: 0 };
                             const fail = forgeFailChance(opt, plan.total);
                             const can = opt.available && player.gold >= opt.cost;
@@ -1322,12 +1404,15 @@ export function Lobby({
                                   <Tag tone="flame">{opt.cost} зол.</Tag>
                                   <Tag tone={fail > 0.4 ? "rubric" : "mute"}>шанс неудачи {Math.round(fail * 100)}%</Tag>
                                   {opt.reagentTotal > 0 && (
-                                    <Tag tone={full && useReagents ? "verd" : "mute"}>
-                                      реагенты {plan.total}/{opt.reagentTotal}
-                                      {opt.reagentScrap > 0
-                                        ? ` (металлолом ${opt.reagentScrap})`
-                                        : opt.reagentForbidScrap ? " (без металлолома)" : ""}
-                                    </Tag>
+                                    <ReagentNeedTag
+                                      total={plan.total}
+                                      required={opt.reagentTotal}
+                                      parts={opt.reagentParts}
+                                      bag={player.bag}
+                                      tone={full && useReagents ? "verd" : "mute"}
+                                      scrap={opt.reagentScrap}
+                                      forbidScrap={opt.reagentForbidScrap}
+                                    />
                                   )}
                                   {plan.total === 0 && <Tag tone="rubric">неудача уничтожит вещь</Tag>}
                                   {!opt.available && <Tag tone="mute">предел</Tag>}
@@ -1469,11 +1554,7 @@ export function Lobby({
             const opt = item ? forgeOptions(item).find((o) => o.kind === forgeConfirm.kind) : null;
             if (!item || !opt) return null;
             const plan = forgeUseReagents
-              ? forgeReagentPlan(player.bag, {
-                  total: opt.reagentTotal,
-                  scrap: opt.reagentScrap,
-                  forbidScrap: opt.reagentForbidScrap,
-                })
+              ? forgeReagentPlan(player.bag, opt)
               : { picked: {}, total: 0, scrap: 0 };
             const fail = forgeFailChance(opt, plan.total);
             return (
@@ -1485,13 +1566,22 @@ export function Lobby({
                     ? "Реагенты не вложены, поэтому при неудаче вещь будет уничтожена."
                     : "При неудаче вещь останется целой, но золото и реагенты пропадут."}
                 </p>
-                <p className="font-mono text-[0.88rem] text-mute">
-                  Реагенты: {plan.total}
-                  {opt.reagentTotal > 0 ? ` из ${opt.reagentTotal}` : ""}
-                  {plan.scrap > 0
-                    ? ` · металлолома ${plan.scrap}`
-                    : opt.reagentForbidScrap ? " · без металлолома" : ""}
-                  {opt.reagentTotal > 0 && plan.total < opt.reagentTotal ? " · набора не хватает, риск выше" : ""}
+                <p className="flex flex-wrap items-center gap-2 font-mono text-[0.88rem] text-mute">
+                  <span>Реагенты: {plan.total}{opt.reagentTotal > 0 ? ` из ${opt.reagentTotal}` : ""}</span>
+                  {opt.reagentTotal > 0 && (
+                    <ReagentNeedTag
+                      total={plan.total}
+                      required={opt.reagentTotal}
+                      parts={opt.reagentParts}
+                      bag={player.bag}
+                      tone={plan.total >= opt.reagentTotal ? "verd" : "mute"}
+                      scrap={opt.reagentScrap}
+                      forbidScrap={opt.reagentForbidScrap}
+                    />
+                  )}
+                  {opt.reagentTotal > 0 && plan.total < opt.reagentTotal ? (
+                    <span>· набора не хватает, риск выше</span>
+                  ) : null}
                 </p>
               </div>
             );
