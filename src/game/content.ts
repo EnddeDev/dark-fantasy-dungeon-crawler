@@ -1594,6 +1594,15 @@ export function gearBaseValue(item: GearItem): number {
  * на 10%, поэтому исследование почти всегда окупается; на дешёвых находках
  * разницу съедает округление цены до 5, там цена символическая.
  */
+/**
+ * Сколько Интеллекта реально нужно на исследование: требование предмета минус
+ * снижение от «Тайноведа» и легендарной крови. Все проверки обязаны считать
+ * через эту функцию — иначе авто-исследование расходится с кнопкой в арсенале.
+ */
+export function identifyIntReq(item: GearItem, intDiscount = 0): number {
+  return Math.max(1, identifyReqs(item).int - Math.max(0, intDiscount));
+}
+
 export function identifyReqs(item: GearItem): { int: number; gold: number } {
   const lvl = clampGearLevel(item.level ?? 1);
   const gold = Math.max(1, Math.round(gearSellPrice({ ...item, identified: true }) * IDENTIFY_SHARE));

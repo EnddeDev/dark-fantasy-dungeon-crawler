@@ -281,6 +281,36 @@ test("негативное событие с катастрофой сразу �
   assert.ok(snap.run.maze.usedEvents.includes(1));
 });
 
+test("авто-исследование учитывает скидку на Интеллект", () => {
+  const game = new GameController(new MemoryStorage());
+  const item = content.createGearItem({ baseId: "sword", level: 4, wear: "worn", rarity: "common", identified: false });
+  const reqInt = content.identifyReqs(item).int;
+  assert.ok(reqInt >= 5, `требование предмета ${reqInt}`);
+  game.model.updatePlayer((p) => ({
+    ...p,
+    stats: { ...p.stats, int: reqInt - 1 },
+    passives: [...p.passives.filter((id) => id !== "scribe"), "scribe"],
+    armory: [item],
+  }));
+
+  /* «Тайновед» снижает требование на 1 — кнопка в арсенале активна, значит и авто должно сработать. */
+  assert.equal(content.identifyIntReq(item, 1), reqInt - 1);
+  const msg = game.lobby.autoIdentify();
+  assert.ok(msg, "авто-исследование сработало со скидкой");
+  assert.equal(game.model.getSnapshot().player.armory[0].identified, true);
+
+  /* Без скидки то же самое требование не проходит — предмет ждёт ручного исследования. */
+  const strict = new GameController(new MemoryStorage());
+  strict.model.updatePlayer((p) => ({
+    ...p,
+    stats: { ...p.stats, int: reqInt - 1 },
+    passives: p.passives.filter((id) => id !== "scribe"),
+    armory: [{ ...item, identified: false }],
+  }));
+  assert.equal(strict.lobby.autoIdentify(), null);
+  assert.equal(strict.model.getSnapshot().player.armory[0].identified, false);
+});
+
 test("список добычи сокращается, когда найденное потрачено", () => {
   assert.deepEqual(runLoot.pruneRunLoot(["potion_s", "potion_s", "moss"], { potion_s: 1 }), ["potion_s", "moss"]);
   assert.deepEqual(runLoot.pruneRunLoot(["moss"], { potion_s: 2 }), ["moss"]);

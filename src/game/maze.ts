@@ -842,51 +842,86 @@ export function findPath(
   return out.reverse();
 }
 
+/** Стена на вертикальной грани: v[y][x] — между (x−1,y) и (x,y). Вне карты — стена. */
+function wallV(m: Maze, x: number, y: number): boolean {
+  if (x <= 0 || x >= m.size || y < 0 || y >= m.size) return true;
+  return m.v[y]?.[x] ?? true;
+}
+
+/** Стена на горизонтальной грани: h[y][x] — между (x,y−1) и (x,y). Вне карты — стена. */
+function wallH(m: Maze, x: number, y: number): boolean {
+  if (y <= 0 || y >= m.size || x < 0 || x >= m.size) return true;
+  return m.h[y]?.[x] ?? true;
+}
+
 /**
  * Честная видимость без взгляда сквозь стены и углы.
- * Луч идёт из центра клетки в центр цели; каждое пересечение стены проверяется.
- * Если луч проходит точно через угол, обе стороны угла должны быть открыты.
+ *
+ * Луч идёт из центра клетки в центр цели по непрерывным координатам и на
+ * каждом шаге проверяет грань, которую пересекает. Если луч проходит ровно
+ * через точку стыка стен, он упирается в эту точку: стены считаются
+ * замкнутыми отрезками, поэтому даже кончик стены закрывает обзор. Раньше в
+ * этом месте проверялись только две ближние грани, и луч проскакивал сквозь
+ * нулевую щель обратного угла — туман «пропадал» за поворотом стены.
+ *
  * Закрытая дверь видна сама, но свет за неё не проходит.
  */
 export function hasLOS(m: Maze, from: Cell, to: Cell): boolean {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  if (dx === 0 && dy === 0) return true;
   if (to.x < 0 || to.y < 0 || to.x >= m.size || to.y >= m.size) return false;
+  if (from.x === to.x && from.y === to.y) return true;
 
+  const x0 = from.x + 0.5;
+  const y0 = from.y + 0.5;
+  const x1 = to.x + 0.5;
+  const y1 = to.y + 0.5;
+  const dx = x1 - x0;
+  const dy = y1 - y0;
   const stepX = dx > 0 ? 1 : dx < 0 ? -1 : 0;
   const stepY = dy > 0 ? 1 : dy < 0 ? -1 : 0;
-  const tDeltaX = dx === 0 ? Infinity : Math.abs(1 / dx);
-  const tDeltaY = dy === 0 ? Infinity : Math.abs(1 / dy);
-  let tMaxX = dx === 0 ? Infinity : Math.abs(0.5 / dx);
-  let tMaxY = dy === 0 ? Infinity : Math.abs(0.5 / dy);
-  let x = from.x;
-  let y = from.y;
-  const closedDoor = (cx: number, cy: number) => {
-    const idx = cellIdx(cx, cy, m.size);
+
+  const tDeltaX = stepX === 0 ? Infinity : Math.abs(1 / dx);
+  const tDeltaY = stepY === 0 ? Infinity : Math.abs(1 / dy);
+  /* Параметр t, на котором луч доходит до первой вертикальной/горизонтальной грани. */
+  let tMaxX =
+    stepX === 0 ? Infinity : (stepX > 0 ? Math.ceil(x0) - x0 : x0 - Math.floor(x0)) / Math.abs(dx);
+  let tMaxY =
+    stepY === 0 ? Infinity : (stepY > 0 ? Math.ceil(y0) - y0 : y0 - Math.floor(y0)) / Math.abs(dy);
+
+  let cx = Math.floor(x0);
+  let cy = Math.floor(y0);
+  const closedDoor = (qx: number, qy: number) => {
+    const idx = cellIdx(qx, qy, m.size);
     return m.doors.includes(idx) && !m.openedDoors.includes(idx);
   };
 
-  while (x !== to.x || y !== to.y) {
+  for (let guard = 0; guard <= 4 * m.size * m.size; guard++) {
+    if (cx === to.x && cy === to.y) return true;
+    if (tMaxX > 1 && tMaxY > 1) return true;
+
     if (Math.abs(tMaxX - tMaxY) < 1e-9) {
-      /* Угол: нельзя выглядывать из-за стены, даже если вторая сторона открыта. */
-      if (wallBetween(m, x, y, stepX, 0) || wallBetween(m, x, y, 0, stepY)) return false;
-      x += stepX;
-      y += stepY;
+      /* Луч проходит ровно через стык четырёх клеток: стены — замкнутые
+         отрезки, поэтому закрыта любая из четырёх граней — обзора нет. */
+      const X = cx + (stepX > 0 ? 1 : 0);
+      const Y = cy + (stepY > 0 ? 1 : 0);
+      if (wallV(m, X, cy) || wallH(m, cx, Y) || wallV(m, X, cy + stepY) || wallH(m, cx + stepX, Y)) return false;
+      cx += stepX;
+      cy += stepY;
       tMaxX += tDeltaX;
       tMaxY += tDeltaY;
+      if (!(cx === to.x && cy === to.y) && closedDoor(cx, cy)) return false;
     } else if (tMaxX < tMaxY) {
-      if (wallBetween(m, x, y, stepX, 0)) return false;
-      x += stepX;
+      if (wallV(m, cx + (stepX > 0 ? 1 : 0), cy)) return false;
+      cx += stepX;
       tMaxX += tDeltaX;
+      if (!(cx === to.x && cy === to.y) && closedDoor(cx, cy)) return false;
     } else {
-      if (wallBetween(m, x, y, 0, stepY)) return false;
-      y += stepY;
+      if (wallH(m, cx, cy + (stepY > 0 ? 1 : 0))) return false;
+      cy += stepY;
       tMaxY += tDeltaY;
+      if (!(cx === to.x && cy === to.y) && closedDoor(cx, cy)) return false;
     }
-    if ((x !== to.x || y !== to.y) && closedDoor(x, y)) return false;
   }
-  return true;
+  return false;
 }
 
 export function computeVisibility(

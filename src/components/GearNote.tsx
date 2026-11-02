@@ -12,6 +12,7 @@ import {
   gearSellPrice,
   gearClassLabel,
   gearRequirement,
+  identifyIntReq,
   identifyReqs,
   scaledGearStats,
   slotsForItem,
@@ -69,7 +70,7 @@ export function GearNote({
   const level = item.level ?? 1;
   const req = gearRequirement(item);
   const research = identifyReqs(item);
-  const researchInt = Math.max(1, research.int - d.intDiscount);
+  const researchInt = identifyIntReq(item, d.intDiscount);
   const range = WEAR_RANGE[item.wear];
   const allowed = slotsForItem(item);
   const wornIn = allowed.filter((slot) => player.equip[slot] === item.uid);
