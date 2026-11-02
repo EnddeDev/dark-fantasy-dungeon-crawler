@@ -2214,7 +2214,7 @@ test("приёмы с негативными эффектами уходят н�
     return b;
   };
   const b = withRandom(() => battle.enemyStep(mk()), 0.5);
-  assert.equal(b.enemy.cooldowns.seal_attack, 1 + battle.ENEMY_MOVE_COOLDOWN, "печать ушла на перезарядку");
+  assert.equal(b.enemy.specialCooldown, 1 + battle.ENEMY_MOVE_COOLDOWN, "печать ушла на перезарядку");
   assert.equal(battle.ENEMY_MOVE_COOLDOWN, 3);
 
   /* Счётчик: сколько раундов ещё ждать. */
@@ -2238,21 +2238,21 @@ test("приёмы с негативными эффектами уходят н�
   }
 });
 
-test("в бою один и тот же приём с дебаффом не повторяется чаще раза в 3 раунда", () => {
+test("в бою дебаффы монстра идут не чаще раза в 3 раунда и не сменяют друг друга", () => {
   /* Броня героя делает обычные удары бесполезными — тварь давит дебаффами. */
   const mkState = () => {
     const b = freshBattle(mkP({ level: 5, stats: { str: 5, agi: 5, int: 5 }, hp: 400 }), 3, false, "classic");
     b.p.armor = 999;
     b.enemy.hp = 99999;
     b.enemy.maxHp = 99999;
-    b.enemy.moves = ["attack", "seal_attack", "terror"];
-    b.enemy.def = { ...b.enemy.def, moves: ["attack", "seal_attack", "terror"] };
+    b.enemy.moves = ["attack", "seal_attack", "terror", "wound"];
+    b.enemy.def = { ...b.enemy.def, moves: ["attack", "seal_attack", "terror", "wound"] };
     return b;
   };
-  const seen = { seal_attack: false, terror: false };
+  const applied = new Set();
   for (const seed of [11, 12, 13]) {
     const rounds = withSeededRandom(seed, () => {
-      const used = { seal_attack: [], terror: [] };
+      const used = [];
       let b = mkState();
       for (let step = 0; step < 200 && !b.over; step++) {
         b.p.hp = 400;
@@ -2260,10 +2260,12 @@ test("в бою один и тот же приём с дебаффом не по
         b.p.statuses.sealSkills = 0;
         if (b.queue[b.idx] === "e") {
           const round = b.round;
-          const before = { ...(b.enemy.cooldowns ?? {}) };
+          const before = b.enemy.specialCooldown ?? 0;
+          const chosen = battle.chooseEnemyMove(b);
           b = battle.enemyStep(b);
-          for (const mv of Object.keys(used)) {
-            if ((b.enemy.cooldowns?.[mv] ?? 0) !== (before[mv] ?? 0)) used[mv].push(round);
+          if ((b.enemy.specialCooldown ?? 0) !== before) {
+            used.push({ round, move: chosen });
+            applied.add(chosen);
           }
         } else {
           b = battle.playerAct(b, { type: "guard" });
@@ -2271,14 +2273,12 @@ test("в бою один и тот же приём с дебаффом не по
       }
       return used;
     });
-    for (const [mv, list] of Object.entries(rounds)) {
-      if (list.length) seen[mv] = true;
-      for (let i = 1; i < list.length; i++) {
-        assert.ok(list[i] - list[i - 1] >= battle.ENEMY_MOVE_COOLDOWN, `${mv}: раунды ${list[i - 1]} и ${list[i]}`);
-      }
+    for (let i = 1; i < rounds.length; i++) {
+      const gap = rounds[i].round - rounds[i - 1].round;
+      assert.ok(gap >= battle.ENEMY_MOVE_COOLDOWN, `${rounds[i - 1].move} и ${rounds[i].move}: раунды ${rounds[i - 1].round} и ${rounds[i].round}`);
     }
   }
-  for (const [mv, ok] of Object.entries(seen)) assert.ok(ok, `${mv} ни разу не применили`);
+  assert.ok(applied.size >= 2, `тварь должна пользоваться разными приёмами, а применила: ${[...applied].join(", ")}`);
 });
 
 test("enemy AI heals or guards when low, punishes misses and closes rounds by turn order", () => {

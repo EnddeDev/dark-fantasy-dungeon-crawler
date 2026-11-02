@@ -158,10 +158,10 @@ export interface BattleState {
     /** Прошлый ход врага закончился промахом: следующий ход — приём. */
     lastMiss: boolean;
     /**
-     * Перезарядка приёмов с негативными эффектами: номер раунда, с которого
-     * приём снова доступен. Пусто — приём не на перезарядке.
+     * Общая перезарядка приёмов с негативными эффектами: номер раунда,
+     * с которого приёмы снова доступны. 0 — приёмы не на перезарядке.
      */
-    cooldowns?: Partial<Record<EnemyMove, number>>;
+    specialCooldown?: number;
   };
   p: {
     hp: number;
@@ -863,7 +863,7 @@ export function newBattle(
       guard: false,
       forceGuard: 0,
       lastMiss: false,
-      cooldowns: {},
+      specialCooldown: 0,
     },
     p: {
       hp: Math.max(1, pl.hp),
@@ -2251,14 +2251,22 @@ const DEBUFF_MOVES: EnemyMove[] = ["wound", "poison", "curse", "sunder", "bell_s
 /**
  * Перезарядка приёмов, которые вешают на героя негативный эффект: страх,
  * печати, порчу, яд, кровотечение, раскол, немоту лечения и горение.
- * Обычные удары, двойной выпад и похищение жизни перезарядки не имеют.
+ * Перезарядка общая: применив любой такой приём, тварь три раунда не может
+ * пользоваться остальными — остаются обычные удары, двойной выпад, похищение
+ * жизни и стойка.
  */
 export const ENEMY_MOVE_COOLDOWN = 3;
 export const ENEMY_COOLDOWN_MOVES: EnemyMove[] = [...DEBUFF_MOVES, "cold_touch", "hell_force"];
 
-/** Сколько раундов ещё ждать до приёма: 0 — можно применять сейчас. */
+/** Сколько раундов ещё ждать до приёмов с негативными эффектами: 0 — можно применять. */
+export function enemySpecialCooldownLeft(b: BattleState): number {
+  return Math.max(0, (b.enemy.specialCooldown ?? 0) - b.round);
+}
+
+/** Сколько раундов ещё ждать до конкретного приёма: 0 — можно применять сейчас. */
 export function enemyMoveCooldownLeft(b: BattleState, move: EnemyMove): number {
-  return Math.max(0, (b.enemy.cooldowns?.[move] ?? 0) - b.round);
+  if (!ENEMY_COOLDOWN_MOVES.includes(move)) return 0;
+  return enemySpecialCooldownLeft(b);
 }
 
 /** Доступен ли приём в текущем раунде. */
@@ -2266,10 +2274,10 @@ export function enemyMoveReady(b: BattleState, move: EnemyMove): boolean {
   return enemyMoveCooldownLeft(b, move) === 0;
 }
 
-/** Отмечает применение приёма: следующие три раунда он недоступен. */
+/** Отмечает применение приёма: следующие три раунда приёмы с дебаффами недоступны. */
 function armEnemyCooldown(b: BattleState, move: EnemyMove): void {
   if (!ENEMY_COOLDOWN_MOVES.includes(move)) return;
-  b.enemy.cooldowns = { ...(b.enemy.cooldowns ?? {}), [move]: b.round + ENEMY_MOVE_COOLDOWN };
+  b.enemy.specialCooldown = b.round + ENEMY_MOVE_COOLDOWN;
 }
 /** Приёмы, которые бьют по духу и считаются магическими. */
 const MAGIC_MOVES: EnemyMove[] = ["curse", "drain", "bell_stun", "terror", "darkness", "cold_touch", "hell_force"];
