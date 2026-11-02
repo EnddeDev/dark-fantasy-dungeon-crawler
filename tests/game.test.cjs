@@ -1464,8 +1464,7 @@ test("knives are always light and every knife/rapier technique scales from Agili
       assert.equal(ws.scaleStat, "agi", `${baseId}/${skillId}`);
       const factor = Math.pow(1.17, (item.level ?? 1) - 1);
       assert.ok(ws.scaleMult >= 1.5 * factor - 0.02 && ws.scaleMult <= 2.5 * factor + 0.02);
-      /* Урон приёма: 2 × (ИНТ + множитель). Пассивная заметка по-прежнему называет характеристику предмета. */
-      assert.ok(ws.desc.includes(`2×(ИНТ + ${ws.scaleMult})`), ws.desc);
+      assert.ok(ws.desc.includes("×ЛОВ"), ws.desc);
       assert.ok(ws.passiveNote.includes("×ЛОВ"), ws.passiveNote);
       assert.ok(!ws.desc.includes("×ИНТ") && !ws.desc.includes("×СИЛ"));
     }
@@ -1482,7 +1481,7 @@ test("weapon technique descriptions and passive notes match the actual affinity 
       if (ws.effect === "double_attack") {
         assert.ok(ws.desc.includes("без дополнительного бонуса"), `${baseId}/${skillId}: ${ws.desc}`);
       } else {
-        assert.ok(ws.desc.includes(`2×(ИНТ + ${ws.scaleMult})`), `${baseId}/${skillId}: ${ws.desc}`);
+        assert.ok(ws.desc.includes(`${ws.scaleMult}×${short}`), `${baseId}/${skillId}: ${ws.desc}`);
       }
       assert.ok(ws.passiveNote.includes(`×${short}`), ws.passiveNote);
       const baseRange = ws.scaleStat === "int" ? [2, 4.5] : ws.scaleStat === "str" ? [1.5, 3.5] : [1.5, 2.5];
