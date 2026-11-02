@@ -14,6 +14,8 @@ import { mazeSizeForFloor } from "../game/maze";
 import { MONSTER_RACE_META, MONSTER_TYPE_META, raceTraits } from "../game/monsters";
 import { ENEMY_COOLDOWN_MOVES, ENEMY_MOVE_COOLDOWN } from "../game/battle";
 import { FoePortrait } from "./FoeArt";
+import { ElementRow } from "./DamageTypeIcon";
+import { raceElementRows } from "../game/damageTypes";
 import { RARITY_TEXT } from "./ui";
 
 const THREATS: Threat[] = ["normal", "horror", "catastrophe"];
@@ -225,6 +227,15 @@ export function Bestiary() {
                   <p className="mt-0.5 font-mono text-[0.82rem] text-parch/60">
                     {[MONSTER_TYPE_META[enemy.type].note, ...raceTraits(enemy.race)].join(" · ")}
                   </p>
+                  {(() => {
+                    const rows = raceElementRows(enemy.race);
+                    return (
+                      <div className="mt-1 flex flex-col gap-1 font-mono text-[0.82rem]">
+                        <ElementRow label="уязвим к:" elements={rows.weak} />
+                        <ElementRow label="иммунен к:" elements={rows.immune} />
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div className="flex flex-row gap-3 font-mono text-[0.84rem] text-mute sm:flex-col sm:items-end sm:gap-1">
                   <span className="flex items-center gap-1"><Skull size={12} aria-hidden />{enemy.hp} ОЗ</span>

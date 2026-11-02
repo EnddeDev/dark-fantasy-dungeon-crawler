@@ -107,6 +107,8 @@ export interface LogLine {
   id: number;
   text: string;
   kind: "p" | "e" | "sys";
+  /** Стихия удара: журнал показывает её иконку. */
+  dmg?: DamageElement;
 }
 
 export interface BattleState {
@@ -821,8 +823,10 @@ function clone(b: BattleState): BattleState {
   };
 }
 
-function push(b: BattleState, text: string, kind: LogLine["kind"]) {
-  b.log = [...b.log.slice(-69), { id: (b.log[b.log.length - 1]?.id ?? 0) + 1, text, kind }];
+function push(b: BattleState, text: string, kind: LogLine["kind"], dmg?: DamageElement) {
+  const line: LogLine = { id: (b.log[b.log.length - 1]?.id ?? 0) + 1, text, kind };
+  if (dmg) line.dmg = dmg;
+  b.log = [...b.log.slice(-69), line];
 }
 
 function flash(b: BattleState, target: "p" | "e", kind: "hit" | "guard" | "miss" | "heal", amount: number) {
@@ -1303,6 +1307,7 @@ function hitEnemy(
   kind: "phys" | "magic",
   note = "",
   strike = kind === "phys",
+  element?: DamageElement,
 ): number {
   const darkMiss = (b.torchTurns ?? 0) > 0 ? 0 : biomeMissChance(b.biome);
   if (strike && darkMiss > 0 && Math.random() < darkMiss) {
@@ -1352,7 +1357,7 @@ function hitEnemy(
   d = Math.max(1, d);
   b.enemy.hp -= d;
   flash(b, "e", "hit", d);
-  push(b, `${b.enemy.def.name} получает ${d} урона.${note}`, "p");
+  push(b, `${b.enemy.def.name} получает ${d} урона.${note}`, "p", element);
   /* Шипы врага ранят только того, кто бьёт вплотную: обычная атака, второй
      удар, контратака и физические приёмы. Магический урон их не будит. */
   const thorns = !effectsDepleted(b) && kind === "phys" ? eEffect(b, "thorns") : 0;
@@ -1375,27 +1380,27 @@ function hitEnemy(
 }
 
 /**
- * Урон стихией: уязвимый род получает в полтора раза больше, а иммунный —
- * ничего. Стихию знают свитки, зелья и часть приёмов.
+ * Урон стихией. Стихийный урон всегда магический: броню и уклонение игнорирует,
+ * режется магическим сопротивлением. Уязвимый род получает в полтора раза больше,
+ * а иммунный — ничего. Стихию знают свитки, зелья и часть приёмов.
  */
 function elementalHit(
   b: BattleState,
   raw: number,
-  kind: "phys" | "magic",
   note: string,
   element: DamageElement | undefined,
 ): number {
   const mult = raceElementMult(b.enemy.def.race, element);
   if (element && mult <= 0) {
     flash(b, "e", "miss", 0);
-    push(b, `${b.enemy.def.name} не получает урона от стихии (${ELEMENT_NAMES[element]}).${note}`, "sys");
+    push(b, `${b.enemy.def.name} не получает урона от стихии (${ELEMENT_NAMES[element]}).${note}`, "sys", element);
     return 0;
   }
   if (element && mult > 1) {
-    push(b, `Уязвимость к стихии: ${ELEMENT_NAMES[element]} бьёт в ×${mult}.`, "p");
-    return hitEnemy(b, Math.round(raw * mult), kind, note);
+    push(b, `Уязвимость к стихии: ${ELEMENT_NAMES[element]} бьёт в ×${mult}.`, "p", element);
+    return hitEnemy(b, Math.round(raw * mult), "magic", note, false, element);
   }
-  return hitEnemy(b, raw, kind, note);
+  return hitEnemy(b, raw, "magic", note, false, element);
 }
 
 /** false означает, что враг промахнулся: побочные эффекты атаки тоже не срабатывают. */
@@ -1782,14 +1787,14 @@ function castCreatedScroll(b: BattleState, name: string) {
     const amt = healPlayer(b, Math.round(power * mult));
     push(b, `${def.name} сразу применяется: +${amt} здоровья.`, "p");
   } else if (def.use?.type === "chill") {
-    const dealt = elementalHit(b, Math.round(power * mult), "magic", ` [${def.name}, сотворён]`, def.use?.element ?? "ice");
+    const dealt = elementalHit(b, Math.round(power * mult), ` [${def.name}, сотворён]`, def.use?.element ?? "ice");
     applyEnemyStatus(b, "chill", 3);
     applyVamp(b, dealt, 0, "scroll", "magic");
   } else if (def.use?.type === "terror") {
     b.enemy.forceGuard = Math.max(b.enemy.forceGuard, 2);
     push(b, `${def.name} сразу применяется: враг держит защиту.`, "p");
   } else {
-    const dealt = elementalHit(b, Math.round(power * mult), "magic", ` [${def.name}, сотворён]`, def.use?.element);
+    const dealt = elementalHit(b, Math.round(power * mult), ` [${def.name}, сотворён]`, def.use?.element);
     applyVamp(b, dealt, 0, "scroll", "magic");
   }
   b.bag[id]--;
@@ -2018,7 +2023,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
       const skLevel = b.p.epicSkillLevels[sk.id] ?? 1;
       if (sk.id === "fireball") {
         const dmg = Math.round(techniqueDamage(b.p.stats.int, epicMagnitude(sk.id, "scale", skLevel) / 2) * spellPowerMult * skillDamageMult(b));
-        const dealt = elementalHit(b, dmg, "magic", " [Огненный шар]", "fire");
+        const dealt = elementalHit(b, dmg, " [Огненный шар]", "fire");
         applyVamp(b, dealt, 0, "skill", "magic");
         const burnRounds = epicMagnitude(sk.id, "rounds", skLevel);
         b.enemy.statuses.burn = Math.max(b.enemy.statuses.burn, burnRounds);
@@ -2047,7 +2052,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
         applyVamp(b, dealt, 0, "skill", "magic");
       } else if (sk.id === "frost_nova") {
         const dmg = Math.round(techniqueDamage(b.p.stats.int, epicMagnitude(sk.id, "scale", skLevel) / 2) * spellPowerMult * skillDamageMult(b));
-        const dealt = elementalHit(b, dmg, "magic", " [Дыхание склепа]", "ice");
+        const dealt = elementalHit(b, dmg, " [Дыхание склепа]", "ice");
         applyVamp(b, dealt, 0, "skill", "magic");
         b.enemy.statuses.chill = Math.max(b.enemy.statuses.chill, epicMagnitude(sk.id, "rounds", skLevel));
         b.enemy.statuses.stunAp = Math.min(4, b.enemy.statuses.stunAp + epicMagnitude(sk.id, "stun", skLevel));
@@ -2095,13 +2100,13 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
           if (u.vs && b.enemy.def.race === u.vs) dmg = Math.round(dmg * 2);
           if (b.p.statuses.rage > 0) dmg = Math.round(dmg * (1 + 0.10 * Math.min(10, Math.floor(missingHpRatio(b) * 10))));
           if (b.p.statuses.curse > 0) dmg = Math.round(dmg * (1 - (b.p.statuses.cursePower ?? 30) / 100));
-          const dealt = elementalHit(b, dmg, "magic", ` [${def.name}]${u.vs && b.enemy.def.race === u.vs ? " · вдвойне против такого рода!" : ""}`, u.element);
+          const dealt = elementalHit(b, dmg, ` [${def.name}]${u.vs && b.enemy.def.race === u.vs ? " · вдвойне против такого рода!" : ""}`, u.element);
           applyVamp(b, dealt, 0, def.kind === "scroll" ? "scroll" : "consumable", def.kind === "scroll" ? "magic" : "phys");
           break;
         }
         case "chill": {
           const dmg = Math.round(itemPower * scrollMult);
-          const dealt = elementalHit(b, dmg, "magic", ` [${def.name}]`, u.element ?? "ice");
+          const dealt = elementalHit(b, dmg, ` [${def.name}]`, u.element ?? "ice");
           applyVamp(b, dealt, 0, def.kind === "scroll" ? "scroll" : "consumable", def.kind === "scroll" ? "magic" : "phys");
           applyEnemyStatus(b, "chill", u.rounds ?? 3);
           push(b, `${b.enemy.def.name} обморожен: лечение −50% и периодический урон.`, "p");
@@ -2229,7 +2234,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
         }
         case "acid": {
           const dmg = Math.round(itemPower);
-          const dealt = elementalHit(b, dmg, "magic", ` [${def.name}]`, u.element ?? "acid");
+          const dealt = elementalHit(b, dmg, ` [${def.name}]`, u.element ?? "acid");
           applyVamp(b, dealt, 0, "consumable", "phys");
           if (!bossResists(b)) {
             b.enemy.armor = Math.max(0, b.enemy.armor - 3);
@@ -2256,7 +2261,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
         case "buff_break": {
           if (u.power || u.scale) {
             const dmg = Math.round(itemPower * scrollMult);
-            const dealt = elementalHit(b, dmg, "magic", ` [${def.name}]`, u.element);
+            const dealt = elementalHit(b, dmg, ` [${def.name}]`, u.element);
             applyVamp(b, dealt, 0, def.kind === "scroll" ? "scroll" : "consumable", "magic");
           }
           if (bossResists(b)) break;

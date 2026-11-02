@@ -32,6 +32,8 @@ import { isBattleCurse } from "../game/traps";
 import { statDamage } from "../game/statFormulas";
 import { enemyEffectChips, playerEffectChips } from "../game/effects";
 import { EffectChips } from "./EffectChips";
+import { DamageTypeTag, ElementRow } from "./DamageTypeIcon";
+import { itemDamageType, raceElementRows } from "../game/damageTypes";
 
 /** Римская нумерация для строк инициативы. */
 function roman(n: number): string {
@@ -583,6 +585,7 @@ export function BattleView({
                     const fearImmune = u.type === "fear" && isImmuneTo(e.def.race, "fear");
                     const poisonImmune = u.type === "poison" && isImmuneTo(e.def.race, "poison");
                     const ok = intOk && myTurn && !fearImmune;
+                    const dmgType = itemDamageType(def.use);
                     return (
                       <button
                         key={id}
@@ -595,6 +598,7 @@ export function BattleView({
                           <span>
                             <span className="block font-display text-[1.02rem] uppercase tracking-[0.1em] text-flamehi">
                               {def.name} <span className="font-mono text-[0.84rem] text-flame">×{n}</span>
+                              {dmgType && <DamageTypeTag id={dmgType} size={14} className="ml-2" />}
                             </span>
                             <span className="block text-[0.89rem] leading-snug text-mute">{def.desc}</span>
                           </span>
@@ -717,6 +721,7 @@ export function BattleView({
                       l.kind === "p" ? "border-flamedim text-parch" : l.kind === "e" ? "border-rubric text-parch/85" : "border-line text-mute italic"
                     }`}
                   >
+                    {l.dmg && <DamageTypeTag id={l.dmg} size={12} className="mr-1.5" />}
                     {l.text}
                   </div>
                 ))}
@@ -839,6 +844,15 @@ export function BattleView({
                   {raceTraits(e.def.race).map((t) => (
                     <li key={t}>• {t}</li>
                   ))}
+                  {(() => {
+                    const rows = raceElementRows(e.def.race);
+                    return (
+                      <>
+                        {rows.weak.length > 0 && <li><ElementRow label="• уязвим к:" elements={rows.weak} /></li>}
+                        {rows.immune.length > 0 && <li><ElementRow label="• иммунен к:" elements={rows.immune} /></li>}
+                      </>
+                    );
+                  })()}
                 </ul>
               </section>
             </div>
