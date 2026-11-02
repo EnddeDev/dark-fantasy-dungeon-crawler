@@ -30,6 +30,8 @@ export interface ForgeOption {
   reagentScrap: number;
   /** Металлолом в это улучшение не кладут: качество и уровень делают на других реагентах. */
   reagentForbidScrap: boolean;
+  /** Из чего складывается набор: разные реагенты в своих долях, сумма равна reagentTotal. */
+  reagentParts: ForgeReagentPart[];
   available: boolean;
 }
 
@@ -49,6 +51,74 @@ const WEAR_FAIL: Record<WearTier, number> = { battered: 0.3, worn: 0.6, new: 0 }
  * 10 металлолома + 5 других реагентов (25%);
  * уровень — 2 реагента за каждый уровень предмета, шанс неудачи вдвое ниже обычного.
  */
+/**
+ * Состав реагентов: у каждого улучшения свой набор из нескольких реагентов
+ * в разных пропорциях, но итоговая сумма всегда равна таблице
+ * (качество 5 / 15 / 25, изношенность 5 / 15, уровень 2 × уровень предмета).
+ * Металлолом идёт только на изношенность.
+ */
+export interface ForgeReagentPart {
+  id: string;
+  count: number;
+}
+
+const RARITY_PARTS: Record<RarityTier, { id: string; share: number }[]> = {
+  /* Костяная пыль, порох и мох: 40 / 40 / 20. */
+  common: [
+    { id: "bone", share: 0.4 },
+    { id: "powder", share: 0.4 },
+    { id: "moss", share: 0.2 },
+  ],
+  /* Слеза банши заменяет мох и забирает долю пороха: 40 / 30 / 30. */
+  rare: [
+    { id: "bone", share: 0.4 },
+    { id: "powder", share: 0.3 },
+    { id: "tear", share: 0.3 },
+  ],
+  /* Четыре реагента: 30 / 30 / 20 / 20. */
+  epic: [
+    { id: "bone", share: 0.3 },
+    { id: "powder", share: 0.3 },
+    { id: "ember", share: 0.2 },
+    { id: "silk", share: 0.2 },
+  ],
+  legendary: [],
+};
+
+const WEAR_PARTS: Record<WearTier, { id: string; share: number }[]> = {
+  battered: [{ id: "scrap_metal", share: 1 }],
+  worn: [
+    { id: "scrap_metal", share: 2 / 3 },
+    { id: "cloth", share: 1 / 3 },
+  ],
+  new: [],
+};
+
+const LEVEL_PARTS: { id: string; share: number }[] = [
+  { id: "herb", share: 0.4 },
+  { id: "silk", share: 0.3 },
+  { id: "ember", share: 0.3 },
+];
+
+/** Делит итог по долям: крупные остатки забирают недостающие единицы, сумма совпадает точно. */
+function splitParts(parts: { id: string; share: number }[], total: number): ForgeReagentPart[] {
+  if (total <= 0 || parts.length === 0) return [];
+  const rows = parts.map((p) => {
+    const exact = p.share * total;
+    const count = Math.floor(exact);
+    return { id: p.id, count, rem: exact - count };
+  });
+  let sum = rows.reduce((acc, r) => acc + r.count, 0);
+  const order = [...rows].sort((a, b) => b.rem - a.rem);
+  let i = 0;
+  while (sum < total && order.length > 0) {
+    order[i % order.length].count += 1;
+    sum += 1;
+    i += 1;
+  }
+  return rows.filter((r) => r.count > 0).map((r) => ({ id: r.id, count: r.count }));
+}
+
 const RARITY_REAGENTS: Record<RarityTier, { total: number; fail: number }> = {
   common: { total: 5, fail: 0.1 },
   rare: { total: 15, fail: 0.25 },
@@ -77,20 +147,24 @@ export function levelFailChance(level: number): number {
 export function forgeReagentNeed(
   item: GearItem,
   kind: ForgeUpgradeKind,
-): { total: number; scrap: number; forbidScrap: boolean; failFull: number } {
+): { total: number; scrap: number; forbidScrap: boolean; parts: ForgeReagentPart[]; failFull: number } {
   if (kind === "rarity") {
     const r = RARITY_REAGENTS[item.rarity];
-    return { total: r.total, scrap: 0, forbidScrap: true, failFull: r.fail };
+    const parts = splitParts(RARITY_PARTS[item.rarity], r.total);
+    return { total: r.total, scrap: 0, forbidScrap: true, parts, failFull: r.fail };
   }
   if (kind === "wear") {
     const w = WEAR_REAGENTS[item.wear];
-    return { total: w.total, scrap: w.scrap, forbidScrap: false, failFull: w.fail };
+    const parts = splitParts(WEAR_PARTS[item.wear], w.total);
+    return { total: w.total, scrap: w.scrap, forbidScrap: false, parts, failFull: w.fail };
   }
   const lvl = clampGearLevel(item.level ?? 1);
+  const total = 2 * lvl;
   return {
-    total: 2 * lvl,
+    total,
     scrap: 0,
     forbidScrap: true,
+    parts: splitParts(LEVEL_PARTS, total),
     failFull: Math.min(1, Math.round((levelFailChance(lvl) / 2) * 100) / 100),
   };
 }
@@ -116,6 +190,7 @@ export function forgeOptions(item: GearItem): ForgeOption[] {
       reagentTotal: rarityNeed.total,
       reagentScrap: rarityNeed.scrap,
       reagentForbidScrap: rarityNeed.forbidScrap,
+      reagentParts: rarityNeed.parts,
       available: !!nextRarity,
     },
     {
@@ -129,6 +204,7 @@ export function forgeOptions(item: GearItem): ForgeOption[] {
       reagentTotal: wearNeed.total,
       reagentScrap: wearNeed.scrap,
       reagentForbidScrap: wearNeed.forbidScrap,
+      reagentParts: wearNeed.parts,
       available: !!nextWear,
     },
     {
@@ -142,6 +218,7 @@ export function forgeOptions(item: GearItem): ForgeOption[] {
       reagentTotal: levelNeed.total,
       reagentScrap: levelNeed.scrap,
       reagentForbidScrap: levelNeed.forbidScrap,
+      reagentParts: levelNeed.parts,
       available: lvl < MAX_GEAR_LEVEL,
     },
   ];
@@ -166,10 +243,25 @@ export interface ForgeReagentPlan {
  * Раскладка реагентов: сначала обязательный металлолом, затем самые дешёвые
  * реагенты из сумки. Возвращает только то, что реально есть.
  */
-export function forgeReagentPlan(
-  bag: Record<string, number>,
-  need: { total: number; scrap: number; forbidScrap?: boolean },
-): ForgeReagentPlan {
+/** Запрос набора: годится и готовая плитка улучшения (ForgeOption), и ручной набор чисел. */
+export interface ForgeReagentRequest {
+  total?: number;
+  reagentTotal?: number;
+  scrap?: number;
+  reagentScrap?: number;
+  forbidScrap?: boolean;
+  reagentForbidScrap?: boolean;
+  parts?: ForgeReagentPart[];
+  reagentParts?: ForgeReagentPart[];
+}
+
+export function forgeReagentPlan(bag: Record<string, number>, request: ForgeReagentRequest): ForgeReagentPlan {
+  const need = {
+    total: request.total ?? request.reagentTotal ?? 0,
+    scrap: request.scrap ?? request.reagentScrap ?? 0,
+    forbidScrap: request.forbidScrap ?? request.reagentForbidScrap ?? false,
+    parts: request.parts ?? request.reagentParts ?? [],
+  };
   /* Качество и уровень не делают на металлоломе: он годится только на изношенность. */
   const noScrap = need.forbidScrap === true;
   const avail: Record<string, number> = {};
@@ -187,9 +279,16 @@ export function forgeReagentPlan(
     avail[id] -= got;
     left -= got;
   };
-  take("scrap_metal", noScrap ? 0 : need.scrap);
+  /* Сначала обязательные доли состава, затем добор любыми другими реагентами. */
+  if (need.parts?.length) {
+    for (const part of need.parts) take(part.id, part.count);
+  } else {
+    take("scrap_metal", noScrap ? 0 : need.scrap ?? 0);
+  }
+  /* Если лом входит в набор своей долей, добирать им сверх доли нельзя: у изношенности ровно 10 лома + 5 других. */
+  const banScrapFill = noScrap || need.scrap > 0;
   const rest = Object.keys(avail)
-    .filter((id) => (avail[id] ?? 0) > 0)
+    .filter((id) => (avail[id] ?? 0) > 0 && !(banScrapFill && id === "scrap_metal"))
     .sort((a, b) => (ITEMS[a]?.price ?? 0) - (ITEMS[b]?.price ?? 0) || a.localeCompare(b));
   for (const id of rest) {
     if (left <= 0) break;
@@ -311,11 +410,7 @@ export function forgeUpgrade(
   }
 
   const plan = useReagents
-    ? forgeReagentPlan(player.bag, {
-        total: opt.reagentTotal,
-        scrap: opt.reagentScrap,
-        forbidScrap: opt.reagentForbidScrap,
-      })
+    ? forgeReagentPlan(player.bag, opt)
     : { picked: {}, total: 0, scrap: 0 };
   const failChance = forgeFailChance(opt, plan.total);
   const paid: Player = { ...player, gold: player.gold - opt.cost, bag: spendReagents(player.bag, plan.picked) };

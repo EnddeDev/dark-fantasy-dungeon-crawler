@@ -2614,7 +2614,7 @@ test("кузница: реагенты кладутся в горн, а перг
 
   const item = content.createGearItem({ baseId: "sword", level: 1, wear: "battered", rarity: "common", identified: true });
   const wearOpt = forge.forgeOptions(item).find((o) => o.kind === "wear");
-  const need = { total: wearOpt.reagentTotal, scrap: wearOpt.reagentScrap };
+  const need = wearOpt;
 
   const short = forge.forgeReagentPlan({ scrap_metal: 3, moss: 1, parchment: 9 }, need);
   assert.equal(short.scrap, 3);
@@ -2630,20 +2630,20 @@ test("кузница: реагенты кладутся в горн, а перг
   const newNeed = forge.forgeOptions(worn).find((o) => o.kind === "wear");
   const big = forge.forgeReagentPlan(
     { scrap_metal: 30, moss: 3, tear: 2, bone: 4, parchment: 9, magic_ink: 9, vial: 9 },
-    { total: newNeed.reagentTotal, scrap: newNeed.reagentScrap },
+    newNeed,
   );
-  /* Металлолом самый дешёвый, поэтому добирает и «другие» реагенты. */
-  assert.equal(big.scrap, 15);
+  /* Обязательные доли: 10 металлолома и 5 ткани; ткани нет — добираем дешёвыми. */
+  assert.equal(big.scrap, 10, "металлолома ровно 10, а не весь набор");
   assert.equal(big.total, 15);
   assert.equal(big.picked.parchment, undefined);
   assert.equal(big.picked.magic_ink, undefined);
   assert.equal(big.picked.vial, undefined);
-  assert.equal(big.picked.moss, undefined);
-  assert.equal(big.picked.bone, undefined);
+  assert.equal(big.picked.bone, 4, "нехватку ткани добрали дешёвыми реагентами");
+  assert.equal(big.picked.moss, 1);
 
   /* Качество и уровень: металлолом в горн не идёт, даже если он единственный. */
   const rarityOpt = forge.forgeOptions(item).find((o) => o.kind === "rarity");
-  const rarityNeed = { total: rarityOpt.reagentTotal, scrap: rarityOpt.reagentScrap, forbidScrap: rarityOpt.reagentForbidScrap };
+  const rarityNeed = rarityOpt;
   const scrapOnly = forge.forgeReagentPlan({ scrap_metal: 50 }, rarityNeed);
   assert.equal(scrapOnly.total, 0, "из одного металлолома качество не сделать");
   assert.equal(scrapOnly.scrap, 0);
@@ -2651,7 +2651,7 @@ test("кузница: реагенты кладутся в горн, а перг
   assert.equal(mixed.scrap, 0, "металлолом не участвует");
   assert.equal(mixed.total, 5, "набор добирается другими реагентами");
   assert.equal(mixed.picked.scrap_metal, undefined);
-  const wearNeed2 = { total: wearOpt.reagentTotal, scrap: wearOpt.reagentScrap, forbidScrap: wearOpt.reagentForbidScrap };
+  const wearNeed2 = wearOpt;
   assert.equal(forge.forgeReagentPlan({ scrap_metal: 50 }, wearNeed2).scrap, 5, "на изношенность металлолом идёт");
 
   /* Попытка с реагентами тратит и золото, и реагенты. */
@@ -2682,6 +2682,59 @@ test("кузница: реагенты кладутся в горн, а перг
   /* Пустая сумка = попытка без реагентов, значит риск уничтожения. */
   const empty = forge.forgeUpgrade({ ...player, bag: {} }, item.uid, "rarity", () => 0.05, true);
   assert.equal(empty.destroyed, true);
+});
+
+test("кузница: набор реагентов — разные реагенты, сумма как в таблице", () => {
+  const sum = (parts) => parts.reduce((acc, p) => acc + p.count, 0);
+
+  /* Качество: три-четыре разных реагента, сумма 5 / 15 / 25, лома нет. */
+  const tiers = [
+    ["common", 5],
+    ["rare", 15],
+    ["epic", 25],
+  ];
+  for (const [rarity, total] of tiers) {
+    const item = content.createGearItem({ baseId: "sword", level: 1, wear: "battered", rarity, identified: true });
+    const opt = forge.forgeOptions(item).find((o) => o.kind === "rarity");
+    assert.equal(opt.reagentTotal, total, `${rarity}: сумма набора`);
+    assert.equal(sum(opt.reagentParts), total, `${rarity}: состав совпадает с суммой`);
+    assert.ok(opt.reagentParts.length >= 3, `${rarity}: реагенты разные`);
+    assert.equal(new Set(opt.reagentParts.map((p) => p.id)).size, opt.reagentParts.length, "без повторов");
+    assert.ok(!opt.reagentParts.some((p) => p.id === "scrap_metal"), `${rarity}: без металлолома`);
+    assert.equal(opt.reagentForbidScrap, true);
+  }
+
+  /* Изношенность: 5 металлолома и 10 металлолома + 5 других. */
+  const battered = content.createGearItem({ baseId: "sword", level: 1, wear: "battered", rarity: "common", identified: true });
+  const wearOpt = forge.forgeOptions(battered).find((o) => o.kind === "wear");
+  assert.deepEqual(wearOpt.reagentParts, [{ id: "scrap_metal", count: 5 }]);
+  const worn = content.createGearItem({ baseId: "sword", level: 1, wear: "worn", rarity: "common", identified: true });
+  const wornOpt = forge.forgeOptions(worn).find((o) => o.kind === "wear");
+  assert.equal(sum(wornOpt.reagentParts), 15);
+  assert.equal(wornOpt.reagentParts.find((p) => p.id === "scrap_metal").count, 10);
+  assert.equal(wornOpt.reagentParts.length, 2, "лом и ещё один реагент");
+
+  /* Уровень: разные реагенты, сумма 2 × уровень предмета, лома нет. */
+  for (let lvl = 1; lvl <= 10; lvl++) {
+    const item = content.createGearItem({ baseId: "sword", level: lvl, wear: "battered", rarity: "common", identified: true });
+    const opt = forge.forgeOptions(item).find((o) => o.kind === "level");
+    assert.equal(opt.reagentTotal, 2 * lvl, `уровень ${lvl}: сумма`);
+    assert.equal(sum(opt.reagentParts), 2 * lvl, `уровень ${lvl}: состав`);
+    assert.ok(opt.reagentParts.length >= 2, `уровень ${lvl}: реагенты разные`);
+    assert.ok(!opt.reagentParts.some((p) => p.id === "scrap_metal"), `уровень ${lvl}: без металлолома`);
+  }
+
+  /* Идеальная сумка: план берёт ровно состав и ничего лишнего. */
+  const item = content.createGearItem({ baseId: "sword", level: 3, wear: "battered", rarity: "common", identified: true });
+  const opt = forge.forgeOptions(item).find((o) => o.kind === "rarity");
+  const bag = {};
+  for (const part of opt.reagentParts) bag[part.id] = part.count;
+  bag.moss = (bag.moss ?? 0) + 10;
+  const plan = forge.forgeReagentPlan(bag, opt);
+  assert.equal(plan.total, opt.reagentTotal);
+  for (const part of opt.reagentParts) {
+    assert.ok(plan.picked[part.id] >= part.count, `${part.id}: взяли не меньше своей доли`);
+  }
 });
 
 test("boss effect resistance is 25% and seals block the next player action", () => {
