@@ -28,6 +28,8 @@ export interface ForgeOption {
   reagentTotal: number;
   /** Сколько из них обязательно металлолома. */
   reagentScrap: number;
+  /** Металлолом в это улучшение не кладут: качество и уровень делают на других реагентах. */
+  reagentForbidScrap: boolean;
   available: boolean;
 }
 
@@ -75,17 +77,22 @@ export function levelFailChance(level: number): number {
 export function forgeReagentNeed(
   item: GearItem,
   kind: ForgeUpgradeKind,
-): { total: number; scrap: number; failFull: number } {
+): { total: number; scrap: number; forbidScrap: boolean; failFull: number } {
   if (kind === "rarity") {
     const r = RARITY_REAGENTS[item.rarity];
-    return { total: r.total, scrap: 0, failFull: r.fail };
+    return { total: r.total, scrap: 0, forbidScrap: true, failFull: r.fail };
   }
   if (kind === "wear") {
     const w = WEAR_REAGENTS[item.wear];
-    return { total: w.total, scrap: w.scrap, failFull: w.fail };
+    return { total: w.total, scrap: w.scrap, forbidScrap: false, failFull: w.fail };
   }
   const lvl = clampGearLevel(item.level ?? 1);
-  return { total: 2 * lvl, scrap: 0, failFull: Math.min(1, Math.round((levelFailChance(lvl) / 2) * 100) / 100) };
+  return {
+    total: 2 * lvl,
+    scrap: 0,
+    forbidScrap: true,
+    failFull: Math.min(1, Math.round((levelFailChance(lvl) / 2) * 100) / 100),
+  };
 }
 
 export function forgeOptions(item: GearItem): ForgeOption[] {
@@ -108,6 +115,7 @@ export function forgeOptions(item: GearItem): ForgeOption[] {
       failChanceFull: rarityNeed.failFull,
       reagentTotal: rarityNeed.total,
       reagentScrap: rarityNeed.scrap,
+      reagentForbidScrap: rarityNeed.forbidScrap,
       available: !!nextRarity,
     },
     {
@@ -120,6 +128,7 @@ export function forgeOptions(item: GearItem): ForgeOption[] {
       failChanceFull: wearNeed.failFull,
       reagentTotal: wearNeed.total,
       reagentScrap: wearNeed.scrap,
+      reagentForbidScrap: wearNeed.forbidScrap,
       available: !!nextWear,
     },
     {
@@ -132,6 +141,7 @@ export function forgeOptions(item: GearItem): ForgeOption[] {
       failChanceFull: levelNeed.failFull,
       reagentTotal: levelNeed.total,
       reagentScrap: levelNeed.scrap,
+      reagentForbidScrap: levelNeed.forbidScrap,
       available: lvl < MAX_GEAR_LEVEL,
     },
   ];
@@ -156,9 +166,18 @@ export interface ForgeReagentPlan {
  * Раскладка реагентов: сначала обязательный металлолом, затем самые дешёвые
  * реагенты из сумки. Возвращает только то, что реально есть.
  */
-export function forgeReagentPlan(bag: Record<string, number>, need: { total: number; scrap: number }): ForgeReagentPlan {
+export function forgeReagentPlan(
+  bag: Record<string, number>,
+  need: { total: number; scrap: number; forbidScrap?: boolean },
+): ForgeReagentPlan {
+  /* Качество и уровень не делают на металлоломе: он годится только на изношенность. */
+  const noScrap = need.forbidScrap === true;
   const avail: Record<string, number> = {};
-  for (const [id, n] of Object.entries(bag)) if (n > 0 && isForgeReagent(id)) avail[id] = n;
+  for (const [id, n] of Object.entries(bag)) {
+    if (n <= 0 || !isForgeReagent(id)) continue;
+    if (noScrap && id === "scrap_metal") continue;
+    avail[id] = n;
+  }
   const picked: Record<string, number> = {};
   let left = need.total;
   const take = (id: string, want: number) => {
@@ -168,7 +187,7 @@ export function forgeReagentPlan(bag: Record<string, number>, need: { total: num
     avail[id] -= got;
     left -= got;
   };
-  take("scrap_metal", need.scrap);
+  take("scrap_metal", noScrap ? 0 : need.scrap);
   const rest = Object.keys(avail)
     .filter((id) => (avail[id] ?? 0) > 0)
     .sort((a, b) => (ITEMS[a]?.price ?? 0) - (ITEMS[b]?.price ?? 0) || a.localeCompare(b));
@@ -292,7 +311,11 @@ export function forgeUpgrade(
   }
 
   const plan = useReagents
-    ? forgeReagentPlan(player.bag, { total: opt.reagentTotal, scrap: opt.reagentScrap })
+    ? forgeReagentPlan(player.bag, {
+        total: opt.reagentTotal,
+        scrap: opt.reagentScrap,
+        forbidScrap: opt.reagentForbidScrap,
+      })
     : { picked: {}, total: 0, scrap: 0 };
   const failChance = forgeFailChance(opt, plan.total);
   const paid: Player = { ...player, gold: player.gold - opt.cost, bag: spendReagents(player.bag, plan.picked) };

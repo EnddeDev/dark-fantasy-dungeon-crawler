@@ -1293,13 +1293,18 @@ export function Lobby({
                               <b className="font-display uppercase tracking-[0.08em]">Класть реагенты в горн</b>
                               <span className="block text-[0.84rem] text-mute">
                                 Пергамент, магические чернила и фляги в горн не годятся.
+                                Металлолом идёт только на изношенность — на качество и уровень его не кладут.
                               </span>
                             </span>
                             <span className="font-mono text-[0.85rem]">{useReagents ? "да" : "нет"}</span>
                           </button>
                           {forgeOptions(item).map((opt) => {
                             const plan = useReagents
-                              ? forgeReagentPlan(player.bag, { total: opt.reagentTotal, scrap: opt.reagentScrap })
+                              ? forgeReagentPlan(player.bag, {
+                                  total: opt.reagentTotal,
+                                  scrap: opt.reagentScrap,
+                                  forbidScrap: opt.reagentForbidScrap,
+                                })
                               : { picked: {}, total: 0, scrap: 0 };
                             const fail = forgeFailChance(opt, plan.total);
                             const can = opt.available && player.gold >= opt.cost;
@@ -1319,7 +1324,9 @@ export function Lobby({
                                   {opt.reagentTotal > 0 && (
                                     <Tag tone={full && useReagents ? "verd" : "mute"}>
                                       реагенты {plan.total}/{opt.reagentTotal}
-                                      {opt.reagentScrap > 0 ? ` (металлолом ${opt.reagentScrap})` : ""}
+                                      {opt.reagentScrap > 0
+                                        ? ` (металлолом ${opt.reagentScrap})`
+                                        : opt.reagentForbidScrap ? " (без металлолома)" : ""}
                                     </Tag>
                                   )}
                                   {plan.total === 0 && <Tag tone="rubric">неудача уничтожит вещь</Tag>}
@@ -1462,7 +1469,11 @@ export function Lobby({
             const opt = item ? forgeOptions(item).find((o) => o.kind === forgeConfirm.kind) : null;
             if (!item || !opt) return null;
             const plan = forgeUseReagents
-              ? forgeReagentPlan(player.bag, { total: opt.reagentTotal, scrap: opt.reagentScrap })
+              ? forgeReagentPlan(player.bag, {
+                  total: opt.reagentTotal,
+                  scrap: opt.reagentScrap,
+                  forbidScrap: opt.reagentForbidScrap,
+                })
               : { picked: {}, total: 0, scrap: 0 };
             const fail = forgeFailChance(opt, plan.total);
             return (
@@ -1477,7 +1488,9 @@ export function Lobby({
                 <p className="font-mono text-[0.88rem] text-mute">
                   Реагенты: {plan.total}
                   {opt.reagentTotal > 0 ? ` из ${opt.reagentTotal}` : ""}
-                  {plan.scrap > 0 ? ` · металлолома ${plan.scrap}` : ""}
+                  {plan.scrap > 0
+                    ? ` · металлолома ${plan.scrap}`
+                    : opt.reagentForbidScrap ? " · без металлолома" : ""}
                   {opt.reagentTotal > 0 && plan.total < opt.reagentTotal ? " · набора не хватает, риск выше" : ""}
                 </p>
               </div>

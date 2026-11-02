@@ -2563,6 +2563,9 @@ test("кузница: старые цены и шансы неудачи по т
   assert.equal(rarity.failChanceFull, 0.1);
   assert.equal(wear.reagentTotal, 5);
   assert.equal(wear.reagentScrap, 5);
+  assert.equal(wear.reagentForbidScrap, false, "металлолом — как раз для изношенности");
+  assert.equal(rarity.reagentForbidScrap, true, "качество без металлолома");
+  assert.equal(level.reagentForbidScrap, true, "уровень без металлолома");
   assert.equal(wear.failChance, 0.3);
   assert.equal(wear.failChanceFull, 0);
   assert.equal(level.reagentTotal, 2);
@@ -2638,6 +2641,19 @@ test("кузница: реагенты кладутся в горн, а перг
   assert.equal(big.picked.moss, undefined);
   assert.equal(big.picked.bone, undefined);
 
+  /* Качество и уровень: металлолом в горн не идёт, даже если он единственный. */
+  const rarityOpt = forge.forgeOptions(item).find((o) => o.kind === "rarity");
+  const rarityNeed = { total: rarityOpt.reagentTotal, scrap: rarityOpt.reagentScrap, forbidScrap: rarityOpt.reagentForbidScrap };
+  const scrapOnly = forge.forgeReagentPlan({ scrap_metal: 50 }, rarityNeed);
+  assert.equal(scrapOnly.total, 0, "из одного металлолома качество не сделать");
+  assert.equal(scrapOnly.scrap, 0);
+  const mixed = forge.forgeReagentPlan({ scrap_metal: 50, moss: 3, bone: 4 }, rarityNeed);
+  assert.equal(mixed.scrap, 0, "металлолом не участвует");
+  assert.equal(mixed.total, 5, "набор добирается другими реагентами");
+  assert.equal(mixed.picked.scrap_metal, undefined);
+  const wearNeed2 = { total: wearOpt.reagentTotal, scrap: wearOpt.reagentScrap, forbidScrap: wearOpt.reagentForbidScrap };
+  assert.equal(forge.forgeReagentPlan({ scrap_metal: 50 }, wearNeed2).scrap, 5, "на изношенность металлолом идёт");
+
   /* Попытка с реагентами тратит и золото, и реагенты. */
   const player = mkP({ gold: 5000, armory: [item], bag: { scrap_metal: 10, moss: 4 } });
   const ok = forge.forgeUpgrade(player, item.uid, "wear", () => 0.99, true);
@@ -2651,8 +2667,9 @@ test("кузница: реагенты кладутся в горн, а перг
   assert.equal(failing.success, false);
   assert.equal(failing.destroyed, false);
   assert.equal(failing.player.armory.length, 1, "предмет остаётся в арсенале");
-  assert.equal(failing.reagentsUsed, 5);
-  assert.equal(failing.player.bag.scrap_metal, 5, "реагенты ушли в горн, хотя улучшения не случилось");
+  assert.equal(failing.reagentsUsed, 4, "взяли только мох: качество делают без металлолома");
+  assert.equal(failing.player.bag.moss, undefined, "реагенты ушли в горн, хотя улучшения не случилось");
+  assert.equal(failing.player.bag.scrap_metal, 10, "металлолом не тронут");
 
   /* Без реагентов та же неудача уничтожает предмет. */
   const bare = forge.forgeUpgrade(player, item.uid, "rarity", () => 0.05, false);
