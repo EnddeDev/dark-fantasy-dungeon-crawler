@@ -1,16 +1,21 @@
 /**
- * Рост снаряжения — линейный, без сложного процента.
+ * Рост снаряжения.
  *
- *   основные параметры (урон, броня, ОЗ, уклонение): ×(1 + 0.5 × уровень);
- *   эффекты, свойства, приёмы, пассивки и цены:        ×(1 + 0.17 × уровень).
+ *   основные параметры (урон, броня, ОЗ, уклонение): линейно, ×(1 + 0.5 × уровень);
+ *   эффекты и свойства, приёмы, пассивки:            сложным процентом, ×1.17 или ×1.25 за уровень;
+ *   цены:                                            линейно, ×(1 + 0.17 × уровень).
  *
- * Уровень берётся как есть (1…10), значение округляется вверх один раз — на итоговом шаге.
+ * Сложный процент считается по шагам: значение каждого уровня — ceil(предыдущее × ставка).
  */
 import type { GearEffectId, GearPassiveId } from "./gearEffects";
 import type { EpicSkillId, LegendaryPassiveId, RareAffixId } from "./types";
 
-/** Шаг эффектов, свойств и цен: +17% от базового значения за каждый уровень. */
+/** Шаг цен: +17% от базового значения за каждый уровень (линейно). */
 export const GEAR_EFFECT_RATE = 0.17;
+/** Обычная ставка роста эффектов и свойств за уровень (сложный процент). */
+export const GEAR_EFFECT_GROWTH_MAIN = 1.17;
+/** Повышенная ставка роста эффектов и свойств за уровень (сложный процент). */
+export const GEAR_EFFECT_GROWTH_HIGH = 1.25;
 /** Шаг основных параметров: +50% от базового значения за каждый уровень. */
 export const GEAR_STAT_RATE = 0.5;
 /** Прежнее имя шага эффектов. */
@@ -38,9 +43,27 @@ export function levelFactor(level: number, rate: number): number {
   return 1 + rate * clampGearLevel(level);
 }
 
-/** Эффекты и свойства: ceil(значение × (1 + 0.17 × уровень)). */
+/**
+ * Сложный процент по шагам: каждый следующий уровень = ceil(предыдущее × ставка).
+ * Ставка по умолчанию — обычная для эффектов (×1.17 за уровень).
+ */
+export function scaleCompoundByLevel(
+  value: number,
+  level: number,
+  rate: number = GEAR_EFFECT_GROWTH_MAIN,
+  precision = 1,
+): number {
+  let v = value;
+  const target = clampGearLevel(level);
+  for (let l = 1; l < target; l++) {
+    v = Math.ceil(v * rate * precision - 1e-9) / precision;
+  }
+  return v;
+}
+
+/** Эффекты и свойства: сложный процент ×1.17 за уровень. */
 export function scaleByLevel(value: number, level: number, precision = 1): number {
-  return Math.ceil(value * levelFactor(level, GEAR_EFFECT_RATE) * precision - 1e-9) / precision;
+  return scaleCompoundByLevel(value, level, GEAR_EFFECT_GROWTH_MAIN, precision);
 }
 
 /**
@@ -123,6 +146,19 @@ export const GEAR_EFFECT_BASE: Record<GearEffectId, NumericDef> = {
 };
 
 /** Разброс базового значения нового свойства при создании предмета. */
+/**
+ * Ставка роста конкретного эффекта. По умолчанию ×1.17 за уровень;
+ * у части свойств — повышенная ×1.25.
+ */
+export const GEAR_EFFECT_GROWTH: Partial<Record<GearEffectId, number>> = {
+  crit_chance: GEAR_EFFECT_GROWTH_HIGH,
+  fortify: GEAR_EFFECT_GROWTH_HIGH,
+  magic_resist: GEAR_EFFECT_GROWTH_HIGH,
+  poison_damage: GEAR_EFFECT_GROWTH_HIGH,
+  bleed: GEAR_EFFECT_GROWTH_HIGH,
+  sunder: GEAR_EFFECT_GROWTH_HIGH,
+};
+
 export const GEAR_EFFECT_SPREAD: Partial<Record<GearEffectId, number>> = {
   vamp: 2, magic_vamp: 2, crit_chance: 3, crit_mult: 5, regen: 2,
   fortify: 1, magic_resist: 1, armor_damage: 2, rage: 5,
@@ -146,8 +182,9 @@ export function effectMagnitude(id: GearEffectId, level: number, rolledBase?: nu
   }
   const def = GEAR_EFFECT_BASE[id];
   const base = rolledBase ?? def.value;
-  /* Базовые значения свойств заданы на 1 уровне: дальше +17% за каждый уровень. */
-  return scaleByLevel(base, level, def.precision ?? 1);
+  /* Базовые значения свойств заданы на 1 уровне: дальше сложный процент по ставке эффекта. */
+  const rate = GEAR_EFFECT_GROWTH[id] ?? GEAR_EFFECT_GROWTH_MAIN;
+  return scaleCompoundByLevel(base, level, rate, def.precision ?? 1);
 }
 
 export const GEAR_PASSIVE_BASE: Record<GearPassiveId, Record<string, NumericDef>> = {
