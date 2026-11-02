@@ -1248,9 +1248,9 @@ export function Lobby({
             {tab === "forge" && (
               <div>
                 <p className="dropcap mb-4 max-w-2xl text-[1.02rem] leading-relaxed text-parch/85">
-                  Кузница улучшает качество, изношенность и уровень снаряжения. Попытка стоит золота и может
-                  не дать результата — вещь при этом остаётся целой. Чем больше реагентов вложить в горн,
-                  тем ниже шанс неудачи: полный набор указан у каждого улучшения.
+                  Кузница улучшает качество, изношенность и уровень снаряжения. Попытка стоит золота.
+                  С реагентами в горне неудача вещь не ломает — сгорают только золото и реагенты,
+                  а чем полнее набор, тем ниже риск. Без реагентов неудача уничтожает предмет.
                 </p>
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
                   <Panel title="Выбери предмет" className="p-4">
@@ -1322,6 +1322,7 @@ export function Lobby({
                                       {opt.reagentScrap > 0 ? ` (металлолом ${opt.reagentScrap})` : ""}
                                     </Tag>
                                   )}
+                                  {plan.total === 0 && <Tag tone="rubric">неудача уничтожит вещь</Tag>}
                                   {!opt.available && <Tag tone="mute">предел</Tag>}
                                 </div>
                                 <Btn
@@ -1468,8 +1469,10 @@ export function Lobby({
               <div className="space-y-2 text-[1rem] leading-relaxed text-parch/90">
                 <p>Улучшение «{opt.label.toLowerCase()}» стоит <b className="text-flamehi">{opt.cost} зол.</b></p>
                 <p>
-                  Шанс неудачи: <b className="text-rubric">{Math.round(fail * 100)}%</b>. При неудаче вещь
-                  остаётся как была, но золото и реагенты пропадают.
+                  Шанс неудачи: <b className="text-rubric">{Math.round(fail * 100)}%</b>.{" "}
+                  {plan.total === 0
+                    ? "Реагенты не вложены, поэтому при неудаче вещь будет уничтожена."
+                    : "При неудаче вещь останется целой, но золото и реагенты пропадут."}
                 </p>
                 <p className="font-mono text-[0.88rem] text-mute">
                   Реагенты: {plan.total}

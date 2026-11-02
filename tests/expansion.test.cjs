@@ -141,7 +141,7 @@ test("new reagents are required by scrolls, potions and throwables", () => {
   }
 });
 
-test("кузница: неудача больше не уничтожает вещь, уровень рискует 10% + 5% за уровень сверх первого", () => {
+test("кузница: без реагентов неудача уничтожает вещь, уровень рискует 10% + 5% за уровень сверх первого", () => {
   assert.equal(forge.levelFailChance(1), 0.1);
   assert.equal(forge.levelFailChance(2), 0.15);
   assert.equal(forge.levelFailChance(5), 0.3);
@@ -149,13 +149,16 @@ test("кузница: неудача больше не уничтожает ве
   const opt = forge.forgeOptions(g).find((o) => o.kind === "level");
   assert.equal(opt.failChance, 0.1);
   assert.equal(opt.cost, 200);
-  const p = mkP({ gold: 1000, armory: [g] });
+  const p = mkP({ gold: 1000, armory: [g], equip: { ...mkP().equip, mainHand: g.uid } });
   const failed = forge.forgeUpgrade(p, g.uid, "level", () => 0.05);
   assert.equal(failed.success, false);
-  assert.equal(failed.player.armory.length, 1, "вещь остаётся в арсенале");
+  assert.equal(failed.destroyed, true, "без реагентов неудача уничтожает вещь");
+  assert.equal(failed.player.armory.length, 0);
+  assert.equal(failed.player.equip.mainHand, null);
   assert.equal(failed.player.gold, 1000 - opt.cost);
   const ok = forge.forgeUpgrade(p, g.uid, "level", () => 0.2);
   assert.equal(ok.success, true);
+  assert.equal(ok.destroyed, false);
   assert.equal(ok.item.level, 2);
 });
 

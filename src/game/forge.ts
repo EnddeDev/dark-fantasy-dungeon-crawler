@@ -1,7 +1,7 @@
 /**
  * Кузница: улучшение качества, изношенности и уровня снаряжения.
- * Попытка стоит золота и может не дать результата, но предмет больше не уничтожается.
- * Вложенные реагенты снижают шанс неудачи: чем больше вложено, тем надёжнее работа.
+ * Попытка стоит золота. Без реагентов неудача уничтожает предмет, как раньше;
+ * с реагентами вещь при неудаче остаётся целой, а риск падает тем сильнее, чем полнее набор.
  */
 import type { GearItem, Player, RarityTier, WearTier } from "./types";
 import { GEAR_BASES, ITEMS, LEGENDARY_PASSIVES, gearAffinity, gearKindOfBase } from "./content";
@@ -20,7 +20,7 @@ export interface ForgeOption {
   from: string;
   to: string;
   cost: number;
-  /** Шанс неудачи без реагентов, 0..1. Неудача ничего не ломает — предмет остаётся как был. */
+  /** Шанс неудачи без реагентов, 0..1. Без реагентов такая неудача уничтожает предмет. */
   failChance: number;
   /** Шанс неудачи при полном наборе реагентов, 0..1. */
   failChanceFull: number;
@@ -36,7 +36,7 @@ const WEAR_ORDER: WearTier[] = ["battered", "worn", "new"];
 /** Старые цены работы: качество зависит от текущего качества, изношенность — от текущей. */
 const RARITY_COST: Record<RarityTier, number> = { common: 100, rare: 500, epic: 1000, legendary: 0 };
 const WEAR_COST: Record<WearTier, number> = { battered: 100, worn: 375, new: 0 };
-/** Шанс неудачи без реагентов. Неудача ничего не ломает: вещь остаётся как была. */
+/** Шанс неудачи без реагентов: без реагентов такая неудача уничтожает вещь. */
 const RARITY_FAIL: Record<RarityTier, number> = { common: 0.25, rare: 0.5, epic: 0.75, legendary: 0 };
 const WEAR_FAIL: Record<WearTier, number> = { battered: 0.3, worn: 0.6, new: 0 };
 /**
@@ -239,6 +239,8 @@ export function upgradeRarity(item: GearItem, rng: () => number = Math.random): 
 
 export interface ForgeResult {
   player: Player;
+  /** Попытка без реагентов при неудаче уничтожает вещь. */
+  destroyed: boolean;
   success: boolean;
   cost: number;
   message: string;
@@ -262,9 +264,10 @@ function spendReagents(bag: Record<string, number>, picked: Record<string, numbe
 const GEAR_NAME = (item: GearItem) => GEAR_BASES[item.baseId]?.name ?? "Предмет";
 
 /**
- * Выполняет попытку улучшения. Золото списывается всегда. При неудаче
- * предмет не уничтожается, а остаётся как был; реагенты сгорают вместе с золотом.
- * Реагенты снижают шанс неудачи: полный набор даёт шанс из таблицы улучшений.
+ * Выполняет попытку улучшения. Золото списывается всегда.
+ * Если реагенты в горн не клали, неудача уничтожает вещь — как раньше.
+ * С реагентами вещь при неудаче остаётся целой: сгорают только золото и реагенты.
+ * Полный набор даёт шанс неудачи из таблицы улучшений.
  */
 export function forgeUpgrade(
   player: Player,
@@ -274,12 +277,19 @@ export function forgeUpgrade(
   useReagents = false,
 ): ForgeResult {
   const item = player.armory.find((g) => g.uid === uid);
-  if (!item) return { player, success: false, cost: 0, message: "Предмет не найден.", reagentsUsed: 0, failChance: 0 };
+  if (!item) {
+    return { player, destroyed: false, success: false, cost: 0, message: "Предмет не найден.", reagentsUsed: 0, failChance: 0 };
+  }
   const opt = forgeOptions(item).find((o) => o.kind === kind);
   if (!opt || !opt.available) {
-    return { player, success: false, cost: 0, message: "Это улучшение уже недостижимо.", reagentsUsed: 0, failChance: 0 };
+    return {
+      player, destroyed: false, success: false, cost: 0,
+      message: "Это улучшение уже недостижимо.", reagentsUsed: 0, failChance: 0,
+    };
   }
-  if (player.gold < opt.cost) return { player, success: false, cost: 0, message: "Не хватает золота.", reagentsUsed: 0, failChance: 0 };
+  if (player.gold < opt.cost) {
+    return { player, destroyed: false, success: false, cost: 0, message: "Не хватает золота.", reagentsUsed: 0, failChance: 0 };
+  }
 
   const plan = useReagents
     ? forgeReagentPlan(player.bag, { total: opt.reagentTotal, scrap: opt.reagentScrap })
@@ -289,8 +299,25 @@ export function forgeUpgrade(
   const spent = plan.total > 0 ? ` Золото и реагенты (${plan.total}) потрачены.` : " Золото потрачено.";
 
   if (rng() < failChance) {
+    /* Без реагентов горн не щадит вещь: неудача её уничтожает. */
+    if (plan.total === 0) {
+      const equip = { ...paid.equip };
+      for (const slot of Object.keys(equip) as (keyof typeof equip)[]) {
+        if (equip[slot] === uid) equip[slot] = null;
+      }
+      return {
+        player: { ...paid, armory: paid.armory.filter((g) => g.uid !== uid), equip },
+        destroyed: true,
+        success: false,
+        cost: opt.cost,
+        message: `«${GEAR_NAME(item)}» не выдержал горна и уничтожен.${spent}`,
+        reagentsUsed: 0,
+        failChance,
+      };
+    }
     return {
       player: paid,
+      destroyed: false,
       success: false,
       cost: opt.cost,
       message: `Горн не взял работу: «${GEAR_NAME(item)}» остался как был.${spent}`,
@@ -309,6 +336,7 @@ export function forgeUpgrade(
   }
   return {
     player: { ...paid, armory: paid.armory.map((g) => (g.uid === uid ? upgraded : g)) },
+    destroyed: false,
     success: true,
     cost: opt.cost,
     message: `«${GEAR_NAME(upgraded)}»: ${opt.label.toLowerCase()} → ${opt.to}.${spent}`,

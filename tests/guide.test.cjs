@@ -195,7 +195,7 @@ test("guide documents reset, declining enemy scaling, traps, specials and new re
   assert.ok(html.includes("металлолом"));
   assert.ok(html.includes("фляга"));
   assert.ok(html.includes("2 реагента за каждый уровень предмета"));
-  assert.ok(html.includes("Неудача вещь не ломает"));
+  assert.ok(html.includes("Без реагентов неудача уничтожает предмет"));
   assert.ok(html.includes("шанс неудачи"));
   assert.ok(html.includes("5%"));
   assert.ok(html.includes("1–3 реагента"));
