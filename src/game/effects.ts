@@ -66,6 +66,8 @@ export interface EffectDot {
   type: "физический" | "магический" | "огонь";
   /** Когда именно приходит урон. */
   when: string;
+  /** Сколько наложений эффекта сложилось в урон (яд, кровотечение). */
+  stacks?: number;
 }
 
 /** Временно усиленная характеристика — подсвечивается в интерфейсе. */
@@ -110,23 +112,27 @@ function tickDot(
   maxHp: number,
   rounds: number,
   magicResist = 0,
+  stacks = 1,
 ): EffectDot {
   const magic = kind === "chill" || kind === "curse";
-  const perTick = magic
+  const base = magic
     ? magicTickDamage(maxHp, kind, magicResist)
     : statusTickDamage(maxHp, kind);
+  const perTick = base * Math.max(1, stacks);
   return {
     perTick,
     ticks: rounds,
     total: perTick * rounds,
     type: magic ? "магический" : "физический",
     when: "в конце раунда",
+    stacks: Math.max(1, stacks),
   };
 }
 
 /** Строка «сколько это в числах» для подсказки. */
 export function dotSummary(dot: EffectDot): string {
-  const head = `${dot.perTick} ОЗ ${dot.type === "магический" ? "магического " : ""}урона ${dot.when}`;
+  const stackNote = dot.stacks && dot.stacks > 1 ? ` (${dot.stacks} наложения)` : "";
+  const head = `${dot.perTick} ОЗ ${dot.type === "магический" ? "магического " : ""}урона ${dot.when}${stackNote}`;
   if (dot.ticks == null || dot.total == null) return `${head}; срок не ограничен`;
   const ticks = dot.ticks === 1 ? "1 тик" : `${dot.ticks} тика`;
   return `${head}; осталось ${ticks} → всего ${dot.total} ОЗ`;
@@ -258,14 +264,15 @@ export function playerEffectChips(b: BattleState): EffectChip[] {
     chips.push({
       id: "bleed", name: "Кровотечение", polarity: "bad", rounds: s.wound,
       details: ["Рана не затягивается: кровь идёт каждый раунд."],
-      boosts: [], dot: tickDot("bleed", b.p.maxHp, s.wound), color: EFFECT_COLORS.bleed,
+      boosts: [], dot: tickDot("bleed", b.p.maxHp, s.wound, 0, Math.max(1, s.woundStacks ?? 1)), color: EFFECT_COLORS.bleed,
     });
   }
   if (s.poison > 0) {
     chips.push({
       id: "poison", name: "Яд", polarity: "bad", rounds: s.poison,
-      details: ["Яд в крови разъедает изнутри."],
-      boosts: [], dot: tickDot("poison", b.p.maxHp, s.poison), color: EFFECT_COLORS.poison,
+      badge: (s.poisonStacks ?? 1) > 1 ? `×${s.poisonStacks}` : undefined,
+      details: [`Яд в крови разъедает изнутри. Наложений: ${Math.max(1, s.poisonStacks ?? 1)}.`],
+      boosts: [], dot: tickDot("poison", b.p.maxHp, s.poison, 0, Math.max(1, s.poisonStacks ?? 1)), color: EFFECT_COLORS.poison,
     });
   }
   if (s.burn > 0) {
@@ -415,15 +422,17 @@ export function enemyEffectChips(b: BattleState): EffectChip[] {
   if (e.statuses.bleed > 0) {
     chips.push({
       id: "bleed", name: "Кровотечение", polarity: "bad", rounds: s.bleed,
-      details: ["Тварь истекает кровью."],
-      boosts: [], dot: tickDot("bleed", e.maxHp, s.bleed), color: EFFECT_COLORS.bleed,
+      badge: (s.bleedStacks ?? 1) > 1 ? `×${s.bleedStacks}` : undefined,
+      details: [`Тварь истекает кровью. Наложений: ${Math.max(1, s.bleedStacks ?? 1)}.`],
+      boosts: [], dot: tickDot("bleed", e.maxHp, s.bleed, 0, Math.max(1, s.bleedStacks ?? 1)), color: EFFECT_COLORS.bleed,
     });
   }
   if (s.poison > 0) {
     chips.push({
       id: "poison", name: "Яд", polarity: "bad", rounds: s.poison,
-      details: ["Яд разъедает тварь изнутри."],
-      boosts: [], dot: tickDot("poison", e.maxHp, s.poison), color: EFFECT_COLORS.poison,
+      badge: (s.poisonStacks ?? 1) > 1 ? `×${s.poisonStacks}` : undefined,
+      details: [`Яд разъедает тварь изнутри. Наложений: ${Math.max(1, s.poisonStacks ?? 1)}.`],
+      boosts: [], dot: tickDot("poison", e.maxHp, s.poison, 0, Math.max(1, s.poisonStacks ?? 1)), color: EFFECT_COLORS.poison,
     });
   }
   if (s.burn > 0) {
