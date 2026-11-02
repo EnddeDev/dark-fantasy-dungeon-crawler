@@ -355,6 +355,7 @@ export class DungeonController {
     };
     this.model.setRun(next);
     this.model.setModal(null);
+    playSfx("door");
     this.stepInto(x, y, next);
     const path = this.model.getSnapshot().path;
     this.model.setPath(path[0]?.x === x && path[0]?.y === y ? path.slice(1) : path, true);
@@ -372,6 +373,7 @@ export class DungeonController {
     };
     this.model.setRun(next);
     this.model.setModal(null);
+    playSfx("door");
     this.stepInto(x, y, next);
     const path = this.model.getSnapshot().path;
     this.model.setPath(path[0]?.x === x && path[0]?.y === y ? path.slice(1) : path, true);
