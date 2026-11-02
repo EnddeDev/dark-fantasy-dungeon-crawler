@@ -171,7 +171,6 @@ export function GearNote({
                 </span>
               </div>
               <p className="mt-2 text-[1rem] leading-relaxed text-parch/90">{skill.desc}</p>
-              <p className="mt-1.5 text-[0.94rem] leading-relaxed text-mute">{skill.passiveNote}</p>
               <p className="mt-1.5 font-mono text-[0.9rem] text-mute">Откат: {skill.cooldown}. Масштабирование: {STAT_META[skill.scaleStat].short} ×{skill.scaleMult}.</p>
             </div>
           </DetailSection>
