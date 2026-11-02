@@ -1046,9 +1046,13 @@ function skillDamageMult(b: BattleState) {
 export function techniqueDamage(int: number, coefficient = 1): number {
   return statTechniqueDamage(int) * coefficient;
 }
-/** Бонус приёма оружия, который добавляется к урону оружия: 2 × (ИНТ + множитель приёма + бонус навыков). */
-export function weaponTechniqueBonus(int: number, scaleMult: number, skillScale = 0): number {
-  return 2 * (int + scaleMult + skillScale);
+/**
+ * Бонус приёма оружия, который добавляется к урону оружия:
+ * урон приёма + 2 × (ХАР + множитель приёма + бонус навыков).
+ * ХАР — характеристика, которую требует предмет (СИЛ, ЛОВ или ИНТ).
+ */
+export function weaponTechniqueBonus(stat: number, scaleMult: number, skillScale = 0): number {
+  return 2 * (stat + scaleMult + skillScale);
 }
 function rageBonus(b: BattleState): number {
   const steps = Math.min(10, Math.floor(missingHpRatio(b) * 10));
@@ -2020,7 +2024,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
       const req = Math.max(1, ws.intReq - b.p.intDiscount);
       if (b.p.stats.int < req) return err(`Для приёма «${ws.name}» требуется ИНТ ${req}.`);
 
-      let bonus = Math.round(weaponTechniqueBonus(b.p.stats.int, ws.scaleMult, skillScaleBonus(b)));
+      let bonus = Math.round(weaponTechniqueBonus(b.p.stats[ws.scaleStat], ws.scaleMult, skillScaleBonus(b)));
       const eff = ws.effect;
       if (eff === "armor_damage") bonus += Math.round(b.p.armor * techValue(ws, ws.id === "bulwark_verdict" ? 0.75 : 0.5, 100));
       if (eff === "missing_hp") bonus = Math.round(bonus * (1 + Math.min(10, Math.floor(missingHpRatio(b) * 10)) * techValue(ws, 0.06, 100)));

@@ -30,6 +30,8 @@ export interface DuelFighter {
   critDamage: number;
   weaponName: string;
   intStat: number;
+  /** Значение характеристики, которую требует приём оружия (ХАР в формуле урона). */
+  skillStat: number;
   skill: DuelSkill | null;
   potions: number;
   guard: boolean;
@@ -89,6 +91,7 @@ export function fighterFromPlayer(userId: string, player: Player): DuelFighter {
     critDamage: d.critDamage,
     weaponName: d.weaponName,
     intStat: player.stats.int,
+    skillStat: d.weaponSkill ? player.stats[d.weaponSkill.scaleStat] : 0,
     skill,
     potions: player.bag.potion_s ?? 0,
     guard: false,
@@ -186,8 +189,8 @@ export function duelAction(state0: DuelState, side: DuelSide, action: DuelAction
         state.log.push(`${actor.name} пытается применить приём, но не хватает условий.`);
         break;
       }
-      /* Бонус приёма считается той же формулой, что и в подземелье: 2 × (ИНТ + множитель приёма). */
-      const bonus = Math.round(weaponTechniqueBonus(actor.intStat, actor.skill.scaleMult));
+      /* Бонус приёма считается той же формулой, что и в подземелье: 2 × (ХАР + множитель приёма). */
+      const bonus = Math.round(weaponTechniqueBonus(actor.skillStat, actor.skill.scaleMult));
       const { dmg, text } = strike(actor, target, bonus, `приём «${actor.skill.name}»`);
       target.hp -= dmg;
       actor.cooldown = actor.skill.cooldown;
