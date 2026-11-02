@@ -54,7 +54,7 @@ import type { GearItem, Player, StatKey } from "../game/types";
 import type { ArchetypeId } from "../game/archetypes";
 import { canChooseStatMilestone, chosenStatMilestone, statMilestoneOptions, type StatMilestoneTier } from "../game/statMilestones";
 import { SHOP_MAX_LEVEL, shopRarityTable, shopUpgradeCost, shopWearTable } from "../game/world";
-import { forgeOptions, type ForgeUpgradeKind } from "../game/forge";
+import { forgeFailChance, forgeOptions, forgeReagentPlan, type ForgeUpgradeKind } from "../game/forge";
 import { statResetCost, totalStatPoints } from "../game/progression";
 import { WEAR_RANGE } from "../game/types";
 import { Guide } from "./Guide";
@@ -270,6 +270,7 @@ export function Lobby({
   const [chosenSlot, setChosenSlot] = useState<Slot | null>(null);
   const [forgeUid, setForgeUid] = useState<string | null>(null);
   const [forgeConfirm, setForgeConfirm] = useState<{ uid: string; kind: ForgeUpgradeKind } | null>(null);
+  const [forgeUseReagents, setForgeUseReagents] = useState(true);
   const [resetConfirm, setResetConfirm] = useState(false);
 
   const d = derived(player);
@@ -1247,8 +1248,9 @@ export function Lobby({
             {tab === "forge" && (
               <div>
                 <p className="dropcap mb-4 max-w-2xl text-[1.02rem] leading-relaxed text-parch/85">
-                  Кузница улучшает качество, изношенность и уровень снаряжения. Каждая попытка стоит золота
-                  и может уничтожить предмет: чем выше цель, тем страшнее риск.
+                  Кузница улучшает качество, изношенность и уровень снаряжения. Попытка стоит золота и может
+                  не дать результата — вещь при этом остаётся целой. Чем больше реагентов вложить в горн,
+                  тем ниже шанс неудачи: полный набор указан у каждого улучшения.
                 </p>
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
                   <Panel title="Выбери предмет" className="p-4">
@@ -1279,13 +1281,32 @@ export function Lobby({
                     {(() => {
                       const item = player.armory.find((g) => g.uid === forgeUid);
                       if (!item) return <p className="text-sm italic text-mute">Выбери предмет слева, чтобы увидеть улучшения.</p>;
+                      const useReagents = forgeUseReagents;
                       return (
                         <div className="space-y-3">
+                          <button
+                            onClick={() => setForgeUseReagents((v) => !v)}
+                            className={`flex w-full items-center justify-between gap-2 border px-3 py-2 text-left text-[0.92rem] transition-colors ${useReagents ? "border-flame bg-flame/10 text-parch" : "border-line bg-black/25 text-mute hover:border-flamedim"}`}
+                            aria-pressed={useReagents}
+                          >
+                            <span>
+                              <b className="font-display uppercase tracking-[0.08em]">Класть реагенты в горн</b>
+                              <span className="block text-[0.84rem] text-mute">
+                                Пергамент, магические чернила и фляги в горн не годятся.
+                              </span>
+                            </span>
+                            <span className="font-mono text-[0.85rem]">{useReagents ? "да" : "нет"}</span>
+                          </button>
                           {forgeOptions(item).map((opt) => {
+                            const plan = useReagents
+                              ? forgeReagentPlan(player.bag, { total: opt.reagentTotal, scrap: opt.reagentScrap })
+                              : { picked: {}, total: 0, scrap: 0 };
+                            const fail = forgeFailChance(opt, plan.total);
                             const can = opt.available && player.gold >= opt.cost;
                             const toLabel = opt.kind === "rarity" ? RARITY_META[opt.to as RarityTier]?.name ?? opt.to
                               : opt.kind === "wear" ? WEAR_RANGE[opt.to as keyof typeof WEAR_RANGE]?.label ?? opt.to
                               : `ур. ${opt.to}`;
+                            const full = plan.total >= opt.reagentTotal;
                             return (
                               <div key={opt.kind} className="border border-line bg-black/25 p-3">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1294,7 +1315,13 @@ export function Lobby({
                                 </div>
                                 <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[0.84rem]">
                                   <Tag tone="flame">{opt.cost} зол.</Tag>
-                                  <Tag tone="rubric">риск уничтожения {Math.round(opt.destroyChance * 100)}%</Tag>
+                                  <Tag tone={fail > 0.4 ? "rubric" : "mute"}>шанс неудачи {Math.round(fail * 100)}%</Tag>
+                                  {opt.reagentTotal > 0 && (
+                                    <Tag tone={full && useReagents ? "verd" : "mute"}>
+                                      реагенты {plan.total}/{opt.reagentTotal}
+                                      {opt.reagentScrap > 0 ? ` (металлолом ${opt.reagentScrap})` : ""}
+                                    </Tag>
+                                  )}
                                   {!opt.available && <Tag tone="mute">предел</Tag>}
                                 </div>
                                 <Btn
@@ -1421,7 +1448,7 @@ export function Lobby({
             <div className="flex justify-end gap-2">
               <Btn tone="ghost" onClick={() => setForgeConfirm(null)}>Отмена</Btn>
               <Btn tone="flame" onClick={() => {
-                say(controller.forge(forgeConfirm.uid, forgeConfirm.kind));
+                say(controller.forge(forgeConfirm.uid, forgeConfirm.kind, forgeUseReagents));
                 setForgeConfirm(null);
               }}>
                 В горн
@@ -1433,10 +1460,23 @@ export function Lobby({
             const item = player.armory.find((g) => g.uid === forgeConfirm.uid);
             const opt = item ? forgeOptions(item).find((o) => o.kind === forgeConfirm.kind) : null;
             if (!item || !opt) return null;
+            const plan = forgeUseReagents
+              ? forgeReagentPlan(player.bag, { total: opt.reagentTotal, scrap: opt.reagentScrap })
+              : { picked: {}, total: 0, scrap: 0 };
+            const fail = forgeFailChance(opt, plan.total);
             return (
               <div className="space-y-2 text-[1rem] leading-relaxed text-parch/90">
                 <p>Улучшение «{opt.label.toLowerCase()}» стоит <b className="text-flamehi">{opt.cost} зол.</b></p>
-                <p>Риск уничтожения: <b className="text-rubric">{Math.round(opt.destroyChance * 100)}%</b>. Если предмет уцелеет, улучшение гарантировано. Золото списывается даже при уничтожении.</p>
+                <p>
+                  Шанс неудачи: <b className="text-rubric">{Math.round(fail * 100)}%</b>. При неудаче вещь
+                  остаётся как была, но золото и реагенты пропадают.
+                </p>
+                <p className="font-mono text-[0.88rem] text-mute">
+                  Реагенты: {plan.total}
+                  {opt.reagentTotal > 0 ? ` из ${opt.reagentTotal}` : ""}
+                  {plan.scrap > 0 ? ` · металлолома ${plan.scrap}` : ""}
+                  {opt.reagentTotal > 0 && plan.total < opt.reagentTotal ? " · набора не хватает, риск выше" : ""}
+                </p>
               </div>
             );
           })()}

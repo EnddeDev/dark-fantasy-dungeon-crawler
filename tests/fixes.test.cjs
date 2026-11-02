@@ -64,7 +64,7 @@ test("«Новое» состояние: базовый множитель вн�
   /* Изношенное → ношенное → новое: два шага кузнеца. */
   for (let step = 0; step < 2; step++) {
     const res = forge.forgeUpgrade(player, item.uid, "wear", () => 0.99);
-    assert.equal(res.destroyed, false, res.message);
+    assert.equal(res.success, true, res.message);
     player = res.player;
   }
   const upgraded = player.armory.find((g) => g.uid === item.uid);
