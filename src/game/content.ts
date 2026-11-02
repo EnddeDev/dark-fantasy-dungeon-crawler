@@ -1590,9 +1590,9 @@ export function gearBaseValue(item: GearItem): number {
 
 /**
  * Требования исследования предмета: Интеллект растёт с уровнем,
- * золото — 3% цены продажи (минимум 1). Опознание поднимает цену продажи
- * на 10%, поэтому исследование почти всегда окупается; на дешёвых находках
- * разницу съедает округление цены до 5, там цена символическая.
+ * золото — 3% цены продажи. Опознание поднимает цену продажи на 10%,
+ * поэтому исследование всегда окупается; если округление цены до 5
+ * съело всю разницу, опознание бесплатное.
  */
 /**
  * Сколько Интеллекта реально нужно на исследование: требование предмета минус
@@ -1605,7 +1605,12 @@ export function identifyIntReq(item: GearItem, intDiscount = 0): number {
 
 export function identifyReqs(item: GearItem): { int: number; gold: number } {
   const lvl = clampGearLevel(item.level ?? 1);
-  const gold = Math.max(1, Math.round(gearSellPrice({ ...item, identified: true }) * IDENTIFY_SHARE));
+  /* Исследование берёт 3% цены вещи, но никогда не дороже прибавки к продаже:
+     если округление съело разницу между опознанной и неопознанной ценой,
+     опознание бесплатное. */
+  const known = gearSellPrice({ ...item, identified: true });
+  const asFound = gearSellPrice({ ...item, identified: false });
+  const gold = known > asFound ? Math.max(1, Math.round(known * IDENTIFY_SHARE)) : 0;
   return { int: Math.min(8, 1 + lvl), gold };
 }
 

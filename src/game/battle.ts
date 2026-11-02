@@ -157,6 +157,11 @@ export interface BattleState {
     forceGuard: number;
     /** Прошлый ход врага закончился промахом: следующий ход — приём. */
     lastMiss: boolean;
+    /**
+     * Перезарядка приёмов с негативными эффектами: номер раунда, с которого
+     * приём снова доступен. Пусто — приём не на перезарядке.
+     */
+    cooldowns?: Partial<Record<EnemyMove, number>>;
   };
   p: {
     hp: number;
@@ -857,7 +862,8 @@ export function newBattle(
       statuses: { chill: 0, bleed: 0, poison: 0, fear: 0, stunAp: 0, blight: 0, wither: 0, burning: 0, burn: 0, curse: 0, cursePower: 30, sundered: 0 },
       guard: false,
       forceGuard: 0,
-    lastMiss: false,
+      lastMiss: false,
+      cooldowns: {},
     },
     p: {
       hp: Math.max(1, pl.hp),
@@ -2241,6 +2247,30 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
 
 /** Приёмы с негативными эффектами: порча, яд, кровотечение, печати, страх. */
 const DEBUFF_MOVES: EnemyMove[] = ["wound", "poison", "curse", "sunder", "bell_stun", "terror", "seal_items", "seal_skills", "seal_attack", "intimidate", "darkness"];
+
+/**
+ * Перезарядка приёмов, которые вешают на героя негативный эффект: страх,
+ * печати, порчу, яд, кровотечение, раскол, немоту лечения и горение.
+ * Обычные удары, двойной выпад и похищение жизни перезарядки не имеют.
+ */
+export const ENEMY_MOVE_COOLDOWN = 3;
+export const ENEMY_COOLDOWN_MOVES: EnemyMove[] = [...DEBUFF_MOVES, "cold_touch", "hell_force"];
+
+/** Сколько раундов ещё ждать до приёма: 0 — можно применять сейчас. */
+export function enemyMoveCooldownLeft(b: BattleState, move: EnemyMove): number {
+  return Math.max(0, (b.enemy.cooldowns?.[move] ?? 0) - b.round);
+}
+
+/** Доступен ли приём в текущем раунде. */
+export function enemyMoveReady(b: BattleState, move: EnemyMove): boolean {
+  return enemyMoveCooldownLeft(b, move) === 0;
+}
+
+/** Отмечает применение приёма: следующие три раунда он недоступен. */
+function armEnemyCooldown(b: BattleState, move: EnemyMove): void {
+  if (!ENEMY_COOLDOWN_MOVES.includes(move)) return;
+  b.enemy.cooldowns = { ...(b.enemy.cooldowns ?? {}), [move]: b.round + ENEMY_MOVE_COOLDOWN };
+}
 /** Приёмы, которые бьют по духу и считаются магическими. */
 const MAGIC_MOVES: EnemyMove[] = ["curse", "drain", "bell_stun", "terror", "darkness", "cold_touch", "hell_force"];
 /** Прямые удары оружием и когтями. */
@@ -2316,7 +2346,9 @@ function playerThorns(b: BattleState): number {
  */
 export function chooseEnemyMove(b: BattleState): EnemyMove {
   const e = b.enemy;
-  const moves = (e.moves.length ? e.moves : e.def.moves).slice();
+  /* Приёмы с негативными эффектами уходят на перезарядку: пока она идёт,
+     враг выбирает из того, что осталось, — обычный удар или стойку. */
+  const moves = (e.moves.length ? e.moves : e.def.moves).filter((m) => enemyMoveReady(b, m));
   const has = (m: EnemyMove) => moves.includes(m);
   const debuffs = moves.filter((m) => DEBUFF_MOVES.includes(m));
   const magics = moves.filter((m) => MAGIC_MOVES.includes(m));
@@ -2407,6 +2439,7 @@ export function enemyStep(b0: BattleState): BattleState {
 
   const chill = (e.statuses.blight > 0 ? 0.8 : 1) * (e.statuses.curse > 0 ? 1 - (e.statuses.cursePower ?? 30) / 100 : 1);
   const move = chooseEnemyMove(b);
+  armEnemyCooldown(b, move);
   const isStrikeMove = STRIKE_MOVES.includes(move);
   /* Промах запоминается только на один ход: после решения флаг снимаем. */
   e.lastMiss = false;

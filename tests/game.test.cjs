@@ -2175,6 +2175,126 @@ test("hero starts at full health with three stat points, two-handers hit twice a
   assert.ok(Math.abs(b[1] / a[1] - 2) < 0.2, `макс: ${b[1]} против ${a[1]}`);
 });
 
+test("исследование окупается: цена опознания не выше прибавки к продаже", () => {
+  const rarities = Object.keys(content.RARITY_META);
+  const wears = Object.keys(content.WEAR_META);
+  let free = 0;
+  for (const baseId of Object.keys(content.GEAR_BASES)) {
+    for (const rarity of rarities) {
+      for (const wear of wears) {
+        for (let level = 1; level <= 10; level++) {
+          const item = content.createGearItem(baseId, { level, rarity, wear, identified: false });
+          const asFound = content.gearSellPrice(item);
+          const known = content.gearSellPrice({ ...item, identified: true });
+          const cost = content.identifyReqs(item).gold;
+          const gain = known - asFound;
+          if (gain === 0) {
+            assert.equal(cost, 0, `${baseId} L${level}: опознание ничего не даёт, цена должна быть 0`);
+            free++;
+          } else {
+            assert.ok(cost >= 1 && cost <= gain, `${baseId} L${level} ${rarity} ${wear}: цена ${cost} при прибавке ${gain}`);
+          }
+        }
+      }
+    }
+  }
+  assert.ok(free > 0, "на дешёвых находках опознание должно быть бесплатным");
+});
+
+/** Прибавка ценности от улучшения в кузнице — не меньше цены работы. */
+test("кузница просит не больше, чем добавляет вещи в цене", () => {
+  const forge = loadModule("src/game/forge.ts", "forge");
+  for (const baseId of Object.keys(content.GEAR_BASES)) {
+    for (const rarity of Object.keys(content.RARITY_META)) {
+      for (const wear of Object.keys(content.WEAR_META)) {
+        for (let level = 1; level <= 10; level++) {
+          const item = content.createGearItem(baseId, { level, rarity, wear, identified: true });
+          const before = content.gearSellPrice(item);
+          const player = { gold: 99999, armory: [item], equip: {} };
+          for (const opt of forge.forgeOptions(item)) {
+            if (!opt.available) continue;
+            const out = forge.forgeUpgrade(player, item.uid, opt.kind, () => 0.99);
+            const gain = content.gearSellPrice(out.item) - before;
+            if (gain > 0) {
+              assert.ok(opt.cost <= gain, `${baseId} L${level} ${opt.kind}: цена ${opt.cost} при прибавке ${gain}`);
+            }
+          }
+        }
+      }
+    }
+  }
+});
+
+test("приёмы с негативными эффектами уходят на перезарядку 3 раунда", () => {
+  const mk = () => {
+    const b = freshBattle(mkP({ level: 1, stats: { str: 1, agi: 1, int: 1 }, hp: 400 }), 1, false, "classic");
+    b.enemy.hp = 9999;
+    b.enemy.maxHp = 9999;
+    b.enemy.moves = ["seal_attack"];
+    b.enemy.def = { ...b.enemy.def, moves: ["seal_attack"] };
+    b.queue = ["p", "e"];
+    b.idx = 1;
+    return b;
+  };
+  const b = withRandom(() => battle.enemyStep(mk()), 0.5);
+  assert.equal(b.enemy.cooldowns.seal_attack, 1 + battle.ENEMY_MOVE_COOLDOWN, "печать ушла на перезарядку");
+  assert.equal(battle.ENEMY_MOVE_COOLDOWN, 3);
+
+  /* Счётчик: сколько раундов ещё ждать. */
+  assert.equal(battle.enemyMoveCooldownLeft({ ...b, round: 1 }, "seal_attack"), 3);
+  assert.equal(battle.enemyMoveCooldownLeft({ ...b, round: 3 }, "seal_attack"), 1);
+  assert.equal(battle.enemyMoveCooldownLeft({ ...b, round: 4 }, "seal_attack"), 0);
+
+  /* На перезарядке приём не выбирается: враг бьёт обычной атакой. */
+  const onCd = { ...b, round: 2, enemy: { ...b.enemy, moves: ["seal_attack"] } };
+  assert.equal(battle.chooseEnemyMove(onCd), "attack");
+  const ready = { ...b, round: 4, enemy: { ...b.enemy, moves: ["seal_attack"] } };
+  assert.equal(battle.chooseEnemyMove(ready), "seal_attack");
+
+  /* Страх и печати в одном списке: все приёмы с негативным эффектом. */
+  for (const mv of ["terror", "seal_items", "seal_skills", "seal_attack", "wound", "poison", "curse", "sunder", "bell_stun", "intimidate", "darkness", "cold_touch", "hell_force"]) {
+    assert.ok(battle.ENEMY_COOLDOWN_MOVES.includes(mv), `${mv} должен уходить на перезарядку`);
+  }
+  /* Обычные удары, двойной выпад и лечение перезарядки не имеют. */
+  for (const mv of ["attack", "heavy", "multi", "guard", "drain"]) {
+    assert.ok(!battle.ENEMY_COOLDOWN_MOVES.includes(mv), `${mv} без перезарядки`);
+  }
+});
+
+test("в бою один и тот же приём с дебаффом не повторяется чаще раза в 3 раунда", () => {
+  const b0 = freshBattle(mkP({ level: 5, stats: { str: 5, agi: 5, int: 5 }, hp: 400 }), 3, false, "classic");
+  b0.enemy.hp = 99999;
+  b0.enemy.maxHp = 99999;
+  b0.enemy.moves = ["attack", "seal_attack", "terror", "wound"];
+  b0.enemy.def = { ...b0.enemy.def, moves: ["attack", "seal_attack", "terror", "wound"] };
+  const used = withSeededRandom(20261102, () => {
+    const seen = { seal_attack: [], terror: [], wound: [] };
+    let b = b0;
+    for (let step = 0; step < 200 && !b.over; step++) {
+      b.p.hp = 400;
+      b.p.statuses.sealAttack = 0;
+      b.p.statuses.sealSkills = 0;
+      if (b.queue[b.idx] === "e") {
+        const round = b.round;
+        const before = { ...(b.enemy.cooldowns ?? {}) };
+        b = battle.enemyStep(b);
+        for (const mv of Object.keys(seen)) {
+          if ((b.enemy.cooldowns?.[mv] ?? 0) !== (before[mv] ?? 0)) seen[mv].push(round);
+        }
+      } else {
+        b = battle.playerAct(b, { type: "guard" });
+      }
+    }
+    return seen;
+  });
+  for (const [mv, rounds] of Object.entries(used)) {
+    assert.ok(rounds.length > 0, `${mv} ни разу не применили`);
+    for (let i = 1; i < rounds.length; i++) {
+      assert.ok(rounds[i] - rounds[i - 1] >= battle.ENEMY_MOVE_COOLDOWN, `${mv}: раунды ${rounds[i - 1]} и ${rounds[i]}`);
+    }
+  }
+});
+
 test("enemy AI heals or guards when low, punishes misses and closes rounds by turn order", () => {
   const base = () => {
     const b = freshBattle(mkP({ level: 1, stats: { str: 1, agi: 1, int: 1 }, hp: 60 }), 1, false, "classic");
@@ -2872,6 +2992,24 @@ function depletionSeed() {
   b.enemy.effectPower = {};
   b.p.hp = b.p.maxHp;
   return b;
+}
+
+/** Детерминированный ГПСЧ для боевых симуляций: без него интервалы кулдаунов плавают. */
+function withSeededRandom(seed, fn) {
+  const rnd = Math.random;
+  let st = seed >>> 0;
+  Math.random = () => {
+    st = (st + 0x6d2b79f5) >>> 0;
+    let t = st;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  try {
+    return fn();
+  } finally {
+    Math.random = rnd;
+  }
 }
 
 function withRandom(fn, value = 0.5) {
