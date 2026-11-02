@@ -1035,7 +1035,7 @@ function skillCd(b: BattleState, base: number) {
   return Math.max(1, base - reduction);
 }
 function skillScaleBonus(b: BattleState) {
-  return effectPower(b, "skill_scale") + (hasPassive(b, "arch_warlock_10") ? 0.8 : 0);
+  return techniqueSkillScale(b.p.effectPower, b.p.passives);
 }
 function skillDamageMult(b: BattleState) {
   return 1 + effectPower(b, "skill_damage") / 100 + passivePower(b, "warlock_pact", "skillDamage") / 100 +
@@ -1045,6 +1045,10 @@ function skillDamageMult(b: BattleState) {
 /** База приёмов и свитков: 10 + 2×ИНТ. Коэффициент задаёт конкретный приём. */
 export function techniqueDamage(int: number, coefficient = 1): number {
   return statTechniqueDamage(int) * coefficient;
+}
+/** Добавка «бонус навыков» к множителю приёма: свойство предметов и арх. чернокнижника 10. */
+export function techniqueSkillScale(effectPower: Partial<Record<GearEffectId, number>>, passives: readonly string[]): number {
+  return (effectPower.skill_scale ?? 0) + (passives.includes("arch_warlock_10") ? 0.8 : 0);
 }
 /** Предел ХАР в формуле бонуса приёма оружия. */
 export const TECHNIQUE_STAT_CAP = 10;

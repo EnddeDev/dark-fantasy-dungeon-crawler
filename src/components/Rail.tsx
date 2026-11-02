@@ -16,7 +16,7 @@ import {
 import { GEAR_EFFECTS, GEAR_PASSIVES, effectDetail, passiveDetail } from "../game/gearEffects";
 import { archetypeByMilestone } from "../game/archetypes";
 import { statMilestoneById } from "../game/statMilestones";
-import { combatReadout, derived, equippedList, type BattleState } from "../game/battle";
+import { combatReadout, derived, equippedList, techniqueSkillScale, type BattleState } from "../game/battle";
 import type { Player, Run } from "../game/types";
 import { Btn, Meter, Pips } from "./ui";
 import { isBattleCurse, trapBypassChance, trapDisarmChance } from "../game/traps";
@@ -117,6 +117,11 @@ export function Rail({
   const readout = battle ? combatReadout(battle) : null;
   const flatDamage = d.strFlat + (player.passives.includes("heavy_hand") ? 3 : 0) + d.rareAffixes.filter((id) => id === "might").length * 3;
   const damage: [number, number] = readout ? [readout.dmgMin, readout.dmgMax] : [d.hit[0] + flatDamage, d.hit[1] + flatDamage];
+  /* Множитель приёма: в бою берём значения боя (с учётом эффектов и предметов), вне боя — текущие данные героя. */
+  const techWs = battle ? battle.p.weaponSkill : d.weaponSkill;
+  const techSkillScale = battle
+    ? techniqueSkillScale(battle.p.effectPower, battle.p.passives)
+    : techniqueSkillScale(d.effectPower, player.passives);
   const armor = readout?.armor ?? d.armor;
   const ap = readout?.ap ?? d.ap;
   const resist = readout?.resist ?? d.tenacity;
@@ -402,6 +407,11 @@ export function Rail({
                 <div className="grid grid-cols-2 gap-2">
                   <Metric label="Архетип" value={arch ? arch.name : "не выбран"} note={arch ? `${arch.short} · рубежи 5/10` : "Откроется на 5 уровне"} />
             <Metric label="Урон оружия" value={`${damage[0]}–${damage[1]}`} note={battle ? "До брони противника" : `Включая +${flatDamage} от силы и пассивных умений`} />
+                  <Metric
+                    label="Множитель приёма"
+                    value={techWs ? (techWs.scaleMult + techSkillScale).toFixed(2) : "—"}
+                    note={techWs ? `${STAT_META[techWs.scaleStat].name}, до 10 · ${techWs.scaleMult} + навыки ${techSkillScale.toFixed(2)}` : "Нет оружия с приёмом"}
+                  />
                   <Metric label="Броня" value={String(armor)} note={`Снаряжение: +${d.armorBonus}`} />
                   <Metric label="Уклонение" value={percent(readout?.evade ?? d.evade)} note="Предел — 99%" />
                   <Metric label="Критический удар" value={percent(readout?.crit ?? d.critChance)} note={`Множитель ×${(readout?.critDamage ?? d.critDamage).toFixed(2)}`} />

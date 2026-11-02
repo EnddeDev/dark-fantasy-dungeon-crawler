@@ -1464,14 +1464,14 @@ test("knives are always light and every knife/rapier technique scales from Agili
       assert.equal(ws.scaleStat, "agi", `${baseId}/${skillId}`);
       const factor = Math.pow(1.17, (item.level ?? 1) - 1);
       assert.ok(ws.scaleMult >= 1.5 * factor - 0.02 && ws.scaleMult <= 2.5 * factor + 0.02);
-      assert.ok(ws.desc.includes("×ЛОВ"), ws.desc);
+      assert.ok(ws.desc.includes("ЛОВ × (ЛОВ + "), ws.desc);
       assert.ok(ws.passiveNote.includes("×ЛОВ"), ws.passiveNote);
       assert.ok(!ws.desc.includes("×ИНТ") && !ws.desc.includes("×СИЛ"));
     }
   }
 });
 
-test("weapon technique descriptions and passive notes match the actual affinity and multiplier", () => {
+test("weapon technique descriptions show the bonus formula with the actual multiplier and the 10-point cap", () => {
   for (const baseId of Object.keys(content.TECHNIQUE_POOL)) {
     for (const skillId of content.TECHNIQUE_POOL[baseId]) {
       const item = content.createGearItem({ baseId, skillId, wear: "worn", rarity: "common", identified: true });
@@ -1481,7 +1481,8 @@ test("weapon technique descriptions and passive notes match the actual affinity 
       if (ws.effect === "double_attack") {
         assert.ok(ws.desc.includes("без дополнительного бонуса"), `${baseId}/${skillId}: ${ws.desc}`);
       } else {
-        assert.ok(ws.desc.includes(`${ws.scaleMult}×${short}`), `${baseId}/${skillId}: ${ws.desc}`);
+        assert.ok(ws.desc.includes(`${short} × (${short} + ${ws.scaleMult} + бонус навыков) / 2`), `${baseId}/${skillId}: ${ws.desc}`);
+        assert.ok(!/\d×(СИЛ|ЛОВ|ИНТ)/.test(ws.desc), `старый множитель «N×СТАТ» не должен остаться: ${ws.desc}`);
       }
       assert.ok(ws.passiveNote.includes(`×${short}`), ws.passiveNote);
       const baseRange = ws.scaleStat === "int" ? [2, 4.5] : ws.scaleStat === "str" ? [1.5, 3.5] : [1.5, 2.5];

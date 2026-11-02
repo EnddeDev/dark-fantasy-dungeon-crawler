@@ -559,7 +559,7 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
       scaleStat: "str",
       scaleMult: 1.6,
       effect: "guard",
-      desc: "Рубящий удар с бонусом +1.6×СИЛ и мгновенный переход в Защиту (входящий урон вдвое меньше).",
+      desc: "Рубящий удар + 1.6×СИЛ и мгновенный переход в Защиту (входящий урон вдвое меньше).",
       passiveNote: "При ИНТ ≥ 3 обычные удары мечом получают +0.6×СИЛ доп. урона.",
     },
   },
@@ -1467,12 +1467,24 @@ export function weaponSkillFor(item: GearItem | null | undefined): WeaponSkillDe
   const scaleMult = scaleMultByLevel(baseMult, level);
   const intReq = techniqueIntReq(level, scaleStat);
   const short = STAT_META[scaleStat].short;
-  const desc = raw.desc.replace(/(\d+(?:\.\d+)?)×(?:ЛОВ|СИЛ|ИНТ)/g, `${scaleMult}×${short}`);
+  const desc = techniqueDescText(raw, scaleMult, short);
   const passiveBonus = scaleMultByLevel(baseMult * 0.35, level);
   const passiveNote = `При ИНТ ≥ ${intReq} обычные удары получают +${passiveBonus.toFixed(2)}×${short} к урону.`;
   /* Посох и волшебная палочка бьют приёмами магией, а не сталью. */
   const magic = weaponTypeOfBase(item) === "staff" || weaponTypeOfBase(item) === "wand";
   return { ...raw, level, scaleStat, scaleMult, intReq, desc, passiveNote, magic };
+}
+
+/**
+ * Описание приёма: «+ N×СТАТ» заменяется на «бонус приёма», а формула пишется с текущим множителем.
+ * У двойного удара бонуса приёма нет — текст оставляем как есть.
+ */
+function techniqueDescText(raw: WeaponSkillDef, scaleMult: number, short: string): string {
+  if (raw.effect === "double_attack") return raw.desc;
+  const body = raw.desc
+    .replace(/\(\+ ?\d+(?:\.\d+)?×(?:ЛОВ|СИЛ|ИНТ)\)/g, "(бонус приёма)")
+    .replace(/\+ ?\d+(?:\.\d+)?×(?:ЛОВ|СИЛ|ИНТ)/g, "+ бонус приёма");
+  return `${body} Бонус приёма: ${short} × (${short} + ${scaleMult} + бонус навыков) / 2; ${short} не выше 10.`;
 }
 
 /** Вид оружия предмета: нужен, чтобы отметить магические приёмы. */

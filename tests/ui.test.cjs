@@ -87,6 +87,21 @@ test("left panel shows health, then negative effects, then experience", () => {
   assert.ok(html.includes("Характеристики"));
 });
 
+test("left panel shows the technique multiplier: scaleMult + skill scale, stat capped at 10 in the note", () => {
+  const knife = content.createGearItem({ baseId: "knife", wear: "worn", rarity: "common", identified: true, level: 10 });
+  const player = makePlayer({
+    level: 11, stats: { str: 2, agi: 18, int: 4 }, armory: [knife],
+    equip: { ...makePlayer().equip, mainHand: knife.uid },
+  });
+  const ws = content.weaponSkillFor(knife);
+  const html = renderToStaticMarkup(React.createElement(Rail, {
+    player, run: null, battle: null, onLeaveRun: noop,
+  }));
+  assert.ok(html.includes("Множитель приёма"), "в боевых параметрах есть множитель приёма");
+  assert.ok(html.includes(`${ws.scaleMult.toFixed(2)} + навыки 0.00`) || html.includes(`${ws.scaleMult} + навыки 0.00`), html);
+  assert.ok(html.includes(`${content.STAT_META[ws.scaleStat].name}, до 10`), "подпись указывает предел ХАР");
+});
+
 test("starter knife and rag show no requirements in the armory", () => {
   const knife = { ...content.createGearItem({ baseId: "knife", wear: "worn", rarity: "common", identified: true }), noReq: true };
   const rag = { ...content.createGearItem({ baseId: "rag", wear: "worn", rarity: "common", identified: true }), noReq: true };
