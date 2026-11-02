@@ -50,8 +50,8 @@ test("guide core sections are characteristics, gear quality/wear, then combat ru
   assert.match(html, /id="guide-combat-title"[^>]*>Правила боя</);
   assert.match(html, /3 свободных очка/);
   assert.match(html, /3 очка/);
-  assert.match(html, /×1\.25/);
-  assert.match(html, /×1\.00/);
+  assert.match(html, /×1\.325/);
+  assert.match(html, /×1</);
   assert.match(html, /×0\.75/);
   assert.match(html, /Одно действие — один ход/);
 });
@@ -134,9 +134,9 @@ test("guide keeps the current combat and crafting numbers", () => {
   assert.match(html, /25% сопротивления эффектам/);
   assert.ok(html.includes("Ускорение от снаряжения"));
   assert.ok(html.includes("каждый раунд"));
-  assert.ok(html.includes("+1 с уровня 3"));
-  assert.ok(html.includes("+2 с уровня 7"));
-  assert.ok(html.includes("+3 на уровне 10"));
+  assert.ok(html.includes("+1 на уровнях 5–6"), "ускорение начинается с 5 уровня");
+  assert.ok(html.includes("+2 на 7–8"));
+  assert.ok(html.includes("+3 на 9–10"));
   assert.match(html, /250 × текущий уровень/);
   assert.match(html, /качество 25\/50\/75%/);
   assert.match(html, /изношенность 30\/60%/);

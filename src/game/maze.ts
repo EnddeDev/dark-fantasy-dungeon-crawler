@@ -394,25 +394,22 @@ function carveRooms(h: boolean[][], v: boolean[][], size: number): Room[] {
     if (!grown) break;
   }
 
-  /* Добор до минимума комнат: если крупные залы встали тесно, досаживаем
-     мелкие помещения в оставшиеся щели — сначала со стеной, затем вплотную. */
-  for (const margin of [1, 0]) {
-    for (const anchor of anchors) {
-      if (rooms.length >= minimum) break;
-      const ax = anchor % size;
-      const ay = Math.floor(anchor / size);
-      if (reserved.has(anchor)) continue;
-      if (rooms.some((r) => ax >= r.x && ax < r.x + r.w && ay >= r.y && ay < r.y + r.h)) continue;
-      const pick = kinds
-        .filter((k) => fitsMargin(ax, ay, ROOM_KINDS[k].w, ROOM_KINDS[k].h, margin))
-        .sort((a, b) => ROOM_KINDS[a].w * ROOM_KINDS[a].h - ROOM_KINDS[b].w * ROOM_KINDS[b].h)[0];
-      if (!pick) continue;
-      const spec = ROOM_KINDS[pick];
-      carveRect(h, v, ax, ay, spec.w, spec.h);
-      rooms.push({ x: ax, y: ay, w: spec.w, h: spec.h, kind: pick, name: spec.name, tone: spec.tone, pillars: [] });
-      area += spec.w * spec.h;
-    }
+  /* Добор до минимума комнат: досаживаем мелкие помещения в оставшиеся щели.
+     Запас в одну клетку сохраняется всегда — иначе залы вставали бы вплотную. */
+  for (const anchor of anchors) {
     if (rooms.length >= minimum) break;
+    const ax = anchor % size;
+    const ay = Math.floor(anchor / size);
+    if (reserved.has(anchor)) continue;
+    if (rooms.some((r) => ax >= r.x && ax < r.x + r.w && ay >= r.y && ay < r.y + r.h)) continue;
+    const pick = kinds
+      .filter((k) => fitsMargin(ax, ay, ROOM_KINDS[k].w, ROOM_KINDS[k].h, 1))
+      .sort((a, b) => ROOM_KINDS[a].w * ROOM_KINDS[a].h - ROOM_KINDS[b].w * ROOM_KINDS[b].h)[0];
+    if (!pick) continue;
+    const spec = ROOM_KINDS[pick];
+    carveRect(h, v, ax, ay, spec.w, spec.h);
+    rooms.push({ x: ax, y: ay, w: spec.w, h: spec.h, kind: pick, name: spec.name, tone: spec.tone, pillars: [] });
+    area += spec.w * spec.h;
   }
 
   /* Страховка: без комнат этаж выглядит пусто, даже если раскладка не сошлась. */

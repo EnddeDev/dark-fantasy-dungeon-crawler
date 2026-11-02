@@ -200,21 +200,21 @@ export const WEAR_META: Record<
 > = {
   new: {
     name: "Новое",
-    mult: 1.25,
+    mult: WEAR_RANGE.new.base,
     priceMult: 1.35,
-    desc: "Множитель ×1.25 к характеристикам предмета.",
+    desc: `Множитель ×${WEAR_RANGE.new.base} к характеристикам предмета.`,
   },
   worn: {
     name: "Ношенное",
-    mult: 1.0,
+    mult: WEAR_RANGE.worn.base,
     priceMult: 1.0,
-    desc: "Множитель ×1.0 к характеристикам предмета.",
+    desc: `Множитель ×${WEAR_RANGE.worn.base} к характеристикам предмета.`,
   },
   battered: {
     name: "Изношенное",
-    mult: 0.75,
+    mult: WEAR_RANGE.battered.base,
     priceMult: 0.7,
-    desc: "Множитель ×0.75 к характеристикам предмета.",
+    desc: `Множитель ×${WEAR_RANGE.battered.base} к характеристикам предмета.`,
   },
 };
 
@@ -1575,10 +1575,29 @@ export function scaledGearStats(item: GearItem) {
   return { base, kind, dmg, armor, hp, evade, evadePp, skill: weaponSkillFor(item), level, wearMult: m };
 }
 
-/** Требования исследования предмета растут вместе с его уровнем. */
+/**
+ * Ценность вещи без учёта качества: база × уровень × изношенность.
+ * По ней считаются исследование и работа кузницы — иначе на дешёвых
+ * вещах трата выходила дороже самой находки.
+ */
+/** Доля ценности вещи, которую стоит исследование. */
+export const IDENTIFY_SHARE = 0.03;
+
+export function gearBaseValue(item: GearItem): number {
+  const base = GEAR_BASES[item.baseId] ?? GEAR_BASES.knife;
+  return base.price * gearLevelMult(item) * WEAR_META[item.wear].priceMult;
+}
+
+/**
+ * Требования исследования предмета: Интеллект растёт с уровнем,
+ * золото — 3% цены продажи (минимум 1). Опознание поднимает цену продажи
+ * на 10%, поэтому исследование почти всегда окупается; на дешёвых находках
+ * разницу съедает округление цены до 5, там цена символическая.
+ */
 export function identifyReqs(item: GearItem): { int: number; gold: number } {
-  const lvl = item.level ?? 1;
-  return { int: Math.min(8, 1 + lvl), gold: 20 * lvl };
+  const lvl = clampGearLevel(item.level ?? 1);
+  const gold = Math.max(1, Math.round(gearSellPrice({ ...item, identified: true }) * IDENTIFY_SHARE));
+  return { int: Math.min(8, 1 + lvl), gold };
 }
 
 /** Разброс урона конкретного клинка: узкий (3–5) или размашистый (2–7). */
@@ -1645,23 +1664,23 @@ export function canRollExtraAp(rarity: RarityTier, level: number): boolean {
   return (rarity === "epic" || rarity === "legendary") && (level ?? 1) >= EXTRA_AP_MIN_LEVEL;
 }
 
-/** Базовые веса редкости: 60% обычное, 30% редкое, 8% эпическое, 2% легендарное. */
-export const BASE_RARITY_WEIGHTS: Record<RarityTier, number> = {
-  common: 60,
-  rare: 30,
-  epic: 8,
-  legendary: 2,
-};
-
+/**
+ * Ролл качества по весам. Нулевой вес означает «не может выпасть никогда»,
+ * поэтому такие ступени пропускаются: иначе при rng() === 0 вычитание нуля
+ * не сдвигало бы бросок и возвращалась запрещённая ступень.
+ */
 export function rollRarity(
-  weights: Record<RarityTier, number> = BASE_RARITY_WEIGHTS,
+  weights: Record<RarityTier, number>,
   rng: () => number = Math.random,
 ): RarityTier {
-  const total = (Object.keys(weights) as RarityTier[]).reduce((s, k) => s + weights[k], 0);
-  let r = rng() * total;
   const order: RarityTier[] = ["legendary", "epic", "rare", "common"];
+  const total = order.reduce((s, tier) => s + Math.max(0, weights[tier] ?? 0), 0);
+  if (total <= 0) return "common";
+  let r = rng() * total;
   for (const tier of order) {
-    r -= weights[tier];
+    const w = Math.max(0, weights[tier] ?? 0);
+    if (w <= 0) continue;
+    r -= w;
     if (r <= 0) return tier;
   }
   return "common";
@@ -1690,7 +1709,8 @@ export function createGearItem(opts: {
       return "new";
     })();
 
-  const rarity: RarityTier = opts.rarity ?? rollRarity(opts.rarityWeights, rng);
+  /* Веса обязательны: без них предмет идёт как из сундука. */
+  const rarity: RarityTier = opts.rarity ?? rollRarity(opts.rarityWeights ?? CHEST_RARITY_WEIGHTS, rng);
   const gearClass: "light" | "medium" | "heavy" =
     base.gearClass ?? (["plate", "shield_tower", "greathelm"].includes(base.id) ? "heavy" : "medium");
 

@@ -41,7 +41,7 @@ import { BiomeIcon } from "./BiomeLabel";
 import { MAX_SIZE, MIN_SIZE, TORCH, chestCountForFloor, mazeSizeForFloor, monsterCountFor, trapCountFor } from "../game/maze";
 import { SLOT_META, SLOT_ORDER } from "../game/types";
 import { ACTIVE_GEAR_EFFECTS, GEAR_EFFECTS } from "../game/gearEffects";
-import { GEAR_EFFECT_BASE, GEAR_EFFECT_GROWTH, GEAR_EFFECT_GROWTH_MAIN, GEAR_EFFECT_SPREAD } from "../game/gearScaling";
+import { GEAR_EFFECT_BASE, GEAR_EFFECT_GROWTH_MAIN, GEAR_EFFECT_SPREAD } from "../game/gearScaling";
 import { effectDetail } from "../game/gearEffects";
 import { NEGATIVE_EFFECTS } from "../game/statusEffects";
 import { CHANCE_CAP } from "../game/chances";
@@ -142,9 +142,16 @@ const POSITIVE_EFFECT_ROWS = ACTIVE_GEAR_EFFECTS.map((id) => {
   const effect = GEAR_EFFECTS[id];
   const base = GEAR_EFFECT_BASE[id];
   const spread = GEAR_EFFECT_SPREAD[id];
-  const range = id === "ap" ? "0 → 1 (ур. 3) → 2 (ур. 7) → 3 (ур. 10)" : `${base.value}${spread ? ` ±${spread}` : ""}`;
-  const rate = GEAR_EFFECT_GROWTH[id] ?? GEAR_EFFECT_GROWTH_MAIN;
-  return { name: effect.name, text: effect.desc, range, growth: id === "ap" ? "пороги" : `×${rate} за уровень` };
+  const range =
+    id === "ap"
+      ? "0 до 5 ур.; +1 (5–6) → +2 (7–8) → +3 (9–10), только эпик и легендарка"
+      : `${base.value}${spread ? ` ±${spread}` : ""}`;
+  return {
+    name: effect.name,
+    text: effect.desc,
+    range,
+    growth: id === "ap" ? "пороги" : `×${GEAR_EFFECT_GROWTH_MAIN} за уровень`,
+  };
 });
 
 function GuideSection({
@@ -442,7 +449,7 @@ export function Guide({
                         {WEAR_META[tier].name}
                       </Tag>
                     </td>
-                    <td className="py-2 pr-3 font-mono text-flamehi">×{WEAR_META[tier].mult.toFixed(2)}</td>
+                    <td className="py-2 pr-3 font-mono text-flamehi">×{WEAR_META[tier].mult}</td>
                     <td className="py-2 text-parch/85">{text}</td>
                   </tr>
                 ))}
@@ -460,8 +467,8 @@ export function Guide({
           <b className="text-flamehi">Уровень предмета</b> — от 1 до 10, и растёт он по-разному.
           <b className="text-parch"> Основные параметры</b> (урон, броня, ОЗ, уклонение) — линейно,
           ×(1 + 0.5 × уровень): на 1 уровне ×1.5, на 10 — ×6.
-          <b className="text-parch"> Эффекты и свойства</b> — сложным процентом, ×1.17 за уровень,
-          а у части свойств ×1.25: на 10 уровне это ×3.1 и ×5.6 от базы.
+          <b className="text-parch"> Эффекты и свойства</b> — сложным процентом, ×1.17 за уровень:
+          на 10 уровне это ×3.1 от базы.
           <b className="text-parch"> Цены</b> — линейно, ×(1 + 0.17 × уровень).
           Надеть вещь можно, если уровень героя не ниже уровня предмета
           и набрана нужная характеристика. В кузнице качество, состояние и уровень можно улучшить,
@@ -524,8 +531,9 @@ export function Guide({
                 каждая отдельно бросает крит, оглушение и эффекты от удара.
               </li>
               <li>
-                <b className="text-parch">Ускорение от снаряжения.</b> Даёт дополнительные ходы каждый раунд:
-                0 на уровнях 1–2, +1 с уровня 3, +2 с уровня 7 и +3 на уровне 10.
+                <b className="text-parch">Ускорение от снаряжения.</b> Даёт дополнительные ходы каждый раунд
+                только на эпических и легендарных вещах: свойства нет до 5 уровня, дальше +1 на уровнях 5–6,
+                +2 на 7–8 и +3 на 9–10.
               </li>
               <li>
                 <b className="text-parch">Расходники.</b> Урон расходников — 7 + 1.5 × ЛОВ;
@@ -810,14 +818,14 @@ export function Guide({
             </p>
             <p>
               Основные параметры растут линейно — ×(1 + 0.5 × уровень); эффекты и свойства — сложным
-              процентом ×1.17 (у части свойств ×1.25) за уровень; цены — линейно, ×(1 + 0.17 × уровень).
+              процентом ×1.17 за уровень; цены — линейно, ×(1 + 0.17 × уровень).
               Приёмы посоха и
               волшебной палочки считаются магическими: их лечит магический вампиризм, а не физический.
             </p>
             <p>
               До исследования качество и свойства скрыты. Изучить свою вещь в арсенале можно за Интеллект
-              <b className="text-parch"> 1 + уровень предмета</b> (не выше 8) или за золото
-              <b className="text-parch"> 20 × уровень предмета</b>. Приёмы оружия открываются Интеллектом:
+              <b className="text-parch"> 1 + уровень предмета</b> (не выше 8) или за золото —
+              <b className="text-parch"> 3% цены продажи</b>. Приёмы оружия открываются Интеллектом:
               обычно 2 на уровнях 1–5, 3 на 6–8 и 4 на 9–10; силовым приёмам нужно на 1 меньше.
             </p>
           </Reference>
@@ -901,7 +909,9 @@ export function Guide({
               <Hammer size={15} className="mt-1 shrink-0 text-flame" aria-hidden />
               <span>
                 Кузница улучшает качество, изношенность и уровень. Отдельного шанса успеха нет: предмет либо
-                уничтожается, либо улучшается. Риск уничтожения: качество 25/50/75%, изношенность 30/60%,
+                уничтожается, либо улучшается. Цена работы — доля ценности вещи:
+                <b className="text-parch"> качество 20%, изношенность 15%, уровень 4%</b> от цены продажи, минимум 1 золото.
+                Риск уничтожения: качество 25/50/75%, изношенность 30/60%,
                 уровень — <b className="text-parch">10% + 5% × (текущий уровень предмета − 1)</b>.
                 Золото списывается даже при уничтожении.
               </span>
