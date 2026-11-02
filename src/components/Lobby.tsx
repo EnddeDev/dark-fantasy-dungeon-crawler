@@ -55,6 +55,18 @@ import type { GearItem, Player, StatKey } from "../game/types";
 import type { ArchetypeId } from "../game/archetypes";
 import { canChooseStatMilestone, chosenStatMilestone, statMilestoneOptions, type StatMilestoneTier } from "../game/statMilestones";
 import { SHOP_MAX_LEVEL, shopRarityTable, shopUpgradeCost, shopWearTable } from "../game/world";
+import {
+  SLOT_FILTERS,
+  reagentCategoryOf,
+  shopReagentList,
+  shopSupplyList,
+  slotFilterOf,
+  supplyLevelOptions,
+  type ReagentFilter,
+  type ReagentSort,
+  type SlotFilter,
+  type SupplyLevelFilter,
+} from "../game/shopFilters";
 import { forgeFailChance, forgeOptions, forgeReagentPlan, type ForgeUpgradeKind } from "../game/forge";
 import { statResetCost, totalStatPoints } from "../game/progression";
 import { WEAR_RANGE } from "../game/types";
@@ -67,7 +79,7 @@ import { Btn, Meter, Modal, Panel, Pips, Tag } from "./ui";
 
 
 type Tab = "train" | "armory" | "shop" | "brew" | "workshop" | "forge" | "bestiary" | "guide";
-type ShopSection = "equipment" | "supplies" | "reagents" | "recipes";
+export type ShopSection = "equipment" | "supplies" | "reagents" | "recipes";
 type SupplyGroup = "potion" | "throwable" | "scroll" | "special";
 type RecipeGroup = "potion" | "throwable" | "scroll" | "special";
 /** Всплывающая подсказка о припасе / реагенте / рецепте. */
@@ -272,15 +284,9 @@ function effectSummary(def: ItemDef): { what: string; when: string } {
       return { what: def.desc, when: "Мгновенно." };
   }
 }
-type SlotFilter = "all" | "hands" | "armor" | "rings" | "amulet";
 
-/** Слоты, объединённые под одной кнопкой фильтра в арсенале и лавке. */
-const SLOT_FILTERS: Record<Exclude<SlotFilter, "all">, Slot[]> = {
-  hands: ["mainHand", "offHand"],
-  armor: ["head", "body", "feet", "wrists"],
-  rings: ["ring1", "ring2"],
-  amulet: ["amulet"],
-};
+
+
 type GearSort = "recent" | "price" | "damage" | "rarity";
 type RarityFilter = "all" | "unknown" | RarityTier;
 
@@ -321,6 +327,7 @@ export function Lobby({
   best,
   unlockedFloor,
   initialTab = "train",
+  initialShopSection = "equipment",
 }: {
   player: Player;
   controller: LobbyController;
@@ -331,9 +338,11 @@ export function Lobby({
   best: number;
   unlockedFloor: number;
   initialTab?: "train" | "guide";
+  /** Раздел лавки, открываемый сразу (для ссылок и проверок). */
+  initialShopSection?: ShopSection;
 }) {
   const [tab, setTab] = useState<Tab>(initialTab);
-  const [shopSection, setShopSection] = useState<ShopSection>("equipment");
+  const [shopSection, setShopSection] = useState<ShopSection>(initialShopSection);
   const [supplyGroup, setSupplyGroup] = useState<SupplyGroup>("potion");
   /* Сумка арсенала: припасы и реагенты в двух вкладках одной таблицы. */
   const [bagTab, setBagTab] = useState<"supplies" | "reagents">("supplies");
@@ -354,6 +363,10 @@ export function Lobby({
   /** Подробности открываются кнопкой; храним UID, чтобы видеть результат исследования. */
   const [gearDetail, setGearDetail] = useState<{ uid: string; inShop: boolean } | null>(null);
   const [chosenSlot, setChosenSlot] = useState<Slot | null>(null);
+  const [supplyLevelFilter, setSupplyLevelFilter] = useState<SupplyLevelFilter>(0);
+  const [reagentFilter, setReagentFilter] = useState<ReagentFilter>("all");
+  /* Реагенты по умолчанию сортируются по уровню, потом по цене. */
+  const [reagentSort, setReagentSort] = useState<ReagentSort>("level");
   const [forgeUid, setForgeUid] = useState<string | null>(null);
   const [forgeConfirm, setForgeConfirm] = useState<{ uid: string; kind: ForgeUpgradeKind } | null>(null);
   const [forgeUseReagents, setForgeUseReagents] = useState(true);
@@ -418,10 +431,21 @@ export function Lobby({
   const buyRecipe = (recipe: Recipe) => say(controller.buyRecipe(recipe));
   const brew = (recipeId: string) => say(controller.brew(recipeId));
 
-  const shopSupplies = Object.values(ITEMS).filter(
-    (i) => (i.price ?? 0) > 0 && i.kind !== "reagent" && groupOfKind(i.kind) === supplyGroup,
+  const shopSupplies = shopSupplyList(
+    Object.values(ITEMS).filter(
+      (i) => (i.price ?? 0) > 0 && i.kind !== "reagent" && groupOfKind(i.kind) === supplyGroup,
+    ),
+    supplyLevelFilter,
   );
-  const shopReagents = Object.values(ITEMS).filter((i) => i.kind === "reagent" && (i.price ?? 0) > 0);
+  /* Уровни припасов, которые есть в лавке: по ним строятся кнопки фильтра. */
+  const supplyLevels = supplyLevelOptions(
+    Object.values(ITEMS).filter((i) => (i.price ?? 0) > 0 && i.kind !== "reagent"),
+  );
+  const shopReagents = shopReagentList(
+    Object.values(ITEMS).filter((i) => i.kind === "reagent" && (i.price ?? 0) > 0),
+    reagentFilter,
+    reagentSort,
+  );
   const stationRecipes = (station: "alchemy" | "workshop") =>
     RECIPES.filter((r) => (r.station ?? "alchemy") === station);
   const groupedRecipes = RECIPES.filter((r) => groupOfKind(ITEMS[r.out].kind) === recipeGroup);
@@ -497,14 +521,18 @@ export function Lobby({
         )}
       </label>
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex flex-wrap gap-1" role="group" aria-label="Тип предмета">
+        <div className="flex flex-wrap gap-1" role="group" aria-label="Слот снаряжения">
           {([
             ["all", "Все", PackageSearch],
-            ["hands", "Руки", Sword],
-            ["armor", "Броня", Shield],
+            ["mainHand", "Правая рука", Sword],
+            ["offHand", "Левая рука", Shield],
+            ["head", "Шлем", null],
+            ["body", "Тело", null],
+            ["wrists", "Наручи", null],
+            ["feet", "Ботинки", null],
             ["rings", "Кольца", Gem],
-            ["amulet", "Обереги", Sparkles],
-          ] as [SlotFilter, string, typeof Gem][]).map(([value, label, Icon]) => (
+            ["amulet", "Оберег", Sparkles],
+          ] as [SlotFilter, string, typeof Gem | null][]).map(([value, label, Icon]) => (
             <button
               key={value}
               type="button"
@@ -514,7 +542,7 @@ export function Lobby({
                 gearSlot === value ? "border-flamedim bg-flame/15 text-flamehi" : "border-line text-mute hover:text-parch"
               }`}
             >
-              <Icon size={13} aria-hidden />
+              {Icon && <Icon size={13} aria-hidden />}
               {label}
             </button>
           ))}
@@ -572,7 +600,7 @@ export function Lobby({
     setGearQuery("");
     setGearRarity("all");
     setOnlyUnknown(false);
-    setGearSlot(slot === "mainHand" || slot === "offHand" ? "hands" : slot === "amulet" ? "amulet" : slot === "ring1" || slot === "ring2" ? "rings" : "armor");
+    setGearSlot(slotFilterOf(slot));
     if (window.matchMedia("(max-width: 1199px)").matches) {
       window.requestAnimationFrame(() => document.getElementById("armory-inventory")?.scrollIntoView({ block: "start" }));
     }
@@ -1088,6 +1116,28 @@ export function Lobby({
                         Наведи на название — описание действия и длительности
                       </span>
                     </div>
+                    <div className="mb-3 flex flex-wrap items-center gap-1.5" role="group" aria-label="Уровень припаса">
+                      <span className="mr-1 font-mono text-[0.86rem] text-mute">Уровень:</span>
+                      {[0, ...supplyLevels].map((lvl) => (
+                        <button
+                          key={lvl}
+                          type="button"
+                          aria-pressed={supplyLevelFilter === lvl}
+                          onClick={() => setSupplyLevelFilter(lvl)}
+                          className={`border px-2.5 py-1 font-mono text-[0.92rem] transition-colors ${
+                            supplyLevelFilter === lvl ? "border-flamedim bg-flame/15 text-flamehi" : "border-line text-mute hover:text-parch"
+                          }`}
+                        >
+                          {lvl === 0 ? "Все" : `ур. ${lvl}`}
+                        </button>
+                      ))}
+                      <span className="ml-auto font-mono text-[0.86rem] text-mute">Показано: {shopSupplies.length}</span>
+                    </div>
+                    {shopSupplies.length === 0 && (
+                      <p className="mb-3 border border-dashed border-line py-6 text-center text-sm text-mute">
+                        В этой группе нет припасов такого уровня.
+                      </p>
+                    )}
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                       {shopSupplies.map((def) => {
                         const have = player.bag[def.id] ?? 0;
@@ -1156,12 +1206,52 @@ export function Lobby({
                         Реагенты покупаются отдельно от припасов и живут в рюкзаке меж зельями — варка тратит их по спискам.
                       </p>
                     </div>
+                    <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Категория реагента">
+                      {([
+                        ["all", "Все"],
+                        ["plant", "Растения"],
+                        ["monster", "Части тварей"],
+                        ["mineral", "Минералы и камни"],
+                        ["cloth", "Ткани"],
+                      ] as [ReagentFilter, string][]).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          aria-pressed={reagentFilter === value}
+                          onClick={() => setReagentFilter(value)}
+                          className={`border px-2.5 py-1 font-mono text-[0.92rem] transition-colors ${
+                            reagentFilter === value ? "border-flamedim bg-flame/15 text-flamehi" : "border-line text-mute hover:text-parch"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                      <label className="ml-auto flex items-center gap-1.5 border border-line bg-soot px-2 py-1 font-mono text-[0.92rem] text-mute">
+                        <ArrowDownUp size={13} aria-hidden />
+                        <select
+                          value={reagentSort}
+                          onChange={(e) => setReagentSort(e.target.value as ReagentSort)}
+                          aria-label="Сортировка реагентов"
+                          className="bg-transparent text-parch outline-none"
+                        >
+                          <option value="level">По уровню</option>
+                          <option value="price">По цене</option>
+                          <option value="name">По названию</option>
+                        </select>
+                      </label>
+                      <span className="font-mono text-[0.86rem] text-mute">Показано: {shopReagents.length}</span>
+                    </div>
+                    {shopReagents.length === 0 && (
+                      <p className="mb-3 border border-dashed border-line py-6 text-center text-sm text-mute">
+                        Реагентов такой категории в лавке нет.
+                      </p>
+                    )}
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                       {shopReagents.map((def) => {
                         const have = player.bag[def.id] ?? 0;
                         const levelOk = canBuySupply(def.id, player.shopLevel);
                         const can = player.gold >= (def.price ?? 0) && levelOk;
-                        const cat = def.reagentCat ?? "plant";
+                        const cat = reagentCategoryOf(def);
                         const catLabel =
                           cat === "mineral" ? "минерал" : cat === "cloth" ? "ткань" : cat === "monster" ? "часть твари" : "растение";
                         return (

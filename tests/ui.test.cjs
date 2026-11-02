@@ -269,3 +269,42 @@ test("battle item menu hides special supplies and reagents", () => {
   assert.equal(after.bag.field_torch, 1);
   assert.ok(html.includes("Действия"));
 });
+
+test("gear filter has one button per equipment slot, rings grouped", () => {
+  const player = makePlayer({ armory: [content.createGearItem({ baseId: "sword", wear: "worn", rarity: "common", identified: true })] });
+  const html = renderToStaticMarkup(React.createElement(Lobby, {
+    player, controller: {}, shopStock: [], onStart: noop, best: 1, unlockedFloor: 2, initialTab: "armory",
+  }));
+  const group = html.slice(html.indexOf('aria-label="Слот снаряжения"'));
+  assert.ok(group.length > 0, "группа фильтра слотов есть");
+  const buttonFor = (label) => new RegExp(`<button[^>]*>(?:<svg[\\s\\S]*?<\\/svg>)?\\s*${label}\\s*<\\/button>`).test(group);
+  for (const label of ["Все", "Правая рука", "Левая рука", "Шлем", "Тело", "Наручи", "Ботинки", "Кольца", "Оберег"]) {
+    assert.ok(buttonFor(label), `кнопка «${label}» есть`);
+  }
+  assert.ok(!buttonFor("Броня"), "общей кнопки «Броня» больше нет");
+  assert.ok(!buttonFor("Руки"), "общей кнопки «Руки» больше нет");
+});
+
+test("shop supplies filter by level and reagents open sorted by level with category filters", () => {
+  const player = makePlayer({ gold: 5000, shopLevel: 5, bag: {} });
+  const supplies = renderToStaticMarkup(React.createElement(Lobby, {
+    player, controller: {}, shopStock: [], onStart: noop, best: 1, unlockedFloor: 2, initialTab: "shop", initialShopSection: "supplies",
+  }));
+  assert.ok(supplies.includes('aria-label="Уровень припаса"'), "фильтр припасов по уровню есть");
+  assert.ok(/ур\. 1</.test(supplies) && /ур\. 5</.test(supplies), "кнопки уровней есть");
+  assert.ok(supplies.includes("Показано: "), "счётчик показанных припасов есть");
+
+  const reagents = renderToStaticMarkup(React.createElement(Lobby, {
+    player, controller: {}, shopStock: [], onStart: noop, best: 1, unlockedFloor: 2, initialTab: "shop", initialShopSection: "reagents",
+  }));
+  for (const label of ["Растения", "Части тварей", "Минералы и камни", "Ткани"]) {
+    assert.ok(reagents.includes(label), `категория «${label}» есть`);
+  }
+  assert.ok(reagents.includes('aria-label="Сортировка реагентов"'), "сортировка реагентов есть");
+  /* По умолчанию — по уровню: самый младший камень (уровень 1) идёт раньше самого старшего (уровень 5). */
+  const firstStone = reagents.indexOf(content.ITEMS.stone_river.name);
+  const lastStone = reagents.indexOf(content.ITEMS.stone_diamond.name);
+  assert.ok(firstStone > 0 && lastStone > firstStone, "камни уровня 1 идут раньше камней уровня 5");
+  const firstPlant = reagents.indexOf(content.ITEMS.herb.name);
+  assert.ok(firstPlant > 0 && firstPlant < lastStone, "растения уровня 1 стоят в начале списка, до камней уровня 5");
+});

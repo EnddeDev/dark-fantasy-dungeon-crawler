@@ -2308,8 +2308,16 @@ function enemyTurnWith(b, moves, value = 0.99) {
   return withRandom(() => battle.enemyStep(st), value);
 }
 
+/** Враг без случайных пассивов и эффектов: у катастроф они выбираются наугад и мешают считать наложения. */
+function quietEnemy(b) {
+  b.enemy.passive = null;
+  b.enemy.effects = [];
+  b.enemy.effectPower = {};
+  return b;
+}
+
 test("яд складывается: срок обновляется, урон за тик суммируется", () => {
-  const base = freshBattle(mkP({ level: 1, stats: { str: 1, agi: 1, int: 1 }, hp: 100 }), 1, false, "classic");
+  const base = quietEnemy(freshBattle(mkP({ level: 1, stats: { str: 1, agi: 1, int: 1 }, hp: 100 }), 1, false, "classic"));
   base.enemy.hp = 9999;
   base.enemy.maxHp = 9999;
 
@@ -2342,7 +2350,7 @@ test("яд складывается: срок обновляется, урон �
 });
 
 test("кровотечение складывается так же, как яд", () => {
-  const base = freshBattle(mkP({ level: 1, stats: { str: 1, agi: 1, int: 1 }, hp: 100 }), 1, false, "classic");
+  const base = quietEnemy(freshBattle(mkP({ level: 1, stats: { str: 1, agi: 1, int: 1 }, hp: 100 }), 1, false, "classic"));
   base.enemy.hp = 9999;
   base.enemy.maxHp = 9999;
   const first = enemyTurnWith(base, ["wound"]);
