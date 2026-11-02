@@ -1329,12 +1329,6 @@ function calcWeaponRoll(b: BattleState, mult = 1, bonusFlat = 0, opts: { skill?:
   const [lo, hi] = b.p.hit;
   let d = randInt(lo, hi) + statDamage(b.p.stats.str) + bonusFlat;
 
-  /* Пассивное раскрытие техники оружия при достаточном Интеллекте */
-  const ws = b.p.weaponSkill;
-  if (ws && !opts.multi && b.p.stats.int >= Math.max(1, ws.intReq - b.p.intDiscount)) {
-    d += Math.round(techniqueDamage(b.p.stats.int, ws.scaleMult * 0.35));
-  }
-
   if (hasPassive(b, "heavy_hand")) d += 3;
   d += rarePower(b, "might", "damage");
 
@@ -3018,19 +3012,6 @@ export function combatReadout(b: BattleState): CombatReadout {
   const dmgMods: Modifier[] = [];
   if (b.biome === "ice")
     dmgMods.push({ id: "biome_ice", label: "Ледяные просторы", mult: 0.75, good: false, detail: "Физические удары оружием слабее на 25%." });
-  const ws = b.p.weaponSkill;
-  const wsReq = ws ? Math.max(1, ws.intReq - b.p.intDiscount) : 0;
-  if (ws && st.int >= wsReq) {
-    const bonus = Math.round(techniqueDamage(st.int, ws.scaleMult * 0.35));
-    if (bonus > 0)
-      dmgMods.push({
-        id: "weapon_passive",
-        label: "Бонус оружия",
-        flat: bonus,
-        good: true,
-        detail: `+${bonus} к каждому удару.`,
-      });
-  }
   if (b.p.passives.includes("heavy_hand"))
     dmgMods.push({ id: "heavy_hand", label: "Тяжёлая рука", flat: 3, good: true, detail: "+3 к урону каждым ударом." });
   const might = b.p.rareAffixes.filter((x) => x === "might").length;
@@ -3111,9 +3092,8 @@ export function combatReadout(b: BattleState): CombatReadout {
     if (techSkill.effect === "double_attack") {
       /* Каждый из ударов — обычная атака: без бонуса приёма и без пассивного раскрытия техники. */
       const hits = scaleIntegerByLevel(2, techSkill.level ?? 1);
-      const passiveFlat = dmgMods.filter((m) => m.id === "weapon_passive").reduce((sum, m) => sum + (m.flat ?? 0), 0);
-      const hitMin = damageAfterEnemyDefense(b, Math.max(1, Math.round((baseMin + totalFlat - passiveFlat) * totalMult)), "phys");
-      const hitMax = damageAfterEnemyDefense(b, Math.max(1, Math.round((baseMax + totalFlat - passiveFlat) * totalMult)), "phys");
+      const hitMin = damageAfterEnemyDefense(b, Math.max(1, Math.round((baseMin + totalFlat) * totalMult)), "phys");
+      const hitMax = damageAfterEnemyDefense(b, Math.max(1, Math.round((baseMax + totalFlat) * totalMult)), "phys");
       techMin = hitMin * hits;
       techMax = hitMax * hits;
     } else {
