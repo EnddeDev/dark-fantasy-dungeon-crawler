@@ -323,3 +323,19 @@ test("shop supplies filter by level and reagents open sorted by level with categ
   const firstPlant = reagents.indexOf(content.ITEMS.herb.name);
   assert.ok(firstPlant > 0 && firstPlant < lastStone, "растения уровня 1 стоят в начале списка, до камней уровня 5");
 });
+
+test("left panel shows main stats as icons with values; name and description appear only on hover", () => {
+  const player = makePlayer({ stats: { str: 7, agi: 3, int: 5 } });
+  const html = renderToStaticMarkup(React.createElement(Rail, {
+    player, run: null, battle: null, onLeaveRun: noop,
+  }));
+  assert.ok(html.includes("Основные характеристики"));
+  assert.ok(html.includes('aria-label="Сила: 7"'), "СИЛ: иконка и значение");
+  assert.ok(html.includes('aria-label="Ловкость: 3"'), "ЛОВ: иконка и значение");
+  assert.ok(html.includes('aria-label="Интеллект: 5"'), "ИНТ: иконка и значение");
+  /* В закрытом состоянии подсказки нет, имя характеристики не выводится текстом. */
+  assert.ok(!html.includes('role="tooltip"'), "подсказка открывается только по наведению");
+  assert.ok(!html.includes(">Сила<") && !html.includes(">Ловкость<") && !html.includes(">Интеллект<"));
+  assert.ok(!html.includes("+10 ОЗ, +1 урона"), "описание прироста не выводится в карточке");
+  assert.ok(!html.includes("Ходы в раунде"), "описание характеристики не выводится в карточке");
+});

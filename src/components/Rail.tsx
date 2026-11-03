@@ -18,7 +18,8 @@ import { archetypeByMilestone } from "../game/archetypes";
 import { statMilestoneById } from "../game/statMilestones";
 import { combatReadout, derived, equippedList, techniqueSkillScale, type BattleState } from "../game/battle";
 import type { Player, Run } from "../game/types";
-import { Btn, Meter, Pips } from "./ui";
+import { Btn, Meter } from "./ui";
+import { StatBadge } from "./StatBadge";
 import { isBattleCurse, trapBypassChance, trapDisarmChance } from "../game/traps";
 import { CHARACTER_NAME_MAX } from "../game/characterName";
 
@@ -389,16 +390,14 @@ export function Rail({
           {section === "stats" ? (
             <div>
               <SheetSection title="Основные характеристики">
-                <div className="space-y-3">
-                  {STAT_ORDER.map((stat) => (
-                    <div key={stat} className="border border-line/70 bg-black/15 px-3 py-2.5">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="font-display text-[1.08rem] uppercase tracking-[0.08em] text-parch">{STAT_META[stat].name}</span>
-                        <span className="font-mono text-base tab text-flame">{player.stats[stat]}<span className="text-xs text-mute"> / 10</span></span>
-                      </div>
-                      <div className="mt-2"><Pips value={player.stats[stat]} tone={player.stats[stat] >= 5 ? "#e0a33c" : "#ad7a2c"} /></div>
-                      <p className="mt-2 text-[0.92rem] leading-snug text-mute">{STAT_META[stat].gain}</p>
-                    </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {STAT_ORDER.map((stat, i) => (
+                    <StatBadge
+                      key={stat}
+                      stat={stat}
+                      value={player.stats[stat]}
+                      align={i === STAT_ORDER.length - 1 ? "right" : "left"}
+                    />
                   ))}
                 </div>
               </SheetSection>
