@@ -72,33 +72,43 @@ function withArmor(item, stats = {}) {
   });
 }
 
-test("у каждого класса брони по 2 атакующих и 5 защитных приёмов", () => {
-  for (const cls of ["heavy", "medium", "light"]) {
-    const ids = ARMOR_SKILL_IDS.filter((id) => ARMOR_SKILLS[id].gearClass === cls);
-    assert.equal(ids.length, 7, `${cls}: всего 7`);
-    assert.equal(ids.filter((id) => ARMOR_SKILLS[id].kind === "attack").length, 2, `${cls}: атакующих 2`);
-    assert.equal(ids.filter((id) => ARMOR_SKILLS[id].kind === "defense").length, 5, `${cls}: защитных 5`);
+/* Тип брони — это класс и характеристика: у каждого свой набор из 2 атакующих и 5 защитных. */
+const ARMOR_TYPES = [
+  ["heavy", "str"],
+  ["medium", "agi"],
+  ["medium", "str"],
+  ["light", "int"],
+  ["light", "agi"],
+  ["light", "str"],
+];
+
+test("у каждого типа брони по 2 атакующих и 5 защитных приёмов", () => {
+  for (const [cls, stat] of ARMOR_TYPES) {
+    const ids = ARMOR_SKILL_IDS.filter((id) => ARMOR_SKILLS[id].gearClass === cls && ARMOR_SKILLS[id].scaleStat === stat);
+    const label = `${cls}/${stat}`;
+    assert.equal(ids.filter((id) => ARMOR_SKILLS[id].kind === "attack").length, 2, `${label}: атакующих 2`);
+    assert.equal(ids.filter((id) => ARMOR_SKILLS[id].kind === "defense").length, 5, `${label}: защитных 5`);
   }
-  assert.equal(ARMOR_SKILL_IDS.length, 21);
+  assert.equal(ARMOR_SKILL_IDS.length, 42, "6 типов по 7 приёмов");
 });
 
-test("характеристики приёмов по классам: тяжёлая — СИЛ, средняя — ЛОВ или СИЛ, лёгкая — ИНТ, ЛОВ или СИЛ", () => {
-  const count = (cls, stat) => ARMOR_SKILL_IDS.filter((id) => ARMOR_SKILLS[id].gearClass === cls && ARMOR_SKILLS[id].scaleStat === stat).length;
-  assert.equal(count("heavy", "str"), 7);
-  assert.equal(count("medium", "agi"), 4);
-  assert.equal(count("medium", "str"), 3);
-  assert.equal(count("light", "int"), 3);
-  assert.equal(count("light", "agi"), 3);
-  assert.equal(count("light", "str"), 1);
+test("все приёмы относятся к одному из шести типов и у каждого приёма есть свой id", () => {
+  const known = new Set(ARMOR_TYPES.map(([c, s]) => `${c}/${s}`));
+  for (const id of ARMOR_SKILL_IDS) {
+    assert.ok(known.has(`${ARMOR_SKILLS[id].gearClass}/${ARMOR_SKILLS[id].scaleStat}`), `${id} не входит в типы`);
+    assert.equal(ARMOR_SKILLS[id].id, id);
+  }
 });
 
 test("пул приёмов: с требованием только свои, без требования — любой приём класса", () => {
   const intLight = content.armorSkillPool("light", "int", false);
   assert.ok(intLight.length > 0 && intLight.every((id) => ARMOR_SKILLS[id].scaleStat === "int"));
-  assert.equal(content.armorSkillPool("light", "agi", true).length, 7, "без требования — все 7 лёгких");
+  assert.equal(content.armorSkillPool("light", "agi", true).length, 21, "без требования — любой приём лёгкой брони");
   assert.ok(content.armorSkillPool("medium", "str", false).every((id) => ARMOR_SKILLS[id].scaleStat === "str"));
-  /* Лёгкая броня на СИЛ: своего приёма нет в линейке ИНТ/ЛОВ, остаётся закалка. */
-  assert.deepEqual(content.armorSkillPool("light", "str", false), ["light_brace"]);
+  /* Лёгкая броня на СИЛ получает только свою линейку, без приёмов ИНТ и ЛОВ. */
+  const lightStr = content.armorSkillPool("light", "str", false);
+  assert.equal(lightStr.length, 7);
+  assert.ok(lightStr.every((id) => ARMOR_SKILLS[id].scaleStat === "str"));
 });
 
 test("выпадение: обычная и редкая броня без приёма, легендарная — всегда, эпическая — в половине случаев", () => {

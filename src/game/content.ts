@@ -380,8 +380,8 @@ export const EPIC_SKILLS: Record<EpicSkillId, EpicSkillDef> = {
 };
 
 /* ---------- Приёмы брони ----------
- * Эпическая и легендарная броня может получить приём. Тяжёлая, средняя и лёгкая
- * броня берут свой набор: по 2 атакующих и 5 защитных на класс. Какая характеристика
+ * Эпическая и легендарная броня может получить приём. Каждый тип брони (класс и характеристика)
+ * имеет свой набор: по 2 атакующих и 5 защитных приёмов. Какая характеристика
  * нужна предмету, такой и приём: лишь «свои» приёмы попадают в пул; без требования
  * выпадает любой приём своего класса. Эффекты собираются из уже существующих статусов,
  * поэтому бой их понимает без отдельной логики на каждый приём.
@@ -447,95 +447,54 @@ export interface ArmorSkillView extends ArmorSkillDef {
 }
 
 export const ARMOR_SKILLS: Record<ArmorSkillId, ArmorSkillDef> = {
-  /* ----- Тяжёлая броня: СИЛ, атаки от брони и защита ----- */
-  heavy_bash: {
-    id: "heavy_bash", name: "Удар щитом", gearClass: "heavy", kind: "attack", scaleStat: "str", cooldown: 3,
-    dmg: { base: 6, stat: 1, armor: 0.75 }, enemy: { stun: 1 },
-  },
-  heavy_rampart: {
-    id: "heavy_rampart", name: "Таран бастиона", gearClass: "heavy", kind: "attack", scaleStat: "str", cooldown: 3,
-    dmg: { base: 4, stat: 1.25, armor: 1.25 },
-  },
-  heavy_wall: {
-    id: "heavy_wall", name: "Стена доспеха", gearClass: "heavy", kind: "defense", scaleStat: "str", cooldown: 3,
-    self: { guard: true, ironTonic: 2 },
-  },
-  heavy_fort: {
-    id: "heavy_fort", name: "Каменная стойкость", gearClass: "heavy", kind: "defense", scaleStat: "str", cooldown: 3,
-    heal: { base: 6, stat: 1 }, self: { stone: 2 },
-  },
-  heavy_rage: {
-    id: "heavy_rage", name: "Ярость доспеха", gearClass: "heavy", kind: "defense", scaleStat: "str", cooldown: 3,
-    heal: { base: 4, stat: 0.5 }, self: { rage: 3 },
-  },
-  heavy_guard: {
-    id: "heavy_guard", name: "Глухая оборона", gearClass: "heavy", kind: "defense", scaleStat: "str", cooldown: 2,
-    self: { guard: true, cleanse: true },
-  },
-  heavy_ward: {
-    id: "heavy_ward", name: "Щит предков", gearClass: "heavy", kind: "defense", scaleStat: "str", cooldown: 4,
-    heal: { base: 3, stat: 0.5 }, self: { fullGuard: 1 },
-  },
-
-  /* ----- Средняя броня: ЛОВ (уклонение, подножка) или СИЛ (как у тяжёлой, контрудар) ----- */
-  medium_feint: {
-    id: "medium_feint", name: "Обманный выпад", gearClass: "medium", kind: "attack", scaleStat: "agi", cooldown: 2,
-    dmg: { base: 5, stat: 1.5 }, enemy: { bleed: 2 },
-  },
-  medium_slip: {
-    id: "medium_slip", name: "Скользящий шаг", gearClass: "medium", kind: "defense", scaleStat: "agi", cooldown: 3,
-    self: { dodgeNext: 1, shadowStep: 1 },
-  },
-  medium_trip: {
-    id: "medium_trip", name: "Подножка", gearClass: "medium", kind: "defense", scaleStat: "agi", cooldown: 3,
-    enemy: { stun: 1 },
-  },
-  medium_dance: {
-    id: "medium_dance", name: "Танец клинка", gearClass: "medium", kind: "defense", scaleStat: "agi", cooldown: 4,
-    self: { smoke: 2 },
-  },
-  medium_bash: {
-    id: "medium_bash", name: "Щитовой удар", gearClass: "medium", kind: "attack", scaleStat: "str", cooldown: 2,
-    dmg: { base: 4, stat: 1, armor: 0.75 },
-  },
-  medium_riposte: {
-    id: "medium_riposte", name: "Ответный замах", gearClass: "medium", kind: "defense", scaleStat: "str", cooldown: 3,
-    self: { counterTurn: 1 },
-  },
-  medium_brace: {
-    id: "medium_brace", name: "Упор в землю", gearClass: "medium", kind: "defense", scaleStat: "str", cooldown: 3,
-    heal: { base: 4, stat: 0.5 }, self: { stone: 2 },
-  },
-
-  /* ----- Лёгкая броня: ИНТ (чары и оберег), ЛОВ (яд и уклонение), СИЛ (закалка) ----- */
-  light_charm: {
-    id: "light_charm", name: "Чарующий укол", gearClass: "light", kind: "attack", scaleStat: "int", cooldown: 2,
-    dmg: { base: 4, stat: 2.5, magic: true }, self: { ironTonic: 1 },
-  },
-  light_ward: {
-    id: "light_ward", name: "Рунный оберег", gearClass: "light", kind: "defense", scaleStat: "int", cooldown: 4,
-    self: { fullGuard: 1, immune: 1 },
-  },
-  light_veil: {
-    id: "light_veil", name: "Покров мысли", gearClass: "light", kind: "defense", scaleStat: "int", cooldown: 3,
-    heal: { base: 3, stat: 0.5 }, self: { immune: 1, dodgeNext: 1 },
-  },
-  light_venom: {
-    id: "light_venom", name: "Ядовитый росчерк", gearClass: "light", kind: "attack", scaleStat: "agi", cooldown: 2,
-    dmg: { base: 4, stat: 1.5 }, enemy: { poison: 3 }, self: { ironTonic: 1 },
-  },
-  light_evade: {
-    id: "light_evade", name: "Неуловимость", gearClass: "light", kind: "defense", scaleStat: "agi", cooldown: 3,
-    self: { evadeTurn: 1 },
-  },
-  light_slip: {
-    id: "light_slip", name: "Скользкий путь", gearClass: "light", kind: "defense", scaleStat: "agi", cooldown: 3,
-    self: { dodgeNext: 2 },
-  },
-  light_brace: {
-    id: "light_brace", name: "Закалённый покров", gearClass: "light", kind: "defense", scaleStat: "str", cooldown: 3,
-    self: { stone: 2, ironTonic: 1 },
-  },
+  /* ----- Тяжёлая броня (СИЛ): атаки от брони и защита ----- */
+  heavy_bash: { id: "heavy_bash", name: "Удар щитом", gearClass: "heavy", kind: "attack", scaleStat: "str", cooldown: 3, dmg: { base: 6, stat: 1, armor: 0.75 }, enemy: { stun: 1 } },
+  heavy_rampart: { id: "heavy_rampart", name: "Таран бастиона", gearClass: "heavy", kind: "attack", scaleStat: "str", cooldown: 3, dmg: { base: 4, stat: 1.25, armor: 1.25 } },
+  heavy_wall: { id: "heavy_wall", name: "Стена доспеха", gearClass: "heavy", kind: "defense", scaleStat: "str", cooldown: 3, self: { guard: true, ironTonic: 2 } },
+  heavy_fort: { id: "heavy_fort", name: "Каменная стойкость", gearClass: "heavy", kind: "defense", scaleStat: "str", cooldown: 3, heal: { base: 6, stat: 1 }, self: { stone: 2 } },
+  heavy_rage: { id: "heavy_rage", name: "Ярость доспеха", gearClass: "heavy", kind: "defense", scaleStat: "str", cooldown: 3, heal: { base: 4, stat: 0.5 }, self: { rage: 3 } },
+  heavy_guard: { id: "heavy_guard", name: "Глухая оборона", gearClass: "heavy", kind: "defense", scaleStat: "str", cooldown: 2, self: { guard: true, cleanse: true } },
+  heavy_ward: { id: "heavy_ward", name: "Щит предков", gearClass: "heavy", kind: "defense", scaleStat: "str", cooldown: 4, heal: { base: 3, stat: 0.5 }, self: { fullGuard: 1 } },
+  /* ----- Средняя броня, ЛОВ: уклонение, подножка, выпад ----- */
+  medium_feint: { id: "medium_feint", name: "Обманный выпад", gearClass: "medium", kind: "attack", scaleStat: "agi", cooldown: 2, dmg: { base: 5, stat: 1.5 }, enemy: { bleed: 2 } },
+  medium_roll: { id: "medium_roll", name: "Перекат и укол", gearClass: "medium", kind: "attack", scaleStat: "agi", cooldown: 3, dmg: { base: 4, stat: 1.5 }, self: { shadowStep: 1 } },
+  medium_slip: { id: "medium_slip", name: "Скользящий шаг", gearClass: "medium", kind: "defense", scaleStat: "agi", cooldown: 3, self: { dodgeNext: 1, shadowStep: 1 } },
+  medium_trip: { id: "medium_trip", name: "Подножка", gearClass: "medium", kind: "defense", scaleStat: "agi", cooldown: 3, enemy: { stun: 1 } },
+  medium_dance: { id: "medium_dance", name: "Танец клинка", gearClass: "medium", kind: "defense", scaleStat: "agi", cooldown: 4, self: { smoke: 2 } },
+  medium_retreat: { id: "medium_retreat", name: "Ловкий отход", gearClass: "medium", kind: "defense", scaleStat: "agi", cooldown: 3, heal: { base: 3, stat: 0.5 }, self: { dodgeNext: 1 } },
+  medium_hide: { id: "medium_hide", name: "Скрытый шаг", gearClass: "medium", kind: "defense", scaleStat: "agi", cooldown: 4, self: { smoke: 1, shadowStep: 1 } },
+  /* ----- Средняя броня, СИЛ: как у тяжёлой, ответный замах ----- */
+  medium_bash: { id: "medium_bash", name: "Щитовой удар", gearClass: "medium", kind: "attack", scaleStat: "str", cooldown: 2, dmg: { base: 4, stat: 1, armor: 0.75 } },
+  medium_hammer: { id: "medium_hammer", name: "Удар навершием", gearClass: "medium", kind: "attack", scaleStat: "str", cooldown: 3, dmg: { base: 3, stat: 1.5, armor: 0.5 } },
+  medium_riposte: { id: "medium_riposte", name: "Ответный замах", gearClass: "medium", kind: "defense", scaleStat: "str", cooldown: 3, self: { counterTurn: 1 } },
+  medium_brace: { id: "medium_brace", name: "Упор в землю", gearClass: "medium", kind: "defense", scaleStat: "str", cooldown: 3, heal: { base: 4, stat: 0.5 }, self: { stone: 2 } },
+  medium_guard: { id: "medium_guard", name: "Стойка щита", gearClass: "medium", kind: "defense", scaleStat: "str", cooldown: 2, heal: { base: 2, stat: 0.5 }, self: { guard: true } },
+  medium_stand: { id: "medium_stand", name: "Удержание", gearClass: "medium", kind: "defense", scaleStat: "str", cooldown: 3, heal: { base: 3, stat: 0.5 }, self: { rage: 2 } },
+  medium_shield_up: { id: "medium_shield_up", name: "Подставленный щит", gearClass: "medium", kind: "defense", scaleStat: "str", cooldown: 3, self: { guard: true, dodgeNext: 1 } },
+  /* ----- Лёгкая броня, ИНТ: чары и оберег ----- */
+  light_charm: { id: "light_charm", name: "Чарующий укол", gearClass: "light", kind: "attack", scaleStat: "int", cooldown: 2, dmg: { base: 4, stat: 2.5, magic: true }, self: { ironTonic: 1 } },
+  light_spark: { id: "light_spark", name: "Холодная искра", gearClass: "light", kind: "attack", scaleStat: "int", cooldown: 2, dmg: { base: 3, stat: 2, magic: true }, enemy: { chill: 2 }, self: { ironTonic: 1 } },
+  light_ward: { id: "light_ward", name: "Рунный оберег", gearClass: "light", kind: "defense", scaleStat: "int", cooldown: 4, self: { fullGuard: 1, immune: 1 } },
+  light_veil: { id: "light_veil", name: "Покров мысли", gearClass: "light", kind: "defense", scaleStat: "int", cooldown: 3, heal: { base: 3, stat: 0.5 }, self: { immune: 1, dodgeNext: 1 } },
+  light_mind: { id: "light_mind", name: "Ясность", gearClass: "light", kind: "defense", scaleStat: "int", cooldown: 4, self: { immune: 2 } },
+  light_runestone: { id: "light_runestone", name: "Рунный камень", gearClass: "light", kind: "defense", scaleStat: "int", cooldown: 3, heal: { base: 2, stat: 0.5 }, self: { stone: 1, ironTonic: 1 } },
+  light_glimmer: { id: "light_glimmer", name: "Призрачный покров", gearClass: "light", kind: "defense", scaleStat: "int", cooldown: 3, self: { smoke: 1 } },
+  /* ----- Лёгкая броня, ЛОВ: яд и уклонение ----- */
+  light_venom: { id: "light_venom", name: "Ядовитый росчерк", gearClass: "light", kind: "attack", scaleStat: "agi", cooldown: 2, dmg: { base: 4, stat: 1.5 }, enemy: { poison: 3 }, self: { ironTonic: 1 } },
+  light_dagger: { id: "light_dagger", name: "Выпад клинка", gearClass: "light", kind: "attack", scaleStat: "agi", cooldown: 2, dmg: { base: 3, stat: 2 }, enemy: { bleed: 2 } },
+  light_evade: { id: "light_evade", name: "Неуловимость", gearClass: "light", kind: "defense", scaleStat: "agi", cooldown: 3, self: { evadeTurn: 1 } },
+  light_slip: { id: "light_slip", name: "Скользкий путь", gearClass: "light", kind: "defense", scaleStat: "agi", cooldown: 3, self: { dodgeNext: 2 } },
+  light_dodge2: { id: "light_dodge2", name: "Шаг за спину", gearClass: "light", kind: "defense", scaleStat: "agi", cooldown: 2, self: { dodgeNext: 1, shadowStep: 1 } },
+  light_veilagi: { id: "light_veilagi", name: "Тень на миг", gearClass: "light", kind: "defense", scaleStat: "agi", cooldown: 4, self: { smoke: 2 } },
+  light_quick: { id: "light_quick", name: "Отскок", gearClass: "light", kind: "defense", scaleStat: "agi", cooldown: 3, heal: { base: 3, stat: 0.5 }, self: { dodgeNext: 1 } },
+  /* ----- Лёгкая броня, СИЛ: закалка ----- */
+  light_cut: { id: "light_cut", name: "Рубящий удар", gearClass: "light", kind: "attack", scaleStat: "str", cooldown: 2, dmg: { base: 4, stat: 1, armor: 0.5 }, enemy: { bleed: 1 } },
+  light_hook: { id: "light_hook", name: "Крюк", gearClass: "light", kind: "attack", scaleStat: "str", cooldown: 3, dmg: { base: 3, stat: 1.25 }, enemy: { stun: 1 } },
+  light_brace: { id: "light_brace", name: "Закалённый покров", gearClass: "light", kind: "defense", scaleStat: "str", cooldown: 3, self: { stone: 2, ironTonic: 1 } },
+  light_sturdy: { id: "light_sturdy", name: "Крепкая опора", gearClass: "light", kind: "defense", scaleStat: "str", cooldown: 3, heal: { base: 4, stat: 0.5 }, self: { stone: 2 } },
+  light_resolve: { id: "light_resolve", name: "Закалка", gearClass: "light", kind: "defense", scaleStat: "str", cooldown: 3, self: { rage: 2 } },
+  light_iron: { id: "light_iron", name: "Железный хват", gearClass: "light", kind: "defense", scaleStat: "str", cooldown: 2, self: { guard: true } },
+  light_patch: { id: "light_patch", name: "Наспех перевязан", gearClass: "light", kind: "defense", scaleStat: "str", cooldown: 3, heal: { base: 3, stat: 0.5 }, self: { cleanse: true } },
 };
 
 export const ARMOR_SKILL_IDS = Object.keys(ARMOR_SKILLS) as ArmorSkillId[];
