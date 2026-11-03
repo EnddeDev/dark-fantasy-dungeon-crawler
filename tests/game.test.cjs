@@ -3769,7 +3769,7 @@ test("враг с магией выбирает её, когда физичес�
   assert.equal(move, "curse", `при огромной броне урон даёт магия, а выбрана ${move}`);
 });
 
-test("угрозы: обычный монстр +30% ОЗ, ужас ×1.5, катастрофа ×1.75, босс ×2 по ОЗ, атаке и броне", () => {
+test("угрозы: обычный монстр +30% ОЗ, ужас ×1.25, катастрофа ×1.5, босс ×1.75 по ОЗ, атаке и броне", () => {
   const monsters = loadGameModule("monsters");
   const scaling = loadGameModule("enemyScaling");
   const lcg = (seed) => {
@@ -3793,28 +3793,28 @@ test("угрозы: обычный монстр +30% ОЗ, ужас ×1.5, ка�
     const typeMeta = monsters.MONSTER_TYPE_META[n.mtype];
     /* Обычный: ОЗ ×1.3 к базе. */
     assert.ok(Math.abs(n.hp - Math.round(n.def.hp * lm * 1.3 * typeMeta.hpMult)) <= 1, `обычный ОЗ ${n.hp}`);
-    /* Ужас ×1.5, катастрофа ×1.75 — относительно обычного, по ОЗ и атаке. */
-    assert.ok(Math.abs(h.hp - 1.5 * n.hp) <= 2, `ужас ОЗ ${h.hp} при обычном ${n.hp}`);
-    assert.ok(Math.abs(c.hp - 1.75 * n.hp) <= 2, `катастрофа ОЗ ${c.hp} при обычном ${n.hp}`);
-    assert.ok(Math.abs(h.atk[0] - 1.5 * n.atk[0]) <= 2, `ужас атака ${h.atk[0]} при обычной ${n.atk[0]}`);
-    assert.ok(Math.abs(c.atk[0] - 1.75 * n.atk[0]) <= 2, `катастрофа атака ${c.atk[0]} при обычной ${n.atk[0]}`);
+    /* Ужас ×1.25, катастрофа ×1.5 — относительно обычного, по ОЗ и атаке. */
+    assert.ok(Math.abs(h.hp - 1.25 * n.hp) <= 2, `ужас ОЗ ${h.hp} при обычном ${n.hp}`);
+    assert.ok(Math.abs(c.hp - 1.5 * n.hp) <= 2, `катастрофа ОЗ ${c.hp} при обычном ${n.hp}`);
+    assert.ok(Math.abs(h.atk[0] - 1.25 * n.atk[0]) <= 2, `ужас атака ${h.atk[0]} при обычной ${n.atk[0]}`);
+    assert.ok(Math.abs(c.atk[0] - 1.5 * n.atk[0]) <= 2, `катастрофа атака ${c.atk[0]} при обычной ${n.atk[0]}`);
     /* Броня масштабируется вместе с остальными параметрами, у прибавки типа своя поправка. */
     if (n.def.armor * lm >= 2) {
       const d = typeMeta.armorDelta;
-      assert.ok(Math.abs((h.armor - d) - 1.5 * (n.armor - d)) <= 2, `ужас броня ${h.armor}, обычная ${n.armor}`);
-      assert.ok(Math.abs((c.armor - d) - 1.75 * (n.armor - d)) <= 2, `катастрофа броня ${c.armor}, обычная ${n.armor}`);
+      assert.ok(Math.abs((h.armor - d) - 1.25 * (n.armor - d)) <= 2, `ужас броня ${h.armor}, обычная ${n.armor}`);
+      assert.ok(Math.abs((c.armor - d) - 1.5 * (n.armor - d)) <= 2, `катастрофа броня ${c.armor}, обычная ${n.armor}`);
     }
     checked++;
   }
   assert.ok(checked >= 80);
 
-  /* Босс: ×2 к обычному по ОЗ, атаке и броне. Сравниваем с формулой от его собственной базы. */
+  /* Босс: ×1.75 к обычному по ОЗ, атаке и броне. Сравниваем с формулой от его собственной базы. */
   for (let seed = 1; seed <= 20; seed++) {
     const floor = 2 + (seed % 7);
     const boss = battle.spawnEnemy(floor, true, lcg(seed));
     const lm = scaling.enemyLevelMult(boss.level);
     const tm = monsters.MONSTER_TYPE_META[boss.mtype];
-    assert.ok(Math.abs(boss.hp - Math.round(boss.def.hp * lm * 2.6 * tm.hpMult)) <= 1, `босс ОЗ ${boss.hp}`);
-    assert.ok(Math.abs(boss.atk[0] - Math.round(boss.def.atk[0] * lm * 2 * tm.atkMult)) <= 1, `босс атака ${boss.atk[0]}`);
+    assert.ok(Math.abs(boss.hp - Math.round(boss.def.hp * lm * 2.275 * tm.hpMult)) <= 1, `босс ОЗ ${boss.hp}`);
+    assert.ok(Math.abs(boss.atk[0] - Math.round(boss.def.atk[0] * lm * 1.75 * tm.atkMult)) <= 1, `босс атака ${boss.atk[0]}`);
   }
 });

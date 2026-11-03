@@ -2606,8 +2606,8 @@ export function reagentPoolForFloor(floor: number): string[] {
 
 /* ─────────────  УГРОЗЫ, УРОВНИ МОНСТРОВ, ТАБЛИЦЫ ВЫПАДЕНИЯ  ───────────── */
 
-/** Босс: в 2 раза сильнее обычного монстра по ОЗ (обычный ×1.3 → 2.6), атаке и броне. */
-export const BOSS_META = { hpMult: 2.6, atkMult: 2, armorMult: 2 };
+/** Босс: в 1.75 раза сильнее обычного монстра по ОЗ, атаке и броне (ОЗ: обычный ×1.3 → 2.275). */
+export const BOSS_META = { hpMult: 2.275, atkMult: 1.75, armorMult: 1.75 };
 
 export const THREAT_META: Record<
   Threat,
@@ -2626,18 +2626,18 @@ export const THREAT_META: Record<
     name: "Ужас",
     desc: "Крепче и злее обычного, с дополнительным приёмом — но без печатей. Пустых рук не оставляет: доля «ничего» уходит в снаряжение.",
     chance: 0.15,
-    hpMult: 1.95,
-    atkMult: 1.5,
-    armorMult: 1.5,
+    hpMult: 1.625,
+    atkMult: 1.25,
+    armorMult: 1.25,
     gearOnly: true,
   },
     catastrophe: {
     name: "Катастрофа",
     desc: "Мини-босс: не меньше двух особых приёмов, пассивный эффект и одна печать. Чаще всех оставляет снаряжение.",
     chance: 0.05,
-    hpMult: 2.275,
-    atkMult: 1.75,
-    armorMult: 1.75,
+    hpMult: 1.95,
+    atkMult: 1.5,
+    armorMult: 1.5,
     gearOnly: false,
   },
 };
