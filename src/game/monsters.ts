@@ -130,8 +130,10 @@ export interface MonsterRaceMeta {
 export const WEAKNESS_STEP = 0.07;
 /** Нежить после воскрешения: урон и броня на эту долю меньше. */
 export const REVIVE_DEBUFF = 0.5;
-/** Сильный «без рода»: регенерация в конце своего хода, доля от максимума ОЗ. */
-export const NONE_STRONG_REGEN = 0.05;
+/** Сильный «без рода»: регенерация в конце своего хода = уровень + уровень × 1.5 ОЗ. */
+export function noneStrongRegen(level: number): number {
+  return Math.max(1, Math.round(level + level * 1.5));
+}
 /** Ловкий «без рода»: шанс уйти от физического удара и контратаковать без урона. */
 export const NONE_AGILE_COUNTER_CHANCE = 0.2;
 /** Умный «без рода»: приём, который получает каждая такая тварь. */
@@ -306,7 +308,7 @@ export function raceWeakens(race: MonsterRace): boolean {
 
 /** Особенность рода «без рода» зависит от типа твари. */
 export const NONE_TYPE_TRAIT: Record<MonsterType, string> = {
-  strong: "регенерация 5% ОЗ в конце своего хода",
+  strong: "регенерация в конце своего хода: уровень + уровень × 1.5 ОЗ",
   agile: "20% шанс контратаковать без получения урона",
   smart: "лишний приём",
 };

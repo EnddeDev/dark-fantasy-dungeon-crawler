@@ -160,11 +160,14 @@ test("вампир: слабость снижает урон, но не ниже
 
 test("без рода, сильный: регенерация в конце своего хода", () => {
   const b = fight("none", "strong");
+  b.enemy.level = 4;
   b.enemy.hp = 300;
   b.enemy.moves = ["guard"];
   b.queue = ["e", "p"]; b.idx = 0;
   const after = withRandom(0.5, () => battle.enemyStep(b));
-  assert.equal(after.enemy.hp, 300 + Math.round(500 * 0.05), "регенерация 5% максимума ОЗ");
+  assert.equal(after.enemy.hp, 300 + 10, "уровень 4: 4 + 4 × 1.5 = 10 ОЗ за ход");
+  assert.equal(monsters.noneStrongRegen(1), 3, "уровень 1: 1 + 1.5 → 3");
+  assert.equal(monsters.noneStrongRegen(6), 15, "уровень 6: 6 + 9 = 15");
   assert.ok(after.log.some((l) => l.text.includes("регенерирует")), "в журнале регенерация");
 });
 

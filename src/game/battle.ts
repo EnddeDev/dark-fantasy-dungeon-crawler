@@ -41,7 +41,6 @@ import {
   monsterEvade,
   NONE_AGILE_COUNTER_CHANCE,
   NONE_SMART_MOVE,
-  NONE_STRONG_REGEN,
   REVIVE_DEBUFF,
   WEAKNESS_STEP,
   raceApDelta,
@@ -53,6 +52,7 @@ import {
   raceFortify,
   raceGuardBonus,
   raceImmuneTo,
+  noneStrongRegen,
   raceRevives,
   raceWeakens,
   type DamageElement,
@@ -3026,7 +3026,7 @@ export function enemyStep(b0: BattleState): BattleState {
   }
   /* «Без рода», сильный: регенерация в конце своего хода. */
   if (e.def.race === "none" && e.mtype === "strong" && e.hp > 0 && e.hp < e.maxHp && b.p.hp > 0) {
-    const heal = healEnemy(b, Math.max(1, Math.round(e.maxHp * NONE_STRONG_REGEN)));
+    const heal = healEnemy(b, noneStrongRegen(e.level));
     if (heal > 0) push(b, `${e.def.name} регенерирует ${heal} ОЗ в конце своего хода.`, "e");
   }
   if (b.over) return b;
