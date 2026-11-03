@@ -17,6 +17,7 @@ import {
 } from "./world";
 import type {
   EnemyPassive,
+  ArmorSkillId,
   EpicSkillId,
   GearItem,
   LegendaryPassiveId,
@@ -377,6 +378,238 @@ export const EPIC_SKILLS: Record<EpicSkillId, EpicSkillDef> = {
     desc: "Наносит 16 + 3×ИНТ урона, сковывает врага холодом на 3 раунда и отнимает у него 1 ход.",
   },
 };
+
+/* ---------- Приёмы брони ----------
+ * Эпическая и легендарная броня может получить приём. Тяжёлая, средняя и лёгкая
+ * броня берут свой набор: по 2 атакующих и 5 защитных на класс. Какая характеристика
+ * нужна предмету, такой и приём: лишь «свои» приёмы попадают в пул; без требования
+ * выпадает любой приём своего класса. Эффекты собираются из уже существующих статусов,
+ * поэтому бой их понимает без отдельной логики на каждый приём.
+ */
+export type ArmorGearClass = "light" | "medium" | "heavy";
+export type ArmorSkillKind = "attack" | "defense";
+
+/** Что приём делает с героем. Раунды — до конца текущего раунда, как у прочих защит. */
+export interface ArmorSkillSelf {
+  /** Защита: входящий урон вдвое меньше до твоего следующего хода. */
+  guard?: boolean;
+  /** Полная защита от урона на N раундов. */
+  fullGuard?: number;
+  /** Иммунитет ко всем негативным эффектам на N раундов. */
+  immune?: number;
+  /** 100% уклонение от физических атак на N раундов. */
+  evadeTurn?: number;
+  /** 100% ответный удар на каждый физический удар врага, который прошёл, на N раундов. */
+  counterTurn?: number;
+  /** Ближайшие N атак врага проходят мимо. */
+  dodgeNext?: number;
+  /** Лишний ход в следующем раунде. */
+  shadowStep?: number;
+  /** Дымовая завеса: следующие N атак врага проходят мимо. */
+  smoke?: number;
+  /** Каменная кожа на N раундов: −30% урона. */
+  stone?: number;
+  /** Ярость на N раундов: больше урона. */
+  rage?: number;
+  /** +4 брони и +4 регенерации на N раундов. */
+  ironTonic?: number;
+  /** Снимает раны и яд. */
+  cleanse?: boolean;
+}
+
+export interface ArmorSkillEnemy {
+  /** Враг теряет столько ходов (до двух в очереди). */
+  stun?: number;
+  bleed?: number;
+  poison?: number;
+  chill?: number;
+}
+
+export interface ArmorSkillDef {
+  id: ArmorSkillId;
+  name: string;
+  gearClass: ArmorGearClass;
+  kind: ArmorSkillKind;
+  /** От какой характеристики считаются урон и лечение; совпадает с требованием предмета. */
+  scaleStat: StatKey;
+  cooldown: number;
+  /** Урон: база + множитель характеристики + множитель брони героя. */
+  dmg?: { base: number; stat: number; armor?: number; magic?: boolean };
+  /** Лечение: база + множитель характеристики. */
+  heal?: { base: number; stat: number };
+  self?: ArmorSkillSelf;
+  enemy?: ArmorSkillEnemy;
+}
+
+export interface ArmorSkillView extends ArmorSkillDef {
+  /** Требование характеристики в очках; 0 — без требования. */
+  intReq: number;
+}
+
+export const ARMOR_SKILLS: Record<ArmorSkillId, ArmorSkillDef> = {
+  /* ----- Тяжёлая броня: СИЛ, атаки от брони и защита ----- */
+  heavy_bash: {
+    id: "heavy_bash", name: "Удар щитом", gearClass: "heavy", kind: "attack", scaleStat: "str", cooldown: 3,
+    dmg: { base: 6, stat: 1, armor: 0.75 }, enemy: { stun: 1 },
+  },
+  heavy_rampart: {
+    id: "heavy_rampart", name: "Таран бастиона", gearClass: "heavy", kind: "attack", scaleStat: "str", cooldown: 3,
+    dmg: { base: 4, stat: 1.25, armor: 1.25 },
+  },
+  heavy_wall: {
+    id: "heavy_wall", name: "Стена доспеха", gearClass: "heavy", kind: "defense", scaleStat: "str", cooldown: 3,
+    self: { guard: true, ironTonic: 2 },
+  },
+  heavy_fort: {
+    id: "heavy_fort", name: "Каменная стойкость", gearClass: "heavy", kind: "defense", scaleStat: "str", cooldown: 3,
+    heal: { base: 6, stat: 1 }, self: { stone: 2 },
+  },
+  heavy_rage: {
+    id: "heavy_rage", name: "Ярость доспеха", gearClass: "heavy", kind: "defense", scaleStat: "str", cooldown: 3,
+    heal: { base: 4, stat: 0.5 }, self: { rage: 3 },
+  },
+  heavy_guard: {
+    id: "heavy_guard", name: "Глухая оборона", gearClass: "heavy", kind: "defense", scaleStat: "str", cooldown: 2,
+    self: { guard: true, cleanse: true },
+  },
+  heavy_ward: {
+    id: "heavy_ward", name: "Щит предков", gearClass: "heavy", kind: "defense", scaleStat: "str", cooldown: 4,
+    heal: { base: 3, stat: 0.5 }, self: { fullGuard: 1 },
+  },
+
+  /* ----- Средняя броня: ЛОВ (уклонение, подножка) или СИЛ (как у тяжёлой, контрудар) ----- */
+  medium_feint: {
+    id: "medium_feint", name: "Обманный выпад", gearClass: "medium", kind: "attack", scaleStat: "agi", cooldown: 2,
+    dmg: { base: 5, stat: 1.5 }, enemy: { bleed: 2 },
+  },
+  medium_slip: {
+    id: "medium_slip", name: "Скользящий шаг", gearClass: "medium", kind: "defense", scaleStat: "agi", cooldown: 3,
+    self: { dodgeNext: 1, shadowStep: 1 },
+  },
+  medium_trip: {
+    id: "medium_trip", name: "Подножка", gearClass: "medium", kind: "defense", scaleStat: "agi", cooldown: 3,
+    enemy: { stun: 1 },
+  },
+  medium_dance: {
+    id: "medium_dance", name: "Танец клинка", gearClass: "medium", kind: "defense", scaleStat: "agi", cooldown: 4,
+    self: { smoke: 2 },
+  },
+  medium_bash: {
+    id: "medium_bash", name: "Щитовой удар", gearClass: "medium", kind: "attack", scaleStat: "str", cooldown: 2,
+    dmg: { base: 4, stat: 1, armor: 0.75 },
+  },
+  medium_riposte: {
+    id: "medium_riposte", name: "Ответный замах", gearClass: "medium", kind: "defense", scaleStat: "str", cooldown: 3,
+    self: { counterTurn: 1 },
+  },
+  medium_brace: {
+    id: "medium_brace", name: "Упор в землю", gearClass: "medium", kind: "defense", scaleStat: "str", cooldown: 3,
+    heal: { base: 4, stat: 0.5 }, self: { stone: 2 },
+  },
+
+  /* ----- Лёгкая броня: ИНТ (чары и оберег), ЛОВ (яд и уклонение), СИЛ (закалка) ----- */
+  light_charm: {
+    id: "light_charm", name: "Чарующий укол", gearClass: "light", kind: "attack", scaleStat: "int", cooldown: 2,
+    dmg: { base: 4, stat: 2.5, magic: true }, self: { ironTonic: 1 },
+  },
+  light_ward: {
+    id: "light_ward", name: "Рунный оберег", gearClass: "light", kind: "defense", scaleStat: "int", cooldown: 4,
+    self: { fullGuard: 1, immune: 1 },
+  },
+  light_veil: {
+    id: "light_veil", name: "Покров мысли", gearClass: "light", kind: "defense", scaleStat: "int", cooldown: 3,
+    heal: { base: 3, stat: 0.5 }, self: { immune: 1, dodgeNext: 1 },
+  },
+  light_venom: {
+    id: "light_venom", name: "Ядовитый росчерк", gearClass: "light", kind: "attack", scaleStat: "agi", cooldown: 2,
+    dmg: { base: 4, stat: 1.5 }, enemy: { poison: 3 }, self: { ironTonic: 1 },
+  },
+  light_evade: {
+    id: "light_evade", name: "Неуловимость", gearClass: "light", kind: "defense", scaleStat: "agi", cooldown: 3,
+    self: { evadeTurn: 1 },
+  },
+  light_slip: {
+    id: "light_slip", name: "Скользкий путь", gearClass: "light", kind: "defense", scaleStat: "agi", cooldown: 3,
+    self: { dodgeNext: 2 },
+  },
+  light_brace: {
+    id: "light_brace", name: "Закалённый покров", gearClass: "light", kind: "defense", scaleStat: "str", cooldown: 3,
+    self: { stone: 2, ironTonic: 1 },
+  },
+};
+
+export const ARMOR_SKILL_IDS = Object.keys(ARMOR_SKILLS) as ArmorSkillId[];
+
+function roundsText(n: number): string {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return `${n} раунд`;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return `${n} раунда`;
+  return `${n} раундов`;
+}
+
+/** Текст приёма, собранный из его данных: числа в описании всегда совпадают с формулами. */
+export function armorSkillDesc(def: ArmorSkillDef): string {
+  const short = STAT_META[def.scaleStat].short;
+  const parts: string[] = [];
+  if (def.dmg) {
+    const d = def.dmg;
+    let t = `${d.magic ? "магический урон" : "урон"} ${d.base} + ${d.stat}×${short}`;
+    if (d.armor) t += ` + ${d.armor}×брони`;
+    parts.push(t);
+  }
+  if (def.heal) parts.push(`лечение ${def.heal.base} + ${def.heal.stat}×${short}`);
+  const e = def.enemy ?? {};
+  if (e.stun) parts.push(`враг теряет ${e.stun} ${e.stun === 1 ? "ход" : "хода"}`);
+  if (e.bleed) parts.push(`кровотечение врага на ${roundsText(e.bleed)}`);
+  if (e.poison) parts.push(`яд врага на ${roundsText(e.poison)}`);
+  if (e.chill) parts.push(`обморожение врага на ${roundsText(e.chill)}`);
+  const s = def.self ?? {};
+  if (s.guard) parts.push("Защита до твоего следующего хода");
+  if (s.fullGuard) parts.push(`полная защита от урона на ${roundsText(s.fullGuard)}`);
+  if (s.immune) parts.push(`иммунитет к негативным эффектам на ${roundsText(s.immune)}`);
+  if (s.evadeTurn) parts.push(`физические атаки врага проходят мимо на ${roundsText(s.evadeTurn)}`);
+  if (s.counterTurn) parts.push(`каждый физический удар врага по тебе получает ответ на ${roundsText(s.counterTurn)}`);
+  if (s.dodgeNext) parts.push(`следующие ${s.dodgeNext} атак врага проходят мимо`);
+  if (s.shadowStep) parts.push(`+${s.shadowStep} ход в следующем раунде`);
+  if (s.smoke) parts.push(`дымовая завеса: следующие ${s.smoke} атак врага проходят мимо`);
+  if (s.stone) parts.push(`каменная кожа на ${roundsText(s.stone)} (−30% урона)`);
+  if (s.rage) parts.push(`ярость на ${roundsText(s.rage)} (больше урона)`);
+  if (s.ironTonic) parts.push(`+4 брони и +4 регенерации на ${roundsText(s.ironTonic)}`);
+  if (s.cleanse) parts.push("снимает раны и яд");
+  const text = parts.join("; ");
+  return text.charAt(0).toUpperCase() + text.slice(1) + ".";
+}
+
+/** Пул приёмов для класса брони. С требованием — только приёмы этой характеристики; без — любой приём класса. */
+export function armorSkillPool(gearClass: ArmorGearClass, stat: StatKey, noReq: boolean): ArmorSkillId[] {
+  const all = ARMOR_SKILL_IDS.filter((id) => ARMOR_SKILLS[id].gearClass === gearClass);
+  if (noReq) return all;
+  const fits = all.filter((id) => ARMOR_SKILLS[id].scaleStat === stat);
+  return fits.length ? fits : all;
+}
+
+/** Выпадает ли приём броне: легендарная — всегда, эпическая — в половине случаев, остальная — никогда. */
+export function rollArmorSkill(
+  rarity: RarityTier,
+  gearClass: ArmorGearClass,
+  stat: StatKey,
+  noReq: boolean,
+  rng: () => number = Math.random,
+): ArmorSkillId | undefined {
+  if (rarity === "legendary") return pick(armorSkillPool(gearClass, stat, noReq), rng);
+  if (rarity === "epic" && rng() < 0.5) return pick(armorSkillPool(gearClass, stat, noReq), rng);
+  return undefined;
+}
+
+/** Приём предмета с требованием его уровня (как у эпических приёмов). */
+export function armorSkillFor(item: GearItem | null | undefined): ArmorSkillView | null {
+  if (!item?.armorSkill) return null;
+  const def = ARMOR_SKILLS[item.armorSkill];
+  if (!def) return null;
+  const noReq = GEAR_BASES[item.baseId]?.noReq === true;
+  return { ...def, intReq: noReq ? 0 : techniqueIntReq(clampGearLevel(item.level), def.scaleStat) };
+}
 
 export function epicSkillDesc(id: EpicSkillId, level = 1): string {
   const l = clampGearLevel(level);
@@ -1800,6 +2033,8 @@ export function createGearItem(opts: {
         : pick(techniquePool, rng)
       : undefined,
     epicSkill,
+    /* Приём брони: у предмета с приёмом оружия его нет, у остальных — по редкости. */
+    armorSkill: base.weaponSkill ? undefined : rollArmorSkill(rarity, gearClass, reqStat, base.noReq === true, rng),
     legendaryPassive: legacyPassive,
   };
 }

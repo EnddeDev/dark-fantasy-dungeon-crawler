@@ -4,6 +4,11 @@ import {
   ENEMY_PASSIVES,
   EPIC_SKILLS,
   GEAR_BASES,
+  ARMOR_SKILLS,
+  STAT_META,
+  armorSkillDesc,
+  armorSkillFor,
+  type ArmorSkillView,
   ITEMS,
   REAGENTS,
   BOSS_RARITY_WEIGHTS,
@@ -237,6 +242,9 @@ export interface BattleState {
     rareAffixPower: Partial<Record<RareAffixId, Record<string, number>>>;
     legendaryPower: Partial<Record<LegendaryPassiveId, Record<string, number>>>;
     epicSkillLevels: Partial<Record<EpicSkillId, number>>;
+    /** Приёмы брони из надетых эпических и легендарных предметов. */
+    armorSkills: ArmorSkillView[];
+    armorCds: Record<string, number>;
     archetype: ArchetypeId | null;
     gearHands: 1 | 2;
     gearArchetype: ArchetypeId | null;
@@ -274,6 +282,10 @@ export interface BattleState {
       pactElixir: number;
       /** Полная защита от урона (свитки/приёмы мудреца). */
       fullGuard: number;
+      /** Неуловимость: физические атаки врага проходят мимо, раунды. */
+      evadeTurn: number;
+      /** Ответный замах: каждый физический удар врага, который прошёл, получает ответ, раунды. */
+      counterTurn: number;
       /** Временная броня от приёмов бастиона. */
       tempArmor: number;
       /** Гарантированное уклонение от следующей атаки. */
@@ -319,6 +331,7 @@ export type PlayerAction =
   | { type: "attack" }
   | { type: "weapon_skill" }
   | { type: "epic_skill"; id: EpicSkillId }
+  | { type: "armor_skill"; id: string }
   | { type: "item"; id: string }
   | { type: "guard" }
   | { type: "flee"; rate?: number };
@@ -355,6 +368,7 @@ export interface DerivedStats {
   gearNames: Partial<Record<Slot, string>>;
   rareAffixes: RareAffixId[];
   epicSkills: EpicSkillDef[];
+  armorSkills: ArmorSkillView[];
   legendaryPassives: LegendaryPassiveId[];
   gearEffects: GearEffectId[];
   gearPassives: GearPassiveId[];
@@ -384,6 +398,7 @@ export function derived(pl: Player): DerivedStats {
 
   const rareAffixes: RareAffixId[] = [];
   const epicSkills: EpicSkillDef[] = [];
+  const armorSkills: ArmorSkillView[] = [];
   const legendaryPassives: LegendaryPassiveId[] = [];
   const gearEffects: GearEffectId[] = [];
   const gearPassives: GearPassiveId[] = [];
@@ -464,6 +479,8 @@ export function derived(pl: Player): DerivedStats {
       if (!epicSkills.some((e) => e.id === g.epicSkill)) epicSkills.push({ ...EPIC_SKILLS[g.epicSkill], intReq: techniqueIntReq(itemLevel, gearAffinity(g)) });
       epicSkillLevels[g.epicSkill] = Math.max(epicSkillLevels[g.epicSkill] ?? 1, itemLevel);
     }
+    const armorView = armorSkillFor(g);
+    if (armorView && !armorSkills.some((a) => a.id === armorView.id)) armorSkills.push(armorView);
     if (g.legendaryPassive) {
       legendaryPassives.push(g.legendaryPassive);
       const cur = legendaryPower[g.legendaryPassive] ?? {};
@@ -551,6 +568,7 @@ export function derived(pl: Player): DerivedStats {
     gearNames,
     rareAffixes,
     epicSkills,
+    armorSkills,
     legendaryPassives,
     gearEffects,
     gearPassives,
@@ -845,6 +863,7 @@ function clone(b: BattleState): BattleState {
     p: {
       ...b.p,
       epicCds: { ...b.p.epicCds },
+      armorCds: { ...b.p.armorCds },
       chanceLayers: Object.fromEntries(
         Object.entries(b.p.chanceLayers).map(([k, v]) => [k, { stats: [...v.stats], items: [...v.items], effects: [...v.effects] }]),
       ) as Record<ChanceKey, ChanceLayers>,
@@ -952,6 +971,8 @@ export function newBattle(
       weaponCd: 0,
       epicSkills: d.epicSkills,
       epicCds: {},
+      armorSkills: d.armorSkills,
+      armorCds: {},
       rareAffixes: d.rareAffixes,
       legendaryPassives: d.legendaryPassives,
       gearEffects: d.gearEffects,
@@ -987,6 +1008,8 @@ export function newBattle(
         immune: {},
         pactElixir: 0,
         fullGuard: 0,
+        evadeTurn: 0,
+        counterTurn: 0,
         tempArmor: 0,
         dodgeNext: 0,
         shadowStep: 0,
@@ -1610,6 +1633,7 @@ function damageAfterPlayerDefense(
 /** Шанс, что удар по герою вообще попадёт (промахи мрака, ослепления, уклонения). Блокировки, которые срабатывают всегда, дают 0. */
 function playerHitChance(b: BattleState, kind: "phys" | "magic", strike: boolean, ignoreDefense: boolean): number {
   if (b.p.statuses.fullGuard > 0 || b.p.statuses.dodgeNext > 0 || b.p.statuses.smoke > 0) return 0;
+  if (!ignoreDefense && kind === "phys" && b.p.statuses.evadeTurn > 0) return 0;
   let p = 1;
   const darkMiss = (b.torchTurns ?? 0) > 0 ? 0 : biomeMissChance(b.biome);
   if (!ignoreDefense && strike) p *= 1 - darkMiss;
@@ -1658,6 +1682,11 @@ function incoming(
     grantDodgeAction(b);
     return false;
   }
+  if (!ignoreDefense && kind === "phys" && b.p.statuses.evadeTurn > 0) {
+    flash(b, "p", "miss", 0);
+    push(b, `Неуловимость: ${src} проходит мимо.`, "e");
+    return false;
+  }
   if (!ignoreDefense && kind === "phys" && Math.random() < combatChance(b.p.chanceLayers.evade)) {
     flash(b, "p", "miss", 0);
     push(b, `Ты уходишь с линии удара — промах!`, "e");
@@ -1689,6 +1718,12 @@ function incoming(
   if (b.p.hp > 0 && b.enemy.hp > 0 && counterChance > 0 && Math.random() < counterChance) {
     const { d: cd } = calcWeaponRoll(b, 0.6);
     const dealt = hitEnemy(b, cd, "phys", " [Контратака]");
+    applyVamp(b, dealt, 0, "weapon");
+  }
+  /* Ответный замах: каждый физический удар, который прошёл, получает ответ. */
+  if (kind === "phys" && b.p.statuses.counterTurn > 0 && b.p.hp > 0 && b.enemy.hp > 0) {
+    const { d: cd } = calcWeaponRoll(b, 0.6);
+    const dealt = hitEnemy(b, cd, "phys", " [Ответный замах]");
     applyVamp(b, dealt, 0, "weapon");
   }
 
@@ -1908,6 +1943,8 @@ function advance(b: BattleState) {
     b.p.statuses.quickblade = Math.max(0, b.p.statuses.quickblade - 1);
     b.p.statuses.pactElixir = Math.max(0, b.p.statuses.pactElixir - 1);
     b.p.statuses.fullGuard = Math.max(0, b.p.statuses.fullGuard - 1);
+    b.p.statuses.evadeTurn = Math.max(0, b.p.statuses.evadeTurn - 1);
+    b.p.statuses.counterTurn = Math.max(0, b.p.statuses.counterTurn - 1);
     for (const k of IMMUNITY_EFFECTS) {
       const left = b.p.statuses.immune[k] ?? 0;
       if (left <= 0) continue;
@@ -1954,6 +1991,9 @@ function advance(b: BattleState) {
     if (b.p.weaponCd > 0) b.p.weaponCd -= 1;
     for (const k of Object.keys(b.p.epicCds)) {
       if (b.p.epicCds[k] > 0) b.p.epicCds[k] -= 1;
+    }
+    for (const k of Object.keys(b.p.armorCds)) {
+      if (b.p.armorCds[k] > 0) b.p.armorCds[k] -= 1;
     }
 
     b.round += 1;
@@ -2052,6 +2092,52 @@ function consumablePowerWithGear(b: BattleState, def: ItemDef) {
   return consumablePower(def, b.p.stats);
 }
 
+/** Приём брони: урон и лечение от характеристики приёма, эффекты — из его данных. */
+function applyArmorSkill(b: BattleState, sk: ArmorSkillView) {
+  const st = b.p.stats[sk.scaleStat];
+  if (sk.dmg && b.enemy.hp > 0) {
+    const raw = sk.dmg.base + sk.dmg.stat * st + (sk.dmg.armor ?? 0) * b.p.armor;
+    const kind = sk.dmg.magic ? "magic" : "phys";
+    const dealt = hitEnemy(b, Math.max(1, Math.round(raw)), kind, ` [${sk.name}]`);
+    applyVamp(b, dealt, 0, "skill", kind);
+  }
+  if (sk.heal) {
+    const heal = healPlayer(b, Math.max(1, Math.round(sk.heal.base + sk.heal.stat * st)));
+    flash(b, "p", "heal", heal);
+    push(b, `${sk.name}: +${heal} здоровья.`, "p");
+  }
+  const e = sk.enemy ?? {};
+  if (e.stun && b.enemy.hp > 0 && !bossResists(b)) {
+    b.enemy.statuses.stunAp = Math.min(2, b.enemy.statuses.stunAp + e.stun);
+    push(b, `${b.enemy.def.name} теряет ${e.stun} ход (${sk.name}).`, "p");
+  }
+  if (e.bleed && b.enemy.hp > 0) applyEnemyStatus(b, "bleed", e.bleed);
+  if (e.poison && b.enemy.hp > 0) applyEnemyStatus(b, "poison", e.poison);
+  if (e.chill && b.enemy.hp > 0) applyEnemyStatus(b, "chill", e.chill);
+
+  const s = sk.self ?? {};
+  if (s.guard) b.p.guard = true;
+  if (s.cleanse) {
+    b.p.statuses.wound = 0;
+    b.p.statuses.woundStacks = 0;
+    b.p.statuses.poison = 0;
+    b.p.statuses.poisonStacks = 0;
+  }
+  if (s.fullGuard) b.p.statuses.fullGuard = Math.max(b.p.statuses.fullGuard, s.fullGuard);
+  if (s.immune) {
+    for (const k of IMMUNITY_EFFECTS) b.p.statuses.immune[k] = Math.max(b.p.statuses.immune[k] ?? 0, s.immune);
+  }
+  if (s.evadeTurn) b.p.statuses.evadeTurn = Math.max(b.p.statuses.evadeTurn, s.evadeTurn);
+  if (s.counterTurn) b.p.statuses.counterTurn = Math.max(b.p.statuses.counterTurn, s.counterTurn);
+  if (s.dodgeNext) b.p.statuses.dodgeNext += s.dodgeNext;
+  if (s.shadowStep) b.p.statuses.shadowStep += s.shadowStep;
+  if (s.smoke) b.p.statuses.smoke = Math.max(b.p.statuses.smoke, s.smoke);
+  if (s.stone) b.p.statuses.stone = Math.max(b.p.statuses.stone, s.stone);
+  if (s.rage) b.p.statuses.rage = Math.max(b.p.statuses.rage, s.rage);
+  if (s.ironTonic) b.p.statuses.ironTonic = Math.max(b.p.statuses.ironTonic, s.ironTonic);
+  push(b, `«${sk.name}»: ${armorSkillDesc(ARMOR_SKILLS[sk.id])}`, "p");
+}
+
 export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
   if (b0.over || b0.queue[b0.idx] !== "p") return b0;
   const b = clone(b0);
@@ -2082,7 +2168,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
     (hasPassive(b, "resonance") ? 1.4 : 1) * (1 + legPower(b, "archmage_blood", "spellDamage") / 100);
 
   if (a.type === "attack" && b.p.statuses.sealAttack > 0) return err("Печать оков запрещает обычную атаку в этот ход.");
-  if ((a.type === "weapon_skill" || a.type === "epic_skill") && b.p.statuses.sealSkills > 0) return err("Печать забвения запрещает приёмы в этот ход.");
+  if ((a.type === "weapon_skill" || a.type === "epic_skill" || a.type === "armor_skill") && b.p.statuses.sealSkills > 0) return err("Печать забвения запрещает приёмы в этот ход.");
   if (a.type === "item" && b.p.statuses.sealItems > 0) return err("Печать немоты запрещает расходники в этот ход.");
 
   switch (a.type) {
@@ -2290,6 +2376,18 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
       break;
     }
 
+    case "armor_skill": {
+      const sk = b.p.armorSkills.find((s) => s.id === a.id);
+      if (!sk) return err("Этот приём брони недоступен.");
+      const cd = b.p.armorCds[sk.id] ?? 0;
+      if (cd > 0) return err(`«${sk.name}» перезаряжается (${cd} р.).`);
+      const req = sk.intReq <= 0 ? 0 : Math.max(1, sk.intReq - (sk.scaleStat === "int" ? b.p.intDiscount : 0));
+      if (b.p.stats[sk.scaleStat] < req) return err(`Для «${sk.name}» требуется ${STAT_META[sk.scaleStat].short} ${req}.`);
+      applyArmorSkill(b, sk);
+      b.p.armorCds[sk.id] = skillCd(b, sk.cooldown);
+      break;
+    }
+
     case "guard": {
       b.p.guard = true;
       flash(b, "p", "guard", 0);
@@ -2468,6 +2566,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
         case "pact_elixir": {
           b.p.weaponCd = 0;
           for (const k of Object.keys(b.p.epicCds)) b.p.epicCds[k] = 0;
+          for (const k of Object.keys(b.p.armorCds)) b.p.armorCds[k] = 0;
           b.p.statuses.pactElixir = statusRounds(b, u.rounds ?? 3);
           push(b, `${def.name}: перезарядки сброшены, +25% урона приёмов на ${u.rounds} раунда.`, "p");
           break;
@@ -3296,6 +3395,8 @@ export function combatReadout(b: BattleState): CombatReadout {
   if (b.p.statuses.ironTonic > 0) defMods.push({ id: "ironTonic", label: "Железная кожа", flat: 4, good: true, rounds: b.p.statuses.ironTonic, detail: "+4 брони и +4 регенерации." });
   if (b.p.statuses.fullGuard > 0) defMods.push({ id: "fullGuard", label: "Полная защита", good: true, rounds: b.p.statuses.fullGuard, detail: "Полностью поглощает входящий урон." });
   if (b.p.statuses.dodgeNext > 0) defMods.push({ id: "dodgeNext", label: "Пустой шаг", good: true, rounds: b.p.statuses.dodgeNext, detail: "Следующая атака врага полностью ускользнёт." });
+  if (b.p.statuses.evadeTurn > 0) defMods.push({ id: "evadeTurn", label: "Неуловимость", good: true, rounds: b.p.statuses.evadeTurn, detail: "Физические атаки врага проходят мимо." });
+  if (b.p.statuses.counterTurn > 0) defMods.push({ id: "counterTurn", label: "Ответный замах", good: true, rounds: b.p.statuses.counterTurn, detail: "Каждый физический удар врага, который прошёл, получает ответ." });
   const resistFlat = effectPower(b, "damage_resist");
   if (resistFlat > 0) defMods.push({ id: "damage_resist", label: "Сопротивление урону", flat: -resistFlat, good: true, detail: `−${resistFlat} урона за каждый входящий удар.` });
   const armorBase = b.p.armor + b.p.statuses.tempArmor + (b.p.statuses.ironTonic > 0 ? 4 : 0) + b.p.statuses.sundered;
