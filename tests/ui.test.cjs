@@ -87,7 +87,7 @@ test("left panel shows health, then negative effects, then experience", () => {
   assert.ok(html.includes("Характеристики"));
 });
 
-test("left panel shows the technique multiplier: scaleMult + skill scale, stat capped at 10 in the note", () => {
+test("left panel shows battle parameters as icon badges; the multiplier value is on the badge, details only on hover", () => {
   const knife = content.createGearItem({ baseId: "knife", wear: "worn", rarity: "common", identified: true, level: 10 });
   const player = makePlayer({
     level: 11, stats: { str: 2, agi: 18, int: 4 }, armory: [knife],
@@ -97,9 +97,12 @@ test("left panel shows the technique multiplier: scaleMult + skill scale, stat c
   const html = renderToStaticMarkup(React.createElement(Rail, {
     player, run: null, battle: null, onLeaveRun: noop,
   }));
-  assert.ok(html.includes("Множитель приёма"), "в боевых параметрах есть множитель приёма");
-  assert.ok(html.includes(`${ws.scaleMult.toFixed(2)} + навыки 0.00`) || html.includes(`${ws.scaleMult} + навыки 0.00`), html);
-  assert.ok(html.includes(`${content.STAT_META[ws.scaleStat].name}, до 10`), "подпись указывает предел ХАР");
+  assert.ok(html.includes("Боевые параметры"), "блок боевых параметров есть");
+  assert.ok(html.includes(`aria-label="Множитель приёма: ${ws.scaleMult.toFixed(2)}"`), html);
+  assert.ok(html.includes('aria-label="Броня: '), "броня показана иконкой и значением");
+  assert.ok(html.includes('aria-label="Критический удар: '), "критический удар показан иконкой и значением");
+  assert.ok(!html.includes('role="tooltip"'), "подсказка открывается только по наведению");
+  assert.ok(!html.includes("Архетип") && !html.includes("не выбран"), "строка «Архетип» удалена");
 });
 
 test("starter knife and rag show no requirements in the armory", () => {
