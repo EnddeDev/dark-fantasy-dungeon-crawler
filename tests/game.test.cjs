@@ -2317,6 +2317,9 @@ function quietEnemy(b) {
 
 test("яд складывается: срок обновляется, урон за тик суммируется", () => {
   const base = quietEnemy(freshBattle(mkP({ level: 1, stats: { str: 1, agi: 1, int: 1 }, hp: 100 }), 1, false, "classic"));
+  /* Угроза монстра случайна: герой не должен погибнуть за восемь ходов, иначе наложения не запишутся. */
+  base.p.hp = 1e6;
+  base.p.maxHp = 1e6;
   base.enemy.hp = 9999;
   base.enemy.maxHp = 9999;
 
@@ -2350,6 +2353,8 @@ test("яд складывается: срок обновляется, урон �
 
 test("кровотечение складывается так же, как яд", () => {
   const base = quietEnemy(freshBattle(mkP({ level: 1, stats: { str: 1, agi: 1, int: 1 }, hp: 100 }), 1, false, "classic"));
+  base.p.hp = 1e6;
+  base.p.maxHp = 1e6;
   base.enemy.hp = 9999;
   base.enemy.maxHp = 9999;
   const first = enemyTurnWith(base, ["wound"]);
@@ -2462,21 +2467,21 @@ test("expected enemy damage matches the average of real enemy turns", () => {
   const moves = ["attack", "heavy", "wound", "poison", "sunder", "multi", "curse", "drain", "bell_stun", "terror", "hell_force", "cold_touch"];
   for (const m of moves) {
     const trials = 1500;
-    /* Один и тот же монстр и герой: enemyStep копирует состояние, поэтому можно повторять ход. */
-    const fixed = freshBattle(mkP({ level: 5, stats: { str: 4, agi: 4, int: 4 }, hp: 1e9 }), 5, false, "classic");
-    fixed.enemy.moves = [m];
-    fixed.enemy.def = { ...fixed.enemy.def, moves: [m] };
-    fixed.enemy.specialCooldown = 0;
-    fixed.queue = ["e", "p"];
-    fixed.idx = 0;
-    const expectedFixed = battle.enemyExpectedMoveDamage(fixed, m);
-    const actual = withSeededRandom(5, () => {
+    /* Один и тот же монстр и герой под одним сидом: enemyStep копирует состояние, поэтому можно повторять ход. */
+    const { expectedFixed, actual } = withSeededRandom(5, () => {
+      const fixed = freshBattle(mkP({ level: 5, stats: { str: 4, agi: 4, int: 4 }, hp: 1e9 }), 5, false, "classic");
+      fixed.enemy.moves = [m];
+      fixed.enemy.def = { ...fixed.enemy.def, moves: [m] };
+      fixed.enemy.specialCooldown = 0;
+      fixed.queue = ["e", "p"];
+      fixed.idx = 0;
+      const exp = battle.enemyExpectedMoveDamage(fixed, m);
       let sum = 0;
       for (let i = 0; i < trials; i++) {
         const after = battle.enemyStep(fixed);
         sum += fixed.p.hp - after.p.hp;
       }
-      return sum / trials;
+      return { expectedFixed: exp, actual: sum / trials };
     });
     assert.ok(Math.abs(actual - expectedFixed) <= Math.max(1, expectedFixed * 0.06), `${m}: ожидалось ${expectedFixed.toFixed(2)}, по ходам ${actual.toFixed(2)}`);
   }
