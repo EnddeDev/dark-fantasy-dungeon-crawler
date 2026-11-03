@@ -206,3 +206,15 @@ test("свойства рода показываются в бестиарии �
   assert.ok(monsters.raceTraits("none", "smart").some((t) => t.includes("приём")));
   assert.ok(!monsters.raceTraits("none").some((t) => t.includes("регенерация")), "без типа тип не подставляется");
 });
+
+test("защита врага в стойке режет урон ровно вдвое у всех родов, конструкт без добавки", () => {
+  for (const race of ["none", "construct", "undead", "dragon"]) {
+    const b = battle.newBattle(player(), 3, false, "classic");
+    b.enemy.def = { ...b.enemy.def, race };
+    b.enemy.guard = false;
+    const open = battle.damageAfterEnemyDefense(b, 40, "phys");
+    b.enemy.guard = true;
+    const guarded = battle.damageAfterEnemyDefense(b, 40, "phys");
+    assert.equal(guarded, Math.floor(open / 2), `${race}: в стойке ${guarded}, без неё ${open}`);
+  }
+});

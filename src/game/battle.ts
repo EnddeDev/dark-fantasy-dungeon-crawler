@@ -55,7 +55,6 @@ import {
   raceEffectResist,
   raceElementMult,
   raceFortify,
-  raceGuardBonus,
   raceImmuneTo,
   noneStrongRegen,
   raceRevives,
@@ -1486,8 +1485,6 @@ export function damageAfterEnemyDefense(b: BattleState, raw: number, kind: "phys
   /* Стойка — действие, а не эффект: она режет урон и при истощении. */
   if (b.enemy.guard) {
     d = Math.floor(d / 2);
-    const guardBonus = eEffect(b, "guard_bonus") / 100 + raceGuardBonus(b.enemy.def.race);
-    d = Math.round(d * Math.max(0.2, 1 - guardBonus));
   }
   if (!effectsDepleted(b)) d -= eEffect(b, "damage_resist");
   d = Math.max(1, d);
