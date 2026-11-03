@@ -1592,6 +1592,15 @@ function elementalHit(
   return hitEnemy(b, raw, "magic", note, false, element);
 }
 
+/** В защите (кнопка «Защита») броня героя растёт на 25% до его следующего хода. Урон не делится. */
+export const GUARD_ARMOR_MULT = 1.25;
+
+/** Броня героя в бою сейчас: надетая, временная, тоник и раскол; в защите — ×1.25. */
+export function playerArmorNow(b: BattleState): number {
+  const base = Math.max(0, b.p.armor + b.p.statuses.tempArmor + (b.p.statuses.ironTonic > 0 ? 4 : 0) - b.p.statuses.sundered);
+  return b.p.guard ? Math.round(base * GUARD_ARMOR_MULT) : base;
+}
+
 /** false означает, что враг промахнулся: побочные эффекты атаки тоже не срабатывают. */
 /** Урон по герою после всех защит: броня, укрепление, сопротивления, стойка. Без бросков и побочных эффектов. */
 function damageAfterPlayerDefense(
@@ -1603,7 +1612,7 @@ function damageAfterPlayerDefense(
 ): number {
   let d = raw;
   if (strike) d = Math.round(d * biomeStrikeMult(b.biome));
-  const effArmor = Math.max(0, b.p.armor + b.p.statuses.tempArmor + (b.p.statuses.ironTonic > 0 ? 4 : 0) - b.p.statuses.sundered);
+  const effArmor = playerArmorNow(b);
   if (kind === "phys") {
     if (!ignoreDefense) {
       d -= effArmor;
@@ -1614,7 +1623,6 @@ function damageAfterPlayerDefense(
   }
   if (!ignoreDefense) d -= effectPower(b, "damage_resist");
   if (b.p.statuses.stone > 0) d = Math.round(d * 0.7);
-  if (b.p.guard) d = Math.floor(d / 2);
   let guardMult = 1;
   if (b.p.guard) {
     guardMult -= effectPower(b, "guard_bonus") / 100;
@@ -1692,7 +1700,7 @@ function incoming(
   }
   const d = damageAfterPlayerDefense(b, raw, kind, strike, ignoreDefense);
   b.p.hp -= d;
-  flash(b, "p", b.p.guard ? "guard" : "hit", d);
+  flash(b, "p", "hit", d);
   push(b, `${src} — тебе ${d} урона.`, "e");
 
   // Ядовитый враг отравляет игрока физическим уроном.
@@ -2388,7 +2396,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
     case "guard": {
       b.p.guard = true;
       flash(b, "p", "guard", 0);
-      push(b, "Ты уходишь в глухую защиту: входящий урон вдвое меньше.", "p");
+      push(b, "Ты уходишь в глухую защиту: броня +25% до твоего следующего хода.", "p");
       break;
     }
 
@@ -3164,8 +3172,6 @@ export interface CombatReadout {
   inMin: number;
   inMax: number;
   /** То же в глухой защите. */
-  inGuardMin: number;
-  inGuardMax: number;
   armor: number;
   armorBase: number;
   evade: number;
@@ -3333,7 +3339,7 @@ export function combatReadout(b: BattleState): CombatReadout {
       detail: "Входящий урон −30%.",
     });
   if (b.p.guard)
-    defMods.push({ id: "guard", label: "Защита", mult: 0.5, good: true, detail: "Входящий урон вдвое меньше до твоего следующего хода." });
+    defMods.push({ id: "guard", label: "Защита", good: true, detail: "Броня +25% до твоего следующего хода." });
   if (b.p.statuses.smoke > 0)
     defMods.push({
       id: "smoke",
@@ -3397,7 +3403,7 @@ export function combatReadout(b: BattleState): CombatReadout {
   const resistFlat = effectPower(b, "damage_resist");
   if (resistFlat > 0) defMods.push({ id: "damage_resist", label: "Сопротивление урону", flat: -resistFlat, good: true, detail: `−${resistFlat} урона за каждый входящий удар.` });
   const armorBase = b.p.armor + b.p.statuses.tempArmor + (b.p.statuses.ironTonic > 0 ? 4 : 0) + b.p.statuses.sundered;
-  const armor = Math.max(0, b.p.armor + b.p.statuses.tempArmor + (b.p.statuses.ironTonic > 0 ? 4 : 0) - b.p.statuses.sundered);
+  const armor = playerArmorNow(b);
 
   /* Урон врага по мне */
   const enemyMods: Modifier[] = [];
@@ -3486,8 +3492,6 @@ export function combatReadout(b: BattleState): CombatReadout {
     techMax,
     inMin: afterArmor(eMin),
     inMax: afterArmor(eMax),
-    inGuardMin: Math.max(1, Math.floor(afterArmor(eMin) / 2)),
-    inGuardMax: Math.max(1, Math.floor(afterArmor(eMax) / 2)),
     armor,
     armorBase,
     evade: combatChance(b.p.chanceLayers.evade),

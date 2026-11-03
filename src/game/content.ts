@@ -393,7 +393,7 @@ export type ArmorSkillKind = "attack" | "defense";
 
 /** Что приём делает с героем. Раунды — до конца текущего раунда, как у прочих защит. */
 export interface ArmorSkillSelf {
-  /** Защита: входящий урон вдвое меньше до твоего следующего хода. */
+  /** Защита: броня +25% до твоего следующего хода. */
   guard?: boolean;
   /** Полная защита от урона на N раундов. */
   fullGuard?: number;
@@ -526,7 +526,7 @@ export function armorSkillDesc(def: ArmorSkillDef): string {
   if (e.poison) parts.push(`яд врага на ${roundsText(e.poison)}`);
   if (e.chill) parts.push(`обморожение врага на ${roundsText(e.chill)}`);
   const s = def.self ?? {};
-  if (s.guard) parts.push("Защита до твоего следующего хода");
+  if (s.guard) parts.push("Защита до твоего следующего хода: броня +25%");
   if (s.fullGuard) parts.push(`полная защита от урона на ${roundsText(s.fullGuard)}`);
   if (s.immune) parts.push(`иммунитет к негативным эффектам на ${roundsText(s.immune)}`);
   if (s.evadeTurn) parts.push(`физические атаки врага проходят мимо на ${roundsText(s.evadeTurn)}`);
@@ -750,7 +750,7 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
       scaleStat: "str",
       scaleMult: 1.6,
       effect: "guard",
-      desc: "Рубящий удар + 1.6×СИЛ и мгновенный переход в Защиту (входящий урон вдвое меньше).",
+      desc: "Рубящий удар + 1.6×СИЛ и мгновенный переход в Защиту (броня +25%).",
     },
   },
   staff: {
