@@ -39,7 +39,13 @@ import {
   MONSTER_TYPE_META,
   coerceMonsterType,
   monsterEvade,
+  NONE_AGILE_COUNTER_CHANCE,
+  NONE_SMART_MOVE,
+  NONE_STRONG_REGEN,
+  REVIVE_DEBUFF,
+  WEAKNESS_STEP,
   raceApDelta,
+  raceArmorMult,
   raceBonusMoves,
   raceCannotHeal,
   raceEffectResist,
@@ -47,6 +53,8 @@ import {
   raceFortify,
   raceGuardBonus,
   raceImmuneTo,
+  raceRevives,
+  raceWeakens,
   type DamageElement,
   type MonsterType,
 } from "./monsters";
@@ -152,6 +160,10 @@ export interface BattleState {
     furyUsed: boolean;
     /** Раунды ярости дракона: двойной урон и лечение в конце хода. */
     fury: number;
+    /** Нежить: воскресла (полное ОЗ, урон и броня −50%). */
+    revived?: boolean;
+    /** Нежить: воскрешение уже было в этом бою. */
+    reviveUsed?: boolean;
     /**
      * Ходы истощения: положительные эффекты врага (укрепление, шипы, лечение,
      * сопротивление, ярость) не работают. Броня, урон, ходы и стойка — обычные
@@ -282,6 +294,8 @@ export interface BattleState {
       noHeal: number;
       /** Мрак вампира: до конца раунда половина твоих атак уходит мимо. */
       darkness: number;
+      /** Слабость вампира: наложения за бой; твой урон от обычных атак −WEAKNESS_STEP за каждое. */
+      weakness?: number;
       /** Печати босса: запрет действий в следующий ход игрока. */
       sealItems: number;
       sealSkills: number;
@@ -677,6 +691,11 @@ export function spawnEnemy(
 
   /* Приёмы рода (запугивание, мрак, холодное касание, сила ада) есть у каждой твари. */
   const moves: EnemyMove[] = [...def.moves, ...raceBonusMoves(def.race)];
+  /* «Без рода», умный: один лишний приём сверх набора. */
+  if (def.race === "none" && mtype === "smart") {
+    const extra = [NONE_SMART_MOVE, "multi", "heavy", "sunder"].find((mv) => !moves.includes(mv as EnemyMove)) as EnemyMove | undefined;
+    if (extra) moves.push(extra);
+  }
   if (!isBoss && threat !== "normal") {
     const need = threat === "catastrophe" ? 2 : 1;
     const pool = SPECIAL_MOVES.filter((mv) => !moves.includes(mv));
@@ -726,7 +745,7 @@ export function spawnEnemy(
       Math.max(2, Math.round(def.atk[1] * atkMult)),
     ],
     /* Броня: уровень плюс прибавка типа (у ловких она отрицательная). */
-    armor: Math.max(0, Math.round(def.armor * levelMult * armorMult) + typeMeta.armorDelta),
+    armor: Math.max(0, Math.round(def.armor * levelMult * armorMult * raceArmorMult(def.race)) + typeMeta.armorDelta),
     gold: [
       Math.round(def.gold[0] * (1 + (floor - 1) * 0.5)),
       Math.round(def.gold[1] * (1 + (floor - 1) * 0.5)),
@@ -1361,6 +1380,8 @@ function calcWeaponRoll(b: BattleState, mult = 1, bonusFlat = 0, opts: { skill?:
   if (opts.skill) damageMult *= skillDamageMult(b);
 
   d *= damageMult;
+  /* Слабость вампира режет обычные атаки; приёмы считаются отдельно и её не получают. */
+  if (!opts.skill && (b.p.statuses.weakness ?? 0) > 0) d *= weaknessMult(b.p.statuses.weakness ?? 0);
   if (b.p.statuses.curse > 0) d = Math.round(d * (1 - (b.p.statuses.cursePower ?? 30) / 100));
   if (hasPassive(b, "relentless") && b.p.hp < b.p.maxHp * 0.35) d = Math.round(d * 1.5);
   if (hasLeg(b, "executioner") && b.enemy.hp <= b.enemy.maxHp * 0.5) d = Math.round(d * (1 + legPower(b, "executioner", "damage") / 100));
@@ -1412,6 +1433,11 @@ function applyVamp(b: BattleState, dealt: number, extraRatio = 0, source: "weapo
   if (heal > 0) push(b, `Похищение жизни: +${heal} здоровья.`, "p");
 }
 
+/** Броня врага сейчас: воскресшая нежить теряет половину. */
+export function enemyArmorNow(e: { armor: number; revived?: boolean }): number {
+  return e.revived ? Math.round(e.armor * (1 - REVIVE_DEBUFF)) : e.armor;
+}
+
 /**
  * Урон, который доходит до врага после его брони, защит и эффектов.
  * Бой и сводка («По противнику», урон приёма) считают одной функцией.
@@ -1423,7 +1449,7 @@ export function damageAfterEnemyDefense(b: BattleState, raw: number, kind: "phys
   }
   if (kind === "phys") {
     const pierce = rarePower(b, "pierce", "armor");
-    const effArmor = Math.max(0, b.enemy.armor - pierce - enemyOilArmorCut(b));
+    const effArmor = Math.max(0, enemyArmorNow(b.enemy) - pierce - enemyOilArmorCut(b));
     d -= effArmor;
     /* Каменная шкура и укрепление рода — врождённые свойства породы,
        а не эффекты: истощение их не снимает. */
@@ -1445,6 +1471,17 @@ export function damageAfterEnemyDefense(b: BattleState, raw: number, kind: "phys
   return d;
 }
 
+/** Нежить падает до 0 ОЗ — поднимается полностью. Один раз за бой. */
+function tryRevive(b: BattleState): boolean {
+  const e = b.enemy;
+  if (e.hp > 0 || !raceRevives(e.def.race) || e.reviveUsed) return false;
+  e.reviveUsed = true;
+  e.revived = true;
+  e.hp = e.maxHp;
+  push(b, `${e.def.name} поднимается из праха: полное здоровье, урон и броня −50%.`, "e");
+  return true;
+}
+
 function hitEnemy(
   b: BattleState,
   raw: number,
@@ -1453,6 +1490,18 @@ function hitEnemy(
   strike = kind === "phys",
   element?: DamageElement,
 ): number {
+  /* Ловкий «без рода»: часть физических ударов он уводит и сам контратакует без урона для себя.
+     Контратака героя сюда не попадает — иначе цепочка ударов не кончится. */
+  if (
+    strike && kind === "phys" && b.enemy.hp > 0 && b.enemy.def.race === "none" && b.enemy.mtype === "agile" &&
+    !note.includes("[Контратака]") && Math.random() < NONE_AGILE_COUNTER_CHANCE
+  ) {
+    flash(b, "e", "miss", 0);
+    push(b, `${b.enemy.def.name} уходит от удара и сам контратакует!${note}`, "e");
+    const base = enemyEffectDamage(b, randInt(b.enemy.atk[0], b.enemy.atk[1]));
+    incoming(b, Math.round(base * enemyChill(b)), "phys", `${b.enemy.def.name} контратакует`);
+    return 0;
+  }
   const darkMiss = (b.torchTurns ?? 0) > 0 ? 0 : biomeMissChance(b.biome);
   if (strike && darkMiss > 0 && Math.random() < darkMiss) {
     flash(b, "e", "miss", 0);
@@ -1717,7 +1766,7 @@ function beginTurn(b: BattleState) {
     push(b, `Огненные недра: ${b.enemy.def.name} горит ×${b.enemy.statuses.burning} и теряет ${eDmg} здоровья.`, "sys");
   }
 
-  if (b.enemy.hp <= 0) {
+  if (b.enemy.hp <= 0 && !tryRevive(b)) {
     b.enemy.hp = 0;
     b.over = "win";
     gainLoot(b);
@@ -1931,7 +1980,7 @@ function advance(b: BattleState) {
     b.queue = buildQueue(pAp, eAp);
     push(b, `— Раунд ${b.round} —`, "sys");
 
-    if (b.enemy.hp <= 0) {
+    if (b.enemy.hp <= 0 && !tryRevive(b)) {
       b.enemy.hp = 0;
       b.over = "win";
       gainLoot(b);
@@ -2517,7 +2566,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
     }
   }
 
-  if (b.enemy.hp <= 0) {
+  if (b.enemy.hp <= 0 && !tryRevive(b)) {
     b.enemy.hp = 0;
     b.over = "win";
     gainLoot(b);
@@ -2583,6 +2632,11 @@ function applyRaceStrike(b: BattleState, isStrike: boolean, rawBase: number, res
     if (heal > 0) push(b, `${e.def.name} пьёт жизнь: +${heal} ОЗ.`, "e");
   }
   if (!isStrike || b.p.hp <= 0) return;
+  /* Слабость вампира: каждое попадание его атаки копит наложение до конца боя. */
+  if (raceWeakens(race)) {
+    b.p.statuses.weakness = (b.p.statuses.weakness ?? 0) + 1;
+    push(b, `${e.def.name} изматывает тебя: слабость ×${b.p.statuses.weakness}, твой урон от атак −${Math.round(b.p.statuses.weakness * WEAKNESS_STEP * 100)}%.`, "e");
+  }
   const lands = () => Math.random() > resistChance;
   if (race === "vampire" && lands()) {
     const stacks = applyPlayerDot(b, "wound", 3);
@@ -2613,6 +2667,11 @@ function applyRaceStrike(b: BattleState, isStrike: boolean, rawBase: number, res
       }
     }
   }
+}
+
+/** Множитель урона героя от обычных атак при слабости вампира. */
+export function weaknessMult(stacks: number): number {
+  return Math.max(0, 1 - WEAKNESS_STEP * stacks);
 }
 
 /** Шипы героя: физический удар по нему ранит самого нападающего. */
@@ -2673,6 +2732,8 @@ function enemyMoveDamage(b: BattleState, move: EnemyMove, isStrikeMove: boolean,
   if (PHYS_ENEMY_MOVES.includes(move)) base = Math.round(base * enemyOilAttackMult(b));
   /* Ярость дракона: двойной урон, пока держится. */
   if (e.def.race === "dragon" && e.fury > 0 && !effectsDepleted(b)) base = Math.round(base * 2);
+  /* Воскресшая нежить бьёт вполсилы. */
+  if (e.revived) base = Math.round(base * (1 - REVIVE_DEBUFF));
   return base;
 }
 
@@ -2963,6 +3024,11 @@ export function enemyStep(b0: BattleState): BattleState {
       push(b, `${e.def.name} оглушает тебя: −1 ход в следующем раунде.`, "e");
     }
   }
+  /* «Без рода», сильный: регенерация в конце своего хода. */
+  if (e.def.race === "none" && e.mtype === "strong" && e.hp > 0 && e.hp < e.maxHp && b.p.hp > 0) {
+    const heal = healEnemy(b, Math.max(1, Math.round(e.maxHp * NONE_STRONG_REGEN)));
+    if (heal > 0) push(b, `${e.def.name} регенерирует ${heal} ОЗ в конце своего хода.`, "e");
+  }
   if (b.over) return b;
   advance(b);
   return b;
@@ -3087,6 +3153,16 @@ export function combatReadout(b: BattleState): CombatReadout {
       rounds: isBattleCurse(b.p.statuses.curse) ? undefined : b.p.statuses.curse,
       detail: `Снижает ваш урон на ${b.p.statuses.cursePower ?? 30}%${isBattleCurse(b.p.statuses.curse) ? " до конца боя" : ""}.`,
     });
+  if ((b.p.statuses.weakness ?? 0) > 0) {
+    const wk = b.p.statuses.weakness ?? 0;
+    dmgMods.push({
+      id: "weakness",
+      label: "Слабость",
+      mult: weaknessMult(wk),
+      good: false,
+      detail: `Вампир изматывает: урон от обычных атак −${Math.round(WEAKNESS_STEP * wk * 100)}% (наложений ${wk}). Приёмы не затронуты.`,
+    });
+  }
   if (b.p.passives.includes("relentless") && b.p.hp < b.p.maxHp * 0.35)
     dmgMods.push({
       id: "relentless",

@@ -112,6 +112,8 @@ test("swamp halves non-potion healing for both sides but leaves potions intact",
   const regen = combat("swamp");
   regen.queue = ["p", "e"]; regen.idx = 0;
   regen.enemy.hp = 10; regen.enemy.maxHp = 100;
+  /* Нежить: родовой регенерации у «без рода» нет, цифра проверяет только пассив. */
+  regen.enemy.def = { ...regen.enemy.def, race: "undead" };
   regen.enemy.passive = { id: "regen", name: "Регенерация", desc: "" };
   let b = battle.playerAct(regen, { type: "guard" });
   b = battle.enemyStep(b);
@@ -120,6 +122,7 @@ test("swamp halves non-potion healing for both sides but leaves potions intact",
   const classic = combat("classic");
   classic.queue = ["p", "e"]; classic.idx = 0;
   classic.enemy.hp = 10; classic.enemy.maxHp = 100;
+  classic.enemy.def = { ...classic.enemy.def, race: "undead" };
   classic.enemy.passive = { id: "regen", name: "Регенерация", desc: "" };
   let c = battle.playerAct(classic, { type: "guard" });
   c = battle.enemyStep(c);

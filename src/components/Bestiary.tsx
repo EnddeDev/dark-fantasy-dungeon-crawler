@@ -225,7 +225,7 @@ export function Bestiary() {
                   </p>
                   <p className="mt-0.5 text-[0.84rem] text-mute">{MONSTER_RACE_META[enemy.race].note}</p>
                   <p className="mt-0.5 font-mono text-[0.82rem] text-parch/60">
-                    {[MONSTER_TYPE_META[enemy.type].note, ...raceTraits(enemy.race)].join(" · ")}
+                    {[MONSTER_TYPE_META[enemy.type].note, ...raceTraits(enemy.race, enemy.type)].join(" · ")}
                   </p>
                   {(() => {
                     const rows = raceElementRows(enemy.race);

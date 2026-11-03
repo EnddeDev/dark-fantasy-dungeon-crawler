@@ -118,7 +118,24 @@ export interface MonsterRaceMeta {
   fortify?: number;
   /** Нельзя восстанавливать здоровье (конструкт). */
   noHealing?: boolean;
+  /** Множитель брони рода (конструкт — ×2). */
+  armorMult?: number;
+  /** Воскресает один раз за бой: полное здоровье, затем урон и броня −50%. */
+  revive?: boolean;
+  /** Каждое попадание его атаки накладывает слабость: твой урон от атак снижается. */
+  weakens?: boolean;
 }
+
+/** Слабость вампира: каждое наложение режет урон героя от обычных атак на эту долю. */
+export const WEAKNESS_STEP = 0.07;
+/** Нежить после воскрешения: урон и броня на эту долю меньше. */
+export const REVIVE_DEBUFF = 0.5;
+/** Сильный «без рода»: регенерация в конце своего хода, доля от максимума ОЗ. */
+export const NONE_STRONG_REGEN = 0.05;
+/** Ловкий «без рода»: шанс уйти от физического удара и контратаковать без урона. */
+export const NONE_AGILE_COUNTER_CHANCE = 0.2;
+/** Умный «без рода»: приём, который получает каждая такая тварь. */
+export const NONE_SMART_MOVE = "drain" as const;
 
 /** Множитель уязвимости к стихии. */
 export const ELEMENT_WEAKNESS_MULT = 1.5;
@@ -127,15 +144,17 @@ export const MONSTER_RACE_META: Record<MonsterRace, MonsterRaceMeta> = {
   undead: {
     id: "undead",
     name: "Нежить",
-    note: "Иммунитет к яду, кровотечению и страху. Умеет запугивать: лишает тебя атаки и приёма на ход.",
+    note: "Иммунитет к яду, кровотечению и страху. Умеет запугивать: лишает тебя атаки и приёма на ход. Ходов на −1 (минимум 1). Падая до 0 ОЗ, поднимается полностью, но после этого урон и броня −50% (один раз за бой).",
     immune: ["poison", "bleed", "fear"],
     allowedTypes: ["strong", "agile", "smart"],
     bonusMoves: ["intimidate"],
+    apDelta: -1,
+    revive: true,
   },
   construct: {
     id: "construct",
     name: "Конструкт",
-    note: "Иммунитет к яду, кровотечению и страху, всегда под Укреплением; вылечить его нельзя. В защите крепче обычного. Уязвим к огню, льду и кислоте.",
+    note: "Иммунитет к яду, кровотечению и страху, всегда под Укреплением; вылечить его нельзя. В защите крепче обычного. Уязвим к огню, льду и кислоте. Броня ×2.",
     immune: ["poison", "bleed", "fear"],
     allowedTypes: ["strong"],
     bonusMoves: [],
@@ -143,15 +162,17 @@ export const MONSTER_RACE_META: Record<MonsterRace, MonsterRaceMeta> = {
     guardBonus: 0.25,
     fortify: 0.2,
     noHealing: true,
+    armorMult: 2,
   },
   vampire: {
     id: "vampire",
     name: "Вампир",
-    note: "Вампиризм и магический вампиризм, атаки открывают кровотечение. Уязвим к свету. Приём «Мрак»: полраунда промахов.",
+    note: "Вампиризм и магический вампиризм, атаки открывают кровотечение. Каждая его атака накладывает слабость: твой урон от обычных атак −7%, складывается весь бой. Уязвим к свету. Приём «Мрак»: полраунда промахов.",
     immune: [],
     allowedTypes: ["agile", "smart"],
     bonusMoves: ["darkness"],
     vulnerable: ["light"],
+    weakens: true,
   },
   ghost: {
     id: "ghost",
@@ -193,7 +214,7 @@ export const MONSTER_RACE_META: Record<MonsterRace, MonsterRaceMeta> = {
   none: {
     id: "none",
     name: "Без рода",
-    note: "Ничего особенного: обычная тварь без иммунитетов и приёмов рода.",
+    note: "Родовых иммунитетов и приёмов нет. Свойство даёт тип: сильный — регенерация в конце своего хода, ловкий — 20% шанс контратаковать без получения урона, умный — лишний приём.",
     immune: [],
     allowedTypes: ["strong", "agile", "smart"],
     bonusMoves: [],
@@ -268,6 +289,28 @@ export function raceCannotHeal(race: MonsterRace): boolean {
   return raceMeta(race).noHealing === true;
 }
 
+/** Множитель брони рода (конструкт — ×2). */
+export function raceArmorMult(race: MonsterRace): number {
+  return raceMeta(race).armorMult ?? 1;
+}
+
+/** Воскресает ли род после падения ОЗ до 0 (нежить). */
+export function raceRevives(race: MonsterRace): boolean {
+  return raceMeta(race).revive === true;
+}
+
+/** Накладывает ли род слабость на героя при каждом попадании (вампир). */
+export function raceWeakens(race: MonsterRace): boolean {
+  return raceMeta(race).weakens === true;
+}
+
+/** Особенность рода «без рода» зависит от типа твари. */
+export const NONE_TYPE_TRAIT: Record<MonsterType, string> = {
+  strong: "регенерация 5% ОЗ в конце своего хода",
+  agile: "20% шанс контратаковать без получения урона",
+  smart: "лишний приём",
+};
+
 /** Приводит тип к разрешённому для рода: конструкт может быть только сильным. */
 export function coerceMonsterType(race: MonsterRace, type: MonsterType): MonsterType {
   const allowed = raceMeta(race).allowedTypes;
@@ -282,9 +325,14 @@ export function monsterEvade(race: MonsterRace, type: MonsterType): number {
 }
 
 /** Описание врождённых свойств рода для интерфейса и бестиария. */
-export function raceTraits(race: MonsterRace): string[] {
+export function raceTraits(race: MonsterRace, type?: MonsterType): string[] {
   const meta = raceMeta(race);
   const traits: string[] = [];
+  if (meta.armorMult && meta.armorMult !== 1) traits.push(`броня ×${meta.armorMult}`);
+  if (meta.apDelta) traits.push(`ходов ${meta.apDelta > 0 ? "+" : "−"}${Math.abs(meta.apDelta)} (минимум 1)`);
+  if (meta.revive) traits.push("воскресает один раз за бой: полное ОЗ, затем урон и броня −50%");
+  if (meta.weakens) traits.push(`слабость: твой урон от атак −${Math.round(WEAKNESS_STEP * 100)}% за каждое попадание, складывается`);
+  if (race === "none" && type) traits.push(NONE_TYPE_TRAIT[type]);
   if (meta.immune.length) {
     traits.push(`иммунитет: ${meta.immune.map((e) => EFFECT_NAMES[e]).join(", ")}`);
   }
