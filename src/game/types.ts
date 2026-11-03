@@ -72,6 +72,50 @@ import type { GearEffectId, GearPassiveId } from "./gearEffects";
 
 export type RareAffixId = "vamp" | "crit" | "thorns" | "regen" | "pierce" | "swift" | "might";
 export type EpicSkillId = "fireball" | "blood_lance" | "ash_aegis" | "shadow_volley" | "frost_nova";
+/** Приёмы брони: 7 на каждый класс (тяжёлая, средняя, лёгкая), из них 2 атакующих и 5 защитных. */
+export type ArmorSkillId =
+  | "heavy_bash"
+  | "heavy_rampart"
+  | "heavy_wall"
+  | "heavy_fort"
+  | "heavy_rage"
+  | "heavy_guard"
+  | "heavy_ward"
+  | "medium_feint"
+  | "medium_roll"
+  | "medium_slip"
+  | "medium_trip"
+  | "medium_dance"
+  | "medium_retreat"
+  | "medium_hide"
+  | "medium_bash"
+  | "medium_hammer"
+  | "medium_riposte"
+  | "medium_brace"
+  | "medium_guard"
+  | "medium_stand"
+  | "medium_shield_up"
+  | "light_charm"
+  | "light_spark"
+  | "light_ward"
+  | "light_veil"
+  | "light_mind"
+  | "light_runestone"
+  | "light_glimmer"
+  | "light_venom"
+  | "light_dagger"
+  | "light_evade"
+  | "light_slip"
+  | "light_dodge2"
+  | "light_veilagi"
+  | "light_quick"
+  | "light_cut"
+  | "light_hook"
+  | "light_brace"
+  | "light_sturdy"
+  | "light_resolve"
+  | "light_iron"
+  | "light_patch";
 export type LegendaryPassiveId =
   | "executioner"
   | "time_weaver"
@@ -117,6 +161,8 @@ export interface GearItem {
   effects: GearEffectId[];
   /** Эпическое (и выше): боевой приём предмета (альтернатива двум эффектам). */
   epicSkill?: EpicSkillId;
+  /** Приём брони: выпадает у эпической и легендарной брони. */
+  armorSkill?: ArmorSkillId;
   /** Легендарное: пассивная способность по характеристике требования. */
   passive?: GearPassiveId;
   /** @deprecated поле сохранено для старых сохранений */

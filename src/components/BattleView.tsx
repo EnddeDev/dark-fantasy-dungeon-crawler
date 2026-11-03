@@ -14,7 +14,7 @@ import {
 } from "../game/content";
 import { GEAR_EFFECTS, GEAR_PASSIVES, effectDetail } from "../game/gearEffects";
 import { MONSTER_RACE_META, MONSTER_TYPE_META, WEAKNESS_STEP, monsterEvade, raceTraits } from "../game/monsters";
-import { epicSkillDesc } from "../game/content";
+import { STAT_META, armorSkillDesc, epicSkillDesc } from "../game/content";
 import {
   ENEMY_COOLDOWN_MOVES,
   ENEMY_MOVE_COOLDOWN,
@@ -478,7 +478,7 @@ export function BattleView({
                 <Btn tone="flame" disabled={!myTurn || b.p.statuses.sealAttack > 0} onClick={() => act({ type: "attack" })}>
                   Удар
                 </Btn>
-                <Btn tone={wsReady || b.p.epicSkills.length > 0 ? "flame" : "ghost"} disabled={!myTurn || b.p.statuses.sealSkills > 0} onClick={() => setMenu("skill")}>
+                <Btn tone={wsReady || b.p.epicSkills.length > 0 || b.p.armorSkills.length > 0 ? "flame" : "ghost"} disabled={!myTurn || b.p.statuses.sealSkills > 0} onClick={() => setMenu("skill")}>
                   Приёмы
                 </Btn>
                 <Btn disabled={!myTurn || b.p.statuses.sealItems > 0} onClick={() => setMenu("item")}>
@@ -550,6 +550,30 @@ export function BattleView({
                         </span>
                         <span className={`shrink-0 font-mono text-[0.84rem] ${!intOk ? "text-rubric" : cd > 0 ? "text-mute" : "text-verd"}`}>
                           {!intOk ? `нужен ИНТ ${req}` : cd > 0 ? `перезар. ${cd} р.` : "готово"}
+                        </span>
+                      </button>
+                    );
+                  })}
+
+                  {b.p.armorSkills.map((sk) => {
+                    const req = sk.intReq <= 0 ? 0 : Math.max(1, sk.intReq - (sk.scaleStat === "int" ? b.p.intDiscount : 0));
+                    const statOk = req === 0 || b.p.stats[sk.scaleStat] >= req;
+                    const cd = b.p.armorCds[sk.id] ?? 0;
+                    return (
+                      <button
+                        key={sk.id}
+                        disabled={!myTurn || !statOk || cd > 0 || b.p.statuses.sealSkills > 0}
+                        onClick={() => act({ type: "armor_skill", id: sk.id })}
+                        className="flex items-center justify-between gap-3 border border-flamedim/70 bg-slab2 px-3 py-2 text-left transition-colors enabled:hover:border-flame enabled:hover:bg-flame/10 disabled:opacity-45"
+                      >
+                        <span>
+                          <span className="block font-display text-[1.02rem] uppercase tracking-[0.1em] text-flame">
+                            [Броня · {sk.kind === "attack" ? "атака" : "защита"}] {sk.name}
+                          </span>
+                          <span className="block text-[0.89rem] leading-snug text-mute">{armorSkillDesc(sk)}</span>
+                        </span>
+                        <span className={`shrink-0 font-mono text-[0.84rem] ${!statOk ? "text-rubric" : cd > 0 ? "text-mute" : "text-verd"}`}>
+                          {!statOk ? `нужен ${STAT_META[sk.scaleStat].short} ${req}` : cd > 0 ? `перезар. ${cd} р.` : "готово"}
                         </span>
                       </button>
                     );

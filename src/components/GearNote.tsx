@@ -1,8 +1,11 @@
 import type { ReactNode } from "react";
 import { Check, Eye, Lock, Sparkles, Sword } from "lucide-react";
 import {
+  ARMOR_SKILLS,
   EPIC_SKILLS,
   LEGENDARY_PASSIVES,
+  armorSkillDesc,
+  armorSkillFor,
   RARITY_META,
   RARE_AFFIXES,
   STAT_META,
@@ -199,7 +202,7 @@ export function GearNote({
             </div>
           ) : (
             <div className="space-y-3">
-              {item.rarity === "common" && !item.effects.length && !item.epicSkill && !item.passive && !item.rareAffix && !item.legendaryPassive && (
+              {item.rarity === "common" && !item.effects.length && !item.epicSkill && !item.armorSkill && !item.passive && !item.rareAffix && !item.legendaryPassive && (
                 <p className="text-[0.98rem] italic text-mute">Обычное качество: дополнительных свойств нет.</p>
               )}
               {item.effects.map((id, index) => {
@@ -222,6 +225,13 @@ export function GearNote({
                   <h4 className="flex items-center gap-2 font-display text-[1.08rem] uppercase tracking-[0.04em] text-flamehi"><Sparkles size={14} aria-hidden />{EPIC_SKILLS[item.epicSkill].name}</h4>
                   <p className="mt-1 text-[0.98rem] leading-relaxed text-parch/85">{epicSkillDesc(item.epicSkill, level)}</p>
                   <p className="mt-1 font-mono text-[0.9rem] text-mute">Эпический приём · ИНТ {Math.max(1, techniqueIntReq(level, gearAffinity(item)) - d.intDiscount)} · откат {EPIC_SKILLS[item.epicSkill].cooldown}</p>
+                </div>
+              )}
+              {item.armorSkill && ARMOR_SKILLS[item.armorSkill] && (
+                <div className="border-l-2 border-flamedim pl-3">
+                  <h4 className="flex items-center gap-2 font-display text-[1.08rem] uppercase tracking-[0.04em] text-flamehi"><Sparkles size={14} aria-hidden />{ARMOR_SKILLS[item.armorSkill].name}</h4>
+                  <p className="mt-1 text-[0.98rem] leading-relaxed text-parch/85">{armorSkillDesc(ARMOR_SKILLS[item.armorSkill])}</p>
+                  <p className="mt-1 font-mono text-[0.9rem] text-mute">Приём брони · {STAT_META[ARMOR_SKILLS[item.armorSkill].scaleStat].short}{(armorSkillFor(item)?.intReq ?? 0) > 0 ? ` ${Math.max(1, (armorSkillFor(item)?.intReq ?? 0) - (ARMOR_SKILLS[item.armorSkill].scaleStat === "int" ? d.intDiscount : 0))}` : ""} · откат {ARMOR_SKILLS[item.armorSkill].cooldown}</p>
                 </div>
               )}
               {item.passive && (
