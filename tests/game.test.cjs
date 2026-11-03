@@ -3763,3 +3763,43 @@ test("враг с магией выбирает её, когда физичес�
   const move = battle.chooseEnemyMove(b);
   assert.equal(move, "curse", `при огромной броне урон даёт магия, а выбрана ${move}`);
 });
+
+test("угрозы: обычный монстр +30% ОЗ, ужас ×2 и катастрофа ×7 по ОЗ, атаке и броне", () => {
+  const monsters = loadGameModule("monsters");
+  const scaling = loadGameModule("enemyScaling");
+  const lcg = (seed) => {
+    let s = seed;
+    return () => {
+      s = (s * 1103515245 + 12345) % 2147483648;
+      return s / 2147483648;
+    };
+  };
+  const spawn = (threat, seed, floor) => battle.spawnEnemy(floor, false, lcg(seed), threat);
+  let checked = 0;
+  for (let seed = 1; seed <= 80; seed++) {
+    const floor = 2 + (seed % 7);
+    const n = spawn("normal", seed, floor);
+    const h = spawn("horror", seed, floor);
+    const c = spawn("catastrophe", seed, floor);
+    assert.equal(n.def.id, h.def.id, "один и тот же монстр для сравнения");
+    assert.equal(n.def.id, c.def.id);
+    assert.equal(n.level, c.level);
+    const lm = scaling.enemyLevelMult(n.level);
+    const typeMeta = monsters.MONSTER_TYPE_META[n.mtype];
+    /* Обычный: ОЗ ×1.3 к базе. */
+    assert.ok(Math.abs(n.hp - Math.round(n.def.hp * lm * 1.3 * typeMeta.hpMult)) <= 1, `обычный ОЗ ${n.hp}`);
+    /* Ужас и катастрофа: относительно обычного — ×2 и ×7 по ОЗ и атаке. */
+    assert.ok(Math.abs(h.hp - 2 * n.hp) <= 1, `ужас ОЗ ${h.hp} при обычном ${n.hp}`);
+    assert.ok(Math.abs(c.hp - 7 * n.hp) <= 4, `катастрофа ОЗ ${c.hp} при обычном ${n.hp}`);
+    assert.ok(Math.abs(h.atk[0] - 2 * n.atk[0]) <= 1, `ужас атака ${h.atk[0]} при обычной ${n.atk[0]}`);
+    assert.ok(Math.abs(c.atk[0] - 7 * n.atk[0]) <= 4, `катастрофа атака ${c.atk[0]} при обычной ${n.atk[0]}`);
+    /* Броня масштабируется вместе с остальными параметрами, у прибавки типа своя поправка. */
+    if (n.def.armor * lm >= 2) {
+      const d = typeMeta.armorDelta;
+      assert.ok(Math.abs((h.armor - d) - 2 * (n.armor - d)) <= 1, `ужас броня ${h.armor}, обычная ${n.armor}`);
+      assert.ok(Math.abs((c.armor - d) - 7 * (n.armor - d)) <= 4, `катастрофа броня ${c.armor}, обычная ${n.armor}`);
+    }
+    checked++;
+  }
+  assert.ok(checked >= 80);
+});

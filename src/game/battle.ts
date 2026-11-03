@@ -671,6 +671,7 @@ export function spawnEnemy(
   const levelMult = enemyLevelMult(level);
   const hpMult = levelMult * (isBoss ? 1 : meta.hpMult) * typeMeta.hpMult;
   const atkMult = levelMult * (isBoss ? 1 : meta.atkMult) * typeMeta.atkMult;
+  const armorMult = isBoss ? 1 : meta.armorMult;
 
   /* Приёмы рода (запугивание, мрак, холодное касание, сила ада) есть у каждой твари. */
   const moves: EnemyMove[] = [...def.moves, ...raceBonusMoves(def.race)];
@@ -723,7 +724,7 @@ export function spawnEnemy(
       Math.max(2, Math.round(def.atk[1] * atkMult)),
     ],
     /* Броня: уровень плюс прибавка типа (у ловких она отрицательная). */
-    armor: Math.max(0, Math.round(def.armor * levelMult) + typeMeta.armorDelta),
+    armor: Math.max(0, Math.round(def.armor * levelMult * armorMult) + typeMeta.armorDelta),
     gold: [
       Math.round(def.gold[0] * (1 + (floor - 1) * 0.5)),
       Math.round(def.gold[1] * (1 + (floor - 1) * 0.5)),

@@ -2608,30 +2608,33 @@ export function reagentPoolForFloor(floor: number): string[] {
 
 export const THREAT_META: Record<
   Threat,
-  { name: string; desc: string; chance: number; hpMult: number; atkMult: number; gearOnly: boolean }
+  { name: string; desc: string; chance: number; hpMult: number; atkMult: number; armorMult: number; gearOnly: boolean }
 > = {
   normal: {
     name: "Обычный",
     desc: "Стандартная угроза своего этажа. Дроп по общим правилам.",
     chance: 0.8,
-    hpMult: 1,
+    hpMult: 1.3,
     atkMult: 1,
+    armorMult: 1,
     gearOnly: false,
   },
   horror: {
     name: "Ужас",
     desc: "Крепче и злее обычного, с дополнительным приёмом — но без печатей. Пустых рук не оставляет: доля «ничего» уходит в снаряжение.",
     chance: 0.15,
-    hpMult: 1.45,
-    atkMult: 1.3,
+    hpMult: 2.6,
+    atkMult: 2,
+    armorMult: 2,
     gearOnly: true,
   },
     catastrophe: {
     name: "Катастрофа",
     desc: "Мини-босс: не меньше двух особых приёмов, пассивный эффект и одна печать. Чаще всех оставляет снаряжение.",
     chance: 0.05,
-    hpMult: 1.85,
-    atkMult: 1.55,
+    hpMult: 9.1,
+    atkMult: 7,
+    armorMult: 7,
     gearOnly: false,
   },
 };
