@@ -214,5 +214,6 @@ test("эффекты: боевая панель показывает иконк�
   assert.match(view, /enemyEffectChips\(b\)/, "эффекты монстра считаются в бою");
   assert.match(view, /EffectChips chips=\{playerChips\}/, "иконки героя вставлены");
   assert.match(view, /EffectChips chips=\{enemyChips\}/, "иконки монстра вставлены");
-  assert.match(view, /boon-row/, "усиленная характеристика подсвечивается");
+  const row = fs.readFileSync("src/components/SummaryRow.tsx", "utf8");
+  assert.match(row, /boon-row/, "усиленная характеристика подсвечивается");
 });

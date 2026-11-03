@@ -2,7 +2,9 @@ import { useState } from "react";
 import {
   ArrowLeftRight,
   Crosshair,
+  EyeOff,
   Hourglass,
+  ListChecks,
   Shield,
   ShieldCheck,
   ShieldPlus,
@@ -30,7 +32,9 @@ export type MetricKey =
   | "magicResist"
   | "fortify"
   | "enemyDamage"
-  | "incomingDamage";
+  | "incomingDamage"
+  | "missChance"
+  | "stats";
 
 interface MetricInfo {
   label: string;
@@ -93,6 +97,16 @@ export const METRIC_INFO: Record<MetricKey, MetricInfo> = {
     label: "Входящий урон",
     icon: Skull,
     what: "Сколько урона вы получите от удара врага после ваших защит.",
+  },
+  missChance: {
+    label: "Промах в мраке",
+    icon: EyeOff,
+    what: "В тёмном подземелье физический удар может промахнуться. Проверка идёт и для вас, и для врага.",
+  },
+  stats: {
+    label: "Характеристики",
+    icon: ListChecks,
+    what: "Ваши основные характеристики: СИЛ, ЛОВ и ИНТ. От них зависят урон, ходы, приёмы и сопротивления.",
   },
 };
 
