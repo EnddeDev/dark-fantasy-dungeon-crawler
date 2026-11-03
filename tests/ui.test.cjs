@@ -243,6 +243,22 @@ test("battle view shows the biome rule and live burning stacks", () => {
   assert.ok(darkHtml.includes("25%"));
 });
 
+test("battle summary rows are icons with values; names and hints live in the popup", () => {
+  const b = freshBattle(makePlayer(), 3, false, "dark");
+  const html = renderToStaticMarkup(React.createElement(BattleView, {
+    battle: b, onAct: noop, onEnemyTurn: noop, onContinue: noop,
+  }));
+  const start = html.indexOf("Сводка боя");
+  const summary = html.slice(start, html.indexOf("Действия</h3>", start) > 0 ? html.indexOf("Действия</h3>", start) : undefined);
+  assert.ok(summary.includes('aria-label="Урон оружием: '), "урон оружием — иконка и значение");
+  assert.ok(summary.includes('aria-label="Броня: '), "броня — иконка и значение");
+  assert.ok(summary.includes('aria-label="Промах в мраке: 25%"'), "промах в мраке показан иконкой");
+  assert.ok(summary.includes('aria-label="Характеристики: '), "характеристики — иконка и значение");
+  assert.ok(!summary.includes(">Ходов в раунде<") && !summary.includes(">Урон оружием<"), "названия строк не выводятся текстом");
+  assert.ok(!summary.includes("после брони"), "подсказка строки не выводится в карточке");
+  assert.ok(!summary.includes('role="tooltip"'), "подсказка открывается только по наведению");
+});
+
 test("lobby exposes stat reset, special supplies and sell buttons", () => {
   const html = renderToStaticMarkup(React.createElement(Lobby, {
     player: makePlayer({ gold: 1000, bag: { moss: 2, sapper_kit: 1 } }), controller: {}, shopStock: [],

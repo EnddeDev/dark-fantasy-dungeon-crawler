@@ -26,6 +26,8 @@ import {
 } from "../game/battle";
 import { FoePortrait } from "./FoeArt";
 import { ItemArt } from "./ItemArt";
+import { SummaryRow } from "./SummaryRow";
+import type { MetricKey } from "./MetricBadge";
 import { Btn, Meter, Tag } from "./ui";
 import { BiomeRule, BiomeTag, biomeStyle } from "./BiomeLabel";
 import { isBattleCurse } from "../game/traps";
@@ -101,6 +103,22 @@ export function BattleView({
     "Ходов в раунде": highlight.has("ap"),
     "Уклонение": highlight.has("evade"),
     "Критический удар": highlight.has("crit"),
+  };
+
+  /* Иконка и подсказка каждой строки сводки */
+  const ROW_METRIC: Record<string, MetricKey> = {
+    "Урон оружием": "damage",
+    "По противнику": "enemyDamage",
+    "Броня": "armor",
+    "Входящий урон": "incomingDamage",
+    "Ходов в раунде": "ap",
+    "Уклонение": "evade",
+    "Промах в мраке": "missChance",
+    "Критический удар": "crit",
+    "Стойкость": "resist",
+    "Маг. сопротивление": "magicResist",
+    "Укрепление": "fortify",
+    "Характеристики": "stats",
   };
 
   const rows: {
@@ -294,53 +312,16 @@ export function BattleView({
                 </button>
               </div>
 
-              <dl className="mt-2 grid gap-x-5 gap-y-1.5 text-[0.94rem] sm:grid-cols-2">
-                {rows.map((row) => {
-                  const live = changed(row.base, row.now);
-                  return (
-                    <div
-                      key={row.label}
-                      className={`border-b border-line/40 pb-1.5 ${
-                        highlightedRows[row.label] ? "boon-row -mx-1 rounded-sm px-1" : ""
-                      }`}
-                    >
-                      <div className="flex flex-wrap items-baseline gap-1.5">
-                        <dt className="truncate text-mute">{row.label}</dt>
-                        {highlightedRows[row.label] && (
-                          <span aria-hidden className="boon-mark font-mono text-[0.7rem]" title="временно усилено">
-                            ▲
-                          </span>
-                        )}
-                        {row.badge && (
-                          <span
-                            className={`border px-1 py-0.2 font-mono text-[0.78rem] font-bold ${
-                              row.badge.tone === "rubric"
-                                ? "border-rubric/60 bg-rubric/15 text-rubric"
-                                : row.badge.tone === "flame"
-                                ? "border-flame/60 bg-flame/15 text-flamehi"
-                                : "border-verd/60 bg-verd/15 text-verd"
-                            }`}
-                          >
-                            {row.badge.text}
-                          </span>
-                        )}
-                        <dd className="ml-auto flex shrink-0 items-baseline gap-1.5 font-mono tab">
-                          {live && <span className="text-[0.86rem] text-mute line-through decoration-rubric/70">{row.base}</span>}
-                          <span
-                            key={row.now}
-                            className={`value-pop text-[1.02rem] font-bold ${
-                              live ? (row.badge?.tone === "rubric" ? "text-rubric" : "text-flame") : "text-flamehi"
-                            }`}
-                          >
-                            {row.now}
-                          </span>
-                        </dd>
-                      </div>
-                      <div className="truncate font-mono text-[0.76rem] text-mute/80">{row.hint}</div>
-                    </div>
-                  );
-                })}
-              </dl>
+              <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1.5 text-[0.94rem] sm:grid-cols-3">
+                {rows.map((row, i) => (
+                  <SummaryRow
+                    key={row.label}
+                    row={{ ...row, metric: ROW_METRIC[row.label], boon: highlightedRows[row.label] }}
+                    live={changed(row.base, row.now)}
+                    align={i % 2 === 1 ? "right" : "left"}
+                  />
+                ))}
+              </div>
 
               <div className="mt-2 grid grid-cols-3 gap-2 border border-flamedim/40 bg-black/35 p-2 text-center">
                 <div>
