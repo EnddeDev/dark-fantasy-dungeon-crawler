@@ -54,6 +54,8 @@ import {
   rollEffectBase,
   techniqueIntReq,
   gearLevelMultiplier,
+  ARMOR_CURVE,
+  armorValue,
 } from "./gearScaling";
 import { statConsumableDamage, statTechniqueDamage } from "./statFormulas";
 import type { ArchetypeId } from "./archetypes";
@@ -1747,7 +1749,13 @@ export function scaledGearStats(item: GearItem) {
   const cls = gearClassFor(item);
   const rolls = item.statRolls ?? rollItemStatRolls(base, cls, () => 0.5);
   /* Оружие не даёт защиту, здоровье и уклонение — только свойства. */
-  const armor = kind === "weapon" ? 0 : scaleGearStatByLevel(Math.ceil(rolls.armor * m), level);
+  /* Броня предмета: по границам слота и качеству; у старых предметов качество считается при миграции. */
+  const armor =
+    kind === "weapon"
+      ? 0
+      : kind === "armor" && ARMOR_CURVE[base.slot]
+        ? armorValue(base.slot, cls, level, item.wear, item.armorQuality ?? 0.5)
+        : scaleGearStatByLevel(Math.ceil(rolls.armor * m), level);
   const hp = kind === "weapon" ? 0 : scaleGearStatByLevel(Math.ceil(rolls.hp * m), level);
   const evadePp = kind === "weapon" ? 0 : scaleGearStatByLevel(Math.ceil((rolls.evade ?? 0) * m), level);
   const evade = Math.min(0.5, evadePp / 100);
@@ -1967,12 +1975,15 @@ export function createGearItem(opts: {
   const effectRolls: Partial<Record<GearEffectId, number>> = {};
   for (const id of effects) effectRolls[id] = rollEffectBase(id, rng);
 
+  /* Последний бросок: остальные выпадения не меняются. */
+  const armorQuality = rng();
   return {
     uid: `g_${Date.now().toString(36)}_${++gearSeq}_${rng().toString(36).slice(2, 8)}`,
     wearMult,
     effects,
     effectRolls,
     statRolls,
+    armorQuality,
     passive,
     baseId: base.id,
     kind,
@@ -2066,6 +2077,7 @@ export function migrateGearItem(item: GearItem): GearItem {
     slot: base.slot ?? item.slot,
     gearClass,
     statRolls,
+    armorQuality: item.armorQuality ?? seededRng(`${item.uid || item.baseId}:armor`)(),
     effects,
     effectRolls,
     rareAffix: undefined,
