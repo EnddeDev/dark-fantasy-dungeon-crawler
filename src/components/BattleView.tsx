@@ -13,12 +13,13 @@ import {
   consumableScaleLabel,
 } from "../game/content";
 import { GEAR_EFFECTS, GEAR_PASSIVES, effectDetail } from "../game/gearEffects";
-import { MONSTER_RACE_META, MONSTER_TYPE_META, monsterEvade, raceTraits } from "../game/monsters";
+import { MONSTER_RACE_META, MONSTER_TYPE_META, WEAKNESS_STEP, monsterEvade, raceTraits } from "../game/monsters";
 import { epicSkillDesc } from "../game/content";
 import {
   ENEMY_COOLDOWN_MOVES,
   ENEMY_MOVE_COOLDOWN,
   combatReadout,
+  enemyArmorNow,
   enemyMoveCooldownLeft,
   queuePreview,
   type BattleState,
@@ -137,6 +138,8 @@ export function BattleView({
           ? { text: `−${b.p.statuses.cursePower ?? 30}% Проклятие (${isBattleCurse(b.p.statuses.curse) ? "до конца боя" : `${b.p.statuses.curse} р.`})`, tone: "rubric" }
           : b.p.statuses.rage > 0
           ? { text: `Ярость: +10%/10% недостающих ОЗ (${b.p.statuses.rage} р.)`, tone: "flame" }
+          : (b.p.statuses.weakness ?? 0) > 0
+          ? { text: `Слабость −${Math.round((b.p.statuses.weakness ?? 0) * WEAKNESS_STEP * 100)}% (${b.p.statuses.weakness} нал.)`, tone: "rubric" }
           : undefined,
       hint: `${b.p.weaponName} + ${statDamage(b.p.stats.str)} от СИЛ`,
     },
@@ -149,7 +152,7 @@ export function BattleView({
         : e.passive?.id === "stone_hide"
         ? { text: "−25% Каменная шкура", tone: "rubric" }
         : undefined,
-      hint: `после брони ${e.armor}${e.guard ? " и его защиты" : ""}${e.passive?.id === "stone_hide" ? " и каменной шкуры" : ""}`,
+      hint: `после брони ${enemyArmorNow(e)}${e.guard ? " и его защиты" : ""}${e.passive?.id === "stone_hide" ? " и каменной шкуры" : ""}`,
     },
     {
       label: "Броня",
@@ -676,7 +679,7 @@ export function BattleView({
               </span>
               <span className="flex items-center gap-1.5">
                 <Shield size={13} aria-hidden />
-                броня {e.armor}
+                броня {enemyArmorNow(e)}
               </span>
               <span className="flex items-center gap-1.5">
                 <Swords size={13} aria-hidden />
@@ -803,7 +806,7 @@ export function BattleView({
                 <h4 className="sc mb-2 text-verd">Что на него действует и что нет</h4>
                 <ul className="space-y-1 text-[0.94rem] text-parch/85">
                   <li>
-                    Броня <b className="text-parch">{e.armor}</b> — вычитается из физических ударов;{" "}
+                    Броня <b className="text-parch">{enemyArmorNow(e)}</b> — вычитается из физических ударов;{" "}
                     <b>пробивающие</b> приёмы и свитки игнорируют.
                   </li>
                   <li>
@@ -831,7 +834,7 @@ export function BattleView({
                 <p className="text-[0.94rem] leading-snug text-parch/85">{MONSTER_RACE_META[e.def.race].note}</p>
                 <ul className="mt-2 space-y-1 text-[0.92rem] text-mute">
                   <li>• Тип: <b className="text-parch">{MONSTER_TYPE_META[e.mtype].name.toLowerCase()}</b> — {MONSTER_TYPE_META[e.mtype].note}</li>
-                  {raceTraits(e.def.race).map((t) => (
+                  {raceTraits(e.def.race, e.mtype).map((t) => (
                     <li key={t}>• {t}</li>
                   ))}
                   {(() => {

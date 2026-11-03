@@ -3733,7 +3733,7 @@ test("шипы врага молчат на свиток и магический
 
 test("шипы героя отвечают на физическую атаку врага, но не на магию", () => {
   const strike = freshBattle(mkP({ level: 5, stats: { str: 6, agi: 2, int: 2 }, hp: 200 }), 1);
-  strike.enemy.def = { ...strike.enemy.def, race: "none", type: "strong" };
+  strike.enemy.def = { ...strike.enemy.def, race: "undead", type: "strong" };
   strike.enemy.moves = ["attack"];
   strike.enemy.effectPower = {};
   strike.p.effectPower = { thorns: 9 };
@@ -3746,7 +3746,7 @@ test("шипы героя отвечают на физическую атаку 
   assert.ok(hit.log.some((l) => l.text.includes("Шипы возвращают")), "нет сообщения о шипах героя");
 
   const spell = freshBattle(mkP({ level: 5, stats: { str: 6, agi: 2, int: 2 }, hp: 200 }), 1);
-  spell.enemy.def = { ...spell.enemy.def, race: "none", type: "strong" };
+  spell.enemy.def = { ...spell.enemy.def, race: "undead", type: "strong" };
   spell.enemy.moves = ["curse"];
   spell.enemy.effectPower = {};
   spell.p.effectPower = { thorns: 9 };
