@@ -20,6 +20,7 @@ import { combatReadout, derived, equippedList, techniqueSkillScale, type BattleS
 import type { Player, Run } from "../game/types";
 import { Btn, Meter } from "./ui";
 import { StatBadge } from "./StatBadge";
+import { MetricBadge } from "./MetricBadge";
 import { isBattleCurse, trapBypassChance, trapDisarmChance } from "../game/traps";
 import { CHARACTER_NAME_MAX } from "../game/characterName";
 
@@ -59,16 +60,6 @@ function SheetSection({ title, children }: { title: string; children: ReactNode 
       <h3 className="sc mb-3 text-[0.87rem] text-flamedim">{title}</h3>
       {children}
     </section>
-  );
-}
-
-function Metric({ label, value, note }: { label: string; value: string; note?: string }) {
-  return (
-    <div className="border border-line/80 bg-black/20 px-3 py-2.5">
-      <div className="text-[0.92rem] text-mute">{label}</div>
-      <div className="mt-1 font-mono text-[1.13rem] leading-tight tab text-flamehi">{value}</div>
-      {note && <div className="mt-1 text-[0.87rem] leading-snug text-mute">{note}</div>}
-    </div>
   );
 }
 
@@ -114,7 +105,6 @@ export function Rail({
     setNameError(null);
   };
   const d = derived(player);
-  const arch = player.archetype ? ARCHETYPES[player.archetype] : null;
   const readout = battle ? combatReadout(battle) : null;
   const flatDamage = d.strFlat + (player.passives.includes("heavy_hand") ? 3 : 0) + d.rareAffixes.filter((id) => id === "might").length * 3;
   const damage: [number, number] = readout ? [readout.dmgMin, readout.dmgMax] : [d.hit[0] + flatDamage, d.hit[1] + flatDamage];
@@ -403,24 +393,23 @@ export function Rail({
               </SheetSection>
 
               <SheetSection title={battle ? "Бой · текущие значения" : "Боевые параметры"}>
-                <div className="grid grid-cols-2 gap-2">
-                  <Metric label="Архетип" value={arch ? arch.name : "не выбран"} note={arch ? `${arch.short} · рубежи 5/10` : "Откроется на 5 уровне"} />
-            <Metric label="Урон оружия" value={`${damage[0]}–${damage[1]}`} note={battle ? "До брони противника" : `Включая +${flatDamage} от силы и пассивных умений`} />
-                  <Metric
-                    label="Множитель приёма"
+                <div className="grid grid-cols-3 gap-2">
+                  <MetricBadge metric="damage" value={`${damage[0]}–${damage[1]}`} note={battle ? "До брони противника" : `Включая +${flatDamage} от силы и пассивных умений`} />
+                  <MetricBadge
+                    metric="techMultiplier"
                     value={techWs ? (techWs.scaleMult + techSkillScale).toFixed(2) : "—"}
                     note={techWs ? `${STAT_META[techWs.scaleStat].name}, до 10 · ${techWs.scaleMult} + навыки ${techSkillScale.toFixed(2)}` : "Нет оружия с приёмом"}
                   />
-                  <Metric label="Броня" value={String(armor)} note={`Снаряжение: +${d.armorBonus}`} />
-                  <Metric label="Уклонение" value={percent(readout?.evade ?? d.evade)} note="Предел — 99%" />
-                  <Metric label="Критический удар" value={percent(readout?.crit ?? d.critChance)} note={`Множитель ×${(readout?.critDamage ?? d.critDamage).toFixed(2)}`} />
-                  <Metric label="Ходы за раунд" value={String(ap)} note="Ловкость + ускорение предметов" />
-                  <Metric label="Стойкость" value={percent(resist)} note="Сопротивление эффектам, предел 99%" />
-                  <Metric label="Маг. сопротивление" value={percent(readout?.magicResist ?? d.magicResist)} note="Снижение магического урона" />
-                  <Metric label="Укрепление" value={percent(readout?.fortify ?? d.fortify)} note="Снижение физического урона" />
+                  <MetricBadge metric="armor" value={String(armor)} note={`Снаряжение: +${d.armorBonus}`} />
+                  <MetricBadge metric="evade" value={percent(readout?.evade ?? d.evade)} note="Предел — 99%" />
+                  <MetricBadge metric="crit" value={percent(readout?.crit ?? d.critChance)} note={`Множитель ×${(readout?.critDamage ?? d.critDamage).toFixed(2)}`} />
+                  <MetricBadge metric="ap" value={String(ap)} note="Ловкость + ускорение предметов" />
+                  <MetricBadge metric="resist" value={percent(resist)} note="Сопротивление эффектам, предел 99%" />
+                  <MetricBadge metric="magicResist" value={percent(readout?.magicResist ?? d.magicResist)} note="Снижение магического урона" />
+                  <MetricBadge metric="fortify" value={percent(readout?.fortify ?? d.fortify)} note="Снижение физического урона" />
                   {readout && <>
-                    <Metric label="Урон по врагу" value={`${readout.effMin}–${readout.effMax}`} note="После его брони и защиты" />
-                    <Metric label="Входящий урон" value={`${readout.inMin}–${readout.inMax}`} note="После вашей брони и эффектов" />
+                    <MetricBadge metric="enemyDamage" value={`${readout.effMin}–${readout.effMax}`} note="После его брони и защиты" />
+                    <MetricBadge metric="incomingDamage" value={`${readout.inMin}–${readout.inMax}`} note="После вашей брони и эффектов" />
                   </>}
                 </div>
               </SheetSection>
