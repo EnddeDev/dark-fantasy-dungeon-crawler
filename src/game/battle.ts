@@ -1455,9 +1455,10 @@ function applyVamp(b: BattleState, dealt: number, extraRatio = 0, source: "weapo
   if (heal > 0) push(b, `Похищение жизни: +${heal} здоровья.`, "p");
 }
 
-/** Броня врага сейчас: воскресшая нежить теряет половину. */
-export function enemyArmorNow(e: { armor: number; revived?: boolean }): number {
-  return e.revived ? Math.round(e.armor * (1 - REVIVE_DEBUFF)) : e.armor;
+/** Броня врага сейчас: воскресшая нежить теряет половину; в стойке (как у героя) — ×1.25 до его следующего хода. */
+export function enemyArmorNow(e: { armor: number; revived?: boolean; guard?: boolean }): number {
+  const base = e.revived ? Math.round(e.armor * (1 - REVIVE_DEBUFF)) : e.armor;
+  return e.guard ? Math.round(base * GUARD_ARMOR_MULT) : base;
 }
 
 /**
@@ -1481,10 +1482,6 @@ export function damageAfterEnemyDefense(b: BattleState, raw: number, kind: "phys
     if (!effectsDepleted(b)) d = Math.round(d * (1 - eChance(b, "fortify")));
   } else if (!effectsDepleted(b)) {
     d = Math.round(d * (1 - eChance(b, "magic_resist")));
-  }
-  /* Стойка — действие, а не эффект: она режет урон и при истощении. */
-  if (b.enemy.guard) {
-    d = Math.floor(d / 2);
   }
   if (!effectsDepleted(b)) d -= eEffect(b, "damage_resist");
   d = Math.max(1, d);

@@ -148,11 +148,11 @@ export function BattleView({
       base: `${r.dmgMin}–${r.dmgMax}`,
       now: `${r.effMin}–${r.effMax}`,
       badge: e.guard
-        ? { text: "−50% Защита врага", tone: "rubric" }
+        ? { text: "+25% Броня врага", tone: "rubric" }
         : e.passive?.id === "stone_hide"
         ? { text: "−25% Каменная шкура", tone: "rubric" }
         : undefined,
-      hint: `после брони ${enemyArmorNow(e)}${e.guard ? " и его защиты" : ""}${e.passive?.id === "stone_hide" ? " и каменной шкуры" : ""}`,
+      hint: `после брони ${enemyArmorNow(e)}${e.guard ? " (в защите +25%)" : ""}${e.passive?.id === "stone_hide" ? " и каменной шкуры" : ""}`,
     },
     {
       label: "Броня",
