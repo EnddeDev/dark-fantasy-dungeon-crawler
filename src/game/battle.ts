@@ -9,6 +9,7 @@ import {
   BOSS_RARITY_WEIGHTS,
   CHEST_RARITY_WEIGHTS,
   THREAT_META,
+  BOSS_META,
   dungeonGold,
   consumableIntReq,
   consumablePower,
@@ -669,9 +670,10 @@ export function spawnEnemy(
 
   // Шаг усиления падает на 0.05 за уровень, но не ниже ×1.05 (кроме ходов).
   const levelMult = enemyLevelMult(level);
-  const hpMult = levelMult * (isBoss ? 1 : meta.hpMult) * typeMeta.hpMult;
-  const atkMult = levelMult * (isBoss ? 1 : meta.atkMult) * typeMeta.atkMult;
-  const armorMult = isBoss ? 1 : meta.armorMult;
+  const scale = isBoss ? BOSS_META : meta;
+  const hpMult = levelMult * scale.hpMult * typeMeta.hpMult;
+  const atkMult = levelMult * scale.atkMult * typeMeta.atkMult;
+  const armorMult = scale.armorMult;
 
   /* Приёмы рода (запугивание, мрак, холодное касание, сила ада) есть у каждой твари. */
   const moves: EnemyMove[] = [...def.moves, ...raceBonusMoves(def.race)];
