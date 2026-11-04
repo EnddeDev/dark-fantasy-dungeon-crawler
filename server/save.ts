@@ -297,7 +297,7 @@ function sanitizeQuestLog(raw: unknown): QuestLog {
     }),
     blessingNext: blessingNext as string | null,
     wizard: sanitizeShopLines(input.wizard, "волшебник"),
-    villager: sanitizeShopLines(input.villager, "сельчанин"),
+    villager: sanitizeShopLines(input.villager, "проходимец"),
     mercenary: listOf(input.mercenary, "наёмник", 6, (g, i) => sanitizeGear(g, i)),
   };
 }

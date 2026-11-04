@@ -83,7 +83,7 @@ test("новый герой получает журнал заданий с дв
   assert.equal(log.offers.length, 2, "два задания на старте");
   assert.equal(log.blessingOffers.length, 6, "все шесть благословений у священника, закрытые с замком");
   assert.ok(log.wizard.length > 0 && log.wizard.length <= 6, "волшебник продаёт до шести позиций");
-  assert.ok(log.villager.length > 0 && log.villager.length <= 5, "сельчанин продаёт до пяти реагентов");
+  assert.ok(log.villager.length > 0 && log.villager.length <= 5, "проходимец продаёт до пяти реагентов");
   assert.ok(log.mercenary.length > 0 && log.mercenary.length <= 5, "наёмник продаёт до пяти вещей");
   assert.deepEqual(log.trust, quests.zeroTrust(), "доверие ко всем жителям стартует с нуля");
   for (const line of log.wizard) assert.ok(line.qty >= 1 && line.qty <= quests.WIZARD_MAX_QTY, "волшебник: не больше трёх штук");
@@ -536,7 +536,7 @@ test("рецепты: делятся по цене на шесть частей,
 });
 
 
-test("лобби: наёмник показывает картинку и характеристики, сельчанин — картинку и окно реагента", () => {
+test("лобби: наёмник показывает картинку и характеристики, проходимец — картинку и окно реагента", () => {
   const { Lobby } = loadUi("src/components/Lobby.tsx", "lobby-merchant-info");
   const base = PlayerFactory.createInitial();
   const log = {
@@ -579,7 +579,7 @@ test("лобби: наёмник показывает картинку и хар
   const villager = render("villager");
   const reagent = quests.logOf({ ...base, questLog: log }).villager[0];
   const reagentName = content.ITEMS[reagent.id].name;
-  assert.ok(villager.includes(`title="Подробнее: ${reagentName}"`), "у реагента сельчанина есть «Подробнее»");
+  assert.ok(villager.includes(`title="Подробнее: ${reagentName}"`), "у реагента проходимца есть «Подробнее»");
   assert.ok(villager.includes(reagentName), "карточка реагента с названием и картинкой");
   assert.ok(!villager.includes("Нужен в рецептах"), "окно характеристик закрыто до нажатия");
 });
