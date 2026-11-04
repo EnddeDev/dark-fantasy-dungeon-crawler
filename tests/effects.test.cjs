@@ -226,3 +226,13 @@ test("эффекты: боевая панель показывает иконк�
   const row = fs.readFileSync("src/components/SummaryRow.tsx", "utf8");
   assert.match(row, /boon-row/, "усиленная характеристика подсвечивается");
 });
+
+test("бой: ход монстра наступает через 0.5 секунды, оглушённый герой пропускает ход сам", () => {
+  const view = fs.readFileSync("src/components/BattleView.tsx", "utf8");
+  assert.match(view, /const TURN_PAUSE_MS = 500;/, "пауза 0.5 секунды");
+  assert.match(view, /window\.setTimeout\(onEnemyTurn, TURN_PAUSE_MS\)/, "ход монстра ждёт паузу");
+  assert.doesNotMatch(view, /setTimeout\(onEnemyTurn, 720\)/, "старая задержка убрана");
+  assert.match(view, /window\.setTimeout\(onStunSkip, TURN_PAUSE_MS\)/, "оглушённый герой пропускает ход по паузе");
+  const game = fs.readFileSync("src/views/GameView.tsx", "utf8");
+  assert.match(game, /onStunSkip=\{\(\) => game\.battle\.skipStunned\(\)\}/, "экран подключён к контроллеру");
+});

@@ -2238,15 +2238,23 @@ function applyArmorSkill(b: BattleState, sk: ArmorSkillView) {
   push(b, `«${sk.name}»: ${armorSkillDesc(ARMOR_SKILLS[sk.id])}`, "p");
 }
 
+/**
+ * Оглушение: ход героя пропускается целиком. Действие не тратится и не засчитывается,
+ * очередь сразу уходит дальше. Экран вызывает это сам, без кнопки.
+ */
+export function skipStunnedTurn(b0: BattleState): BattleState {
+  if (b0.over || b0.queue[b0.idx] !== "p" || b0.p.statuses.stunAp <= 0) return b0;
+  const b = clone(b0);
+  b.p.statuses.stunAp--;
+  push(b, "Оглушение: ты пропускаешь этот ход.", "e");
+  advance(b);
+  return b;
+}
+
 export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
   if (b0.over || b0.queue[b0.idx] !== "p") return b0;
+  if (b0.p.statuses.stunAp > 0) return skipStunnedTurn(b0);
   const b = clone(b0);
-  if (b.p.statuses.stunAp > 0) {
-    b.p.statuses.stunAp--;
-    push(b, "Оглушение: ты пропускаешь этот ход.", "e");
-    advance(b);
-    return b;
-  }
   if (b.p.statuses.fear > 0) {
     b.p.statuses.fear--;
     b.p.guard = true;

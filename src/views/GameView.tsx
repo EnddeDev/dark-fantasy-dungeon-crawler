@@ -64,6 +64,7 @@ export function GameView({
             battle={battle}
             onAct={(a) => game.battle.act(a)}
             onEnemyTurn={() => game.battle.enemyTurn()}
+            onStunSkip={() => game.battle.skipStunned()}
             onContinue={() => game.battle.continueAfterWin()}
           />
         )}

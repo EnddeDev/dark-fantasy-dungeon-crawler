@@ -1,4 +1,4 @@
-import { enemyStep, playerAct, type BattleState, type PlayerAction } from "../game/battle";
+import { enemyStep, playerAct, skipStunnedTurn, type BattleState, type PlayerAction } from "../game/battle";
 import { grantXp } from "../game/content";
 import { applyMarkVictory, refreshAfterNewFloor } from "../game/quests";
 import { pruneRunLoot, usedFromBags } from "../game/runLoot";
@@ -28,6 +28,16 @@ export class BattleController {
     /* Сумка героя в модели держится в актуальном виде: по ней считаются штрафы
        за поражение и побег, и она не должна отставать от боевой. */
     this.model.updatePlayer((p) => ({ ...p, bag: { ...next.bag } }));
+    this.resolveEnd(next);
+  }
+
+  /** Оглушённый герой пропускает ход: экран вызывает это после короткой паузы. */
+  skipStunned(): void {
+    const battle = this.model.getSnapshot().battle;
+    if (!battle) return;
+    const next = skipStunnedTurn(battle);
+    if (next === battle) return;
+    this.model.setBattle(next);
     this.resolveEnd(next);
   }
 

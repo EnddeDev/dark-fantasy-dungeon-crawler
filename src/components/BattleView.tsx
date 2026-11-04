@@ -49,15 +49,20 @@ function roman(n: number): string {
   return out || "—";
 }
 
+/** Пауза перед ходом монстра и перед пропуском оглушённого героя: 0.5 секунды. */
+const TURN_PAUSE_MS = 500;
+
 export function BattleView({
   battle,
   onAct,
   onEnemyTurn,
+  onStunSkip,
   onContinue,
 }: {
   battle: BattleState;
   onAct: (a: PlayerAction) => void;
   onEnemyTurn: () => void;
+  onStunSkip: () => void;
   onContinue: () => void;
 }) {
   const [menu, setMenu] = useState<"main" | "skill" | "item">("main");
@@ -71,10 +76,19 @@ export function BattleView({
   useEffect(() => {
     if (b.over) return;
     if (b.queue[b.idx] !== "e") return;
-    const t = window.setTimeout(onEnemyTurn, 720);
+    const t = window.setTimeout(onEnemyTurn, TURN_PAUSE_MS);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [b.idx, b.round, b.over]);
+
+  /* Оглушённый герой не выбирает действие: ход пропускается сам через паузу. */
+  useEffect(() => {
+    if (b.over) return;
+    if (b.queue[b.idx] !== "p" || b.p.statuses.stunAp <= 0) return;
+    const t = window.setTimeout(onStunSkip, TURN_PAUSE_MS);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [b.idx, b.round, b.over, b.p.statuses.stunAp]);
 
   const act = (a: PlayerAction) => {
     setMenu("main");
