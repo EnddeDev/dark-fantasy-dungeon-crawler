@@ -18,11 +18,10 @@ import {
   CHILL_HEAL_MULT,
   IMMUNITY_EFFECTS,
   IMMUNITY_NAMES,
-  magicTickDamage,
+  magicTickFrom,
   oilAcidArmorCut,
   oilIceAttackCut,
   oilTickDamage,
-  statusTickDamage,
 } from "./statusEffects";
 import { isBattleCurse } from "./traps";
 
@@ -118,18 +117,16 @@ export interface EffectChip {
 
 const pct = (n: number): string => `${Math.round(n * 100)}%`;
 
-/** Периодический урон от максимального ОЗ цели. */
+/** Периодический урон: тик задан источником наложения. Магический тик режется сопротивлением. */
 function tickDot(
   kind: "bleed" | "poison" | "burn" | "chill" | "curse" | "blight",
-  maxHp: number,
+  tick: number,
   rounds: number,
   magicResist = 0,
   stacks = 1,
 ): EffectDot {
   const magic = kind === "chill" || kind === "curse";
-  const base = magic
-    ? magicTickDamage(maxHp, kind, magicResist)
-    : statusTickDamage(maxHp, kind);
+  const base = magic ? magicTickFrom(tick, magicResist) : Math.max(1, tick);
   const perTick = base * Math.max(1, stacks);
   return {
     perTick,
@@ -144,11 +141,11 @@ function tickDot(
 /** Что делает масло на клинке: короткая строка для подсказки. */
 const OIL_BLADE_TEXT = {
   magic: "при каждом ударе сразу 3 + 3×ИНТ магического урона",
-  fire: "5 + 1% макс. ОЗ огня за раунд",
-  ice: "3 урона льдом за раунд и −5% силы атаки врага за очко ИНТ",
-  acid: "10 урона кислотой за раунд и броня врага −(1 + ЛОВ)",
+  fire: "урон огнём за раунд: 10% от удара",
+  ice: "урон льдом за раунд: 10% от удара, и −5% силы атаки врага за очко ИНТ",
+  acid: "урон кислотой за раунд: 10% от удара, и броня врага −(1 + ЛОВ)",
   light: "при каждом ударе сразу 2×ИНТ света и 25% промахов врага",
-  poison: "2% + 1% за очко ЛОВ макс. ОЗ яда за раунд",
+  poison: "урон ядом за раунд: 10% от удара",
 } as const;
 
 /** Строка «сколько это в числах» для подсказки. */
@@ -286,7 +283,7 @@ export function playerEffectChips(b: BattleState): EffectChip[] {
     chips.push({
       id: "bleed", name: "Кровотечение", polarity: "bad", rounds: s.wound,
       details: ["Рана не затягивается: кровь идёт каждый раунд."],
-      boosts: [], dot: tickDot("bleed", b.p.maxHp, s.wound, 0, Math.max(1, s.woundStacks ?? 1)), color: EFFECT_COLORS.bleed,
+      boosts: [], dot: tickDot("bleed", s.woundTick, s.wound, 0, Math.max(1, s.woundStacks ?? 1)), color: EFFECT_COLORS.bleed,
     });
   }
   if (s.poison > 0) {
@@ -294,14 +291,14 @@ export function playerEffectChips(b: BattleState): EffectChip[] {
       id: "poison", name: "Яд", polarity: "bad", rounds: s.poison,
       badge: (s.poisonStacks ?? 1) > 1 ? `×${s.poisonStacks}` : undefined,
       details: [`Яд в крови разъедает изнутри. Наложений: ${Math.max(1, s.poisonStacks ?? 1)}.`],
-      boosts: [], dot: tickDot("poison", b.p.maxHp, s.poison, 0, Math.max(1, s.poisonStacks ?? 1)), color: EFFECT_COLORS.poison,
+      boosts: [], dot: tickDot("poison", s.poisonTick, s.poison, 0, Math.max(1, s.poisonStacks ?? 1)), color: EFFECT_COLORS.poison,
     });
   }
   if (s.burn > 0) {
     chips.push({
       id: "burn", name: "Горение", polarity: "bad", rounds: s.burn,
       details: ["Огонь держится на тебе и жжёт каждый раунд."],
-      boosts: [], dot: tickDot("burn", b.p.maxHp, s.burn), color: EFFECT_COLORS.burn,
+      boosts: [], dot: tickDot("burn", s.burnTick, s.burn), color: EFFECT_COLORS.burn,
     });
   }
   if (s.chill > 0) {
@@ -309,7 +306,7 @@ export function playerEffectChips(b: BattleState): EffectChip[] {
       id: "chill", name: "Обморожение", polarity: "bad", rounds: s.chill,
       details: [`Лечение ослаблено вдвое (×${CHILL_HEAL_MULT}).`],
       boosts: [{ stat: "Лечение", value: "−50%" }],
-      dot: tickDot("chill", b.p.maxHp, s.chill, magicRes), color: EFFECT_COLORS.chill,
+      dot: tickDot("chill", s.chillTick, s.chill, magicRes), color: EFFECT_COLORS.chill,
     });
   }
   if (s.curse > 0) {
@@ -320,7 +317,7 @@ export function playerEffectChips(b: BattleState): EffectChip[] {
       rounds: permanent ? null : s.curse, unit: permanent ? "до конца боя" : undefined,
       details: [`Твой урон снижен на ${power}%${permanent ? " до конца боя" : ""}.`],
       boosts: [{ stat: "Урон", value: `−${power}%` }],
-      dot: tickDot("curse", b.p.maxHp, permanent ? 0 : s.curse, magicRes),
+      dot: tickDot("curse", s.curseTick, permanent ? 0 : s.curse, magicRes),
       highlight: "dmg", color: EFFECT_COLORS.curse,
     });
   }
@@ -467,7 +464,7 @@ export function enemyEffectChips(b: BattleState): EffectChip[] {
       id: "bleed", name: "Кровотечение", polarity: "bad", rounds: s.bleed,
       badge: (s.bleedStacks ?? 1) > 1 ? `×${s.bleedStacks}` : undefined,
       details: [`Тварь истекает кровью. Наложений: ${Math.max(1, s.bleedStacks ?? 1)}.`],
-      boosts: [], dot: tickDot("bleed", e.maxHp, s.bleed, 0, Math.max(1, s.bleedStacks ?? 1)), color: EFFECT_COLORS.bleed,
+      boosts: [], dot: tickDot("bleed", s.bleedTick, s.bleed, 0, Math.max(1, s.bleedStacks ?? 1)), color: EFFECT_COLORS.bleed,
     });
   }
   if (s.poison > 0) {
@@ -475,14 +472,14 @@ export function enemyEffectChips(b: BattleState): EffectChip[] {
       id: "poison", name: "Яд", polarity: "bad", rounds: s.poison,
       badge: (s.poisonStacks ?? 1) > 1 ? `×${s.poisonStacks}` : undefined,
       details: [`Яд разъедает тварь изнутри. Наложений: ${Math.max(1, s.poisonStacks ?? 1)}.`],
-      boosts: [], dot: tickDot("poison", e.maxHp, s.poison, 0, Math.max(1, s.poisonStacks ?? 1)), color: EFFECT_COLORS.poison,
+      boosts: [], dot: tickDot("poison", s.poisonTick, s.poison, 0, Math.max(1, s.poisonStacks ?? 1)), color: EFFECT_COLORS.poison,
     });
   }
   if (s.burn > 0) {
     chips.push({
       id: "burn", name: "Горение", polarity: "bad", rounds: s.burn,
       details: ["Огонь держится на твари."],
-      boosts: [], dot: tickDot("burn", e.maxHp, s.burn), color: EFFECT_COLORS.burn,
+      boosts: [], dot: tickDot("burn", s.burnTick, s.burn), color: EFFECT_COLORS.burn,
     });
   }
   if (s.chill > 0) {
@@ -490,7 +487,7 @@ export function enemyEffectChips(b: BattleState): EffectChip[] {
       id: "chill", name: "Обморожение", polarity: "bad", rounds: s.chill,
       details: ["Лечение твари ослаблено вдвое."],
       boosts: [{ stat: "Лечение", value: "−50%" }],
-      dot: tickDot("chill", e.maxHp, s.chill, magicRes), color: EFFECT_COLORS.chill,
+      dot: tickDot("chill", s.chillTick, s.chill, magicRes), color: EFFECT_COLORS.chill,
     });
   }
   if (s.curse > 0) {
@@ -499,7 +496,7 @@ export function enemyEffectChips(b: BattleState): EffectChip[] {
       id: "curse", name: "Проклятие", polarity: "bad", rounds: s.curse,
       details: [`Урон твари снижен на ${power}%.`],
       boosts: [{ stat: "Урон", value: `−${power}%` }],
-      dot: tickDot("curse", e.maxHp, s.curse, magicRes), color: EFFECT_COLORS.curse,
+      dot: tickDot("curse", s.curseTick, s.curse, magicRes), color: EFFECT_COLORS.curse,
     });
   }
   if (s.blight > 0) {
@@ -507,7 +504,7 @@ export function enemyEffectChips(b: BattleState): EffectChip[] {
       id: "blight", name: "Порча", polarity: "bad", rounds: s.blight,
       details: ["Тварь бьёт на 20% слабее."],
       boosts: [{ stat: "Урон", value: "−20%" }],
-      dot: tickDot("blight", e.maxHp, s.blight), color: EFFECT_COLORS.blight,
+      dot: tickDot("blight", s.blightTick, s.blight), color: EFFECT_COLORS.blight,
     });
   }
   if (s.wither > 0) {
@@ -572,14 +569,14 @@ export function enemyEffectChips(b: BattleState): EffectChip[] {
     if (kind === "fire") {
       chips.push({
         id: "burn", name: oilName, polarity: "bad", rounds: s.oilRounds,
-        details: ["Огонь масла: 5 + 1% макс. ОЗ за раунд."],
-        boosts: [], dot: tick(oilTickDamage(e.maxHp, "fire", agi, magicRes), "огонь"), color: EFFECT_COLORS.burn,
+        details: [`Огонь масла: ${s.oilTick} урона за раунд (10% от удара, которым наложено).`],
+        boosts: [], dot: tick(oilTickDamage("fire", s.oilTick, magicRes), "огонь"), color: EFFECT_COLORS.burn,
       });
     } else if (kind === "poison") {
       chips.push({
         id: "poison", name: oilName, polarity: "bad", rounds: s.oilRounds,
-        details: ["Яд масла: 2% + 1% за очко ЛОВ героя от макс. ОЗ за раунд."],
-        boosts: [], dot: tick(oilTickDamage(e.maxHp, "poison", agi, 0), "физический"), color: EFFECT_COLORS.poison,
+        details: [`Яд масла: ${s.oilTick} урона за раунд (10% от удара, которым наложено).`],
+        boosts: [], dot: tick(oilTickDamage("poison", s.oilTick, 0), "физический"), color: EFFECT_COLORS.poison,
       });
     } else if (kind === "ice") {
       const cut = oilIceAttackCut(int);
@@ -587,7 +584,7 @@ export function enemyEffectChips(b: BattleState): EffectChip[] {
         id: "frost", name: oilName, polarity: "bad", rounds: s.oilRounds,
         details: [`Сила атаки и физических приёмов −${Math.round(cut * 100)}% (5% за очко ИНТ героя).`],
         boosts: [{ stat: "Атака", value: `−${Math.round(cut * 100)}%` }],
-        dot: tick(oilTickDamage(e.maxHp, "ice", agi, magicRes), "магический"), color: EFFECT_COLORS.frost,
+        dot: tick(oilTickDamage("ice", s.oilTick, magicRes), "магический"), color: EFFECT_COLORS.frost,
       });
     } else if (kind === "acid") {
       const cut = oilAcidArmorCut(agi);
@@ -595,7 +592,7 @@ export function enemyEffectChips(b: BattleState): EffectChip[] {
         id: "acid", name: oilName, polarity: "bad", rounds: s.oilRounds,
         details: [`Броня твари снижена на ${cut} (1 + ЛОВ героя).`],
         boosts: [{ stat: "Броня", value: `−${cut}` }], highlight: "armor",
-        dot: tick(oilTickDamage(e.maxHp, "acid", agi, magicRes), "магический"), color: EFFECT_COLORS.acid,
+        dot: tick(oilTickDamage("acid", s.oilTick, magicRes), "магический"), color: EFFECT_COLORS.acid,
       });
     } else if (kind === "light") {
       chips.push({

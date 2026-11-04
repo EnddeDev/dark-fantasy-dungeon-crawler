@@ -62,8 +62,8 @@ test("stat formulas count the full characteristic value including the starting p
   assert.equal(formulas.statActions(1), 1);
   assert.equal(formulas.statActions(10), 10);
   assert.equal(formulas.statEvasion(5), 0.25);
-  assert.equal(formulas.statConsumableDamage(1), 8.5);
-  assert.equal(formulas.statConsumableDamage(10), 22);
+  assert.equal(formulas.statConsumableDamage(1), 17);
+  assert.equal(formulas.statConsumableDamage(10), 35);
   assert.ok(Math.abs(formulas.statCritChance(1) - 0.03) < 1e-9);
   assert.ok(Math.abs(formulas.statCritChance(10) - 0.12) < 1e-9);
   assert.equal(formulas.statCritDamage(10), 1);
@@ -83,16 +83,30 @@ test("stat formulas count the full characteristic value including the starting p
   assert.equal(d.magicResist, 0.25);
 });
 
-test("negative effects tick from max HP and codify all nine effects", () => {
-  assert.equal(statuses.statusTickDamage(100, "bleed"), 5);
-  assert.equal(statuses.statusTickDamage(100, "poison"), 4);
-  assert.equal(statuses.statusTickDamage(100, "burn"), 5);
-  assert.equal(statuses.statusTickDamage(100, "chill"), 3);
-  assert.equal(statuses.statusTickDamage(100, "curse"), 3);
-  assert.equal(statuses.statusTickDamage(100, "blight"), 3);
-  assert.equal(statuses.statusTickDamage(1, "poison"), 1);
-  assert.equal(statuses.magicTickDamage(100, "curse", 0), 3);
-  assert.equal(statuses.magicTickDamage(100, "curse", 0.5), 2);
+test("тик задаёт источник: базовая формула, ×2 у приёмов монстров, процент у боссов, магия режется", () => {
+  assert.equal(statuses.DOT_VALUE.burn, 3);
+  assert.equal(statuses.DOT_VALUE.poison, 1);
+  assert.equal(statuses.DOT_VALUE.blight, 2);
+  assert.equal(statuses.dotBaseTick("poison", 1, () => 0), 1, "яд 1 × уровень 1");
+  assert.equal(statuses.dotBaseTick("poison", 1, () => 0.999), 4, "до +3 сверху");
+  assert.equal(statuses.dotBaseTick("burn", 2, () => 0), 6, "огонь 3 × уровень 2");
+  assert.equal(statuses.dotSkillTick("bleed", 3, () => 0), 6, "приём монстра: база × 2");
+  /* Приём героя: база от уровня героя + 1% макс. ОЗ цели (яд, кровь, проклятие). */
+  assert.equal(statuses.skillDotTick("poison", 4, 1000, () => 0), 4 + 10, "яд: база 4 + 1% от 1000");
+  assert.equal(statuses.skillDotTick("bleed", 2, 250, () => 0.999), 2 + 3 + 3, "кровь: база до +3, 1% от 250 = 3");
+  assert.equal(statuses.skillDotTick("curse", 1, 0, () => 0), 1, "проклятие: без ОЗ цели 1% даёт 0");
+  /* Приём героя огонь/лёд/кислота: база + уровень героя × 2. */
+  assert.equal(statuses.skillDotTick("burn", 3, 9999, () => 0), 9 + 6, "огонь: база 3×3 + уровень × 2");
+  assert.equal(statuses.skillDotTick("chill", 5, 9999, () => 0), 5 + 10, "лёд: база 5 + уровень × 2");
+  assert.equal(statuses.skillDotTick("blight", 2, 9999, () => 0), 4 + 4, "кислота: база 2×2 + уровень × 2");
+  assert.equal(statuses.bossDotTick("bleed", 1000), 50, "кровотечение босса 5% от макс. ОЗ");
+  assert.equal(statuses.bossDotTick("chill", 10), 1, "процент не ниже 1");
+  assert.equal(statuses.magicTickFrom(6, 0), 6);
+  assert.equal(statuses.magicTickFrom(6, 0.5), 3);
+  assert.equal(statuses.refreshedTick(true, 5, 3), 5, "активный эффект держит сильнейший тик");
+  assert.equal(statuses.refreshedTick(false, 5, 3), 3, "новый эффект после конца берёт свой тик");
+  assert.equal(statuses.trapTickFrom("bleed", 3), 5);
+  assert.equal(statuses.trapTickFrom("poison", 3), 6);
   assert.equal(statuses.CHILL_HEAL_MULT, 0.5);
   assert.deepEqual(statuses.NEGATIVE_EFFECTS.map((e) => e.id), ["curse", "poison", "burn", "bleed", "chill", "wither", "stun", "fear", "sunder"]);
 });
@@ -145,8 +159,8 @@ test("created and migrated items carry the new stat/effect rolls", () => {
 
 test("consumables use AGI, damage scrolls use INT, healing/support stays flat", () => {
   const stats = { str: 1, agi: 5, int: 5 };
-  assert.equal(content.consumablePower(content.ITEMS.acid_vial, stats), 14.5);
-  assert.equal(content.consumablePower(content.ITEMS.throwing_knife, stats), 14.5);
+  assert.equal(content.consumablePower(content.ITEMS.acid_vial, stats), 25);
+  assert.equal(content.consumablePower(content.ITEMS.throwing_knife, stats), 25);
   assert.equal(content.consumablePower(content.ITEMS.scroll_spark, stats), 20);
   assert.equal(content.consumablePower(content.ITEMS.potion_s, stats), 28);
   assert.equal(content.consumablePower(content.ITEMS.scroll_heal, stats), 32);

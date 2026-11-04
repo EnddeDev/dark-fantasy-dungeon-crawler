@@ -2272,10 +2272,10 @@ export const ITEMS: Record<string, ItemDef> = Object.fromEntries(
     I({ id: "antidote", name: "Горечь полыни", kind: "potion", price: 42, use: { type: "cleanse", power: 8 }, desc: "Снимает кровотечение, проклятие и яд, возвращает 8 здоровья." }),
     I({ id: "rage", name: "Эликсир ярости", kind: "potion", price: 95, use: { type: "rage", rounds: 5 }, desc: "Пять раундов ярости: +10% урона за каждые 10% недостающего ОЗ." }),
     /* оружейные расходники не требуют Интеллекта */
-    I({ id: "throwing_knife", name: "Метательный кинжал", kind: "throwable", price: 28, use: { type: "throw", power: 10, scale: 1.5, scaleStat: "agi" }, desc: "Быстрый бросок: 7 + 1.5×ЛОВ физического урона." }),
+    I({ id: "throwing_knife", name: "Метательный кинжал", kind: "throwable", price: 28, use: { type: "throw", power: 10, scale: 1.5, scaleStat: "agi" }, desc: "Быстрый бросок: 15 + 2×ЛОВ физического урона." }),
     I({ id: "poison_dart", name: "Отравленный дротик", kind: "throwable", price: 48, use: { type: "poison", power: 5, scale: 1, scaleStat: "agi", rounds: 3 }, desc: "Прокалывает кожу и травит живую цель 3 раунда. Нежить, конструкты и призраки невосприимчивы." }),
     I({ id: "smoke_bomb", name: "Дымовая бомба", kind: "throwable", price: 78, use: { type: "smoke", rounds: 2 }, desc: "Густой дым не даёт врагу попасть по тебе в следующие 2 атаки. Это не побег." }),
-    I({ id: "blast_bomb", name: "Взрывная бомба", kind: "throwable", price: 95, use: { type: "explosion", power: 24, scale: 1.5, scaleStat: "agi" }, desc: "Взрыв наносит 7 + 1.5×ЛОВ урона, игнорируя броню." }),
+    I({ id: "blast_bomb", name: "Взрывная бомба", kind: "throwable", price: 95, use: { type: "explosion", power: 24, scale: 1.5, scaleStat: "agi" }, desc: "Взрыв наносит 15 + 2×ЛОВ урона, игнорируя броню." }),
     I({ id: "fear_vial", name: "Зелье ужаса", kind: "potion", price: 70, level: 2, minFloor: 2, use: { type: "fear", rounds: 2 }, desc: "Живая цель 2 хода автоматически держит защиту. Нежить, конструкты и призраки страха не знают." }),
     /* свитки (требуют Интеллект) */
     I({ id: "scroll_spark", name: "Свиток искры", kind: "scroll", price: 60, use: { type: "damage", power: 16, scale: 3, scaleStat: "int", intReq: 2, element: "fire" }, desc: "10 + 2×ИНТ урона. Короткая формула поджога; чтение требует ИНТ 2." }),
@@ -2306,19 +2306,19 @@ export const ITEMS: Record<string, ItemDef> = Object.fromEntries(
       desc: "Смазывает оружие магией на 1 раунд: каждый удар сразу наносит магический урон 3 + 3×ИНТ. Тратит ход." }),
     I({ id: "oil_fire", name: "Огненное масло", kind: "potion", price: 90,
       use: { type: "oil", oil: "fire" },
-      desc: "Смазывает оружие огнём на 1 раунд: удар накладывает огонь — 5 + 1% макс. ОЗ за раунд, 3 раунда. Конструкты уязвимы. Тратит ход." }),
+      desc: "Смазывает оружие огнём на 1 раунд: удар накладывает огонь — тик 10% от удара за раунд, 3 раунда. Конструкты уязвимы. Тратит ход." }),
     I({ id: "oil_ice", name: "Ледяное масло", kind: "potion", price: 95,
       use: { type: "oil", oil: "ice" },
-      desc: "Смазывает оружие льдом на 1 раунд: удар накладывает лёд — 3 урона за раунд и −5% силы атаки врага за каждое очко ИНТ, 3 раунда. Конструкты уязвимы. Тратит ход." }),
+      desc: "Смазывает оружие льдом на 1 раунд: удар накладывает лёд — тик 10% от удара за раунд и −5% силы атаки врага за каждое очко ИНТ, 3 раунда. Конструкты уязвимы. Тратит ход." }),
     I({ id: "oil_acid", name: "Кислотное масло", kind: "potion", price: 100,
       use: { type: "oil", oil: "acid" },
-      desc: "Смазывает оружие кислотой на 1 раунд: удар накладывает кислоту — 10 урона за раунд и снижает броню врага на 1 + ЛОВ, 3 раунда. Конструкты уязвимы. Тратит ход." }),
+      desc: "Смазывает оружие кислотой на 1 раунд: удар накладывает кислоту — тик 10% от удара за раунд и снижает броню врага на 1 + ЛОВ, 3 раунда. Конструкты уязвимы. Тратит ход." }),
     I({ id: "oil_light", name: "Световое масло", kind: "potion", price: 110,
       use: { type: "oil", oil: "light" },
       desc: "Смазывает оружие светом на 1 раунд: каждый удар сразу наносит 2×ИНТ света и ослепляет врага — его удары промахиваются с шансом 25%, 3 раунда. Вампиры уязвимы, звери невосприимчивы. Тратит ход." }),
     I({ id: "oil_poison", name: "Ядовитое масло", kind: "potion", price: 85,
       use: { type: "oil", oil: "poison" },
-      desc: "Смазывает оружие ядом на 1 раунд: удар накладывает яд — 2% + 1%×ЛОВ макс. ОЗ за раунд, 3 раунда. Тратит ход." }),
+      desc: "Смазывает оружие ядом на 1 раунд: удар накладывает яд — тик 10% от удара за раунд, 3 раунда. Тратит ход." }),
     I({ id: "immune_bleed", name: "Зелье от кровотечения", kind: "potion", price: 85,
       use: { type: "immunity", effect: "bleed", rounds: 3 },
       desc: "Тратит ход. Три хода эффект «Кровотечение» на тебя не накладывается." }),
@@ -2414,7 +2414,7 @@ export function consumableScaleStat(def: ItemDef): StatKey | null {
   return def.kind === "scroll" ? "int" : "agi";
 }
 
-/** Расходники: 7 + 1.5×ЛОВ; свитки и приёмы: 10 + 2×ИНТ. Лечебные/вспомогательные зелья без множителя. */
+/** Расходники: 15 + 2×ЛОВ; свитки и приёмы: 10 + 2×ИНТ. Лечебные/вспомогательные зелья без множителя. */
 export function consumablePower(def: ItemDef, stats: Record<StatKey, number>): number {
   const u = def.use;
   if (!u) return 0;
@@ -2427,7 +2427,7 @@ export function consumablePower(def: ItemDef, stats: Record<StatKey, number>): n
 export function consumableScaleLabel(def: ItemDef): string {
   const stat = consumableScaleStat(def);
   if (stat === "int") return "10 + 2×ИНТ";
-  if (stat === "agi") return "7 + 1.5×ЛОВ";
+  if (stat === "agi") return "15 + 2×ЛОВ";
   return "";
 }
 

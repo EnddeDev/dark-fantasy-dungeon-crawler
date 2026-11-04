@@ -205,8 +205,8 @@ export function Rail({
         negative: !mod.good,
       }))
     : [
-        ...(statuses.wound > 0 && !d.legendaryPassives.includes("titan_heart") ? [{ id: "wound", title: "Кровотечение", detail: `На каждом шаге отнимает ${2 + (run?.floor ?? 1)} здоровья.`, badge: `Осталось: ${statuses.wound}`, negative: true }] : []),
-        ...(statuses.poison > 0 && !d.legendaryPassives.includes("titan_heart") ? [{ id: "poison", title: "Отравление", detail: `На каждом шаге отнимает ${3 + (run?.floor ?? 1)} здоровья.`, badge: `Осталось: ${statuses.poison}`, negative: true }] : []),
+        ...(statuses.wound > 0 && !d.legendaryPassives.includes("titan_heart") ? [{ id: "wound", title: "Кровотечение", detail: `На каждом шаге отнимает ${statuses.woundTick ?? 0} здоровья.`, badge: `Осталось: ${statuses.wound}`, negative: true }] : []),
+        ...(statuses.poison > 0 && !d.legendaryPassives.includes("titan_heart") ? [{ id: "poison", title: "Отравление", detail: `На каждом шаге отнимает ${statuses.poisonTick ?? 0} здоровья.`, badge: `Осталось: ${statuses.poison}`, negative: true }] : []),
         ...(statuses.curse > 0 ? [{ id: "curse", title: "Проклятие", detail: `В бою наносимый урон снижен на ${statuses.cursePower ?? 30}%.`, badge: isBattleCurse(statuses.curse) ? "До конца боя" : `Осталось: ${statuses.curse}`, negative: true }] : []),
       ];
   if (battle && battle.p.statuses.haste > 0) current.push({

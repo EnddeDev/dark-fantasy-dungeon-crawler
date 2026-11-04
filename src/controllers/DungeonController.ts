@@ -5,7 +5,7 @@ import { CHEST_RARITY_WEIGHTS, DUNGEON_GOLD_SHARE, GEAR_BASES, ITEMS, consumable
 import { rollStepEvent } from "../game/events";
 import { cellIdx, findPath, openDirs, roomIndexAt, wallBetween } from "../game/maze";
 import { pruneRunLoot } from "../game/runLoot";
-import { CHILL_HEAL_MULT, magicTickDamage, statusTickDamage } from "../game/statusEffects";
+import { CHILL_HEAL_MULT, curseTickFrom, magicTickFrom, refreshedTick, trapTickFrom } from "../game/statusEffects";
 import { applyTrapOutcome, isBattleCurse, lockpickChance, makeTrap, resolveTrap, rollTrapKind, type TrapAction } from "../game/traps";
 import type { Cell, GearItem, Maze, Player, Run, Slot } from "../game/types";
 import { SLOT_META } from "../game/types";
@@ -116,8 +116,14 @@ export class DungeonController {
         case "gold_loss": goldDelta -= e.v ?? 0; break;
         case "gold_pct": goldDelta -= Math.round(ctx.run.gold * ((e.v ?? 0) / 100)); break;
         case "xp": xpGain += e.v ?? 0; break;
-        case "curse": statuses.curse = Math.max(statuses.curse, e.v ?? 0); break;
-        case "poison": statuses.poison = Math.max(statuses.poison, e.v ?? 0); break;
+        case "curse":
+          statuses.curseTick = refreshedTick(statuses.curse > 0, statuses.curseTick ?? 0, curseTickFrom(ctx.floor));
+          statuses.curse = Math.max(statuses.curse, e.v ?? 0);
+          break;
+        case "poison":
+          statuses.poisonTick = refreshedTick(statuses.poison > 0, statuses.poisonTick ?? 0, trapTickFrom("poison", ctx.floor));
+          statuses.poison = Math.max(statuses.poison, e.v ?? 0);
+          break;
         case "cleanse": statuses.curse = 0; statuses.poison = 0; break;
         case "reagent": for (let i = 0; i < (e.v ?? 1); i++) gainedItems.push(pick(reagentPoolForFloor(ctx.floor))); break;
         case "supply": for (let i = 0; i < (e.v ?? 1); i++) gainedItems.push(pick(["potion_s", "antidote", "scroll_spark", "throwing_knife"])); break;
@@ -476,31 +482,31 @@ export class DungeonController {
     if ((r.torchTurns ?? 0) > 0) r.torchTurns = (r.torchTurns ?? 0) - 1;
 
     if (statuses.wound > 0 && !d.legendaryPassives.includes("titan_heart")) {
-      const dmg = statusTickDamage(d.maxHp, "bleed");
+      const dmg = Math.max(1, statuses.woundTick ?? 1);
       hp -= dmg;
       statuses.wound -= 1;
-      r.log.push(`Кровотечение: −${dmg} здоровья (5% макс. ОЗ).`);
+      r.log.push(`Кровотечение: −${dmg} здоровья.`);
     }
     if (statuses.curse > 0 && !isBattleCurse(statuses.curse)) {
-      const dmg = magicTickDamage(d.maxHp, "curse", d.magicResist);
+      const dmg = magicTickFrom(statuses.curseTick ?? 1, d.magicResist);
       hp -= dmg;
       statuses.curse -= 1;
       r.log.push(`Проклятие: −${dmg} здоровья.`);
     }
     if (statuses.poison > 0 && !d.legendaryPassives.includes("titan_heart")) {
-      const poisonDmg = statusTickDamage(d.maxHp, "poison");
+      const poisonDmg = Math.max(1, statuses.poisonTick ?? 1);
       hp -= poisonDmg;
       statuses.poison -= 1;
-      r.log.push(`Яд в крови: −${poisonDmg} здоровья (4% макс. ОЗ).`);
+      r.log.push(`Яд в крови: −${poisonDmg} здоровья.`);
     }
     if ((statuses.burn ?? 0) > 0) {
-      const dmg = statusTickDamage(d.maxHp, "burn");
+      const dmg = Math.max(1, statuses.burnTick ?? 1);
       hp -= dmg;
       statuses.burn = (statuses.burn ?? 0) - 1;
-      r.log.push(`Горение: −${dmg} здоровья (5% макс. ОЗ).`);
+      r.log.push(`Горение: −${dmg} здоровья.`);
     }
     if ((statuses.chill ?? 0) > 0) {
-      const dmg = magicTickDamage(d.maxHp, "chill", d.magicResist);
+      const dmg = magicTickFrom(statuses.chillTick ?? 1, d.magicResist);
       hp -= dmg;
       statuses.chill = (statuses.chill ?? 0) - 1;
       r.log.push(`Обморожение: −${dmg} здоровья, лечение −50%.`);

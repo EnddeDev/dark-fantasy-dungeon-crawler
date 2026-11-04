@@ -74,10 +74,10 @@ test("тексты стихий называют родов, которые к �
   assert.ok(text("light").includes("Иммунитет"), "свет: иммунитет назван");
 });
 
-test("периодический урон: проценты совпадают с таблицей статусов, сопротивления описаны верно", () => {
+test("периодический урон: тик задаёт источник, сопротивления описаны верно", () => {
   const text = (id) => types.DAMAGE_TYPES.find((t) => t.id === id).text;
-  assert.ok(text("poison").startsWith("4% макс. ОЗ"));
-  assert.ok(text("bleed").startsWith("5% макс. ОЗ"));
+  assert.ok(text("poison").startsWith("Тик в конце раунда"));
+  assert.ok(text("bleed").startsWith("Тик в конце раунда"));
   assert.ok(text("poison").includes("Не режется сопротивлениями"));
   assert.ok(text("bleed").includes("Не режется сопротивлениями"));
 });

@@ -629,7 +629,7 @@ export function BattleView({
                                 ? req > 0
                                   ? `ИНТ ${req} · готово`
                                   : consumableScaleLabel(def)
-                                    ? `${consumableScaleLabel(def).replace(" + ", "")} · готово`
+                                    ? `${consumableScaleLabel(def).replace(" + ", "+")} · готово`
                                     : "готово"
                                 : `нужен ИНТ ${req}`}
                         </span>
