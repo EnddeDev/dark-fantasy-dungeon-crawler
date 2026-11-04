@@ -240,8 +240,8 @@ export interface ForgeReagentPlan {
 }
 
 /**
- * Раскладка реагентов: сначала обязательный металлолом, затем самые дешёвые
- * реагенты из сумки. Возвращает только то, что реально есть.
+ * Раскладка реагентов: берём только реагенты состава, по каждой доле не больше таблицы.
+ * Возвращает только то, что реально есть.
  */
 /** Запрос набора: годится и готовая плитка улучшения (ForgeOption), и ручной набор чисел. */
 export interface ForgeReagentRequest {
@@ -279,20 +279,12 @@ export function forgeReagentPlan(bag: Record<string, number>, request: ForgeReag
     avail[id] -= got;
     left -= got;
   };
-  /* Сначала обязательные доли состава, затем добор любыми другими реагентами. */
+  /* Только реагенты из состава: каждой доли не больше, чем её в таблице. Другие реагенты в горн не подменяют
+     нужные, даже если их хватает на общую сумму. Неполный набор снижает риск пропорционально нужным долям. */
   if (need.parts?.length) {
     for (const part of need.parts) take(part.id, part.count);
   } else {
     take("scrap_metal", noScrap ? 0 : need.scrap ?? 0);
-  }
-  /* Если лом входит в набор своей долей, добирать им сверх доли нельзя: у изношенности ровно 10 лома + 5 других. */
-  const banScrapFill = noScrap || need.scrap > 0;
-  const rest = Object.keys(avail)
-    .filter((id) => (avail[id] ?? 0) > 0 && !(banScrapFill && id === "scrap_metal"))
-    .sort((a, b) => (ITEMS[a]?.price ?? 0) - (ITEMS[b]?.price ?? 0) || a.localeCompare(b));
-  for (const id of rest) {
-    if (left <= 0) break;
-    take(id, left);
   }
   const total = need.total - left;
   return { picked, total, scrap: picked.scrap_metal ?? 0 };
