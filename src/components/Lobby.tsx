@@ -1324,7 +1324,7 @@ export function Lobby({
                         <span className="font-mono text-sm text-mute">/ {SHOP_MAX_LEVEL}</span>
                       </div>
                       <p className="mt-1 max-w-xl text-[0.92rem] leading-snug text-mute">
-                        На прилавке появляется снаряжение <b className="text-parch">не выше уровня лавки</b>. Чем выше
+                        На прилавке появляется снаряжение <b className="text-parch">не выше уровня лавки</b>, и каждая позиция с шансом 15% выходит именно этого уровня. Чем выше
                         уровень — тем меньше изношенной дряни и больше дорогих редкостей.
                       </p>
                     </div>

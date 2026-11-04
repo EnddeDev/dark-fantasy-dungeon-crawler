@@ -1108,6 +1108,32 @@ test("shop level tables match the stated 1 and 10 values", () => {
   }
 });
 
+test("shop: каждая позиция с шансом 15% выходит уровня лавки, в том числе выше уровней баз", () => {
+  const seeded = (seed) => {
+    let s = seed;
+    return () => {
+      s = (s * 1664525 + 1013904223) % 4294967296;
+      return s / 4294967296;
+    };
+  };
+  assert.equal(content.SHOP_LEVEL_OFFER_CHANCE, 0.15);
+  /* На 7–10 уровнях баз такого уровня нет: все позиции такого уровня берутся только из броска. */
+  for (const lvl of [7, 10]) {
+    const rng = seeded(lvl * 7919 + 1);
+    let total = 0;
+    let atLevel = 0;
+    for (let i = 0; i < 300; i++) {
+      for (const g of content.rollShopStock(lvl, 3, rng)) {
+        total++;
+        if (g.level === lvl) atLevel++;
+        assert.ok(g.level <= lvl, `предмет уровня ${g.level} не выше лавки ${lvl}`);
+      }
+    }
+    const share = atLevel / total;
+    assert.ok(Math.abs(share - 0.15) < 0.02, `на уровне ${lvl} доля позиций уровня лавки ${share.toFixed(3)}, ожидалось ~0.15`);
+  }
+});
+
 test("shop stock respects the shop level and covers every slot", () => {
   assert.equal(content.SHOP_MAX_LEVEL, 10, "уровней лавки должно быть 10");
   for (let lvl = 1; lvl <= content.SHOP_MAX_LEVEL; lvl++) {
