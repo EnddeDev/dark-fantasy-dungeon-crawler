@@ -3937,3 +3937,38 @@ test("кнопка «Защита» не делит урон пополам, а 
     Math.random = rnd;
   }
 });
+
+test("оглушённый герой пропускает ход сам: действие не тратится, очередь уходит монстру", () => {
+  const base = freshBattle(PlayerFactory.createInitial(), 1, false, "normal", 0, false);
+  const stunned = {
+    ...base,
+    over: null,
+    queue: ["p", "e", "p", "e"],
+    idx: 0,
+    p: { ...base.p, statuses: { ...base.p.statuses, stunAp: 1 } },
+  };
+  const skipped = battle.skipStunnedTurn(stunned);
+  assert.equal(skipped.p.statuses.stunAp, 0, "оглушение снято ровно на один ход");
+  assert.equal(skipped.idx, 1, "очередь ушла к монстру");
+  assert.ok(skipped.log.some((line) => line.text.includes("пропускаешь этот ход")), "в журнале записан пропуск");
+  assert.equal(skipped.enemy.hp, base.enemy.hp, "монстр не получил урона: героя ничего не атаковало");
+});
+
+test("playerAct при оглушении даёт тот же пропуск, что и отдельный пропуск", () => {
+  const base = freshBattle(PlayerFactory.createInitial(), 1, false, "normal", 0, false);
+  const stunned = {
+    ...base,
+    over: null,
+    queue: ["p", "e"],
+    idx: 0,
+    p: { ...base.p, statuses: { ...base.p.statuses, stunAp: 2 } },
+  };
+  const viaAct = battle.playerAct(stunned, { type: "attack" });
+  const viaSkip = battle.skipStunnedTurn(stunned);
+  assert.equal(viaAct.p.statuses.stunAp, 1, "действие не тратит оглушение сверх одного хода");
+  assert.equal(viaAct.p.statuses.stunAp, viaSkip.p.statuses.stunAp);
+  assert.equal(viaAct.idx, viaSkip.idx);
+  assert.equal(viaAct.enemy.hp, base.enemy.hp, "атака не прошла");
+  const notStunned = battle.skipStunnedTurn({ ...stunned, p: { ...stunned.p, statuses: { ...stunned.p.statuses, stunAp: 0 } } });
+  assert.equal(notStunned.idx, 0, "без оглушения пропуска нет");
+});
