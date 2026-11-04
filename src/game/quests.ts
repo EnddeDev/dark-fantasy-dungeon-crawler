@@ -23,11 +23,16 @@ import {
   createGearItem,
   scaledGearStats,
   supplyLevel,
+  RECIPES,
+  type CraftStation,
+  type Recipe,
 } from "./content";
-import { BLESSING_IDS, BLESSINGS, blessingPrice, type BlessingId } from "./blessings";
+import { BLESSINGS, blessingPrice, type BlessingId } from "./blessings";
+import { recipePrice } from "../model/pricing";
 import { cellIdx, openDirs } from "./maze";
-import type {
-  CarriedQuest,
+import {
+  TRUST_MAX,
+  type CarriedQuest,
   GearItem,
   RarityTier,
   Maze,
@@ -48,15 +53,123 @@ export const WIZARD_MAX_QTY = 3;
 /** Скидка кузнеца и торговца на одну покупку. */
 export const COUPON_DISCOUNT = 0.25;
 
-export const GIVER_ORDER: QuestGiverId[] = ["priest", "smith", "merchant", "wizard", "mercenary", "villager"];
+export const GIVER_ORDER: QuestGiverId[] = [
+  "priest",
+  "smith",
+  "merchant",
+  "wizard",
+  "mercenary",
+  "villager",
+  "alchemist",
+  "master",
+];
 
-export const QUEST_GIVERS: Record<QuestGiverId, { name: string; role: string; desc: string }> = {
-  priest: { name: "Отец Анселм", role: "Священник", desc: "Благословляет героя на следующий поход." },
-  smith: { name: "Бран Молотобоец", role: "Кузнец", desc: "Иногда отдаёт скидку на следующую покупку." },
-  merchant: { name: "Ильза Весовщица", role: "Торговец", desc: "Иногда отдаёт скидку на следующую покупку." },
-  wizard: { name: "Оррин Серый", role: "Волшебник", desc: "Продаёт редкие свитки и зелья, до трёх штук каждого." },
-  mercenary: { name: "Кайл Шрам", role: "Наёмник", desc: "Продаёт редкое и лучшее снаряжение по двойной цене, не выше уровня этажа." },
-  villager: { name: "Нора Пепельная", role: "Сельчанин", desc: "Продаёт реагенты по сниженной цене, но ограниченно." },
+/** Приветствия по уровню доверия: индекс 0 — чужак, 5 — друг. */
+export const QUEST_GIVERS: Record<QuestGiverId, { name: string; role: string; desc: string; greetings: string[] }> = {
+  priest: {
+    name: "Отец Анселм",
+    role: "Священник",
+    desc: "Благословляет героя на следующий поход. Чем больше доверия, тем сильнее благословение.",
+    greetings: [
+      "Путник. Благословение дают тем, кто помнит, кому обязан. Что тебе нужно?",
+      "Ты приходил с делом. Это уже что-то. Говори.",
+      "А, это ты. Заходи, огонь ещё горит.",
+      "Рад видеть тебя живым. Таких в деревне немного.",
+      "Ты мне как сын. Пусть свет идёт с тобой.",
+      "Возвращайся домой, когда бы ни захотел. Эта дверь всегда открыта.",
+    ],
+  },
+  smith: {
+    name: "Бран Молотобоец",
+    role: "Кузнец",
+    desc: "Чинит и улучшает снаряжение в кузнице. Со временем даёт скидку на каждое задание.",
+    greetings: [
+      "Чего надо? Смотри, не трогай горн.",
+      "Ты не из пугливых. Ладно, говори.",
+      "А, тот, что приносит железо. Садись.",
+      "Для тебя сбавлю цену. Друзьям я не вру.",
+      "Лучшую сталь держу для тех, кому верю. Ты в их числе.",
+      "Брат по наковальне. Что нужно — сделаю, лишнего не возьму.",
+    ],
+  },
+  merchant: {
+    name: "Ильза Весовщица",
+    role: "Торговец",
+    desc: "Считает каждую монету. Со временем даёт скидку на каждое задание.",
+    greetings: [
+      "Покупаешь или смотреть пришёл? Весы не ждут.",
+      "Ты честный, это видно по весу твоих мешков. Что предложить?",
+      "Старые знакомые дешевле. Заходи.",
+      "Для тебя у меня всегда найдётся скидка. Не говори никому.",
+      "Ты мой лучший покупатель. Бери, что приглянулось.",
+      "Нет дела важнее твоего барыша. Считай, что мы в одной лодке.",
+    ],
+  },
+  wizard: {
+    name: "Оррин Серый",
+    role: "Волшебник",
+    desc: "Продаёт редкие свитки и зелья, до трёх штук каждого. С доверием на витрине появляется больше товара.",
+    greetings: [
+      "Не трогай свитки. Что тебе?",
+      "Ты, я вижу, не разобьёшь склянку. Смотри.",
+      "Я тебя помню. Могу показать кое-что новое.",
+      "Тот, кто возвращается живым, заслуживает большего. Выбирай.",
+      "Редкие листы я храню для таких, как ты.",
+      "Ты единственный, кому я отдаю последнее. Не растрать зря.",
+    ],
+  },
+  mercenary: {
+    name: "Кайл Шрам",
+    role: "Наёмник",
+    desc: "Продаёт редкое и лучшее снаряжение по двойной цене, не выше уровня этажа. С доверием витрина растёт.",
+    greetings: [
+      "Деньги вперёд. Остальное меня не касается.",
+      "Ты держишься в бою. Это уже не мелочь.",
+      "О, а ты тот, кто прикрыл мне спину. Что берёшь?",
+      "Я тебе доверяю. Такие вещи я обычно не показываю.",
+      "Мой лучший товар — для тебя. Без лишних вопросов.",
+      "Если понадобится клинок, тебе отдам первому. Слово.",
+    ],
+  },
+  villager: {
+    name: "Нора Пепельная",
+    role: "Сельчанка",
+    desc: "Продаёт реагенты по сниженной цене, но ограниченно. С доверием товара становится больше.",
+    greetings: [
+      "Ой... Вы здешний? Я тут мало кому рада.",
+      "Вы не такой, как остальные. Берите, что нужно.",
+      "Заходите, я вас уже запомнила.",
+      "Для вас всегда что-нибудь найдётся, не стесняйтесь.",
+      "Вы нам как родной. Берегите себя там, внизу.",
+      "Пока вы ходите вниз, мы за вас ждём и не спим.",
+    ],
+  },
+  alchemist: {
+    name: "Мирна Склянка",
+    role: "Алхимик",
+    desc: "Варит зелья и свитки. Новые листы с рецептами продаёт тем, кому доверяет.",
+    greetings: [
+      "Не трогайте мои колбы. Чего хотите?",
+      "Вы не путаете кислоту с водой. Уже хорошо.",
+      "А, экспериментатор. Могу показать пару листов.",
+      "Редкие рецепты я доверяю не всем. Вы в числе немногих.",
+      "Из вас выйдет хороший варщик. Берите, что понадобится.",
+      "Мой лучший ученик. Все мои записи теперь ваши.",
+    ],
+  },
+  master: {
+    name: "Гуннар Резчик",
+    role: "Мастер",
+    desc: "Собирает метательные расходники, бомбы и ловушки. Чертежи продаёт тем, кто ему доверяет.",
+    greetings: [
+      "Смотри под ноги, инструменты острые. Что нужно?",
+      "Руки у тебя ничего. Ладно, покажу.",
+      "А, тот, кто не сломал мой нож. Заходи.",
+      "Работаешь аккуратно. Таким я даю свои чертежи.",
+      "Ты почти как мой сын по мастерству. Присаживайся.",
+      "Мастерская открыта для тебя в любой час. Бери всё, что нужно.",
+    ],
+  },
 };
 
 const COMRADES = ["Ренар", "Миррен", "Ковал", "Тесса", "Гаррик", "Ивор", "Лисса", "Орм"];
@@ -67,12 +180,24 @@ export const QUEST_KIND_NAME = KIND_NAME;
 
 /* ─────────────  журнал героя  ───────────── */
 
+/** Доверие ко всем жителям: в начале игры 0. */
+export function zeroTrust(): Record<QuestGiverId, number> {
+  return Object.fromEntries(GIVER_ORDER.map((id) => [id, 0])) as Record<QuestGiverId, number>;
+}
+
+/** Доверие героя к жителю, 0…TRUST_MAX. */
+export function trustOf(player: Player, giver: QuestGiverId): number {
+  const raw = logOf(player).trust?.[giver] ?? 0;
+  return Math.max(0, Math.min(TRUST_MAX, Math.floor(raw)));
+}
+
 export function emptyQuestLog(): QuestLog {
   return {
     offers: [],
     active: [],
     carried: [],
     coupons: 0,
+    trust: zeroTrust(),
     blessingOffers: [],
     blessingNext: null,
     wizard: [],
@@ -94,6 +219,9 @@ export function normalizeQuestLog(raw: Partial<QuestLog>): QuestLog {
     active: Array.isArray(raw.active) ? raw.active : base.active,
     carried: Array.isArray(raw.carried) ? raw.carried : base.carried,
     coupons: Number.isFinite(raw.coupons) ? Math.max(0, Math.floor(raw.coupons as number)) : 0,
+    trust: { ...base.trust, ...Object.fromEntries(
+      Object.entries(raw.trust ?? {}).map(([id, v]) => [id, Math.max(0, Math.min(TRUST_MAX, Math.floor(Number(v) || 0)))]),
+    ) } as Record<QuestGiverId, number>,
     blessingOffers: Array.isArray(raw.blessingOffers) ? raw.blessingOffers : base.blessingOffers,
     blessingNext: typeof raw.blessingNext === "string" ? raw.blessingNext : null,
     wizard: Array.isArray(raw.wizard) ? raw.wizard : base.wizard,
@@ -128,10 +256,11 @@ function pickEnemy(floor: number, rng: () => number): { id: string; name: string
 }
 
 /** Одно задание на этаж: вид, награда и (для принесения) предмет. */
-export function rollQuest(giver: QuestGiverId, floor: number, rng: () => number = Math.random): Quest {
+export function rollQuest(giver: QuestGiverId, floor: number, rng: () => number = Math.random, trust = 0): Quest {
   const f = Math.max(1, Math.floor(floor));
   const kind = pick<QuestKind>(["kill", "fetch", "reagents"], rng);
-  const coupon = (giver === "smith" || giver === "merchant") && rng() < 0.5;
+  /* Кузнец и торговец: половина заданий со скидкой; с доверием 3 и выше — каждое. */
+  const coupon = (giver === "smith" || giver === "merchant") && (trust >= 3 || rng() < 0.5);
   const base = { title: "", text: "", gold: 0 };
   const extra: Partial<Quest> = {};
 
@@ -211,6 +340,7 @@ export function rollQuestOffers(
   unlockedFloor: number,
   count: number,
   rng: () => number = Math.random,
+  trust: Partial<Record<QuestGiverId, number>> = {},
 ): Quest[] {
   const busy = new Set<QuestGiverId>([...offers, ...taken].map((q) => q.giver));
   let free = GIVER_ORDER.filter((g) => !busy.has(g));
@@ -220,13 +350,38 @@ export function rollQuestOffers(
     free = free.filter((g) => g !== giver);
     const top = Math.max(1, Math.floor(unlockedFloor));
     const floor = randInt(Math.max(1, top - 2), top, rng);
-    next.push(rollQuest(giver, floor, rng));
+    next.push(rollQuest(giver, floor, rng, trust[giver] ?? 0));
   }
   return next;
 }
 
 function pickMany<T>(list: T[], n: number, rng: () => number): T[] {
   return shuffled(list, rng).slice(0, n);
+}
+
+/* Витрины: сколько позиций открыто, зависит от доверия к продавцу. Закрытые видны, но не покупаются. */
+export const WIZARD_SHELF = 6;
+export const VILLAGER_SHELF = 5;
+export const MERCENARY_SHELF = 5;
+
+/** Волшебник: сначала три позиции, по одной за каждый уровень доверия. */
+export function wizardSlots(trust: number): number {
+  return Math.min(WIZARD_SHELF, 3 + trust);
+}
+
+/** Сельчанин: две позиции, по одной за уровень доверия. */
+export function villagerSlots(trust: number): number {
+  return Math.min(VILLAGER_SHELF, 2 + trust);
+}
+
+/** Наёмник: три позиции, и ещё одна за каждые два уровня доверия. */
+export function mercenarySlots(trust: number): number {
+  return Math.min(MERCENARY_SHELF, 3 + Math.floor(trust / 2));
+}
+
+/** Позиция витрины открыта, если стоит в первых `slots` позициях. */
+export function shelfOpen<T>(list: T[], index: number, slots: number): boolean {
+  return index >= 0 && index < Math.min(list.length, slots);
 }
 
 /** Волшебник: свитки и зелья выше уровня обычной лавки, по 1–3 штуки. */
@@ -236,14 +391,14 @@ export function rollWizardStock(shopLevel: number, unlockedFloor: number, rng: (
     (i) => (i.kind === "scroll" || i.kind === "potion") && (i.price ?? 0) > 0 && supplyLevel(i.id) <= cap,
   );
   const fresh = all.filter((i) => !canBuySupply(i.id, shopLevel));
-  const pool = fresh.length >= 4 ? fresh : all;
-  return pickMany(pool, 4, rng).map((d) => ({ id: d.id, qty: randInt(1, WIZARD_MAX_QTY, rng), price: d.price ?? 0 }));
+  const pool = fresh.length >= WIZARD_SHELF ? fresh : all;
+  return pickMany(pool, WIZARD_SHELF, rng).map((d) => ({ id: d.id, qty: randInt(1, WIZARD_MAX_QTY, rng), price: d.price ?? 0 }));
 }
 
 /** Сельчанин: реагенты по 70% цены, по 1–3 штуки. */
 export function rollVillagerStock(rng: () => number = Math.random): ShopLine[] {
   const reagents = Object.values(ITEMS).filter((i) => i.kind === "reagent" && (i.price ?? 0) > 0);
-  return pickMany(reagents, 3, rng).map((d) => ({
+  return pickMany(reagents, VILLAGER_SHELF, rng).map((d) => ({
     id: d.id,
     qty: randInt(1, WIZARD_MAX_QTY, rng),
     price: roundGold((d.price ?? 0) * 0.7),
@@ -254,20 +409,22 @@ export function rollVillagerStock(rng: () => number = Math.random): ShopLine[] {
 const MERCENARY_RARITY: Record<RarityTier, number> = { common: 0, rare: 80, epic: 17, legendary: 3 };
 
 /**
- * Наёмник: три исследованные вещи редкого качества или выше.
+ * Наёмник: исследованные вещи редкого качества или выше.
  * Уровень предмета не выше текущего уровня подземелья (открытого этажа).
  */
 export function rollMercenaryStock(floor: number, rng: () => number = Math.random): GearItem[] {
   const top = Math.max(1, Math.floor(floor));
   const pool = Object.values(GEAR_BASES).filter((b) => (b.level ?? 1) <= top);
-  return pickMany(pool, 3, rng).map((b) =>
+  return pickMany(pool, MERCENARY_SHELF, rng).map((b) =>
     createGearItem({ baseId: b.id, level: b.level ?? 1, rarityWeights: MERCENARY_RARITY, identified: true, rng }),
   );
 }
 
-/** Благословения священника: четыре из четырёх, порядок случайный. */
-export function rollBlessingOffers(rng: () => number = Math.random): string[] {
-  return shuffled([...BLESSING_IDS], rng).slice(0, 4);
+/** Благословения священника: все, от простых к сильным. Закрытые показываются с замком. */
+export function allBlessingOffers(): string[] {
+  return (Object.keys(BLESSINGS) as BlessingId[])
+    .sort((a, b) => BLESSINGS[a].minTrust - BLESSINGS[b].minTrust || a.localeCompare(b))
+    .map((id) => id);
 }
 
 /** Журнал новой игры: два задания с первого этажа и полный набор товаров. */
@@ -275,7 +432,7 @@ export function initialQuestLog(shopLevel: number, rng: () => number = Math.rand
   return {
     ...emptyQuestLog(),
     offers: rollQuestOffers([], [], 1, 2, rng),
-    blessingOffers: rollBlessingOffers(rng),
+    blessingOffers: allBlessingOffers(),
     wizard: rollWizardStock(shopLevel, 1, rng),
     villager: rollVillagerStock(rng),
     mercenary: rollMercenaryStock(1, rng),
@@ -284,15 +441,15 @@ export function initialQuestLog(shopLevel: number, rng: () => number = Math.rand
 
 /**
  * Прохождение нового этажа: 1–2 новых задания и обновлённые товары волшебника,
- * сельчанина и наёмника. Благословения священника тоже меняются; купленное на поход — нет.
+ * сельчанина и наёмника. Доверие и купленное на поход не меняются.
  */
 export function refreshAfterNewFloor(player: Player, unlockedFloor: number, rng: () => number = Math.random): Player {
   const log = logOf(player);
   const count = rng() < 0.5 ? 1 : 2;
   const nextLog: QuestLog = {
     ...log,
-    offers: rollQuestOffers(log.offers, log.active, unlockedFloor, count, rng),
-    blessingOffers: rollBlessingOffers(rng),
+    offers: rollQuestOffers(log.offers, log.active, unlockedFloor, count, rng, log.trust),
+    blessingOffers: allBlessingOffers(),
     wizard: rollWizardStock(player.shopLevel, unlockedFloor, rng),
     villager: rollVillagerStock(rng),
     mercenary: rollMercenaryStock(unlockedFloor, rng),
@@ -375,17 +532,24 @@ export function claimQuest(
     else delete bag[q.reagent];
   }
 
+  const trustNow = log.trust[q.giver] ?? 0;
+  const trustNext = Math.min(TRUST_MAX, trustNow + 1);
   const nextLog: QuestLog = {
     ...log,
     active: log.active.filter((x) => x.id !== questId),
     carried: log.carried.filter((id) => id !== questId),
     coupons: log.coupons + (q.coupon ? 1 : 0),
+    trust: { ...log.trust, [q.giver]: trustNext },
   };
   const rewardText =
     reward.kind === "gear"
       ? `${scaledGearStats(armory[0]).base.name}`
       : describeReward(reward);
-  const message = `Задание сдано: ${q.title}. Награда: ${rewardText}.${q.coupon ? " Скидка 25% на следующую покупку." : ""}`;
+  const trustText =
+    trustNext > trustNow
+      ? ` ${QUEST_GIVERS[q.giver].name}: доверие ${trustNext}/${TRUST_MAX}.`
+      : ` ${QUEST_GIVERS[q.giver].name}: доверие максимальное.`;
+  const message = `Задание сдано: ${q.title}. Награда: ${rewardText}.${q.coupon ? " Скидка 25% на следующую покупку." : ""}${trustText}`;
   return { player: { ...player, gold, bag, armory, questLog: nextLog }, message };
 }
 
@@ -411,7 +575,9 @@ export function deliverCarried(player: Player, carry: CarriedQuest[] | undefined
 
 export function buyWizardItem(player: Player, id: string): { player: Player; message: string } | null {
   const log = logOf(player);
-  const line = log.wizard.find((l) => l.id === id);
+  const index = log.wizard.findIndex((l) => l.id === id);
+  if (!shelfOpen(log.wizard, index, wizardSlots(trustOf(player, "wizard")))) return null;
+  const line = log.wizard[index];
   if (!line || line.qty <= 0 || line.qty > WIZARD_MAX_QTY) return null;
   const { cost, log: afterCoupon } = couponCharge(player, line.price);
   if (player.gold < cost) return null;
@@ -431,7 +597,9 @@ export function buyWizardItem(player: Player, id: string): { player: Player; mes
 
 export function buyVillagerItem(player: Player, id: string): { player: Player; message: string } | null {
   const log = logOf(player);
-  const line = log.villager.find((l) => l.id === id);
+  const index = log.villager.findIndex((l) => l.id === id);
+  if (!shelfOpen(log.villager, index, villagerSlots(trustOf(player, "villager")))) return null;
+  const line = log.villager[index];
   if (!line || line.qty <= 0) return null;
   const { cost, log: afterCoupon } = couponCharge(player, line.price);
   if (player.gold < cost) return null;
@@ -451,7 +619,9 @@ export function buyVillagerItem(player: Player, id: string): { player: Player; m
 
 export function buyMercenaryItem(player: Player, uid: string): { player: Player; message: string } | null {
   const log = logOf(player);
-  const item = log.mercenary.find((g) => g.uid === uid);
+  const index = log.mercenary.findIndex((g) => g.uid === uid);
+  if (!shelfOpen(log.mercenary, index, mercenarySlots(trustOf(player, "mercenary")))) return null;
+  const item = log.mercenary[index];
   if (!item) return null;
   const { cost, log: afterCoupon } = couponCharge(player, mercenaryPrice(item));
   if (player.gold < cost) return null;
@@ -470,6 +640,8 @@ export function buyMercenaryItem(player: Player, uid: string): { player: Player;
 export function buyBlessing(player: Player, id: string, unlockedFloor: number): { player: Player; message: string } | null {
   const log = logOf(player);
   if (!log.blessingOffers.includes(id) || log.blessingNext) return null;
+  const def = BLESSINGS[id as BlessingId];
+  if (!def || def.minTrust > trustOf(player, "priest")) return null;
   const { cost, log: afterCoupon, used } = couponCharge(player, blessingPrice(unlockedFloor));
   if (player.gold < cost) return null;
   return {
@@ -487,6 +659,36 @@ export function startRunBlessing(player: Player): Player {
 /** Выход из вылазки или смерть: благословение похода гаснет. */
 export function endRunBlessing(player: Player): Player {
   return player.blessing ? { ...player, blessing: null } : player;
+}
+
+/* ─────────────  рецепты алхимика и мастера  ───────────── */
+
+/** Житель, который продаёт рецепты станции: алхимик или мастер. */
+export function recipeGiver(recipe: Recipe): QuestGiverId {
+  return (recipe.station ?? "alchemy") === "workshop" ? "master" : "alchemist";
+}
+
+/** Рецепты станции в порядке цены: дешёвые открываются первыми. */
+export function stationRecipeList(station: CraftStation): Recipe[] {
+  return RECIPES.filter((r) => (r.station ?? "alchemy") === station).sort(
+    (a, b) => recipePrice(a) - recipePrice(b) || a.id.localeCompare(b.id),
+  );
+}
+
+/**
+ * Минимальное доверие для покупки рецепта. Рецепты делятся по цене на шесть равных частей:
+ * доверие 0 открывает самую дешёвую часть, доверие 5 — все.
+ */
+export function recipeMinTrust(recipe: Recipe): number {
+  const list = stationRecipeList(recipe.station ?? "alchemy");
+  const rank = list.findIndex((r) => r.id === recipe.id);
+  if (rank < 0) return TRUST_MAX;
+  return Math.min(TRUST_MAX, Math.floor((rank * (TRUST_MAX + 1)) / list.length));
+}
+
+/** Можно ли купить рецепт по текущему доверию (само списание — в контроллере). */
+export function canLearnRecipe(player: Player, recipe: Recipe): boolean {
+  return trustOf(player, recipeGiver(recipe)) >= recipeMinTrust(recipe);
 }
 
 /* ─────────────  метки на карте  ───────────── */

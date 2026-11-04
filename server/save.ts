@@ -33,7 +33,7 @@ import { derived } from "../src/game/battle";
 import { CHARACTER_NAME_MAX, DEFAULT_CHARACTER_NAME } from "../src/game/characterName";
 import { SHOP_MAX_LEVEL } from "../src/game/world";
 import { BLESSING_IDS } from "../src/game/blessings";
-import { GIVER_ORDER } from "../src/game/quests";
+import { GIVER_ORDER, zeroTrust } from "../src/game/quests";
 import {
   SLOT_ORDER,
   WEAR_RANGE,
@@ -42,6 +42,7 @@ import {
   type LegendaryPassiveId,
   type Player,
   type Quest,
+  type QuestGiverId,
   type QuestKind,
   type QuestLog,
   type QuestReward,
@@ -49,6 +50,7 @@ import {
   type Slot,
   type StatKey,
 } from "../src/game/types";
+import { TRUST_MAX } from "../src/game/types";
 import { HttpError } from "./http";
 
 /** Потолки, выше которых сохранение считается подделкой. */
@@ -253,6 +255,16 @@ function sanitizeQuest(raw: unknown): Quest {
   return quest;
 }
 
+/** Доверие к жителям: каждому от 0 до TRUST_MAX, лишних ключей не бывает. */
+function sanitizeTrust(raw: unknown): Record<QuestGiverId, number> {
+  if (raw === undefined || raw === null) return zeroTrust();
+  const input = asObject(raw, "доверие");
+  for (const key of Object.keys(input)) if (!GIVER_SET.has(key)) bad("доверие: неизвестный NPC");
+  const out = zeroTrust();
+  for (const id of GIVER_ORDER) out[id] = int(input[id] ?? 0, 0, TRUST_MAX, `доверие: ${id}`);
+  return out;
+}
+
 function sanitizeShopLines(raw: unknown, name: string): ShopLine[] {
   return listOf(raw, name, 12, (line) => {
     const l = asObject(line, name);
@@ -278,6 +290,7 @@ function sanitizeQuestLog(raw: unknown): QuestLog {
       return id as string;
     }),
     coupons: int(input.coupons ?? 0, 0, 20, "скидки"),
+    trust: sanitizeTrust(input.trust),
     blessingOffers: listOf(input.blessingOffers, "благословения", 8, (id) => {
       if (typeof id !== "string" || !BLESSING_SET.has(id)) bad("благословение священника");
       return id as string;

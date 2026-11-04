@@ -5,9 +5,6 @@ import {
   BookOpen,
   Brain,
   EyeOff,
-  FlaskConical,
-  Hammer,
-  Wrench,
   Gem,
   PackageSearch,
   Search,
@@ -79,25 +76,19 @@ import { ItemArt } from "./ItemArt";
 import { GearNote } from "./GearNote";
 import { GearCard } from "./GearCard";
 import { QuestsTab } from "./Quests";
-import { couponPreview, readyQuestCount } from "../game/quests";
+import { couponPreview, readyQuestCount, recipeMinTrust, stationRecipeList, trustOf } from "../game/quests";
+import type { CraftStation } from "../game/content";
+import { TRUST_MAX, type QuestGiverId } from "../game/types";
 import { Btn, Meter, Modal, Panel, Pips, Tag } from "./ui";
 
 
-type Tab = "train" | "armory" | "shop" | "quests" | "brew" | "workshop" | "forge" | "bestiary" | "guide";
-export type ShopSection = "equipment" | "supplies" | "reagents" | "recipes";
+type Tab = "train" | "armory" | "shop" | "quests" | "bestiary" | "guide";
+export type ShopSection = "equipment" | "supplies" | "reagents";
 type SupplyGroup = "potion" | "throwable" | "scroll" | "special";
-type RecipeGroup = "potion" | "throwable" | "scroll" | "special";
 /** Всплывающая подсказка о припасе / реагенте / рецепте. */
 type InfoTip = { kind: "item" | "recipe"; id: string } | null;
 
 const SUPPLY_GROUPS: { id: SupplyGroup; label: string }[] = [
-  { id: "potion", label: "Зелья" },
-  { id: "throwable", label: "Расходники" },
-  { id: "scroll", label: "Свитки" },
-  { id: "special", label: "Спец. предметы" },
-];
-
-const RECIPE_GROUPS: { id: RecipeGroup; label: string }[] = [
   { id: "potion", label: "Зелья" },
   { id: "throwable", label: "Расходники" },
   { id: "scroll", label: "Свитки" },
@@ -310,9 +301,6 @@ const TAB_ICONS = {
   armory: Sword,
   shop: ShoppingBag,
   quests: ScrollText,
-  brew: FlaskConical,
-  workshop: Wrench,
-  forge: Hammer,
   bestiary: Skull,
   guide: BookOpen,
 } as const;
@@ -327,10 +315,7 @@ const TABS: { id: Tab; label: string; badge?: (p: Player) => number }[] = [
     badge: (p) => p.armory.filter((g) => !g.identified).length,
   },
   { id: "shop", label: "Магазин" },
-  { id: "quests", label: "Задания", badge: (p) => readyQuestCount(p) },
-  { id: "brew", label: "Алхимия" },
-  { id: "workshop", label: "Мастерская" },
-  { id: "forge", label: "Кузница" },
+  { id: "quests", label: "Жители", badge: (p) => readyQuestCount(p) },
   { id: "bestiary", label: "Бестиарий" },
   { id: "guide", label: "Как играть" },
 ];
@@ -365,7 +350,6 @@ export function Lobby({
   const [bagTab, setBagTab] = useState<"supplies" | "reagents">("supplies");
   /* «Начать заново»: подтверждение полного сброса прогресса. */
   const [restartConfirm, setRestartConfirm] = useState(false);
-  const [recipeGroup, setRecipeGroup] = useState<RecipeGroup>("potion");
   const [infoTip, setInfoTip] = useState<InfoTip>(null);
   const [selectedFloor, setSelectedFloor] = useState<number>(unlockedFloor);
   const [pickArchetype, setPickArchetype] = useState(false);
@@ -467,9 +451,6 @@ export function Lobby({
     reagentFilter,
     reagentSort,
   );
-  const stationRecipes = (station: "alchemy" | "workshop") =>
-    RECIPES.filter((r) => (r.station ?? "alchemy") === station);
-  const groupedRecipes = RECIPES.filter((r) => groupOfKind(ITEMS[r.out].kind) === recipeGroup);
   const wearTable = shopWearTable(player.shopLevel);
   const rarityTable = shopRarityTable(player.shopLevel);
   const upgradeCost = player.shopLevel >= SHOP_MAX_LEVEL ? 0 : shopUpgradeCost(player.shopLevel);
@@ -644,6 +625,269 @@ export function Lobby({
       onBuy={() => buyGear(item)}
     />
   );
+
+  /* Рецепты, которые продаёт алхимик или мастер. Открываются по доверию к продавцу. */
+  const renderRecipeShop = (station: CraftStation) => {
+    const giver: QuestGiverId = station === "workshop" ? "master" : "alchemist";
+    const trust = trustOf(player, giver);
+    const seller = station === "workshop" ? "Мастер" : "Алхимик";
+    return (
+      <div className="mb-5">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <span className="sc text-flamedim">Листы с рецептами</span>
+          <span className="font-mono text-xs text-mute">Доверие {trust}/{TRUST_MAX}</span>
+        </div>
+        <div className="divide-y divide-line border-y border-line">
+          {stationRecipeList(station).map((r, index) => {
+            const known = player.knownRecipes.includes(r.id);
+            const need = recipeMinTrust(r);
+            if (!known && trust < need) {
+              return (
+                <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 py-3.5">
+                  <div>
+                    <span className="sc text-flamedim">Лист {index + 1}</span>
+                    <h4 className="font-display text-base uppercase tracking-[0.1em] text-mute">Неизвестный рецепт</h4>
+                    <p className="text-xs text-mute">{seller} покажет его при доверии {need}.</p>
+                  </div>
+                  <Tag tone="mute">доверие {need}</Tag>
+                </div>
+              );
+            }
+            const price = recipePrice(r);
+            return (
+              <div
+                key={r.id}
+                className="flex flex-wrap items-center justify-between gap-4 py-3.5"
+                onMouseEnter={() => setInfoTip({ kind: "recipe", id: r.id })}
+                onMouseLeave={() => setInfoTip(null)}
+                onFocus={() => setInfoTip({ kind: "recipe", id: r.id })}
+                onBlur={() => setInfoTip(null)}
+                tabIndex={0}
+              >
+                <div>
+                  <span className="sc text-flamedim">Лист {index + 1} · рецепт</span>
+                  <h4 className="cursor-help font-display text-lg uppercase tracking-[0.08em] text-flamehi underline decoration-dotted underline-offset-2">
+                    {ITEMS[r.out].name}
+                  </h4>
+                  <p className="text-xs text-mute">
+                    {known ? r.need.map((id) => ITEMS[id].name).join(" + ") : "Состав откроется после покупки"}
+                    {" · "}ИНТ {r.intReq}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-sm text-flame">{couponPreview(player, price)} зол.</span>
+                  {known ? (
+                    <Tag tone="verd">изучен навсегда</Tag>
+                  ) : (
+                    <Btn tone="flame" disabled={player.gold < couponPreview(player, price)} onClick={() => buyRecipe(r)}>
+                      Купить рецепт
+                    </Btn>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  /* Варка у алхимика и мастера: список листов и кнопки «Создать». Только обработчики вызывают контроллер. */
+  const renderStation = (station: CraftStation) => (
+              <div>
+                <p className="dropcap mb-4 max-w-2xl text-[1.02rem] leading-relaxed text-parch/85">
+                  {station === "alchemy"
+                    ? "Алхимия варит зелья и свитки. Рецепты нельзя угадать: сначала купи лист у алхимика выше."
+                    : "Мастерская собирает метательные расходники: кинжалы, бомбы и прахи. Чертежи продаёт мастер выше."}
+                  {" "}При создании есть {Math.round(BREW_FAILURE_CHANCE * 100)}% шанс неудачи — ингредиенты сгорят,
+                  даже если ничего не выйдет.
+                </p>
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {stationRecipeList(station).map((r, index) => {
+                    if (!player.knownRecipes.includes(r.id)) {
+                      return (
+                        <div key={r.id} className="flex items-center justify-between gap-3 border-b border-line bg-black/25 px-3 py-3">
+                          <div>
+                            <span className="sc text-flamedim">Лист {index + 1}</span>
+                            <h4 className="font-display text-base uppercase tracking-[0.1em] text-mute">
+                              Неизвестный рецепт
+                            </h4>
+                            <p className="text-xs text-mute">Состав не раскрыт. Купи лист у {station === "workshop" ? "мастера" : "алхимика"} выше.</p>
+                          </div>
+                        </div>
+                      );
+                    }
+                    const out = ITEMS[r.out];
+                    const amount = r.count + (player.passives.includes("brewer") ? 1 : 0);
+                    const intOk = player.stats.int >= r.intReq;
+                    const enough = hasIngredients(player.bag, r.need);
+                    const needed = [...new Set(r.need)].map((id) => ({
+                      id,
+                      count: r.need.filter((entry) => entry === id).length,
+                    }));
+                    return (
+                      <Panel
+                        key={r.id}
+                        className="p-4"
+                        title={out.name}
+                        right={<span className="font-mono text-xs tab text-verd">×{amount}</span>}
+                      >
+                        <p className="text-[0.97rem] italic leading-snug text-mute">{out.desc}</p>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          {needed.map(({ id, count }) => {
+                            const have = player.bag[id] ?? 0;
+                            return (
+                              <Tag key={id} tone={have >= count ? "verd" : "rubric"}>
+                                {ITEMS[id].name}: {have}/{count}
+                              </Tag>
+                            );
+                          })}
+                        </div>
+                        <p className="mt-2 font-mono text-[0.84rem] text-rubric">
+                          Успех 80% · неудача 20% · реагенты тратятся всегда
+                        </p>
+                        <div className="mt-3 flex items-center justify-between gap-2">
+                          <span className={`font-mono text-[0.86rem] ${intOk ? "text-mute" : "text-rubric"}`}>
+                            требуется ИНТ {r.intReq}
+                            {!intOk && " — не хватает"}
+                          </span>
+                          <Btn
+                            tone={intOk && enough ? "verd" : "ghost"}
+                            disabled={!intOk || !enough}
+                            onClick={() => brew(r.id)}
+                          >
+                            Создать
+                          </Btn>
+                        </div>
+                      </Panel>
+                    );
+                  })}
+                </div>
+              </div>
+  );
+
+  /* Кузница у кузнеца. */
+  const renderForge = () => (
+              <div>
+                <p className="dropcap mb-4 max-w-2xl text-[1.02rem] leading-relaxed text-parch/85">
+                  Кузница улучшает качество, изношенность и уровень снаряжения. Попытка стоит золота.
+                  С реагентами в горне неудача вещь не ломает — сгорают только золото и реагенты,
+                  а чем полнее набор, тем ниже риск. Без реагентов неудача уничтожает предмет.
+                </p>
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+                  <Panel title="Выбери предмет" className="p-4">
+                    <div className="max-h-[28rem] space-y-2 overflow-y-auto pr-1">
+                      {player.armory.length === 0 && <p className="text-sm italic text-mute">Арсенал пуст.</p>}
+                      {player.armory.map((g) => {
+                        const base = GEAR_BASES[g.baseId];
+                        const active = forgeUid === g.uid;
+                        return (
+                          <button
+                            key={g.uid}
+                            onClick={() => setForgeUid(g.uid)}
+                            className={`flex w-full items-center justify-between gap-2 border px-3 py-2 text-left transition-colors ${active ? "border-flame bg-flame/10" : "border-line bg-slab2 hover:border-flamedim"}`}
+                          >
+                            <span>
+                              <span className="block font-display text-[1.02rem] uppercase tracking-[0.08em] text-flamehi">{base?.name ?? g.baseId}</span>
+                              <span className="block font-mono text-[0.82rem] text-mute">
+                                ур. {g.level} · {RARITY_META[g.rarity].name} · {WEAR_RANGE[g.wear].label}
+                              </span>
+                            </span>
+                            {Object.values(player.equip).includes(g.uid) && <Tag tone="verd">надето</Tag>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </Panel>
+                  <Panel title="Горн" className="p-4">
+                    {(() => {
+                      const item = player.armory.find((g) => g.uid === forgeUid);
+                      if (!item) return <p className="text-sm italic text-mute">Выбери предмет слева, чтобы увидеть улучшения.</p>;
+                      const useReagents = forgeUseReagents;
+                      return (
+                        <div className="space-y-3">
+                          <button
+                            onClick={() => setForgeUseReagents((v) => !v)}
+                            className={`flex w-full items-center justify-between gap-2 border px-3 py-2 text-left text-[0.92rem] transition-colors ${useReagents ? "border-flame bg-flame/10 text-parch" : "border-line bg-black/25 text-mute hover:border-flamedim"}`}
+                            aria-pressed={useReagents}
+                          >
+                            <span>
+                              <b className="font-display uppercase tracking-[0.08em]">Класть реагенты в горн</b>
+                              <span className="block text-[0.84rem] text-mute">
+                                Пергамент, магические чернила и фляги в горн не годятся.
+                                Металлолом идёт только на изношенность — на качество и уровень его не кладут.
+                              </span>
+                            </span>
+                            <span className="font-mono text-[0.85rem]">{useReagents ? "да" : "нет"}</span>
+                          </button>
+                          {forgeOptions(item).map((opt) => {
+                            const plan = useReagents
+                              ? forgeReagentPlan(player.bag, opt)
+                              : { picked: {}, total: 0, scrap: 0 };
+                            const fail = forgeFailChance(opt, plan.total);
+                            const can = opt.available && player.gold >= opt.cost;
+                            const toLabel = opt.kind === "rarity" ? RARITY_META[opt.to as RarityTier]?.name ?? opt.to
+                              : opt.kind === "wear" ? WEAR_RANGE[opt.to as keyof typeof WEAR_RANGE]?.label ?? opt.to
+                              : `ур. ${opt.to}`;
+                            const full = plan.total >= opt.reagentTotal;
+                            return (
+                              <div key={opt.kind} className="border border-line bg-black/25 p-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <span className="font-display text-[1.05rem] uppercase tracking-[0.08em] text-flamehi">{opt.label}</span>
+                                  <span className="font-mono text-[0.86rem] text-mute">{opt.from} → {toLabel}</span>
+                                </div>
+                                <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[0.84rem]">
+                                  <Tag tone="flame">{opt.cost} зол.</Tag>
+                                  <Tag tone={fail > 0.4 ? "rubric" : "mute"}>шанс неудачи {Math.round(fail * 100)}%</Tag>
+                                  {opt.reagentTotal > 0 && (
+                                    <ReagentNeedTag
+                                      total={plan.total}
+                                      required={opt.reagentTotal}
+                                      parts={opt.reagentParts}
+                                      bag={player.bag}
+                                      tone={full && useReagents ? "verd" : "mute"}
+                                      scrap={opt.reagentScrap}
+                                      forbidScrap={opt.reagentForbidScrap}
+                                    />
+                                  )}
+                                  {plan.total === 0 && <Tag tone="rubric">неудача уничтожит вещь</Tag>}
+                                  {!opt.available && <Tag tone="mute">предел</Tag>}
+                                </div>
+                                <Btn
+                                  className="mt-2"
+                                  tone={can ? "flame" : "ghost"}
+                                  disabled={!can}
+                                  onClick={() => setForgeConfirm({ uid: item.uid, kind: opt.kind })}
+                                >
+                                  Улучшить
+                                </Btn>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </Panel>
+                </div>
+              </div>
+  );
+
+  /* Содержимое вкладки «Жители» по NPC: рецепты с варкой и кузница. */
+  const npcServices = {
+    alchemist: (
+      <div>
+        {renderRecipeShop("alchemy")}
+        {renderStation("alchemy")}
+      </div>
+    ),
+    master: (
+      <div>
+        {renderRecipeShop("workshop")}
+        {renderStation("workshop")}
+      </div>
+    ),
+    smith: renderForge(),
+  };
 
   return (
     <div className="relative min-h-screen w-full overflow-x-hidden">
@@ -1089,7 +1333,6 @@ export function Lobby({
                     ["equipment", "Снаряжение"],
                     ["supplies", "Припасы"],
                     ["reagents", "Реагенты"],
-                    ["recipes", "Рецепты"],
                   ] as [ShopSection, string][]).map(([section, label]) => (
                     <Btn
                       key={section}
@@ -1324,242 +1567,11 @@ export function Lobby({
                   </div>
                 )}
 
-                {shopSection === "recipes" && (
-                  <div>
-                    <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-line pb-2">
-                      {RECIPE_GROUPS.map((g) => (
-                        <Btn key={g.id} tone={recipeGroup === g.id ? "flame" : "ghost"} onClick={() => setRecipeGroup(g.id)}>
-                          {g.label}
-                        </Btn>
-                      ))}
-                      <span className="ml-auto text-xs text-mute">Наведи на лист — увидишь состав</span>
-                    </div>
-                    <div className="divide-y divide-line border-y border-line">
-                      {groupedRecipes.map((r) => {
-                        const known = player.knownRecipes.includes(r.id);
-                        const price = recipePrice(r);
-                        return (
-                          <div
-                            key={r.id}
-                            className="flex flex-wrap items-center justify-between gap-4 py-3.5"
-                            onMouseEnter={() => setInfoTip({ kind: "recipe", id: r.id })}
-                            onMouseLeave={() => setInfoTip(null)}
-                            onFocus={() => setInfoTip({ kind: "recipe", id: r.id })}
-                            onBlur={() => setInfoTip(null)}
-                            tabIndex={0}
-                          >
-                            <div>
-                              <span className="sc text-flamedim">Лист {r.id.slice(1)} · рецепт</span>
-                              <h4 className="cursor-help font-display text-lg uppercase tracking-[0.08em] text-flamehi underline decoration-dotted underline-offset-2">
-                                {ITEMS[r.out].name}
-                              </h4>
-                              <p className="text-xs text-mute">
-                                {known ? r.need.map((id) => ITEMS[id].name).join(" + ") : "Состав откроется после покупки"}
-                                {" · "}ИНТ {r.intReq}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <span className="font-mono text-sm text-flame">{couponPreview(player, price)} зол.</span>
-                              {known ? (
-                                <Tag tone="verd">изучен навсегда</Tag>
-                              ) : (
-                                <Btn tone="flame" disabled={player.gold < couponPreview(player, price)} onClick={() => buyRecipe(r)}>
-                                  Купить рецепт
-                                </Btn>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {(tab === "brew" || tab === "workshop") && (
-              <div>
-                <p className="dropcap mb-4 max-w-2xl text-[1.02rem] leading-relaxed text-parch/85">
-                  {tab === "brew"
-                    ? "Алхимия варит зелья и свитки. Рецепты нельзя угадать: сперва купи лист у торговца."
-                    : "Мастерская собирает метательные расходники: кинжалы, бомбы и прахи. Рецепты продаются у торговца."}
-                  {" "}При создании есть {Math.round(BREW_FAILURE_CHANCE * 100)}% шанс неудачи — ингредиенты сгорят,
-                  даже если ничего не выйдет.
-                </p>
-                <div className="grid gap-3 lg:grid-cols-2">
-                  {stationRecipes(tab === "workshop" ? "workshop" : "alchemy").map((r, index) => {
-                    if (!player.knownRecipes.includes(r.id)) {
-                      return (
-                        <div key={r.id} className="flex items-center justify-between gap-3 border-b border-line bg-black/25 px-3 py-3">
-                          <div>
-                            <span className="sc text-flamedim">Лист {index + 1}</span>
-                            <h4 className="font-display text-base uppercase tracking-[0.1em] text-mute">
-                              Неизвестный рецепт
-                            </h4>
-                            <p className="text-xs text-mute">Состав не раскрыт. Купи рецепт в магазине.</p>
-                          </div>
-                          <Btn tone="ghost" onClick={() => { setTab("shop"); setShopSection("recipes"); }}>
-                            К рецептам
-                          </Btn>
-                        </div>
-                      );
-                    }
-                    const out = ITEMS[r.out];
-                    const amount = r.count + (player.passives.includes("brewer") ? 1 : 0);
-                    const intOk = player.stats.int >= r.intReq;
-                    const enough = hasIngredients(player.bag, r.need);
-                    const needed = [...new Set(r.need)].map((id) => ({
-                      id,
-                      count: r.need.filter((entry) => entry === id).length,
-                    }));
-                    return (
-                      <Panel
-                        key={r.id}
-                        className="p-4"
-                        title={out.name}
-                        right={<span className="font-mono text-xs tab text-verd">×{amount}</span>}
-                      >
-                        <p className="text-[0.97rem] italic leading-snug text-mute">{out.desc}</p>
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                          {needed.map(({ id, count }) => {
-                            const have = player.bag[id] ?? 0;
-                            return (
-                              <Tag key={id} tone={have >= count ? "verd" : "rubric"}>
-                                {ITEMS[id].name}: {have}/{count}
-                              </Tag>
-                            );
-                          })}
-                        </div>
-                        <p className="mt-2 font-mono text-[0.84rem] text-rubric">
-                          Успех 80% · неудача 20% · реагенты тратятся всегда
-                        </p>
-                        <div className="mt-3 flex items-center justify-between gap-2">
-                          <span className={`font-mono text-[0.86rem] ${intOk ? "text-mute" : "text-rubric"}`}>
-                            требуется ИНТ {r.intReq}
-                            {!intOk && " — не хватает"}
-                          </span>
-                          <Btn
-                            tone={intOk && enough ? "verd" : "ghost"}
-                            disabled={!intOk || !enough}
-                            onClick={() => brew(r.id)}
-                          >
-                            Создать
-                          </Btn>
-                        </div>
-                      </Panel>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {tab === "forge" && (
-              <div>
-                <p className="dropcap mb-4 max-w-2xl text-[1.02rem] leading-relaxed text-parch/85">
-                  Кузница улучшает качество, изношенность и уровень снаряжения. Попытка стоит золота.
-                  С реагентами в горне неудача вещь не ломает — сгорают только золото и реагенты,
-                  а чем полнее набор, тем ниже риск. Без реагентов неудача уничтожает предмет.
-                </p>
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-                  <Panel title="Выбери предмет" className="p-4">
-                    <div className="max-h-[28rem] space-y-2 overflow-y-auto pr-1">
-                      {player.armory.length === 0 && <p className="text-sm italic text-mute">Арсенал пуст.</p>}
-                      {player.armory.map((g) => {
-                        const base = GEAR_BASES[g.baseId];
-                        const active = forgeUid === g.uid;
-                        return (
-                          <button
-                            key={g.uid}
-                            onClick={() => setForgeUid(g.uid)}
-                            className={`flex w-full items-center justify-between gap-2 border px-3 py-2 text-left transition-colors ${active ? "border-flame bg-flame/10" : "border-line bg-slab2 hover:border-flamedim"}`}
-                          >
-                            <span>
-                              <span className="block font-display text-[1.02rem] uppercase tracking-[0.08em] text-flamehi">{base?.name ?? g.baseId}</span>
-                              <span className="block font-mono text-[0.82rem] text-mute">
-                                ур. {g.level} · {RARITY_META[g.rarity].name} · {WEAR_RANGE[g.wear].label}
-                              </span>
-                            </span>
-                            {Object.values(player.equip).includes(g.uid) && <Tag tone="verd">надето</Tag>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </Panel>
-                  <Panel title="Горн" className="p-4">
-                    {(() => {
-                      const item = player.armory.find((g) => g.uid === forgeUid);
-                      if (!item) return <p className="text-sm italic text-mute">Выбери предмет слева, чтобы увидеть улучшения.</p>;
-                      const useReagents = forgeUseReagents;
-                      return (
-                        <div className="space-y-3">
-                          <button
-                            onClick={() => setForgeUseReagents((v) => !v)}
-                            className={`flex w-full items-center justify-between gap-2 border px-3 py-2 text-left text-[0.92rem] transition-colors ${useReagents ? "border-flame bg-flame/10 text-parch" : "border-line bg-black/25 text-mute hover:border-flamedim"}`}
-                            aria-pressed={useReagents}
-                          >
-                            <span>
-                              <b className="font-display uppercase tracking-[0.08em]">Класть реагенты в горн</b>
-                              <span className="block text-[0.84rem] text-mute">
-                                Пергамент, магические чернила и фляги в горн не годятся.
-                                Металлолом идёт только на изношенность — на качество и уровень его не кладут.
-                              </span>
-                            </span>
-                            <span className="font-mono text-[0.85rem]">{useReagents ? "да" : "нет"}</span>
-                          </button>
-                          {forgeOptions(item).map((opt) => {
-                            const plan = useReagents
-                              ? forgeReagentPlan(player.bag, opt)
-                              : { picked: {}, total: 0, scrap: 0 };
-                            const fail = forgeFailChance(opt, plan.total);
-                            const can = opt.available && player.gold >= opt.cost;
-                            const toLabel = opt.kind === "rarity" ? RARITY_META[opt.to as RarityTier]?.name ?? opt.to
-                              : opt.kind === "wear" ? WEAR_RANGE[opt.to as keyof typeof WEAR_RANGE]?.label ?? opt.to
-                              : `ур. ${opt.to}`;
-                            const full = plan.total >= opt.reagentTotal;
-                            return (
-                              <div key={opt.kind} className="border border-line bg-black/25 p-3">
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <span className="font-display text-[1.05rem] uppercase tracking-[0.08em] text-flamehi">{opt.label}</span>
-                                  <span className="font-mono text-[0.86rem] text-mute">{opt.from} → {toLabel}</span>
-                                </div>
-                                <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[0.84rem]">
-                                  <Tag tone="flame">{opt.cost} зол.</Tag>
-                                  <Tag tone={fail > 0.4 ? "rubric" : "mute"}>шанс неудачи {Math.round(fail * 100)}%</Tag>
-                                  {opt.reagentTotal > 0 && (
-                                    <ReagentNeedTag
-                                      total={plan.total}
-                                      required={opt.reagentTotal}
-                                      parts={opt.reagentParts}
-                                      bag={player.bag}
-                                      tone={full && useReagents ? "verd" : "mute"}
-                                      scrap={opt.reagentScrap}
-                                      forbidScrap={opt.reagentForbidScrap}
-                                    />
-                                  )}
-                                  {plan.total === 0 && <Tag tone="rubric">неудача уничтожит вещь</Tag>}
-                                  {!opt.available && <Tag tone="mute">предел</Tag>}
-                                </div>
-                                <Btn
-                                  className="mt-2"
-                                  tone={can ? "flame" : "ghost"}
-                                  disabled={!can}
-                                  onClick={() => setForgeConfirm({ uid: item.uid, kind: opt.kind })}
-                                >
-                                  Улучшить
-                                </Btn>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })()}
-                  </Panel>
-                </div>
               </div>
             )}
 
             {tab === "quests" && (
-              <QuestsTab player={player} controller={controller} unlockedFloor={unlockedFloor} say={say} />
+              <QuestsTab player={player} controller={controller} unlockedFloor={unlockedFloor} say={say} services={npcServices} />
             )}
 
             {tab === "bestiary" && <Bestiary />}

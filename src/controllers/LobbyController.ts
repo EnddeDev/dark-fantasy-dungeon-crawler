@@ -35,6 +35,7 @@ import {
   buyMercenaryItem,
   buyVillagerItem,
   buyWizardItem,
+  canLearnRecipe,
   claimQuest,
   couponCharge,
 } from "../game/quests";
@@ -291,6 +292,7 @@ export class LobbyController {
 
   buyRecipe(recipe: Recipe): string | null {
     const player = this.player;
+    if (!canLearnRecipe(player, recipe)) return null;
     const charge = couponCharge(player, recipePrice(recipe));
     if (player.knownRecipes.includes(recipe.id) || player.gold < charge.cost) return null;
     this.model.updatePlayer((p) => ({
