@@ -11,6 +11,7 @@ import {
   equipItem,
   gearBuyPrice,
   gearSellPrice,
+  identifyAllPlan,
   identifyIntReq,
   identifyReqs,
   scaledGearStats,
@@ -149,6 +150,29 @@ export class LobbyController {
     return auto
       ? `Куплено и исследовано: ${scaledGearStats(item).base.name}`
       : `Куплено: ${scaledGearStats(item).base.name}`;
+  }
+
+  /** План кнопки «Исследовать все» (см. identifyAllPlan в content.ts). */
+  identifyAllPlan(): { count: number; free: number; gold: number } {
+    const player = this.player;
+    return identifyAllPlan(player, derived(player).intDiscount);
+  }
+
+  /** Исследует все неисследованные вещи в арсенале. Платное — только если золота хватает на всё. */
+  identifyAllGear(): string | null {
+    const player = this.player;
+    const plan = this.identifyAllPlan();
+    if (plan.count === 0) return null;
+    if (player.gold < plan.gold) return null;
+    const ids = new Set(player.armory.filter((g) => !g.identified).map((g) => g.uid));
+    this.model.updatePlayer((p) => {
+      const armory = p.armory.map((g) => (ids.has(g.uid) ? { ...g, identified: true } : g));
+      const next = { ...p, armory, gold: p.gold - plan.gold };
+      return { ...next, hp: derived(next).maxHp };
+    });
+    return plan.gold > 0
+      ? `Исследовано предметов: ${plan.count} · заплачено ${plan.gold} зол.`
+      : `Исследовано предметов: ${plan.count}`;
   }
 
   identifyGear(uid: string, mode: "int" | "gold"): string | null {

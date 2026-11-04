@@ -336,6 +336,24 @@ test("авто-исследование учитывает скидку на И�
   assert.equal(strict.model.getSnapshot().player.armory[0].identified, false);
 });
 
+test("кнопка «Исследовать все»: платит золотом только за вещи, которые ИНТ не открывает", () => {
+  const game = new GameController(new MemoryStorage());
+  const low = content.createGearItem({ baseId: "knife", level: 1, wear: "worn", rarity: "common", identified: false });
+  const high = content.createGearItem({ baseId: "soulstone", level: 6, wear: "worn", rarity: "common", identified: false });
+  game.model.updatePlayer((p) => ({
+    ...p, gold: 100, stats: { ...p.stats, int: 3 },
+    passives: p.passives.filter((id) => id !== "scribe"), armory: [low, high],
+  }));
+  /* Нужно 120 золота за вторую вещь: при 100 ничего не меняется. */
+  assert.equal(game.lobby.identifyAllGear(), null);
+  assert.equal(game.model.getSnapshot().player.armory.filter((g) => !g.identified).length, 2);
+  game.model.updatePlayer((p) => ({ ...p, gold: 150 }));
+  assert.ok(game.lobby.identifyAllGear(), "при достаточном золоте кнопка срабатывает");
+  const after = game.model.getSnapshot().player;
+  assert.ok(after.armory.every((g) => g.identified), "все вещи исследованы");
+  assert.equal(after.gold, 150 - 120, "списано только за вещь, которую ИНТ не открывает");
+});
+
 test("список добычи сокращается, когда найденное потрачено", () => {
   assert.deepEqual(runLoot.pruneRunLoot(["potion_s", "potion_s", "moss"], { potion_s: 1 }), ["potion_s", "moss"]);
   assert.deepEqual(runLoot.pruneRunLoot(["moss"], { potion_s: 2 }), ["moss"]);

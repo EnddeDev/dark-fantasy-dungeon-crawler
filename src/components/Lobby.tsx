@@ -51,7 +51,7 @@ import { IMMUNITY_NAMES } from "../game/statusEffects";
 import { SLOT_META, SLOT_ORDER } from "../game/types";
 import type { RarityTier, Slot } from "../game/types";
 import { derived } from "../game/battle";
-import { GEAR_BASES } from "../game/content";
+import { GEAR_BASES, identifyAllPlan } from "../game/content";
 import { GEAR_EFFECTS, GEAR_PASSIVES } from "../game/gearEffects";
 import type { GearItem, Player, StatKey } from "../game/types";
 import type { ArchetypeId } from "../game/archetypes";
@@ -437,6 +437,10 @@ export function Lobby({
   };
 
   const identifyGear = (uid: string, mode: "int" | "gold") => say(controller.identifyGear(uid, mode));
+  const identifyAllGear = () => say(controller.identifyAllGear());
+  /* План «Исследовать все» пересчитывается при каждом рендере: это дёшево и всегда свежо. */
+  const researchPlan = identifyAllPlan(player, derived(player).intDiscount);
+  const canResearchAll = player.gold >= researchPlan.gold;
   const equipGear = (item: GearItem, slot: Slot, grip?: "one" | "two") => say(controller.equipGear(item, slot, grip));
   const takeOff = (slot: Slot) => say(controller.takeOff(slot));
   const sellGear = (item: GearItem) => say(controller.sellGear(item));
@@ -899,7 +903,17 @@ export function Lobby({
                       <span className="sc text-flamedim">Свободные вещи</span>
                       <h3 className="mt-1 font-display text-xl uppercase tracking-[0.08em] text-flamehi">Инвентарь</h3>
                     </div>
-                    <span className="font-mono text-[0.92rem] text-mute">{visibleInventory.length} из {inventoryItems.length} · неизвестно: {inventoryItems.filter((item) => !item.identified).length}</span>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="font-mono text-[0.92rem] text-mute">{visibleInventory.length} из {inventoryItems.length} · неизвестно: {inventoryItems.filter((item) => !item.identified).length}</span>
+                      {researchPlan.count > 0 && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Btn tone={canResearchAll ? "flame" : "ghost"} disabled={!canResearchAll} onClick={identifyAllGear}>
+                            Исследовать все · {researchPlan.count}{researchPlan.gold > 0 ? ` · ${researchPlan.gold} зол.` : ""}
+                          </Btn>
+                          {!canResearchAll && <span className="font-mono text-[0.84rem] text-rubric">не хватает {researchPlan.gold - player.gold} зол.</span>}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   {chosenSlot && (
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border border-flamedim/60 bg-flame/5 px-3 py-2 text-[0.94rem]">
