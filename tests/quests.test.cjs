@@ -312,10 +312,11 @@ test("лобби: вкладка «Задания» показывает дос�
       initialTab: "quests",
     }),
   );
-  assert.ok(html.includes("Доска заданий"), "доска заданий видна");
-  assert.ok(html.includes("Охота: Крысиный поводырь"), "взятое задание видно");
-  assert.ok(html.includes("Отец Анселм"), "священник на вкладке");
-  assert.ok(html.includes("Скидка 25% на следующую покупку: 1"), "купон показан");
+  assert.ok(html.includes("Взято заданий: 1/4"), "счётчик взятых заданий");
+  assert.ok(html.includes("Охота: Крысиный поводырь"), "вкладка открыта на кузнеце, у которого взято задание");
+  assert.ok(html.includes("Отец Анселм") && html.includes("Бран Молотобоец"), "все NPC на вкладке");
+  assert.ok(html.includes("images/npcs/smith.jpg"), "у кузнеца есть портрет");
+  assert.ok(html.includes("Скидка 25% на следующую покупку"), "купон показан");
 });
 
 test("подземелье: метка принесения видна в тумане, метка убийства — только в круге света", () => {
@@ -374,4 +375,26 @@ test("вылазка: задание этажа ставит метку, бла�
   const home = game.model.getSnapshot().player;
   assert.equal(home.blessing ?? null, null, "благословение гаснет при выходе");
   assert.deepEqual(quests.logOf(home).carried, ["k1"], "принесённое сдаётся в лобби");
+});
+
+test("наёмник: только редкие и выше качества, уровень не выше текущего этажа", () => {
+  for (const floor of [1, 3, 6]) {
+    for (let i = 0; i < 40; i++) {
+      const stock = quests.rollMercenaryStock(floor);
+      assert.equal(stock.length, 3, "три предмета");
+      for (const item of stock) {
+        assert.ok(item.rarity !== "common", `редкость ${item.rarity} не продаётся`);
+        assert.ok(item.level <= floor, `уровень ${item.level} выше этажа ${floor}`);
+      }
+    }
+  }
+});
+
+test("наёмник обновляется вместе с товарами после нового этажа и держит уровень текущего этажа", () => {
+  const p = freshPlayer();
+  const after = quests.refreshAfterNewFloor(p, 4);
+  for (const item of quests.logOf(after).mercenary) {
+    assert.ok(item.level <= 4, "после этажа 4 — уровень не выше 4");
+    assert.notEqual(item.rarity, "common");
+  }
 });

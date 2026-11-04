@@ -19,7 +19,8 @@ import {
   randInt,
   reagentPoolForFloor,
   rollQuestGear,
-  rollShopStock,
+  GEAR_BASES,
+  createGearItem,
   scaledGearStats,
   supplyLevel,
 } from "./content";
@@ -28,6 +29,7 @@ import { cellIdx, openDirs } from "./maze";
 import type {
   CarriedQuest,
   GearItem,
+  RarityTier,
   Maze,
   Player,
   Quest,
@@ -53,7 +55,7 @@ export const QUEST_GIVERS: Record<QuestGiverId, { name: string; role: string; de
   smith: { name: "Бран Молотобоец", role: "Кузнец", desc: "Иногда отдаёт скидку на следующую покупку." },
   merchant: { name: "Ильза Весовщица", role: "Торговец", desc: "Иногда отдаёт скидку на следующую покупку." },
   wizard: { name: "Оррин Серый", role: "Волшебник", desc: "Продаёт редкие свитки и зелья, до трёх штук каждого." },
-  mercenary: { name: "Кайл Шрам", role: "Наёмник", desc: "Продаёт исследованное снаряжение по двойной цене." },
+  mercenary: { name: "Кайл Шрам", role: "Наёмник", desc: "Продаёт редкое и лучшее снаряжение по двойной цене, не выше уровня этажа." },
   villager: { name: "Нора Пепельная", role: "Сельчанин", desc: "Продаёт реагенты по сниженной цене, но ограниченно." },
 };
 
@@ -248,9 +250,19 @@ export function rollVillagerStock(rng: () => number = Math.random): ShopLine[] {
   }));
 }
 
-/** Наёмник: три исследованные вещи из обычного ассортимента. */
-export function rollMercenaryStock(shopLevel: number, floor: number, rng: () => number = Math.random): GearItem[] {
-  return pickMany(rollShopStock(shopLevel, floor, rng), 3, rng).map((item) => ({ ...item, identified: true }));
+/** Наёмник продаёт только редкие и выше качества: обычных вещей у него нет. */
+const MERCENARY_RARITY: Record<RarityTier, number> = { common: 0, rare: 80, epic: 17, legendary: 3 };
+
+/**
+ * Наёмник: три исследованные вещи редкого качества или выше.
+ * Уровень предмета не выше текущего уровня подземелья (открытого этажа).
+ */
+export function rollMercenaryStock(floor: number, rng: () => number = Math.random): GearItem[] {
+  const top = Math.max(1, Math.floor(floor));
+  const pool = Object.values(GEAR_BASES).filter((b) => (b.level ?? 1) <= top);
+  return pickMany(pool, 3, rng).map((b) =>
+    createGearItem({ baseId: b.id, level: b.level ?? 1, rarityWeights: MERCENARY_RARITY, identified: true, rng }),
+  );
 }
 
 /** Благословения священника: четыре из четырёх, порядок случайный. */
@@ -266,7 +278,7 @@ export function initialQuestLog(shopLevel: number, rng: () => number = Math.rand
     blessingOffers: rollBlessingOffers(rng),
     wizard: rollWizardStock(shopLevel, 1, rng),
     villager: rollVillagerStock(rng),
-    mercenary: rollMercenaryStock(shopLevel, 1, rng),
+    mercenary: rollMercenaryStock(1, rng),
   };
 }
 
@@ -283,7 +295,7 @@ export function refreshAfterNewFloor(player: Player, unlockedFloor: number, rng:
     blessingOffers: rollBlessingOffers(rng),
     wizard: rollWizardStock(player.shopLevel, unlockedFloor, rng),
     villager: rollVillagerStock(rng),
-    mercenary: rollMercenaryStock(player.shopLevel, unlockedFloor, rng),
+    mercenary: rollMercenaryStock(unlockedFloor, rng),
   };
   return { ...player, questLog: nextLog };
 }
