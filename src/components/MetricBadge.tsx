@@ -110,6 +110,24 @@ export const METRIC_INFO: Record<MetricKey, MetricInfo> = {
   },
 };
 
+/**
+ * Выравнивание подсказки относительно бейджа. Панель обрезает всё, что выходит за её края,
+ * поэтому бейдж выбирает край по своей колонке: левая — от левого края, средняя — по центру,
+ * правая — по правому краю.
+ */
+export type TipAlign = "left" | "center" | "right";
+
+/** Колонка сетки из трёх бейджей по порядку (0, 1, 2, 0, …). */
+export function tipAlignForColumn(index: number): TipAlign {
+  return (["left", "center", "right"] as const)[index % 3];
+}
+
+export function tipAlignClass(align: TipAlign): string {
+  if (align === "right") return "right-0";
+  if (align === "center") return "left-1/2 -translate-x-1/2";
+  return "left-0";
+}
+
 export function MetricBadge({
   metric,
   value,
@@ -119,7 +137,7 @@ export function MetricBadge({
   metric: MetricKey;
   value: string;
   note?: string;
-  align?: "left" | "right";
+  align?: TipAlign;
 }) {
   const [open, setOpen] = useState(false);
   const info = METRIC_INFO[metric];
@@ -147,7 +165,7 @@ export function MetricBadge({
         <div
           role="tooltip"
           id={tipId}
-          className={`pointer-events-none absolute top-full z-50 mt-2 w-[min(19rem,72vw)] border border-flamedim bg-black/95 p-2.5 text-left shadow-[0_10px_30px_rgba(0,0,0,0.75)] ${align === "right" ? "right-0" : "left-0"}`}
+          className={`pointer-events-none absolute top-full z-50 mt-2 w-[min(19rem,72vw)] border border-flamedim bg-black/95 p-2.5 text-left shadow-[0_10px_30px_rgba(0,0,0,0.75)] ${tipAlignClass(align)}`}
         >
           <div className="flex items-center gap-2 text-flame">
             <Icon size={16} aria-hidden />

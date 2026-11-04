@@ -3,11 +3,11 @@ import { biomeHealingAmount, mazeBiome } from "../game/biomes";
 import { playSfx } from "../audio/sfx";
 import { CHEST_RARITY_WEIGHTS, DUNGEON_GOLD_SHARE, GEAR_BASES, ITEMS, consumableIntReq, consumablePower, dungeonGold, equipItem, grantXp, pick, randInt, reagentPoolForFloor, scaledGearStats, unequipSlot } from "../game/content";
 import { rollStepEvent } from "../game/events";
-import { cellIdx, findPath, openDirs, roomIndexAt, wallBetween } from "../game/maze";
+import { cellIdx, findPath, openDirs, wallBetween } from "../game/maze";
 import { pruneRunLoot } from "../game/runLoot";
 import { CHILL_HEAL_MULT, curseTickFrom, magicTickFrom, refreshedTick, trapTickFrom } from "../game/statusEffects";
 import { applyTrapOutcome, isBattleCurse, lockpickChance, makeTrap, resolveTrap, rollTrapKind, type TrapAction } from "../game/traps";
-import type { Cell, GearItem, Maze, Player, Run, Slot } from "../game/types";
+import type { GearItem, Player, Run, Slot } from "../game/types";
 import { SLOT_META } from "../game/types";
 import { MAP_EVENTS, choiceChance, mapEventById, type MapEffect, type MapEvent } from "../game/world";
 import type { EventSpawn } from "../game/types";
@@ -199,7 +199,7 @@ export class DungeonController {
   }
 
   /**
-   * Негативное событие: выбора нет, всё случается при входе в комнату.
+   * Негативное событие: выбора нет, всё случается, когда герой шагает на клетку события.
    * Часть таких событий призывает тварей — бой сразу или стая на карте.
    */
   private fireNegativeEvent(spawn: EventSpawn, ev: MapEvent): void {
@@ -268,16 +268,6 @@ export class DungeonController {
     }
 
     this.model.setModal({ kind: "event", eventId: ev.id, cell: spawn.cell, result: { title: ev.name, good: ev.text ?? "" } });
-  }
-
-  /** Событие комнаты, в которую герой только что вошёл (или null). */
-  private roomEventOnEnter(m: Maze, from: Cell, to: Cell): EventSpawn | null {
-    const spawns = m.eventSpawns;
-    if (!spawns?.length) return null;
-    const toRoom = roomIndexAt(m, to.x, to.y);
-    if (toRoom < 0) return null;
-    if (roomIndexAt(m, from.x, from.y) === toRoom) return null;
-    return spawns.find((s) => s.room === toRoom) ?? null;
   }
 
   /** Свободные клетки в двух-трёх шагах от героя — для стаи из негативного события. */
@@ -603,9 +593,9 @@ export class DungeonController {
       return;
     }
 
-    /* События живут в комнатах: вход в комнату запускает её событие.
+    /* Событие срабатывает, когда герой шагает на его клетку (значок на карте), а не при входе в комнату.
        Негативное срабатывает само, положительное и нейтральное — через выбор. */
-    const roomSpawn = this.roomEventOnEnter(m, src.pos, { x: nx, y: ny });
+    const roomSpawn = m.eventSpawns?.find((sp) => sp.cell === idx) ?? null;
     if (roomSpawn && !m.usedEvents.includes(roomSpawn.cell)) {
       const ev = mapEventById(roomSpawn.eventId);
       if (ev) {

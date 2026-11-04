@@ -20,7 +20,7 @@ import { combatReadout, derived, equippedList, techniqueSkillScale, type BattleS
 import type { Player, Run } from "../game/types";
 import { Btn, Meter } from "./ui";
 import { StatBadge } from "./StatBadge";
-import { MetricBadge } from "./MetricBadge";
+import { MetricBadge, tipAlignForColumn } from "./MetricBadge";
 import { isBattleCurse, trapBypassChance, trapDisarmChance } from "../game/traps";
 import { CHARACTER_NAME_MAX } from "../game/characterName";
 
@@ -386,7 +386,7 @@ export function Rail({
                       key={stat}
                       stat={stat}
                       value={player.stats[stat]}
-                      align={i === STAT_ORDER.length - 1 ? "right" : "left"}
+                      align={tipAlignForColumn(i)}
                     />
                   ))}
                 </div>
@@ -394,22 +394,21 @@ export function Rail({
 
               <SheetSection title={battle ? "Бой · текущие значения" : "Боевые параметры"}>
                 <div className="grid grid-cols-3 gap-2">
-                  <MetricBadge metric="damage" value={`${damage[0]}–${damage[1]}`} note={battle ? "До брони противника" : `Включая +${flatDamage} от силы и пассивных умений`} />
-                  <MetricBadge
-                    metric="techMultiplier"
+                  <MetricBadge metric="damage" align={tipAlignForColumn(0)} value={`${damage[0]}–${damage[1]}`} note={battle ? "До брони противника" : `Включая +${flatDamage} от силы и пассивных умений`} />
+                  <MetricBadge metric="techMultiplier" align={tipAlignForColumn(1)}
                     value={techWs ? (techWs.scaleMult + techSkillScale).toFixed(2) : "—"}
                     note={techWs ? `${STAT_META[techWs.scaleStat].name}, до 10 · ${techWs.scaleMult} + навыки ${techSkillScale.toFixed(2)}` : "Нет оружия с приёмом"}
                   />
-                  <MetricBadge metric="armor" value={String(armor)} note={`Снаряжение: +${d.armorBonus}`} />
-                  <MetricBadge metric="evade" value={percent(readout?.evade ?? d.evade)} note="Предел — 99%" />
-                  <MetricBadge metric="crit" value={percent(readout?.crit ?? d.critChance)} note={`Множитель ×${(readout?.critDamage ?? d.critDamage).toFixed(2)}`} />
-                  <MetricBadge metric="ap" value={String(ap)} note="Ловкость + ускорение предметов" />
-                  <MetricBadge metric="resist" value={percent(resist)} note="Сопротивление эффектам, предел 99%" />
-                  <MetricBadge metric="magicResist" value={percent(readout?.magicResist ?? d.magicResist)} note="Снижение магического урона" />
-                  <MetricBadge metric="fortify" value={percent(readout?.fortify ?? d.fortify)} note="Снижение физического урона" />
+                  <MetricBadge metric="armor" align={tipAlignForColumn(2)} value={String(armor)} note={`Снаряжение: +${d.armorBonus}`} />
+                  <MetricBadge metric="evade" align={tipAlignForColumn(3)} value={percent(readout?.evade ?? d.evade)} note="Предел — 99%" />
+                  <MetricBadge metric="crit" align={tipAlignForColumn(4)} value={percent(readout?.crit ?? d.critChance)} note={`Множитель ×${(readout?.critDamage ?? d.critDamage).toFixed(2)}`} />
+                  <MetricBadge metric="ap" align={tipAlignForColumn(5)} value={String(ap)} note="Ловкость + ускорение предметов" />
+                  <MetricBadge metric="resist" align={tipAlignForColumn(6)} value={percent(resist)} note="Сопротивление эффектам, предел 99%" />
+                  <MetricBadge metric="magicResist" align={tipAlignForColumn(7)} value={percent(readout?.magicResist ?? d.magicResist)} note="Снижение магического урона" />
+                  <MetricBadge metric="fortify" align={tipAlignForColumn(8)} value={percent(readout?.fortify ?? d.fortify)} note="Снижение физического урона" />
                   {readout && <>
-                    <MetricBadge metric="enemyDamage" value={`${readout.effMin}–${readout.effMax}`} note="После его брони и защиты" />
-                    <MetricBadge metric="incomingDamage" value={`${readout.inMin}–${readout.inMax}`} note="После вашей брони и эффектов" />
+                    <MetricBadge metric="enemyDamage" align={tipAlignForColumn(9)} value={`${readout.effMin}–${readout.effMax}`} note="После его брони и защиты" />
+                    <MetricBadge metric="incomingDamage" align={tipAlignForColumn(10)} value={`${readout.inMin}–${readout.inMax}`} note="После вашей брони и эффектов" />
                   </>}
                 </div>
               </SheetSection>
