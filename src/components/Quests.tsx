@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Coins, Package } from "lucide-react";
 import { BLESSINGS, blessingPrice, type BlessingId } from "../game/blessings";
 import { ITEMS, RARITY_META, WEAR_META, scaledGearStats } from "../game/content";
@@ -12,10 +12,16 @@ import {
   describeReward,
   logOf,
   mercenaryPrice,
+  mercenarySlots,
   questReady,
+  recipeMinTrust,
+  stationRecipeList,
+  trustOf,
+  villagerSlots,
+  wizardSlots,
 } from "../game/quests";
 import type { LobbyController } from "../controllers/LobbyController";
-import type { GearItem, Player, Quest, QuestGiverId, ShopLine } from "../game/types";
+import { TRUST_MAX, type GearItem, type Player, type Quest, type QuestGiverId, type ShopLine } from "../game/types";
 import { Btn, Panel, Tag } from "./ui";
 
 /** Портрет NPC из public/images/npcs. Если картины нет, показываем инициал на тёмном фоне. */
@@ -45,17 +51,73 @@ export function NpcPortrait({ giver, className = "" }: { giver: QuestGiverId; cl
   );
 }
 
-/** Вкладка «Задания» лобби: ряд NPC с портретами и выбранный NPC с его заданиями и товарами. */
+/** Пять точек доверия: заполненные — уже открыто. */
+function TrustPips({ value }: { value: number }) {
+  return (
+    <span className="flex gap-1" aria-hidden>
+      {Array.from({ length: TRUST_MAX }, (_, i) => (
+        <span key={i} className={`h-2 w-2 border border-flamedim ${i < value ? "bg-flame" : "bg-transparent"}`} />
+      ))}
+    </span>
+  );
+}
+
+/** Первый уровень доверия, на котором позиция витрины с номером index открыта. */
+function openAtTrust(slots: (trust: number) => number, index: number): number {
+  for (let t = 0; t <= TRUST_MAX; t++) if (index < slots(t)) return t;
+  return TRUST_MAX;
+}
+
+/** Следующий уровень доверия, на котором на витрине появится ещё одна позиция. */
+function nextShelfTrust(slots: (trust: number) => number, trust: number): number | null {
+  for (let t = trust + 1; t <= TRUST_MAX; t++) if (slots(t) > slots(trust)) return t;
+  return null;
+}
+
+/** Подсказка: что откроется дальше у этого жителя. */
+function unlockNote(giver: QuestGiverId, player: Player): string {
+  const t = trustOf(player, giver);
+  if (giver === "priest") {
+    const locked = Object.values(BLESSINGS)
+      .filter((b) => b.minTrust > t)
+      .sort((a, b) => a.minTrust - b.minTrust);
+    if (locked.length === 0) return "Все благословения открыты.";
+    return `Закрыто: ${locked.map((b) => `${b.name} (доверие ${b.minTrust})`).join(", ")}.`;
+  }
+  if (giver === "wizard" || giver === "villager" || giver === "mercenary") {
+    const slots =
+      giver === "wizard" ? wizardSlots : giver === "villager" ? villagerSlots : mercenarySlots;
+    const next = nextShelfTrust(slots, t);
+    return next === null ? "Витрина открыта полностью." : `Следующая позиция на витрине — при доверии ${next}.`;
+  }
+  if (giver === "smith" || giver === "merchant") {
+    return t >= 3
+      ? "Каждое задание даёт скидку 25% на следующую покупку."
+      : `Скидка 25% на половину заданий. С доверием 3 — на каждое.`;
+  }
+  if (giver === "alchemist" || giver === "master") {
+    const station = giver === "master" ? "workshop" : "alchemy";
+    const needs = stationRecipeList(station).map(recipeMinTrust).filter((n) => n > t);
+    if (needs.length === 0) return "Все листы открыты.";
+    return `Следующий лист — при доверии ${Math.min(...needs)}.`;
+  }
+  return "";
+}
+
+/** Вкладка «Жители» лобби: ряд NPC с портретами и выбранный NPC с его доверием, заданиями, товарами и услугами. */
 export function QuestsTab({
   player,
   controller,
   unlockedFloor,
   say,
+  services = {},
 }: {
   player: Player;
   controller: LobbyController;
   unlockedFloor: number;
   say: (text: string | null) => void;
+  /** Содержимое NPC, которое живёт в лобби: варка и рецепты алхимика и мастера, кузница. */
+  services?: Partial<Record<QuestGiverId, ReactNode>>;
 }) {
   const log = logOf(player);
   /* Открываем того, у кого уже взято задание; иначе — священника. */
@@ -67,12 +129,16 @@ export function QuestsTab({
   return (
     <div className="space-y-5">
       <div>
-        <span className="sc text-flamedim">Гильдия и лавки деревни</span>
-        <h3 className="font-display text-xl uppercase tracking-[0.12em] text-flamehi">Задания</h3>
+        <span className="sc text-flamedim">Жители деревни</span>
+        <h3 className="font-display text-xl uppercase tracking-[0.12em] text-flamehi">Жители</h3>
         <p className="mt-1 max-w-2xl text-sm text-mute">
           На карте этажа задания отмечены <b className="text-flamehi">восклицательным знаком</b>. Убийство засчитывается сразу.
           Трофей, остатки и живого товарища несёшь живым до лобби — там и сдаёшь. Реагенты берутся из сумки.
           Новые задания и товары появляются, когда ты проходишь новый этаж.
+        </p>
+        <p className="mt-1 max-w-2xl text-sm text-mute">
+          Каждое сданное задание поднимает <b className="text-flamehi">доверие</b> к его жителю (до {TRUST_MAX}).
+          Чем выше доверие, тем больше товаров и благословений открыто.
         </p>
         <p className="mt-2 text-sm text-mute">
           Взято заданий: {log.active.length}/{QUEST_ACTIVE_LIMIT}
@@ -80,13 +146,14 @@ export function QuestsTab({
         </p>
       </div>
 
-      <div role="tablist" aria-label="Жители деревни" className="grid grid-cols-3 gap-2 md:grid-cols-6">
+      <div role="tablist" aria-label="Жители деревни" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {GIVER_ORDER.map((id) => (
           <NpcTabButton
             key={id}
             giver={id}
             selected={giver === id}
             ready={log.active.filter((q) => q.giver === id && questReady(q, player)).length}
+            trust={trustOf(player, id)}
             onSelect={() => setGiver(id)}
           />
         ))}
@@ -99,6 +166,7 @@ export function QuestsTab({
         unlockedFloor={unlockedFloor}
         activeFull={activeFull}
         say={say}
+        services={services[giver]}
       />
     </div>
   );
@@ -108,11 +176,13 @@ function NpcTabButton({
   giver,
   selected,
   ready,
+  trust,
   onSelect,
 }: {
   giver: QuestGiverId;
   selected: boolean;
   ready: number;
+  trust: number;
   onSelect: () => void;
 }) {
   const meta = QUEST_GIVERS[giver];
@@ -128,6 +198,7 @@ function NpcTabButton({
     >
       <NpcPortrait giver={giver} className="h-20 w-20 border border-line" />
       <span className="font-display text-xs uppercase tracking-[0.1em] text-parch">{meta.role}</span>
+      <TrustPips value={trust} />
       {ready > 0 && (
         <span className="absolute right-1 top-1 bg-verd px-1.5 font-mono text-xs text-ink" title="Можно сдать">
           {ready}
@@ -144,6 +215,7 @@ function NpcPanel({
   unlockedFloor,
   activeFull,
   say,
+  services,
 }: {
   giver: QuestGiverId;
   player: Player;
@@ -151,11 +223,13 @@ function NpcPanel({
   unlockedFloor: number;
   activeFull: boolean;
   say: (text: string | null) => void;
+  services?: ReactNode;
 }) {
   const meta = QUEST_GIVERS[giver];
   const log = logOf(player);
   const offers = log.offers.filter((q) => q.giver === giver);
   const active = log.active.filter((q) => q.giver === giver);
+  const trust = trustOf(player, giver);
 
   return (
     <Panel title={`${meta.role} · ${meta.name}`}>
@@ -164,7 +238,18 @@ function NpcPanel({
           <NpcPortrait giver={giver} className="aspect-square w-full border border-line" />
         </div>
         <div className="space-y-5">
+          {/* Приветствие звучит при открытии: тон зависит от доверия. */}
+          <blockquote className="border-l-2 border-flamedim pl-3 font-display text-[1.02rem] italic leading-snug text-parch">
+            «{meta.greetings[trust] ?? meta.greetings[0]}»
+          </blockquote>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="font-mono text-xs text-mute">
+              Доверие {trust}/{TRUST_MAX}
+            </span>
+            <TrustPips value={trust} />
+          </div>
           <p className="text-sm text-mute">{meta.desc}</p>
+          <p className="text-sm text-mute">{unlockNote(giver, player)}</p>
 
           <section className="space-y-3">
             <h4 className="sc text-flamedim">Задания</h4>
@@ -183,6 +268,8 @@ function NpcPanel({
           </section>
 
           <NpcShop giver={giver} player={player} controller={controller} unlockedFloor={unlockedFloor} say={say} />
+
+          {services && <section className="space-y-3 border-t border-line pt-4">{services}</section>}
         </div>
       </div>
     </Panel>
@@ -202,12 +289,16 @@ function NpcShop({
   unlockedFloor: number;
   say: (text: string | null) => void;
 }) {
+  const trust = trustOf(player, giver);
   if (giver === "priest") return <BlessingShop player={player} controller={controller} unlockedFloor={unlockedFloor} say={say} />;
   if (giver === "wizard") {
+    const slots = wizardSlots(trust);
     return (
       <LineShop
         title="Свитки и зелья"
         lines={logOf(player).wizard}
+        slots={slots}
+        unlockAt={(index) => openAtTrust(wizardSlots, index)}
         emptyText="Товар распродан. Обновится при прохождении нового этажа."
         player={player}
         note={(line) => `осталось ${line.qty} из ${WIZARD_MAX_QTY} · в сумке ${player.bag[line.id] ?? 0}`}
@@ -220,6 +311,8 @@ function NpcShop({
       <LineShop
         title="Реагенты"
         lines={logOf(player).villager}
+        slots={villagerSlots(trust)}
+        unlockAt={(index) => openAtTrust(villagerSlots, index)}
         emptyText="Реагенты распроданы. Обновятся при прохождении нового этажа."
         player={player}
         note={(line) => `осталось ${line.qty} · в сумке ${player.bag[line.id] ?? 0}`}
@@ -228,11 +321,14 @@ function NpcShop({
     );
   }
   if (giver === "mercenary") return <MercenaryShop player={player} controller={controller} say={say} />;
+  /* Алхимик и мастер продают рецепты в своей секции (services), кузнец — кузницу. */
+  if (giver === "alchemist" || giver === "master") return null;
   return (
     <section className="space-y-2">
       <h4 className="sc text-flamedim">Скидка</h4>
       <p className="text-sm text-mute">
-        Этот NPC товаров не продаёт. Иногда его задания дают скидку 25% на одну следующую покупку.
+        {giver === "smith" || giver === "merchant" ? "Товаров не продаёт. " : ""}
+        Иногда его задания дают скидку 25% на одну следующую покупку.
       </p>
     </section>
   );
@@ -260,6 +356,18 @@ function BlessingShop({
           const def = BLESSINGS[id as BlessingId];
           if (!def) return null;
           const bought = log.blessingNext === id;
+          const open = def.minTrust <= trustOf(player, "priest");
+          if (!open) {
+            return (
+              <div key={id} className="flex items-center justify-between gap-3 border border-dashed border-line bg-black/20 p-3">
+                <div>
+                  <div className="font-display text-sm uppercase tracking-[0.12em] text-mute">{def.name}</div>
+                  <div className="text-sm text-mute">Откроется при доверии {def.minTrust}.</div>
+                </div>
+                <Tag tone="mute">доверие {def.minTrust}</Tag>
+              </div>
+            );
+          }
           return (
             <div key={id} className="flex items-center justify-between gap-3 border border-line bg-black/30 p-3">
               <div>
@@ -296,6 +404,8 @@ function BlessingShop({
 function LineShop({
   title,
   lines,
+  slots,
+  unlockAt,
   emptyText,
   player,
   note,
@@ -303,6 +413,9 @@ function LineShop({
 }: {
   title: string;
   lines: ShopLine[];
+  /** Сколько позиций открыто доверием к продавцу. */
+  slots: number;
+  unlockAt: (index: number) => number;
   emptyText: string;
   player: Player;
   note: (line: ShopLine) => string;
@@ -315,9 +428,10 @@ function LineShop({
         <p className="text-sm text-mute">{emptyText}</p>
       ) : (
         <div className="grid gap-2 md:grid-cols-2">
-          {lines.map((line) => {
+          {lines.map((line, index) => {
             const def = ITEMS[line.id];
             const shown = couponPreview(player, line.price);
+            if (index >= slots) return <LockedRow key={line.id} trust={unlockAt(index)} />;
             return (
               <div key={line.id} className="flex items-center justify-between gap-3 border border-line bg-black/30 p-3">
                 <div>
@@ -360,12 +474,29 @@ function MercenaryShop({
         <p className="text-sm text-mute">Наёмнику нечего предложить. Обновится при прохождении нового этажа.</p>
       ) : (
         <div className="grid gap-2 md:grid-cols-2">
-          {items.map((item) => (
-            <MercenaryCard key={item.uid} item={item} player={player} onBuy={() => say(controller.buyMercenaryItem(item.uid))} />
-          ))}
+          {items.map((item, index) =>
+            index < mercenarySlots(trustOf(player, "mercenary")) ? (
+              <MercenaryCard key={item.uid} item={item} player={player} onBuy={() => say(controller.buyMercenaryItem(item.uid))} />
+            ) : (
+              <LockedRow key={item.uid} trust={openAtTrust(mercenarySlots, index)} />
+            ),
+          )}
         </div>
       )}
     </section>
+  );
+}
+
+/** Позиция витрины, которая откроется при большем доверии. */
+function LockedRow({ trust }: { trust: number }) {
+  return (
+    <div className="flex items-center justify-between gap-3 border border-dashed border-line bg-black/20 p-3">
+      <div>
+        <div className="font-display text-sm uppercase tracking-[0.1em] text-mute">Закрыто</div>
+        <div className="text-xs text-mute">Откроется при доверии {trust}.</div>
+      </div>
+      <Tag tone="mute">доверие {trust}</Tag>
+    </div>
   );
 }
 

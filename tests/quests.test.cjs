@@ -81,10 +81,11 @@ test("новый герой получает журнал заданий с дв
   const p = freshPlayer();
   const log = quests.logOf(p);
   assert.equal(log.offers.length, 2, "два задания на старте");
-  assert.equal(log.blessingOffers.length, 4, "четыре благословения у священника");
-  assert.ok(log.wizard.length > 0 && log.wizard.length <= 4, "волшебник продаёт до четырёх позиций");
-  assert.ok(log.villager.length > 0 && log.villager.length <= 3, "сельчанин продаёт до трёх реагентов");
-  assert.ok(log.mercenary.length > 0 && log.mercenary.length <= 3, "наёмник продаёт до трёх вещей");
+  assert.equal(log.blessingOffers.length, 6, "все шесть благословений у священника, закрытые с замком");
+  assert.ok(log.wizard.length > 0 && log.wizard.length <= 6, "волшебник продаёт до шести позиций");
+  assert.ok(log.villager.length > 0 && log.villager.length <= 5, "сельчанин продаёт до пяти реагентов");
+  assert.ok(log.mercenary.length > 0 && log.mercenary.length <= 5, "наёмник продаёт до пяти вещей");
+  assert.deepEqual(log.trust, quests.zeroTrust(), "доверие ко всем жителям стартует с нуля");
   for (const line of log.wizard) assert.ok(line.qty >= 1 && line.qty <= quests.WIZARD_MAX_QTY, "волшебник: не больше трёх штук");
 });
 
@@ -291,7 +292,7 @@ test("сервер: журнал заданий проходит проверк�
   assert.equal(save.sanitizePlayer(withBadBlessingField).blessing, null, "неизвестное благословение сбрасывается");
 });
 
-test("лобби: вкладка «Задания» показывает доску, взятые задания и купон кузнеца", () => {
+test("лобби: вкладка «Жители» показывает доску, взятые задания и купон кузнеца", () => {
   const { Lobby } = loadUi("src/components/Lobby.tsx", "lobby-quests");
   const base = PlayerFactory.createInitial();
   const active = questOf("kill", { id: "live", giver: "smith", title: "Охота: Крысиный поводырь", coupon: true });
@@ -317,6 +318,46 @@ test("лобби: вкладка «Задания» показывает дос�
   assert.ok(html.includes("Отец Анселм") && html.includes("Бран Молотобоец"), "все NPC на вкладке");
   assert.ok(html.includes("images/npcs/smith.jpg"), "у кузнеца есть портрет");
   assert.ok(html.includes("Скидка 25% на следующую покупку"), "купон показан");
+});
+
+test("лобби: алхимик открывается с приветствием по доверию и листами рецептов; рецептов в магазине нет", () => {
+  const { Lobby } = loadUi("src/components/Lobby.tsx", "lobby-alchemist");
+  const base = PlayerFactory.createInitial();
+  const active = questOf("kill", { id: "alch", giver: "alchemist", title: "Охота: Тестовый монстр" });
+  const player = {
+    ...base,
+    gold: 500,
+    questLog: {
+      ...quests.emptyQuestLog(),
+      ...quests.initialQuestLog(1),
+      active: [active],
+      trust: { ...quests.zeroTrust(), alchemist: 2 },
+    },
+  };
+  const render = (extra = {}) =>
+    renderToStaticMarkup(
+      React.createElement(Lobby, {
+        player,
+        controller: {},
+        shopStock: [],
+        onStart: () => {},
+        onRestart: () => {},
+        best: 1,
+        unlockedFloor: 2,
+        initialTab: "quests",
+        ...extra,
+      }),
+    );
+  const html = render();
+  assert.ok(html.includes("Мирна Склянка"), "алхимик открыт, у него взято задание");
+  assert.ok(html.includes(quests.QUEST_GIVERS.alchemist.greetings[2]), "приветствие при доверии 2");
+  assert.ok(html.includes("Доверие 2/5"), "доверие показано");
+  assert.ok(html.includes("Листы с рецептами"), "алхимик продаёт рецепты в своей вкладке");
+  assert.ok(html.includes("Лист 1"), "первый лист показан");
+  assert.ok(html.includes("Алхимия варит зелья"), "варка живёт у алхимика");
+  const shop = render({ initialTab: "shop" });
+  assert.ok(!shop.includes("Купить рецепт"), "в магазине нет покупки рецептов");
+  assert.ok(!shop.includes("Листы с рецептами"), "в магазине нет секции рецептов");
 });
 
 test("подземелье: метка принесения видна в тумане, метка убийства — только в круге света", () => {
@@ -381,7 +422,7 @@ test("наёмник: только редкие и выше качества, у
   for (const floor of [1, 3, 6]) {
     for (let i = 0; i < 40; i++) {
       const stock = quests.rollMercenaryStock(floor);
-      assert.equal(stock.length, 3, "три предмета");
+      assert.equal(stock.length, 5, "пять предметов на витрине");
       for (const item of stock) {
         assert.ok(item.rarity !== "common", `редкость ${item.rarity} не продаётся`);
         assert.ok(item.level <= floor, `уровень ${item.level} выше этажа ${floor}`);
@@ -398,3 +439,96 @@ test("наёмник обновляется вместе с товарами п�
     assert.notEqual(item.rarity, "common");
   }
 });
+
+/* ─────────────  доверие, замки и рецепты  ───────────── */
+
+test("восемь жителей, у каждого шесть приветствий по уровню доверия", () => {
+  assert.equal(quests.GIVER_ORDER.length, 8);
+  assert.ok(quests.GIVER_ORDER.includes("alchemist") && quests.GIVER_ORDER.includes("master"));
+  for (const id of quests.GIVER_ORDER) {
+    const greetings = quests.QUEST_GIVERS[id].greetings;
+    assert.equal(greetings.length, 6, `${id}: шесть приветствий`);
+    for (const line of greetings) assert.ok(line.length > 0, `${id}: приветствие не пустое`);
+  }
+});
+
+test("сдача задания поднимает доверие на один, но не выше пяти", () => {
+  const q = (id) => questOf("kill", { id, giver: "priest", done: true });
+  const start = freshPlayer({ questLog: { ...quests.emptyQuestLog(), active: [q("t1")] } });
+  const once = quests.claimQuest(start, "t1");
+  assert.equal(quests.trustOf(once.player, "priest"), 1, "+1 за задание этого NPC");
+  assert.equal(quests.trustOf(once.player, "smith"), 0, "чужое доверие не меняется");
+  const capped = freshPlayer({
+    questLog: { ...quests.emptyQuestLog(), trust: { ...quests.zeroTrust(), priest: 5 }, active: [q("t2")] },
+  });
+  const res = quests.claimQuest(capped, "t2");
+  assert.equal(quests.trustOf(res.player, "priest"), 5, "максимум 5");
+  assert.match(res.message, /доверие максимальное/);
+});
+
+test("кузнец и торговец: с доверием 3 каждое задание даёт скидку", () => {
+  const never = () => 0.99;
+  assert.equal(quests.rollQuest("smith", 2, never, 0).coupon, false, "без доверия — только половина");
+  assert.equal(quests.rollQuest("smith", 2, never, 3).coupon, true, "с доверием 3 — каждое");
+  assert.equal(quests.rollQuest("merchant", 2, never, 5).coupon, true);
+  assert.equal(quests.rollQuest("priest", 2, () => 0, 5).coupon, false, "священник скидок не даёт");
+});
+
+test("благословение с замком: нужного доверия у священника нет — покупки нет", () => {
+  const base = freshPlayer({ questLog: { ...quests.emptyQuestLog(), ...quests.initialQuestLog(1, () => 0.3) } });
+  assert.equal(quests.buyBlessing(base, "steel_faith", 1), null, "доверие 0 — Стальная вера закрыта");
+  const trusted = freshPlayer({
+    questLog: { ...quests.emptyQuestLog(), ...quests.initialQuestLog(1, () => 0.3), trust: { ...quests.zeroTrust(), priest: 4 } },
+  });
+  assert.ok(quests.buyBlessing(trusted, "steel_faith", 1), "доверие 4 — открыто");
+  assert.equal(quests.buyBlessing(trusted, "grace", 1), null, "Благодать открывается при доверии 5");
+  assert.ok(quests.buyBlessing(trusted, "ward", 1), "базовые открыты всегда");
+});
+
+test("волшебник: позиции витрины открываются по доверию", () => {
+  const ids = Object.values(content.ITEMS)
+    .filter((i) => (i.kind === "potion" || i.kind === "scroll") && (i.price ?? 0) > 0)
+    .slice(0, 6)
+    .map((i) => i.id);
+  const wizard = ids.map((id) => ({ id, qty: 1, price: 10 }));
+  const at = (t) =>
+    freshPlayer({ questLog: { ...quests.emptyQuestLog(), wizard, trust: { ...quests.zeroTrust(), wizard: t } } });
+  assert.equal(quests.wizardSlots(0), 3);
+  assert.equal(quests.buyWizardItem(at(0), ids[3]), null, "четвёртая позиция закрыта при доверии 0");
+  assert.ok(quests.buyWizardItem(at(0), ids[2]), "первые три открыты");
+  assert.ok(quests.buyWizardItem(at(1), ids[3]), "доверие 1 открывает четвёртую");
+  assert.equal(quests.wizardSlots(5), 6, "при доверии 5 весь товар открыт");
+});
+
+test("наёмник: витрина растёт с доверием, позиция закрыта — покупки нет", () => {
+  const stock = quests.rollMercenaryStock(3);
+  const at = (t) =>
+    freshPlayer({ questLog: { ...quests.emptyQuestLog(), mercenary: stock, trust: { ...quests.zeroTrust(), mercenary: t } } });
+  assert.equal(quests.mercenarySlots(0), 3);
+  assert.equal(quests.mercenarySlots(2), 4);
+  assert.equal(quests.buyMercenaryItem(at(0), stock[3].uid), null, "четвёртая вещь закрыта при доверии 0");
+  assert.ok(quests.buyMercenaryItem(at(2), stock[3].uid), "доверие 2 открывает четвёртую");
+});
+
+test("рецепты: делятся по цене на шесть частей, у алхимика и мастера отдельно", () => {
+  for (const station of ["alchemy", "workshop"]) {
+    const list = quests.stationRecipeList(station);
+    assert.ok(list.length >= 6, `${station}: рецептов достаточно для шести уровней`);
+    const needs = list.map((r) => quests.recipeMinTrust(r));
+    assert.equal(needs[0], 0, `${station}: самый дешёвый открыт сразу`);
+    assert.equal(needs[needs.length - 1], 5, `${station}: самый дорогой — при доверии 5`);
+    assert.deepEqual([...needs].sort((a, b) => a - b), needs, `${station}: порог не падает с ростом цены`);
+  }
+  const top = quests.stationRecipeList("workshop").slice(-1)[0];
+  const seller = quests.recipeGiver(top);
+  assert.equal(seller, "master", "рецепты мастерской продаёт мастер");
+  assert.equal(quests.canLearnRecipe(freshPlayer(), top), false, "при доверии 0 дорогой лист закрыт");
+  const trusted = freshPlayer({
+    questLog: { ...quests.emptyQuestLog(), trust: { ...quests.zeroTrust(), master: 5 } },
+  });
+  assert.equal(quests.canLearnRecipe(trusted, top), true, "при доверии 5 мастер продаёт все листы");
+  const alch = quests.stationRecipeList("alchemy")[0];
+  assert.equal(quests.recipeGiver(alch), "alchemist");
+  assert.equal(quests.canLearnRecipe(freshPlayer(), alch), true, "самый дешёвый лист алхимика открыт сразу");
+});
+

@@ -175,7 +175,17 @@ export interface GearItem {
 
 /* ─────────────  ЗАДАНИЯ  ───────────── */
 
-export type QuestGiverId = "priest" | "smith" | "merchant" | "wizard" | "mercenary" | "villager";
+export type QuestGiverId =
+  | "priest"
+  | "smith"
+  | "merchant"
+  | "wizard"
+  | "mercenary"
+  | "villager"
+  | "alchemist"
+  | "master";
+/** Доверие к жителю: от 0 до 5, растёт на один за каждое выполненное задание. */
+export const TRUST_MAX = 5;
 /** Убить существо на этаже, принести из подземелья или отдать реагенты. */
 export type QuestKind = "kill" | "fetch" | "reagents";
 /** Что приносим: трофей с существа, остатки товарища или живого товарища. */
@@ -228,6 +238,8 @@ export interface QuestLog {
   carried: string[];
   /** Скидки 25% на следующую покупку. */
   coupons: number;
+  /** Доверие к каждому жителю: 0…TRUST_MAX. */
+  trust: Record<QuestGiverId, number>;
   /** Благословения, которые предлагает священник. */
   blessingOffers: string[];
   /** Благословение, купленное на следующий поход. */
