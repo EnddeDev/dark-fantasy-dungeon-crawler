@@ -2401,8 +2401,10 @@ export function canBuySupply(id: string, shopLevel: number): boolean {
   return supplyLevel(id) <= Math.max(1, Math.floor(shopLevel));
 }
 
+/** Припасы продаются за 45% цены, округлённой до 5. Реагенты продаются вдвое дешевле такой цены. */
 export function supplySellPrice(def: ItemDef): number {
-  return Math.max(1, Math.round(((def.price ?? 0) * 0.45) / 5) * 5);
+  const base = Math.max(1, Math.round(((def.price ?? 0) * 0.45) / 5) * 5);
+  return def.kind === "reagent" ? Math.max(1, Math.round(base / 2)) : base;
 }
 
 /** Только свитки требуют Интеллекта; зелья и метательные расходники доступны без него. */
