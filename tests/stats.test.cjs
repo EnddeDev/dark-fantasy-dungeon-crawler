@@ -83,16 +83,16 @@ test("stat formulas count the full characteristic value including the starting p
   assert.equal(d.magicResist, 0.25);
 });
 
-test("negative effects tick from max HP and codify all nine effects", () => {
-  assert.equal(statuses.statusTickDamage(100, "bleed"), 5);
-  assert.equal(statuses.statusTickDamage(100, "poison"), 4);
-  assert.equal(statuses.statusTickDamage(100, "burn"), 5);
-  assert.equal(statuses.statusTickDamage(100, "chill"), 3);
-  assert.equal(statuses.statusTickDamage(100, "curse"), 3);
-  assert.equal(statuses.statusTickDamage(100, "blight"), 3);
-  assert.equal(statuses.statusTickDamage(1, "poison"), 1);
-  assert.equal(statuses.magicTickDamage(100, "curse", 0), 3);
-  assert.equal(statuses.magicTickDamage(100, "curse", 0.5), 2);
+test("тик задаёт источник: доля силы, минимум 1, магия режется, наложения и ловушки", () => {
+  assert.equal(statuses.dotTickFrom(100, 0.25), 25);
+  assert.equal(statuses.dotTickFrom(1, 0.2), 1, "тик не ниже 1");
+  assert.equal(statuses.magicTickFrom(6, 0), 6);
+  assert.equal(statuses.magicTickFrom(6, 0.5), 3);
+  assert.equal(statuses.refreshedTick(true, 5, 3), 5, "активный эффект держит сильнейший тик");
+  assert.equal(statuses.refreshedTick(false, 5, 3), 3, "новый эффект после конца берёт свой тик");
+  assert.equal(statuses.trapTickFrom("bleed", 3), 5);
+  assert.equal(statuses.trapTickFrom("poison", 3), 6);
+  assert.equal(statuses.DOT_SHARE.consumable.poison, 0.2);
   assert.equal(statuses.CHILL_HEAL_MULT, 0.5);
   assert.deepEqual(statuses.NEGATIVE_EFFECTS.map((e) => e.id), ["curse", "poison", "burn", "bleed", "chill", "wither", "stun", "fear", "sunder"]);
 });

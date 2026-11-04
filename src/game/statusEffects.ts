@@ -1,17 +1,49 @@
 /**
  * Единые правила негативных эффектов.
- * Периодический урон считается от максимального ОЗ цели.
+ * Периодический урон задаёт источник наложения: у каждого предмета, приёма,
+ * монстра и ловушки свой тик. Тик не зависит от макс. ОЗ цели.
  */
-export const STATUS_DOT = {
-  bleed: 0.05,
-  poison: 0.04,
-  burn: 0.05,
-  chill: 0.03,
-  curse: 0.03,
-  blight: 0.03,
+export type DotKind = "bleed" | "poison" | "burn" | "chill" | "curse" | "blight";
+
+/**
+ * Доля силы источника, которая уходит в тик. Сила — та же величина, что даёт
+ * урон источника: у расходника — его урон, у приёма — урон приёма, у монстра — его атака.
+ */
+export const DOT_SHARE = {
+  consumable: { poison: 0.2, bleed: 0.25, chill: 0.15, blight: 0.15 },
+  weapon: { poison: 0.2, bleed: 0.25, chill: 0.15, curse: 0.15 },
+  spell: { burn: 0.25, chill: 0.15 },
+  monster: { bleed: 0.25, poison: 0.2, burn: 0.3, chill: 0.15, curse: 0.15 },
 } as const;
 
-export type DotKind = keyof typeof STATUS_DOT;
+/** Тик по силе источника: не меньше 1. */
+export function dotTickFrom(power: number, share: number): number {
+  return Math.max(1, Math.round(Math.max(0, power) * share));
+}
+
+/** Тик магического эффекта, который режется сопротивлением цели. */
+export function magicTickFrom(tick: number, magicResist: number): number {
+  return Math.max(1, Math.round(Math.max(0, tick) * (1 - Math.max(0, Math.min(0.99, magicResist)))));
+}
+
+/**
+ * Тик при наложении. Пока эффект активен, держится сильнейший тик; новый
+ * эффект после конца старого берёт свой тик.
+ */
+export function refreshedTick(active: boolean, prev: number, next: number): number {
+  return active ? Math.max(prev, next) : next;
+}
+
+/** Тик проклятия с карты (событие): магический, растёт с этажом. */
+export function curseTickFrom(floor: number): number {
+  return 1 + Math.max(1, Math.floor(floor));
+}
+
+/** Тик ловушки на шагах по карте: растёт с этажом. */
+export function trapTickFrom(kind: "bleed" | "poison", floor: number): number {
+  const f = Math.max(1, Math.floor(floor));
+  return kind === "bleed" ? 2 + f : 3 + f;
+}
 
 /**
  * Виды масла для оружия. Удар смазанным оружием накладывает вид на 3 раунда.
@@ -73,31 +105,29 @@ export function oilHitDamage(kind: OilKind, int: number): number {
 
 /**
  * Периодический урон масла за раунд до сопротивлений и уязвимости.
- * Огонь 5 + 1% макс. ОЗ, лёд 3, кислота 10, яд 2% + 1%×ЛОВ макс. ОЗ.
- * Разовые виды (магия, свет) тиков не дают — возвращают 0.
+ * Огонь 6, лёд 3, кислота 10, яд 2 + ЛОВ героя. Разовые виды (магия, свет) тиков не дают — возвращают 0.
  */
-export function oilTickBase(kind: OilKind, maxHp: number, agi: number): number {
-  const hp = Math.max(0, maxHp);
+export function oilTickBase(kind: OilKind, agi: number): number {
   switch (kind) {
     case "fire":
-      return 5 + Math.ceil(hp * 0.01);
+      return 6;
     case "ice":
       return 3;
     case "acid":
       return 10;
     case "poison":
-      return Math.max(1, Math.ceil(hp * (0.02 + 0.01 * Math.max(0, agi))));
+      return 2 + Math.max(0, agi);
     default:
       return 0;
   }
 }
 
 /** Периодический урон масла за тик: огонь, лёд и кислота режутся магическим сопротивлением, яд — нет. */
-export function oilTickDamage(maxHp: number, kind: OilKind, agi: number, magicResist: number): number {
-  const base = oilTickBase(kind, maxHp, agi);
+export function oilTickDamage(kind: OilKind, agi: number, magicResist: number): number {
+  const base = oilTickBase(kind, agi);
   if (base <= 0) return 0;
   if (kind === "poison") return base;
-  return Math.max(1, Math.round(base * (1 - Math.max(0, Math.min(0.99, magicResist)))));
+  return magicTickFrom(base, magicResist);
 }
 
 /** Доля, на которую льдом снижена сила атаки врага (0.05 за каждое очко ИНТ героя). */
@@ -114,21 +144,12 @@ export const CHILL_HEAL_MULT = 0.5;
 export const CURSE_DAMAGE_MULT = 0.7;
 export const BLIGHT_DAMAGE_MULT = 0.8;
 
-export function statusTickDamage(maxHp: number, kind: DotKind): number {
-  return Math.max(1, Math.ceil(Math.max(0, maxHp) * STATUS_DOT[kind]));
-}
-
-export function magicTickDamage(maxHp: number, kind: DotKind, magicResist: number): number {
-  const raw = statusTickDamage(maxHp, kind);
-  return Math.max(1, Math.round(raw * (1 - Math.max(0, Math.min(0.99, magicResist)))));
-}
-
 export const NEGATIVE_EFFECTS: { id: string; name: string; text: string }[] = [
-  { id: "curse", name: "Проклятие", text: "Урон цели −30% и периодический магический урон 3% макс. ОЗ." },
-  { id: "poison", name: "Яд", text: "Периодический урон 4% макс. ОЗ в конце раунда; повторное наложение продлевает срок и складывает урон." },
-  { id: "burn", name: "Горение", text: "Периодический урон 5% макс. ОЗ в конце раунда." },
-  { id: "bleed", name: "Кровотечение", text: "Периодический урон 5% макс. ОЗ в конце раунда; повторное наложение продлевает срок и складывает урон." },
-  { id: "chill", name: "Обморожение", text: "Лечение цели −50% и периодический урон 3% макс. ОЗ." },
+  { id: "curse", name: "Проклятие", text: "Урон цели −30% и периодический магический урон, величину задаёт источник." },
+  { id: "poison", name: "Яд", text: "Периодический урон в конце раунда, величину задаёт источник; повторное наложение продлевает срок и складывает урон." },
+  { id: "burn", name: "Горение", text: "Периодический урон в конце раунда, величину задаёт источник." },
+  { id: "bleed", name: "Кровотечение", text: "Периодический урон в конце раунда, величину задаёт источник; повторное наложение продлевает срок и складывает урон." },
+  { id: "chill", name: "Обморожение", text: "Лечение цели −50% и периодический урон, величину задаёт источник." },
   { id: "wither", name: "Увядание", text: "Любое лечение цели переходит в магический урон." },
   { id: "stun", name: "Оглушение", text: "Цель пропускает следующий ход." },
   { id: "fear", name: "Страх", text: "Цель автоматически уходит в защиту в свой ход." },

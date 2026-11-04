@@ -8,7 +8,6 @@
  * и не режется сопротивлениями. Горение — это огонь: отдельного вида нет.
  */
 import { MONSTER_RACE_META, ELEMENT_WEAKNESS_MULT, type DamageElement, type MonsterRace } from "./monsters";
-import { STATUS_DOT } from "./statusEffects";
 
 /** Школа прямого удара: какой защитой режется. */
 export type DamageSchool = "phys" | "magic";
@@ -25,9 +24,6 @@ export interface DamageTypeInfo {
   text: string;
 }
 
-function percent(value: number): string {
-  return `${Math.round(value * 100)}%`;
-}
 
 function racesWith(element: DamageElement, kind: "vulnerable" | "immune"): string {
   const races = (Object.keys(MONSTER_RACE_META) as MonsterRace[])
@@ -69,7 +65,7 @@ export const DAMAGE_TYPES: DamageTypeInfo[] = [
     name: "Огонь",
     group: "direct",
     school: "magic",
-    text: elementText("fire", "Огненный шар и свиток огня поджигают врага: горение 5% макс. ОЗ за раунд. Огненное масло: 5 + 1% макс. ОЗ за раунд, 3 раунда."),
+    text: elementText("fire", "Огненный шар поджигает врага: горение, тик задан силой шара. Огненное масло: 6 урона за раунд, 3 раунда."),
   },
   {
     id: "ice",
@@ -96,13 +92,13 @@ export const DAMAGE_TYPES: DamageTypeInfo[] = [
     id: "poison",
     name: "Яд",
     group: "periodic",
-    text: `${percent(STATUS_DOT.poison)} макс. ОЗ в конце раунда за каждый стек. Повторное наложение продлевает срок и складывает урон. Не режется сопротивлениями. Ядовитое масло: 2% + 1%×ЛОВ макс. ОЗ за раунд, 3 раунда.`,
+    text: "Тик в конце раунда за каждый стек, величину задаёт источник. Повторное наложение продлевает срок и складывает урон. Не режется сопротивлениями. Ядовитое масло: 2 + ЛОВ урона за раунд, 3 раунда.",
   },
   {
     id: "bleed",
     name: "Кровотечение",
     group: "periodic",
-    text: `${percent(STATUS_DOT.bleed)} макс. ОЗ в конце раунда за каждый стек. Повторное наложение продлевает срок и складывает урон. Не режется сопротивлениями.`,
+    text: "Тик в конце раунда за каждый стек, величину задаёт источник. Повторное наложение продлевает срок и складывает урон. Не режется сопротивлениями.",
   },
 ];
 

@@ -2337,7 +2337,7 @@ test("яд складывается: срок обновляется, урон �
   assert.equal(second.p.statuses.poison, 3, "срок обновлён");
   assert.equal(second.p.statuses.poisonStacks, 2, "два наложения");
 
-  /* Тик: 4% от 100 = 4 ОЗ за наложение, два наложения — 8. */
+  /* Тик задаёт источник: два наложения складывают свой тик. */
   /* Фиксируем генератор: новый раунд тянет случайную инициативу, а тик должен быть точным. */
   const ticked = withRandom(() => battle.playerAct(
     {
@@ -2348,7 +2348,7 @@ test("яд складывается: срок обновляется, урон �
     },
     { type: "guard" },
   ), 0.99);
-  assert.equal(ticked.p.hp, 100 - 8, "урон яда удвоился от двух наложений");
+  assert.equal(ticked.p.hp, 100 - 2 * second.p.statuses.poisonTick, "урон яда удвоился от двух наложений");
 
   /* Предел наложений — MAX_DOT_STACKS. */
   let many = base;
@@ -2378,7 +2378,22 @@ test("кровотечение складывается так же, как яд
     },
     { type: "guard" },
   ), 0.99);
-  assert.equal(ticked.p.hp, 100 - 10, "5% × 2 наложения");
+  assert.equal(ticked.p.hp, 100 - 2 * second.p.statuses.woundTick, "тик кровотечения × 2 наложения");
+});
+
+test("тик задаёт источник: дротик, нож и бомба дают каждый свой тик, не зависящий от ОЗ цели", () => {
+  const b = quietEnemy(freshBattle(mkP({ level: 1, stats: { str: 1, agi: 10, int: 1 }, hp: 100, bag: { poison_dart: 1, serrated_knife: 1 } }), 1, false, "classic"));
+  b.enemy.hp = 9999;
+  b.enemy.maxHp = 9999;
+  /* ЛОВ 10: сила предмета 15 + 2×10 = 35. Дротик — 20% (7), нож — 25% (9). */
+  const poisoned = withRandom(() => battle.playerAct({ ...b, queue: ["p", "e"], idx: 0 }, { type: "item", id: "poison_dart" }), 0.99);
+  assert.equal(poisoned.enemy.statuses.poisonTick, 7, "дротик: 20% силы 35");
+  const cut = withRandom(() => battle.playerAct({ ...poisoned, queue: ["p", "e"], idx: 0 }, { type: "item", id: "serrated_knife" }), 0.99);
+  assert.equal(cut.enemy.statuses.bleedTick, 9, "нож: 25% силы 35");
+  assert.equal(cut.enemy.statuses.poisonTick, 7, "яд от дротика остался со своим тиком");
+  /* Тик не зависит от макс. ОЗ цели: у босса тик тот же. */
+  cut.enemy.maxHp = 90000;
+  assert.equal(cut.enemy.statuses.poisonTick, 7);
 });
 
 test("раскол складывается, сила растёт с уровнем эффекта и монстра", () => {
@@ -3383,17 +3398,17 @@ test("масла: шесть видов без физического, кров�
   }
 });
 
-test("формулы масел: огонь 5+1%, лёд 3, кислота 10, яд 2%+1%×ЛОВ, магия 3+3×ИНТ, свет 2×ИНТ", () => {
+test("формулы масел: огонь 6, лёд 3, кислота 10, яд 2+ЛОВ, магия 3+3×ИНТ, свет 2×ИНТ", () => {
   const status = loadGameModule("statusEffects");
-  assert.equal(status.oilTickDamage(1000, "fire", 0, 0), 15, "огонь: 5 + 1% макс. ОЗ");
-  assert.equal(status.oilTickDamage(1000, "fire", 0, 0.5), 8, "огонь режется магическим сопротивлением");
-  assert.equal(status.oilTickDamage(1000, "ice", 0, 0), 3, "лёд: 3 урона");
-  assert.equal(status.oilTickDamage(1000, "ice", 0, 0.5), 2, "лёд режется магическим сопротивлением");
-  assert.equal(status.oilTickDamage(1000, "acid", 0, 0), 10, "кислота: 10 урона");
-  assert.equal(status.oilTickDamage(1000, "poison", 5, 0.9), 70, "яд: 2% + 5% без сопротивления");
-  assert.equal(status.oilTickDamage(1000, "poison", 0, 0), 20, "яд: 2% без ловкости");
-  assert.equal(status.oilTickDamage(1000, "magic", 0, 0), 0, "магия — разовый удар, тика нет");
-  assert.equal(status.oilTickDamage(1000, "light", 0, 0), 0, "свет — разовый удар, тика нет");
+  assert.equal(status.oilTickDamage("fire", 0, 0), 6, "огонь: 6 урона");
+  assert.equal(status.oilTickDamage("fire", 0, 0.5), 3, "огонь режется магическим сопротивлением");
+  assert.equal(status.oilTickDamage("ice", 0, 0), 3, "лёд: 3 урона");
+  assert.equal(status.oilTickDamage("ice", 0, 0.5), 2, "лёд режется магическим сопротивлением");
+  assert.equal(status.oilTickDamage("acid", 0, 0), 10, "кислота: 10 урона");
+  assert.equal(status.oilTickDamage("poison", 5, 0.9), 7, "яд: 2 + ЛОВ, без сопротивления");
+  assert.equal(status.oilTickDamage("poison", 0, 0), 2, "яд: 2 без ловкости");
+  assert.equal(status.oilTickDamage("magic", 0, 0), 0, "магия — разовый удар, тика нет");
+  assert.equal(status.oilTickDamage("light", 0, 0), 0, "свет — разовый удар, тика нет");
   assert.equal(status.oilHitDamage("magic", 4), 15, "магия: 3 + 3×4");
   assert.equal(status.oilHitDamage("light", 4), 8, "свет: 2×4");
   assert.equal(status.oilHitDamage("fire", 4), 0, "огонь не бьёт разово");
@@ -3418,7 +3433,7 @@ test("масло на клинке: действует на ближайший �
   assert.equal(r2.p.statuses.oilRounds, 0);
 });
 
-test("огонь масла тикает 5 + 1% макс. ОЗ три раунда; удар сам по себе не бьёт", () => {
+test("огонь масла тикает 6 урона три раунда; удар сам по себе не бьёт", () => {
   const b = quietEnemy(freshBattle(mkP({ level: 1, stats: { str: 1, agi: 1, int: 1 }, hp: 100, bag: { oil_fire: 1 } }), 1, false, "classic"));
   b.enemy.hp = 9999;
   b.enemy.maxHp = 9999;
@@ -3436,21 +3451,21 @@ test("огонь масла тикает 5 + 1% макс. ОЗ три раунд
     st = endRound(st);
     ticks.push(before - st.enemy.hp);
   }
-  assert.deepEqual(ticks, [105, 105, 105], "огонь: 5 + 1% от 9999 за раунд");
+  assert.deepEqual(ticks, [6, 6, 6], "огонь: 6 урона за раунд");
   assert.equal(st.enemy.statuses.oilType, null, "после трёх раундов масло угасло");
-  const line = st.log.find((l) => l.text.includes("Огонь масла отнимает 105 ОЗ"));
+  const line = st.log.find((l) => l.text.includes("Огонь масла отнимает 6 ОЗ"));
   assert.ok(line, "тик урона записан в журнал");
   assert.equal(line.dmg, "fire", "строка тика несёт метку огня");
 });
 
-test("яд масла: 2% + 1% за очко ЛОВ за раунд", () => {
+test("яд масла: 2 + ЛОВ урона за раунд", () => {
   const b = quietEnemy(freshBattle(mkP({ level: 1, stats: { str: 1, agi: 5, int: 1 }, hp: 100, bag: { oil_poison: 1 } }), 1, false, "classic"));
   b.enemy.hp = 9999;
   b.enemy.maxHp = 9999;
   const oiled = battle.playerAct({ ...b, queue: ["p", "e"], idx: 0 }, { type: "item", id: "oil_poison" });
   const hit = withRandom(() => battle.playerAct({ ...oiled, queue: ["p", "e"], idx: 0 }, { type: "attack" }), 0.99);
   const ended = withRandom(() => battle.playerAct({ ...hit, queue: ["p"], idx: 0 }, { type: "guard" }), 0.99);
-  assert.ok(ended.log.some((l) => l.text.includes("Яд масла отнимает 700 ОЗ")), "2% + 5% от 9999 = 700");
+  assert.ok(ended.log.some((l) => l.text.includes("Яд масла отнимает 7 ОЗ")), "2 + ЛОВ 5 = 7");
 });
 
 test("стихия масла учитывает род: конструкт получает ×1.5, зверь не получает света", () => {
@@ -3460,7 +3475,7 @@ test("стихия масла учитывает род: конструкт по
   const oiled = battle.playerAct({ ...constructB, queue: ["p", "e"], idx: 0 }, { type: "item", id: "oil_fire" });
   const hit = withRandom(() => battle.playerAct({ ...oiled, queue: ["p", "e"], idx: 0 }, { type: "attack" }), 0.99);
   const ended = withRandom(() => battle.playerAct({ ...hit, queue: ["p"], idx: 0 }, { type: "guard" }), 0.99);
-  assert.ok(ended.log.some((l) => l.text.includes("Огонь масла отнимает 158 ОЗ") && l.text.includes("Уязвимость ×1.5")), "огонь бьёт конструкт ×1.5");
+  assert.ok(ended.log.some((l) => l.text.includes("Огонь масла отнимает 9 ОЗ") && l.text.includes("Уязвимость ×1.5")), "огонь бьёт конструкт ×1.5");
 
   const beastB = monsterBattle("beast", "agile", ["attack"], { player: { bag: { oil_light: 1 } } });
   beastB.enemy.hp = 9999;

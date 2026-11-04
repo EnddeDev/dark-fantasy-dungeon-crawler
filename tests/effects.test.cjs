@@ -71,20 +71,25 @@ test("эффекты: положительные в синей рамке, де�
   assert.equal(poison.highlight, undefined);
 });
 
-test("эффекты: периодический урон считается за тик и за весь срок", () => {
+test("эффекты: периодический урон считается за тик источника и за весь срок", () => {
   const b = plainBattle();
   b.p.maxHp = 100;
   b.p.hp = 100;
   b.p.statuses.poison = 3;
+  b.p.statuses.poisonTick = 4;
   const poison = byId(effects.playerEffectChips(b), "poison");
-  assert.equal(poison.dot.perTick, 4, "яд — 4% макс. ОЗ за тик");
+  assert.equal(poison.dot.perTick, 4, "яд — тик, который задал источник");
+  b.p.maxHp = 1000;
+  assert.equal(byId(effects.playerEffectChips(b), "poison").dot.perTick, 4, "тик не зависит от макс. ОЗ");
+  b.p.maxHp = 100;
   assert.equal(poison.dot.ticks, 3);
   assert.equal(poison.dot.total, 12, "4 × 3 раунда");
   assert.match(effects.dotSummary(poison.dot), /всего 12 ОЗ/);
 
   b.p.statuses.wound = 2;
+  b.p.statuses.woundTick = 5;
   const bleed = byId(effects.playerEffectChips(b), "bleed");
-  assert.equal(bleed.dot.perTick, 5, "кровотечение — 5% макс. ОЗ");
+  assert.equal(bleed.dot.perTick, 5, "кровотечение — тик источника");
   assert.equal(bleed.dot.total, 10);
 });
 
@@ -93,7 +98,8 @@ test("эффекты: магический тик режется сопроти�
   b.p.maxHp = 200;
   b.p.hp = 200;
   b.p.statuses.chill = 2;
-  /* Половина сопротивления: 200 × 3% = 6 → 3 после среза. */
+  b.p.statuses.chillTick = 6;
+  /* Половина сопротивления: тик 6 → 3 после среза. */
   b.p.chanceLayers.magicResist = { stats: [], items: [0.5], effects: [] };
   const chill = byId(effects.playerEffectChips(b), "chill");
   assert.equal(chill.dot.type, "магический");
@@ -131,14 +137,17 @@ test("эффекты: у героя с сердцем колосса иммун�
   assert.equal(effects.durationLabel(chip), "постоянно");
 });
 
-test("эффекты: дебаффы монстра считают урон от его собственного запаса ОЗ", () => {
+test("эффекты: дебаффы монстра берут тик от источника, а не от запаса ОЗ", () => {
   const b = plainBattle();
   b.enemy.maxHp = 400;
   b.enemy.hp = 400;
   b.enemy.statuses.bleed = 4;
+  b.enemy.statuses.bleedTick = 20;
   const bleed = byId(effects.enemyEffectChips(b), "bleed");
-  assert.equal(bleed.dot.perTick, 20, "5% от 400");
+  assert.equal(bleed.dot.perTick, 20, "тик задан источником");
   assert.equal(bleed.dot.total, 80);
+  b.enemy.maxHp = 4000;
+  assert.equal(byId(effects.enemyEffectChips(b), "bleed").dot.perTick, 20, "запас ОЗ тик не меняет");
 });
 
 test("эффекты: горение в огненных недрах растёт слоями и не имеет срока", () => {

@@ -201,6 +201,8 @@ export interface Player {
     wound: number; curse: number; poison: number; cursePower?: number;
     /** Новые боевые эффекты, которые могут переживать бой. */
     chill?: number; fear?: number; wither?: number; burn?: number;
+    /** Тик периодического урона, который задал источник наложения (живёт между боями). */
+    woundTick?: number; poisonTick?: number; burnTick?: number; chillTick?: number; curseTick?: number;
   };
   kills: number;
   /** Уровень лавки 1…10: задаёт шансы изношенности, редкости и ассортимент. */

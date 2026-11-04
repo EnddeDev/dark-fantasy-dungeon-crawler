@@ -610,7 +610,7 @@ export const EXTRA_ITEMS: ItemDef[] = [
     desc: "15 + 2×ЛОВ урона и обморожение: лечение −50% и периодический урон на 3 раунда." },
   { id: "blight_powder", name: "Прах порчи", kind: "throwable", price: 96, level: 4, minFloor: 4,
     use: { type: "blight", power: 6, scale: 1, scaleStat: "agi", rounds: 3 },
-    desc: "15 + 2×ЛОВ урона и порча: враг наносит −20% урона и теряет 3% макс. ОЗ за раунд." },
+    desc: "15 + 2×ЛОВ урона и порча: враг наносит −20% урона и теряет за раунд 15% силы порошка ОЗ." },
   { id: "wither_dust", name: "Прах увядания", kind: "throwable", price: 110, level: 5, minFloor: 5,
     use: { type: "wither", power: 4, scale: 1, scaleStat: "agi", rounds: 3 },
     desc: "15 + 2×ЛОВ урона и увядание: любое лечение врага переходит в магический урон на 3 раунда." },

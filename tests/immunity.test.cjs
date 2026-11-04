@@ -150,7 +150,7 @@ test("масло на клинке видно герою синим, масло 
   fire.enemy.statuses.oilRounds = 3;
   const flame = effects.enemyEffectChips(fire).find((c) => c.name === "Огонь масла");
   assert.ok(flame, "огонь на враге — иконка огня");
-  assert.equal(flame.dot.perTick, 105, "5 + 1% от 9999");
+  assert.equal(flame.dot.perTick, 6, "огонь масла: 6 урона за раунд");
   assert.equal(flame.dot.ticks, 3);
 });
 

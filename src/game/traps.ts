@@ -3,6 +3,7 @@
  * Проклятие держится до конца следующего боя; «Горечь полыни» снимает его заранее.
  */
 import type { StatKey } from "./types";
+import { refreshedTick, trapTickFrom } from "./statusEffects";
 
 export type TrapKind = "normal" | "poison" | "bleed" | "curse";
 export type TrapAction = "prepare" | "bypass" | "disarm";
@@ -45,6 +46,8 @@ export interface TrapState {
   damage: number;
   /** Длительность яда/раны при полном срабатывании. */
   rounds: number;
+  /** Тик яда/раны на шагах по карте: задан этажом ловушки. */
+  tick: number;
   /** Сила проклятия в процентах снижения урона (базово 30). */
   cursePower: number;
   bypassChance: number;
@@ -70,6 +73,7 @@ export function makeTrap(setup: TrapSetup): TrapState {
     kind,
     damage: kind === "curse" ? 0 : trapDamage(setup.floor, setup.stoneSkin),
     rounds: kind === "poison" || kind === "bleed" ? 3 : 0,
+    tick: kind === "poison" || kind === "bleed" ? trapTickFrom(kind, setup.floor) : 0,
     cursePower: kind === "curse" ? 30 : 0,
     bypassChance: trapBypassChance(setup.stats, setup.bypassBonus),
     disarmChance: trapDisarmChance(setup.stats, setup.bypassBonus),
@@ -137,14 +141,20 @@ export function resolveTrap(
 }
 
 export function applyTrapOutcome(
-  statuses: { wound: number; curse: number; poison: number; cursePower?: number },
+  statuses: { wound: number; curse: number; poison: number; cursePower?: number; woundTick?: number; poisonTick?: number },
   trap: TrapState,
   outcome: TrapOutcome,
-): { wound: number; curse: number; poison: number; cursePower?: number } {
+): { wound: number; curse: number; poison: number; cursePower?: number; woundTick?: number; poisonTick?: number } {
   const next = { ...statuses };
   if (outcome.damage <= 0 && outcome.rounds <= 0 && outcome.cursePower <= 0) return next;
-  if (trap.kind === "poison") next.poison = Math.max(next.poison, outcome.rounds);
-  if (trap.kind === "bleed") next.wound = Math.max(next.wound, outcome.rounds);
+  if (trap.kind === "poison") {
+    next.poisonTick = refreshedTick(next.poison > 0, next.poisonTick ?? 0, trap.tick);
+    next.poison = Math.max(next.poison, outcome.rounds);
+  }
+  if (trap.kind === "bleed") {
+    next.woundTick = refreshedTick(next.wound > 0, next.woundTick ?? 0, trap.tick);
+    next.wound = Math.max(next.wound, outcome.rounds);
+  }
   if (trap.kind === "curse") {
     next.curse = BATTLE_CURSE;
     next.cursePower = Math.max(next.cursePower ?? 0, outcome.cursePower);

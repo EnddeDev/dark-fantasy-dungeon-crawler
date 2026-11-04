@@ -59,6 +59,8 @@ export class BattleController {
         fear: b.p.statuses.fear,
         wither: b.p.statuses.wither,
         burn: b.p.statuses.burn,
+        woundTick: b.p.statuses.woundTick, poisonTick: b.p.statuses.poisonTick, burnTick: b.p.statuses.burnTick,
+        chillTick: b.p.statuses.chillTick, curseTick: b.p.statuses.curseTick,
       },
     };
     const { player: updated, levelsGained } = grantXp(withLoot, b.loot.xp);
@@ -123,6 +125,8 @@ export class BattleController {
         fear: b.p.statuses.fear,
         wither: b.p.statuses.wither,
         burn: b.p.statuses.burn,
+        woundTick: b.p.statuses.woundTick, poisonTick: b.p.statuses.poisonTick, burnTick: b.p.statuses.burnTick,
+        chillTick: b.p.statuses.chillTick, curseTick: b.p.statuses.curseTick,
       },
     };
     if (!run) {
