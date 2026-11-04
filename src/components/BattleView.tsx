@@ -148,11 +148,11 @@ export function BattleView({
       base: `${r.dmgMin}–${r.dmgMax}`,
       now: `${r.effMin}–${r.effMax}`,
       badge: e.guard
-        ? { text: "−50% Защита врага", tone: "rubric" }
+        ? { text: "+25% Броня врага", tone: "rubric" }
         : e.passive?.id === "stone_hide"
         ? { text: "−25% Каменная шкура", tone: "rubric" }
         : undefined,
-      hint: `после брони ${enemyArmorNow(e)}${e.guard ? " и его защиты" : ""}${e.passive?.id === "stone_hide" ? " и каменной шкуры" : ""}`,
+      hint: `после брони ${enemyArmorNow(e)}${e.guard ? " (в защите +25%)" : ""}${e.passive?.id === "stone_hide" ? " и каменной шкуры" : ""}`,
     },
     {
       label: "Броня",
@@ -170,13 +170,13 @@ export function BattleView({
       now: `${r.inMin}–${r.inMax}`,
       badge:
         b.p.guard && b.p.statuses.stone > 0
-          ? { text: "−50% Защита · −30% Каменная кожа", tone: "verd" }
+          ? { text: "+25% Броня · −30% Каменная кожа", tone: "verd" }
           : b.p.guard
-          ? { text: "−50% Защита", tone: "verd" }
+          ? { text: "+25% Броня", tone: "verd" }
           : b.p.statuses.stone > 0
           ? { text: `−30% Каменная кожа (${b.p.statuses.stone} р.)`, tone: "verd" }
           : undefined,
-      hint: `в защите: ${r.inGuardMin}–${r.inGuardMax}`,
+      hint: `после брони ${r.armor}${b.p.guard ? " (в защите +25%)" : ""}`,
     },
     {
       label: "Ходов в раунде",
@@ -358,7 +358,7 @@ export function BattleView({
                   </p>
                   <p className="text-mute">
                     Защита: броня <b className="text-parch">{r.armorBase}</b> вычитается из физического урона
-                    {r.armor !== r.armorBase ? ` (сейчас ${r.armor})` : ""}, Защита режет всё вдвое, каменная кожа —
+                    {r.armor !== r.armorBase ? ` (сейчас ${r.armor})` : ""}, Защита даёт +25% к броне до твоего хода, каменная кожа —
                     на 30%, уклон <b className="text-parch">{Math.round(r.evade * 100)}%</b> отменяет удар целиком.
                   </p>
                   <p className="text-mute">

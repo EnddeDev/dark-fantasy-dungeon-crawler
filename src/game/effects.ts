@@ -444,8 +444,8 @@ export function enemyEffectChips(b: BattleState): EffectChip[] {
   if (e.guard) {
     chips.push({
       id: "guard", name: "Стойка в защиту", polarity: "good", rounds: null, unit: "до действия",
-      details: ["Входящий урон режется вдвое."],
-      boosts: [{ stat: "Защита", value: "−50% урона" }], color: EFFECT_COLORS.buff,
+      details: ["Броня +25%, пока враг в обороне."],
+      boosts: [{ stat: "Броня", value: "+25%" }], color: EFFECT_COLORS.buff,
     });
   }
   if (e.fury > 0) {

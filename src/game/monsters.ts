@@ -108,8 +108,6 @@ export interface MonsterRaceMeta {
   immuneElements?: DamageElement[];
   /** Врождённое уклонение (призрак скользит между ударами). */
   evade?: number;
-  /** Дополнительная защита в стойке (конструкт прикрывается корпусом). */
-  guardBonus?: number;
   /** Шанс проигнорировать любой наложенный эффект (дракон). */
   effectResist?: number;
   /** Поправка к числу ходов поверх типа (призрак медлительнее обычного). */
@@ -156,12 +154,11 @@ export const MONSTER_RACE_META: Record<MonsterRace, MonsterRaceMeta> = {
   construct: {
     id: "construct",
     name: "Конструкт",
-    note: "Иммунитет к яду, кровотечению и страху, всегда под Укреплением; вылечить его нельзя. В защите крепче обычного. Уязвим к огню, льду и кислоте. Броня ×2.",
+    note: "Иммунитет к яду, кровотечению и страху, всегда под Укреплением; вылечить его нельзя. Уязвим к огню, льду и кислоте. Броня ×2.",
     immune: ["poison", "bleed", "fear"],
     allowedTypes: ["strong"],
     bonusMoves: [],
     vulnerable: ["fire", "ice", "acid"],
-    guardBonus: 0.25,
     fortify: 0.2,
     noHealing: true,
     armorMult: 2,
@@ -276,11 +273,6 @@ export function raceApDelta(race: MonsterRace): number {
   return raceMeta(race).apDelta ?? 0;
 }
 
-/** Дополнительная защита в стойке. */
-export function raceGuardBonus(race: MonsterRace): number {
-  return raceMeta(race).guardBonus ?? 0;
-}
-
 /** Врождённое уклонение рода (без уклонения типа). */
 export function raceEvade(race: MonsterRace): number {
   return raceMeta(race).evade ?? 0;
@@ -346,7 +338,6 @@ export function raceTraits(race: MonsterRace, type?: MonsterType): string[] {
   }
   if (meta.fortify) traits.push(`Укрепление: физический урон −${Math.round(meta.fortify * 100)}%`);
   if (meta.noHealing) traits.push("нельзя вылечить");
-  if (meta.guardBonus) traits.push(`защита в стойке крепче на ${Math.round(meta.guardBonus * 100)}%`);
   if (meta.effectResist) traits.push(`сопротивление эффектам ${Math.round(meta.effectResist * 100)}%`);
   if (meta.evade) traits.push(`уклонение +${Math.round(meta.evade * 100)}%`);
   return traits;

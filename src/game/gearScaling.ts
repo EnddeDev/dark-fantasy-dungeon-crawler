@@ -8,7 +8,7 @@
  * Сложный процент считается по шагам: значение каждого уровня — ceil(предыдущее × ставка).
  */
 import type { GearEffectId, GearPassiveId } from "./gearEffects";
-import type { EpicSkillId, LegendaryPassiveId, RareAffixId } from "./types";
+import type { EpicSkillId, LegendaryPassiveId, RareAffixId, Slot, WearTier } from "./types";
 
 /** Шаг цен: +17% от базового значения за каждый уровень (линейно). */
 export const GEAR_EFFECT_RATE = 0.17;
@@ -76,6 +76,46 @@ export function scaleIntegerByLevel(value: number, level: number): number {
 /** Основные параметры предмета: ceil(значение × (1 + 0.5 × уровень)). */
 export function scaleGearStatByLevel(value: number, level: number): number {
   return Math.ceil(Math.ceil(value) * levelFactor(level, GEAR_STAT_RATE));
+}
+
+/**
+ * Броня предмета. Для каждого слота заданы минимум и максимум на 1 и на 10 уровне (тяжёлая броня).
+ * Между уровнями границы меняются линейно. Положение внутри диапазона задаёт качество предмета (0…1),
+ * а состояние сдвигает его в свою часть диапазона: изношенное — нижняя, новое — верхняя.
+ */
+export const ARMOR_CURVE: Partial<Record<Slot, { min1: number; max1: number; min10: number; max10: number }>> = {
+  head: { min1: 4, max1: 8, min10: 30, max10: 34 },
+  offHand: { min1: 6, max1: 10, min10: 40, max10: 50 },
+  feet: { min1: 4, max1: 8, min10: 26, max10: 28 },
+  wrists: { min1: 5, max1: 9, min10: 24, max10: 30 },
+  body: { min1: 10, max1: 16, min10: 50, max10: 66 },
+};
+/** Доля от тяжёлой брони: средняя — вдвое меньше, лёгкая — без защиты. */
+export const ARMOR_CLASS_FACTOR: Record<"light" | "medium" | "heavy", number> = { heavy: 1, medium: 0.5, light: 0 };
+/** Часть диапазона качества по состоянию: изношенное — нижняя половина, новое — верхняя. */
+export const ARMOR_WEAR_BAND: Record<WearTier, [number, number]> = {
+  battered: [0, 0.5],
+  worn: [0.25, 0.75],
+  new: [0.5, 1],
+};
+
+/** Защита предмета брони: границы слота по уровню, класс, состояние и качество (0…1, задаётся при выпадении). */
+export function armorValue(
+  slot: Slot,
+  gearClass: "light" | "medium" | "heavy",
+  level: number,
+  wear: WearTier,
+  quality: number,
+): number {
+  const curve = ARMOR_CURVE[slot];
+  const k = ARMOR_CLASS_FACTOR[gearClass];
+  if (!curve || k === 0) return 0;
+  const t = (clampGearLevel(level) - 1) / 9;
+  const min = curve.min1 + (curve.min10 - curve.min1) * t;
+  const max = curve.max1 + (curve.max10 - curve.max1) * t;
+  const [lo, hi] = ARMOR_WEAR_BAND[wear];
+  const q = lo + (hi - lo) * Math.min(1, Math.max(0, quality));
+  return Math.round(k * (min + (max - min) * q));
 }
 
 /** Процент хранится как целое число процентных пунктов: 5 → 7 → 9 → 10… */

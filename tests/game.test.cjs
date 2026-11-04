@@ -867,9 +867,14 @@ test("combat readout shows live numbers for curses, rage and guard", () => {
   assert.ok(stoned.inMax < clean.inMax, "каменная кожа снижает входящий урон");
 
   b0.p.statuses.stone = 0;
+  b0.p.armor = 20;
+  const armoredRead = battle.combatReadout(b0);
   b0.p.guard = true;
   const guarded = battle.combatReadout(b0);
-  assert.ok(guarded.inGuardMax <= Math.ceil(clean.inMax / 2));
+  assert.equal(guarded.armor, 25, "в защите броня +25%: 20 → 25");
+  assert.ok(guarded.inMax <= armoredRead.inMax, "броня в защите снижает входящий урон");
+  assert.ok(guarded.inMax > Math.floor(armoredRead.inMax / 2) || armoredRead.inMax <= 1, "защита не делит урон пополам");
+  b0.p.armor = 0;
 
   b0.p.guard = false;
   b0.p.statuses.haste = 3;
@@ -3816,5 +3821,34 @@ test("угрозы: обычный монстр +30% ОЗ, ужас ×1.25, ка
     const tm = monsters.MONSTER_TYPE_META[boss.mtype];
     assert.ok(Math.abs(boss.hp - Math.round(boss.def.hp * lm * 2.275 * tm.hpMult)) <= 1, `босс ОЗ ${boss.hp}`);
     assert.ok(Math.abs(boss.atk[0] - Math.round(boss.def.atk[0] * lm * 1.75 * tm.atkMult)) <= 1, `босс атака ${boss.atk[0]}`);
+  }
+});
+
+test("кнопка «Защита» не делит урон пополам, а даёт броню +25%", () => {
+  const rnd = Math.random;
+  Math.random = () => 0.99; // без промахов, уклонений и критов
+  try {
+    const hitFor = (armor, guard) => {
+      const b = freshBattle(player({ hp: 300 }), 2);
+      b.queue = ["e"];
+      b.idx = 0;
+      b.p.hp = 300; b.p.maxHp = 300;
+      b.p.armor = armor; b.p.guard = guard;
+      b.p.statuses.stone = 0; b.p.statuses.tempArmor = 0; b.p.statuses.ironTonic = 0; b.p.statuses.sundered = 0;
+      b.enemy.moves = ["attack"]; b.enemy.def = { ...b.enemy.def, moves: ["attack"] };
+      b.enemy.atk = [40, 40];
+      b.enemy.statuses.blight = 0; b.enemy.statuses.curse = 0;
+      const s = battle.enemyStep(b);
+      return 300 - s.p.hp;
+    };
+    assert.equal(battle.playerArmorNow({ p: { armor: 20, statuses: { tempArmor: 0, ironTonic: 0, sundered: 0 }, guard: true } }), 25);
+    const open = hitFor(0, false);
+    const guardedNoArmor = hitFor(0, true);
+    assert.equal(guardedNoArmor, open, "в защите без брони урон тот же, а не вдвое меньше");
+    const plainArmored = hitFor(20, false);
+    const guardedArmored = hitFor(20, true);
+    assert.equal(plainArmored - guardedArmored, 5, `броня 20 → 25 режет на 5 больше: без защиты ${plainArmored}, в защите ${guardedArmored}`);
+  } finally {
+    Math.random = rnd;
   }
 });

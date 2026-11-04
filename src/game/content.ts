@@ -54,6 +54,8 @@ import {
   rollEffectBase,
   techniqueIntReq,
   gearLevelMultiplier,
+  ARMOR_CURVE,
+  armorValue,
 } from "./gearScaling";
 import { statConsumableDamage, statTechniqueDamage } from "./statFormulas";
 import type { ArchetypeId } from "./archetypes";
@@ -391,7 +393,7 @@ export type ArmorSkillKind = "attack" | "defense";
 
 /** Что приём делает с героем. Раунды — до конца текущего раунда, как у прочих защит. */
 export interface ArmorSkillSelf {
-  /** Защита: входящий урон вдвое меньше до твоего следующего хода. */
+  /** Защита: броня +25% до твоего следующего хода. */
   guard?: boolean;
   /** Полная защита от урона на N раундов. */
   fullGuard?: number;
@@ -524,7 +526,7 @@ export function armorSkillDesc(def: ArmorSkillDef): string {
   if (e.poison) parts.push(`яд врага на ${roundsText(e.poison)}`);
   if (e.chill) parts.push(`обморожение врага на ${roundsText(e.chill)}`);
   const s = def.self ?? {};
-  if (s.guard) parts.push("Защита до твоего следующего хода");
+  if (s.guard) parts.push("Защита до твоего следующего хода: броня +25%");
   if (s.fullGuard) parts.push(`полная защита от урона на ${roundsText(s.fullGuard)}`);
   if (s.immune) parts.push(`иммунитет к негативным эффектам на ${roundsText(s.immune)}`);
   if (s.evadeTurn) parts.push(`физические атаки врага проходят мимо на ${roundsText(s.evadeTurn)}`);
@@ -748,7 +750,7 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
       scaleStat: "str",
       scaleMult: 1.6,
       effect: "guard",
-      desc: "Рубящий удар + 1.6×СИЛ и мгновенный переход в Защиту (входящий урон вдвое меньше).",
+      desc: "Рубящий удар + 1.6×СИЛ и мгновенный переход в Защиту (броня +25%).",
     },
   },
   staff: {
@@ -1747,7 +1749,13 @@ export function scaledGearStats(item: GearItem) {
   const cls = gearClassFor(item);
   const rolls = item.statRolls ?? rollItemStatRolls(base, cls, () => 0.5);
   /* Оружие не даёт защиту, здоровье и уклонение — только свойства. */
-  const armor = kind === "weapon" ? 0 : scaleGearStatByLevel(Math.ceil(rolls.armor * m), level);
+  /* Броня предмета: по границам слота и качеству; у старых предметов качество считается при миграции. */
+  const armor =
+    kind === "weapon"
+      ? 0
+      : kind === "armor" && ARMOR_CURVE[base.slot]
+        ? armorValue(base.slot, cls, level, item.wear, item.armorQuality ?? 0.5)
+        : scaleGearStatByLevel(Math.ceil(rolls.armor * m), level);
   const hp = kind === "weapon" ? 0 : scaleGearStatByLevel(Math.ceil(rolls.hp * m), level);
   const evadePp = kind === "weapon" ? 0 : scaleGearStatByLevel(Math.ceil((rolls.evade ?? 0) * m), level);
   const evade = Math.min(0.5, evadePp / 100);
@@ -1967,12 +1975,15 @@ export function createGearItem(opts: {
   const effectRolls: Partial<Record<GearEffectId, number>> = {};
   for (const id of effects) effectRolls[id] = rollEffectBase(id, rng);
 
+  /* Последний бросок: остальные выпадения не меняются. */
+  const armorQuality = rng();
   return {
     uid: `g_${Date.now().toString(36)}_${++gearSeq}_${rng().toString(36).slice(2, 8)}`,
     wearMult,
     effects,
     effectRolls,
     statRolls,
+    armorQuality,
     passive,
     baseId: base.id,
     kind,
@@ -2066,6 +2077,7 @@ export function migrateGearItem(item: GearItem): GearItem {
     slot: base.slot ?? item.slot,
     gearClass,
     statRolls,
+    armorQuality: item.armorQuality ?? seededRng(`${item.uid || item.baseId}:armor`)(),
     effects,
     effectRolls,
     rareAffix: undefined,
@@ -2762,7 +2774,7 @@ BOSSES.push(...EXTRA_BOSSES);
 export const ENEMY_MOVE_META: Record<EnemyMove, { name: string; desc: string }> = {
   attack: { name: "Обычная атака", desc: "Стандартный удар: урон равен броску оружия, минус твоя броня." },
   heavy: { name: "Сокрушительный удар", desc: "Бьёт в 1.7× силы. Медленно замахивается — заметно на два хода вперёд." },
-  guard: { name: "Глухая защита", desc: "Уходит в щит: получаемый им урон вдвое меньше, пока он в обороне." },
+  guard: { name: "Глухая защита", desc: "Уходит в щит: броня +25%, пока он в обороне." },
   wound: { name: "Рваная рана", desc: "0.9× урона и попытка открыть кровотечение на 3 раунда; сила сопротивляется." },
   curse: { name: "Проклятие", desc: "0.7× урона и накладывает порчу: твой урон −30% на 3 раунда." },
   drain: { name: "Похищение жизни", desc: "Бьёт по духу (игнорирует броню) и лечится половиной нанесённого." },
