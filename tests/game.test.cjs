@@ -1754,14 +1754,78 @@ test("barbarian: two-handed damage and missing-health scaling", () => {
   assert.ok(before - after.enemy.hp > 0);
 });
 
-test("assassin: first attack is guaranteed crit at milestone 10", () => {
+test("assassin: first attack stuns the enemy at milestone 10, and only the first one", () => {
   const { p } = withGear("assassin_stiletto", { archetype: "assassin", passives: ["arch_assassin_5", "arch_assassin_10"] });
   const b = freshBattle(p, 1);
-  const rnd = Math.random; Math.random = () => 0.99;
-  const after = battle.playerAct(b, { type: "attack" });
-  Math.random = rnd;
-  assert.ok(after.log.some((l) => l.text.includes("Критический удар")));
-  assert.equal(after.p.firstAttackDone, true);
+  b.enemy.hp = 9999;
+  b.enemy.maxHp = 9999;
+  b.enemy.statuses.stunAp = 0;
+  const rnd = Math.random;
+  Math.random = () => 0.99;
+  try {
+    const after = battle.playerAct(b, { type: "attack" });
+    assert.equal(after.enemy.statuses.stunAp, 1, "первый удар оглушает врага");
+    assert.ok(after.log.some((l) => l.text.includes("Первый удар в бою оглушает")));
+    assert.ok(!after.log.some((l) => l.text.includes("Критический удар")), "крит больше не гарантирован");
+    const second = battle.playerAct({ ...after, enemy: { ...after.enemy, statuses: { ...after.enemy.statuses, stunAp: 0 } }, queue: ["p", "e"], idx: 0 }, { type: "attack" });
+    assert.equal(second.enemy.statuses.stunAp, 0, "вторая атака не оглушает");
+  } finally {
+    Math.random = rnd;
+  }
+});
+
+test("ninja 10: первый расходник за ход не тратит ход, второй тратит", () => {
+  const { p } = withGear("ninja_kusarigama", { archetype: "ninja", passives: ["arch_ninja_5", "arch_ninja_10"] });
+  p.bag = { throwing_knife: 2 };
+  const b = quietEnemy(freshBattle(p, 1));
+  b.enemy.hp = 9999;
+  b.enemy.maxHp = 9999;
+  const first = withRandom(() => battle.playerAct({ ...b, queue: ["p", "e"], idx: 0 }, { type: "item", id: "throwing_knife" }), 0.99);
+  assert.equal(first.idx, 0, "первый расходник не тратит ход");
+  assert.equal(first.bag.throwing_knife, 1);
+  const second = withRandom(() => battle.playerAct({ ...first, queue: ["p", "e"], idx: 0 }, { type: "item", id: "throwing_knife" }), 0.99);
+  assert.equal(second.idx, 1, "второй расходник тратит ход");
+});
+
+test("sage 10: первый удар по герою в бою полностью блокируется, второй проходит", () => {
+  const b = monsterBattle("beast", "agile", ["attack"], { player: { passives: ["arch_sage_10"] } });
+  b.enemy.hp = 9999;
+  b.enemy.maxHp = 9999;
+  const hp0 = b.p.hp;
+  const r1 = withRandom(() => battle.enemyStep({ ...b, queue: ["e", "p"], idx: 0 }), 0.99);
+  assert.equal(r1.p.hp, hp0, "первый удар заблокирован");
+  assert.equal(r1.p.sageWardUsed, true);
+  const r2 = withRandom(() => battle.enemyStep({ ...r1, queue: ["e", "p"], idx: 0 }), 0.99);
+  assert.ok(r2.p.hp < hp0, "второй удар проходит");
+});
+
+test("бастион 5: регенерация 3 + защита / 10; колдун 10: скейл приёмов +0.5 и через ИНТ", () => {
+  const { p } = withGear("assassin_stiletto", { archetype: "bulwark", passives: ["arch_bulwark_5"] });
+  const b = quietEnemy(freshBattle(p, 1));
+  b.enemy.hp = 9999;
+  b.enemy.maxHp = 9999;
+  b.p.armor = 25;
+  b.p.hp = b.p.maxHp - 20;
+  const hp0 = b.p.hp;
+  const after = withRandom(() => battle.playerAct({ ...b, queue: ["p"], idx: 0 }, { type: "attack" }), 0.99);
+  assert.equal(after.p.hp, Math.min(after.p.maxHp, hp0 + 3 + 2), "3 + 25 / 10 = 5 за раунд");
+  assert.equal(battle.techniqueSkillScale({}, ["arch_warlock_10"]), 0.5, "колдун 10: +0.5 к множителю");
+});
+
+test("варвар 10: регенерация 1% макс. ОЗ за каждые 10% недостающего здоровья", () => {
+  const { p } = withGear("barbarian_greataxe", { archetype: "barbarian", passives: ["arch_barbarian_10"] });
+  const b = quietEnemy(freshBattle(p, 1));
+  b.enemy.hp = 9999;
+  b.enemy.maxHp = 9999;
+  const hp0 = Math.floor(b.p.maxHp / 2);
+  /* Сравниваем с тем же боем без пассива: экипировка даёт своё лечение, его вычитаем. */
+  const gain = (passives) => {
+    const st = { ...b, p: { ...b.p, hp: hp0, passives } };
+    const after = withRandom(() => battle.playerAct({ ...st, queue: ["p"], idx: 0 }, { type: "guard" }), 0.99);
+    return after.p.hp - hp0;
+  };
+  const extra = gain(["arch_barbarian_10"]) - gain([]);
+  assert.equal(extra, Math.round(b.p.maxHp * 0.05), "50% потерь = 5% регенерации");
 });
 
 test("ninja: consumables scale with AGI bonuses and grant lifesteal", () => {

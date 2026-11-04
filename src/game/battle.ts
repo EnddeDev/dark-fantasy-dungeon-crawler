@@ -258,6 +258,11 @@ export interface BattleState {
     gearArchetype: ArchetypeId | null;
     intDiscount: number;
     immortalUsed: boolean;
+    /** Счётчики за текущий ход героя: сбрасываются, когда очередь переходит дальше. */
+    turnConsumables: number;
+    turnScrolls: number;
+    /** Библиотека душ: первый удар по герою в бою уже заблокирован. */
+    sageWardUsed: boolean;
     statuses: {
       wound: number;
       /** Наложения кровотечения: урон за тик складывается. */
@@ -998,6 +1003,9 @@ export function newBattle(
       gearArchetype: d.gearArchetype,
       intDiscount: d.intDiscount,
       immortalUsed: false,
+      turnConsumables: 0,
+      turnScrolls: 0,
+      sageWardUsed: false,
       statuses: {
         wound: pl.statuses.wound,
         woundStacks: pl.statuses.wound > 0 ? 1 : 0,
@@ -1090,8 +1098,14 @@ function techValue(ws: WeaponSkillDef, base: number, precision = 1): number {
   return scaleByLevel(base, ws.level ?? 1, precision);
 }
 function skillCd(b: BattleState, base: number) {
-  const reduction = effectPower(b, "skill_cd") + (hasPassive(b, "arch_warlock_5") ? 1 : 0) + passivePower(b, "warlock_pact", "cd");
+  const reduction = effectPower(b, "skill_cd") + passivePower(b, "warlock_pact", "cd");
   return Math.max(1, base - reduction);
+}
+/** Перезарядка приёма сразу после использования. Колдун 5: 20% шанс −1 перезарядки этого приёма. */
+function skillCdAfterUse(b: BattleState, base: number) {
+  let cd = skillCd(b, base);
+  if (hasPassive(b, "arch_warlock_5") && Math.random() < 0.2) cd = Math.max(1, cd - 1);
+  return cd;
 }
 function skillScaleBonus(b: BattleState) {
   return techniqueSkillScale(b.p.effectPower, b.p.passives);
@@ -1101,7 +1115,9 @@ function skillScaleBonus(b: BattleState) {
  * (броня, недостающее здоровье, добивание, мрак, первый удар). Бой и сводка берут одно и то же значение.
  */
 export function techniqueBonusNow(b: BattleState, ws: WeaponSkillDef): number {
-  let bonus = Math.round(weaponTechniqueBonus(b.p.stats[ws.scaleStat], ws.scaleMult, skillScaleBonus(b)));
+  /* Колдун 10: скейл любого оружейного приёма идёт через ИНТ. */
+  const scaleStat = hasPassive(b, "arch_warlock_10") ? "int" : ws.scaleStat;
+  let bonus = Math.round(weaponTechniqueBonus(b.p.stats[scaleStat], ws.scaleMult, skillScaleBonus(b)));
   const eff = ws.effect;
   if (eff === "armor_damage") bonus += Math.round(b.p.armor * techValue(ws, ws.id === "bulwark_verdict" ? 0.75 : 0.5, 100));
   if (eff === "missing_hp") bonus = Math.round(bonus * (1 + Math.min(10, Math.floor(missingHpRatio(b) * 10)) * techValue(ws, 0.06, 100)));
@@ -1121,7 +1137,7 @@ export function techniqueDamage(int: number, coefficient = 1): number {
 }
 /** Добавка «бонус навыков» к множителю приёма: свойство предметов и арх. чернокнижника 10. */
 export function techniqueSkillScale(effectPower: Partial<Record<GearEffectId, number>>, passives: readonly string[]): number {
-  return (effectPower.skill_scale ?? 0) + (passives.includes("arch_warlock_10") ? 0.8 : 0);
+  return (effectPower.skill_scale ?? 0) + (passives.includes("arch_warlock_10") ? 0.5 : 0);
 }
 /** Предел ХАР в формуле бонуса приёма оружия. */
 export const TECHNIQUE_STAT_CAP = 10;
@@ -1460,16 +1476,16 @@ function calcWeaponRoll(b: BattleState, mult = 1, bonusFlat = 0, opts: { skill?:
   if (hasLeg(b, "executioner") && b.enemy.hp <= b.enemy.maxHp * 0.5) d = Math.round(d * (1 + legPower(b, "executioner", "damage") / 100));
 
   const combatCrit: number[] = [];
-  if (b.round <= 2 && hasPassive(b, "arch_assassin_5")) combatCrit.push(0.25);
+  if (b.round <= 1 && hasPassive(b, "arch_assassin_5")) combatCrit.push(0.25);
   if (b.round <= 2 && hasGearPassive(b, "assassin_shadow")) combatCrit.push(passivePower(b, "assassin_shadow", "crit") / 100);
   if (b.p.statuses.quickblade > 0) combatCrit.push(0.25);
   const critChance = combatChance(b.p.chanceLayers.crit, combatCrit);
   let critMult = b.p.critDamage;
-  if (b.round <= 2 && hasPassive(b, "arch_assassin_5")) critMult += 0.5;
+  if (b.round <= 1 && hasPassive(b, "arch_assassin_5")) critMult += 0.5;
   if (b.round <= 2 && hasGearPassive(b, "assassin_shadow")) critMult += passivePower(b, "assassin_shadow", "critMult") / 100;
   if (b.p.statuses.quickblade > 0) critMult += 0.5;
   let crit = false;
-  const forceCrit = opts.forceCrit || (!b.p.firstAttackDone && hasPassive(b, "arch_assassin_10"));
+  const forceCrit = !!opts.forceCrit;
   if (forceCrit || (critChance > 0 && Math.random() < critChance)) {
     d *= critMult;
     crit = true;
@@ -1494,7 +1510,7 @@ function applyVamp(b: BattleState, dealt: number, extraRatio = 0, source: "weapo
   }
   if (source === "consumable") {
     ratio += effectPower(b, "consumable_vamp") / 100;
-    if (hasPassive(b, "arch_ninja_5")) ratio += 0.08;
+    if (hasPassive(b, "arch_ninja_5")) ratio += 0.15;
     if (hasGearPassive(b, "ninja_phantom")) ratio += passivePower(b, "ninja_phantom", "vamp") / 100;
   }
   if (source === "scroll") {
@@ -1695,6 +1711,13 @@ function playerHitChance(b: BattleState, kind: "phys" | "magic", strike: boolean
   return p;
 }
 
+/** Первый удар героя в бою оглушает врага на ход (Ассасин 10). Босс устойчив, как и к другим оглушениям. */
+function firstStrikeStun(b: BattleState) {
+  if (b.enemy.hp <= 0 || bossResists(b)) return;
+  b.enemy.statuses.stunAp = Math.min(2, b.enemy.statuses.stunAp + 1);
+  push(b, `Первый удар в бою оглушает ${b.enemy.def.name}.`, "p");
+}
+
 function incoming(
   b: BattleState,
   raw: number,
@@ -1744,6 +1767,13 @@ function incoming(
     flash(b, "p", "miss", 0);
     push(b, `Ты уходишь с линии удара — промах!`, "e");
     grantDodgeAction(b);
+    return false;
+  }
+  /* Библиотека душ (Мудрец 10): первый удар по герою в бою полностью блокируется. */
+  if (hasPassive(b, "arch_sage_10") && !b.p.sageWardUsed) {
+    b.p.sageWardUsed = true;
+    flash(b, "p", "miss", 0);
+    push(b, `Библиотека душ блокирует первый удар (${src}).`, "p");
     return false;
   }
   const d = damageAfterPlayerDefense(b, raw, kind, strike, ignoreDefense);
@@ -1869,6 +1899,9 @@ function beginTurn(b: BattleState) {
 
 function advance(b: BattleState) {
   if (b.over) return;
+  /* Счётчики хода героя начинаются заново, когда очередь уходит дальше. */
+  b.p.turnConsumables = 0;
+  b.p.turnScrolls = 0;
   //.Печати живут ровно один ход игрока: снимаются после его действия.
   if (b.queue[b.idx] === "p") {
     b.p.statuses.sealItems = Math.max(0, b.p.statuses.sealItems - 1);
@@ -1969,8 +2002,9 @@ function advance(b: BattleState) {
 
     const regen = (hasPassive(b, "iron_will") ? 3 : 0) + rarePower(b, "regen", "heal") +
       effectPower(b, "regen") +
-      (hasPassive(b, "arch_bulwark_5") ? 3 : 0) +
+      (hasPassive(b, "arch_bulwark_5") ? 3 + Math.floor(playerArmorNow(b) / 10) : 0) +
       passivePower(b, "bulwark_wall", "regen") +
+      (hasPassive(b, "arch_barbarian_10") ? Math.round(b.p.maxHp * 0.01 * Math.min(10, Math.floor(missingHpRatio(b) * 10))) : 0) +
       (b.p.statuses.ironTonic > 0 ? 4 : 0);
     if (regen > 0 && b.p.hp > 0) {
       const healed = healPlayer(b, regen);
@@ -2133,8 +2167,9 @@ function consumableDamageMult(b: BattleState, def: { kind: string; use?: { type:
       effectPower(b, "scroll_damage") / 100 + passivePower(b, "sage_library", "scrollDamage") / 100;
     if (hasPassive(b, "arch_sage_5")) m *= 1.25;
   } else if (def.use?.type !== "heal" && def.use?.type !== "cleanse") {
-    m *= 1 + (b.p.stats.agi * effectPower(b, "precision")) / 100 + effectPower(b, "consumable_damage") / 100;
-    if (hasPassive(b, "arch_ninja_5")) m *= 1.2;
+    m *= 1 + (b.p.stats.agi * effectPower(b, "precision")) / 100 + effectPower(b, "consumable_damage") / 100 +
+      (hasPassive(b, "arch_ninja_5") ? 0.1 * b.p.stats.agi : 0);
+    if (hasPassive(b, "arch_ninja_5")) m *= 1.25;
   }
   const debuffs = enemyDebuffCount(b);
   m *= 1 + (effectPower(b, "debuff_damage") / 100) * Math.min(4, debuffs);
@@ -2224,13 +2259,17 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
   if ((a.type === "weapon_skill" || a.type === "epic_skill" || a.type === "armor_skill") && b.p.statuses.sealSkills > 0) return err("Печать забвения запрещает приёмы в этот ход.");
   if (a.type === "item" && b.p.statuses.sealItems > 0) return err("Печать немоты запрещает расходники в этот ход.");
 
+  /* Расходник, который не тратит ход: игрок остаётся на своём ходу (Ниндзя 10, Мудрец 10). */
+  let freeAction = false;
   switch (a.type) {
     case "attack": {
+      const firstStrike = !b.p.firstAttackDone && hasPassive(b, "arch_assassin_10");
       const { d, crit } = calcWeaponRoll(b);
       const dealt = hitEnemy(b, d, "phys", crit ? " Критический удар!" : "");
       applyVamp(b, dealt, 0, "weapon");
       if (dealt > 0) oilOnHit(b, dealt);
       b.p.firstAttackDone = true;
+      if (firstStrike) firstStrikeStun(b);
       weaponHitEffects(b);
       if (crit && hasPassive(b, "arch_assassin_10")) {
         const heal = healPlayer(b, Math.max(1, Math.round(dealt * 0.15)));
@@ -2268,6 +2307,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
       const magicSkill = !!ws.magic;
       const hits = eff === "double_attack" ? scaleIntegerByLevel(2, ws.level ?? 1) : 1;
       let dealtTotal = 0;
+      const firstStrike = !b.p.firstAttackDone && hasPassive(b, "arch_assassin_10");
       for (let i = 0; i < hits; i++) {
         //.Multi-hit: каждый удар — отдельная обычная атака без бонуса приёма.
         const isMulti = eff === "double_attack";
@@ -2303,6 +2343,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
         if (b.enemy.hp <= 0) break;
       }
       b.p.firstAttackDone = true;
+      if (firstStrike) firstStrikeStun(b);
 
       if (eff === "bleed") {
         applyEnemyStatus(b, "bleed", techValue(ws, 3), skillDotTick("bleed", b.p.level, b.enemy.maxHp));
@@ -2366,12 +2407,11 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
       if (eff !== "double_attack") applyVamp(b, dealtTotal, leech, "skill", trueDamage ? "magic" : "phys");
       else if (leech > 0) applyVamp(b, dealtTotal, leech, "skill", "phys");
 
-      const noCd = (hasPassive(b, "echo") && Math.random() < 0.35) ||
-        (hasPassive(b, "arch_warlock_10") && Math.random() < 0.25);
+      const noCd = hasPassive(b, "echo") && Math.random() < 0.35;
       if (noCd) {
         push(b, "Приём не ушёл на перезарядку!", "p");
       } else {
-        let cd = skillCd(b, ws.cooldown);
+        let cd = skillCdAfterUse(b, ws.cooldown);
         if (eff === "skill_leech") cd = Math.max(1, cd - techValue(ws, ws.id === "soul_reprise" ? 2 : 1));
         b.p.weaponCd = cd;
       }
@@ -2425,7 +2465,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
         push(b, `${b.enemy.def.name} скован стужей и теряет 1 ход в следующем раунде.`, "p");
       }
 
-      b.p.epicCds[sk.id] = skillCd(b, sk.cooldown);
+      b.p.epicCds[sk.id] = skillCdAfterUse(b, sk.cooldown);
       break;
     }
 
@@ -2437,7 +2477,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
       const req = sk.intReq <= 0 ? 0 : Math.max(1, sk.intReq - (sk.scaleStat === "int" ? b.p.intDiscount : 0));
       if (b.p.stats[sk.scaleStat] < req) return err(`Для «${sk.name}» требуется ${STAT_META[sk.scaleStat].short} ${req}.`);
       applyArmorSkill(b, sk);
-      b.p.armorCds[sk.id] = skillCd(b, sk.cooldown);
+      b.p.armorCds[sk.id] = skillCdAfterUse(b, sk.cooldown);
       break;
     }
 
@@ -2697,8 +2737,8 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
       }
 
       const scrollSaveChance = (hasPassive(b, "echo") ? 0.35 : 0) + effectPower(b, "scroll_save") / 100 +
-        (hasPassive(b, "arch_sage_5") ? 0.15 : 0) +
-        (hasPassive(b, "arch_sage_10") ? 0.20 : 0) +
+        (hasPassive(b, "arch_sage_5") ? 0.25 : 0) +
+        (hasPassive(b, "arch_sage_10") ? 0.25 : 0) +
         passivePower(b, "sage_library", "save") / 100;
       const saveScroll = def.kind === "scroll" && scrollSaveChance > 0 && Math.random() < scrollSaveChance;
       if (!saveScroll) {
@@ -2706,6 +2746,17 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
         if (b.bag[a.id] <= 0) delete b.bag[a.id];
       } else {
         push(b, "Эхо мысли сохраняет свиток — он не истлел!", "p");
+      }
+      /* Ниндзя 10: первый расходник за ход не тратит ход. Мудрец 10: первый свиток за ход не тратит ход. */
+      const isScroll = def.kind === "scroll";
+      const freeUse = isScroll
+        ? hasPassive(b, "arch_sage_10") && b.p.turnScrolls < 1
+        : hasPassive(b, "arch_ninja_10") && b.p.turnConsumables < 1;
+      b.p.turnConsumables += 1;
+      if (isScroll) b.p.turnScrolls += 1;
+      if (freeUse) {
+        freeAction = true;
+        push(b, isScroll ? "Свиток не тратит ход: можно применить ещё один." : "Первый расходник за ход не тратит ход.", "p");
       }
       break;
     }
@@ -2726,7 +2777,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
     return b;
   }
   if (b.over) return b;
-  advance(b);
+  if (!freeAction) advance(b);
   return b;
 }
 
@@ -2832,7 +2883,7 @@ function playerThorns(b: BattleState): number {
     rarePower(b, "thorns", "damage") +
     effectPower(b, "thorns") +
     passivePower(b, "bulwark_wall", "thorns") +
-    (hasPassive(b, "arch_bulwark_10") ? 6 : 0)
+    (hasPassive(b, "arch_bulwark_10") ? 6 + Math.floor(playerArmorNow(b) / 5) : 0)
   );
 }
 
