@@ -443,11 +443,13 @@ export function derived(pl: Player): DerivedStats {
     armorBonus += st.armor ?? 0;
     evadeBonus += st.evade ?? 0;
 
-    /* Урон считают обе руки: двуручник один, в паре — правая + левая. */
+    /* Урон считают обе руки: двуручник один, в паре — правая + левая.
+     * Оружие в левой руке наносит вдвое меньше: его вклад делится пополам. */
     const isHand = slot === "mainHand" || slot === "offHand";
     if (isHand && st.dmg) {
-      hitLo += st.dmg[0];
-      hitHi += st.dmg[1];
+      const handMult = slot === "offHand" ? 0.5 : 1;
+      hitLo += Math.round(st.dmg[0] * handMult);
+      hitHi += Math.round(st.dmg[1] * handMult);
       if (slot === "mainHand") {
         mainName = st.base.name;
         weaponSkill = st.skill;

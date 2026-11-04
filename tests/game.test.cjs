@@ -1207,6 +1207,9 @@ test("equipment slots: two hands, shield, rings and the full set", () => {
   const d = battle.derived(dual);
   const greatOnly = battle.derived({ ...base, armory: [great], equip: { ...base.equip, mainHand: great.uid } });
   assert.ok(d.hit[1] > greatOnly.hit[1], "вторая рука добавляет урон");
+  /* Оружие в левой руке наносит вдвое меньше: его вклад делится пополам. */
+  const dg = content.scaledGearStats(dagger).dmg;
+  assert.deepEqual(d.hit, [greatOnly.hit[0] + Math.round(dg[0] / 2), greatOnly.hit[1] + Math.round(dg[1] / 2)], "левая рука даёт половину урона");
 });
 
 test("wear multiplier: battered 0.75±0.05, worn 1.0±0.10, new 1.325 (1.30..1.35)", () => {
