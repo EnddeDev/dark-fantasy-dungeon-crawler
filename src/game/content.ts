@@ -2910,23 +2910,23 @@ export interface LootTable {
 }
 
 /**
- * Базовые шансы обычного монстра: золото 30%, реагенты 20%, припасы 15%, снаряжение 5%.
+ * Базовые шансы обычного монстра: золото 75%, реагенты 50%, припасы 25%, снаряжение 5%.
  * За каждый уровень монстра выше этажа каждая категория получает +1 п.п., ниже — −1 п.п.
- * Ужас и катастрофа: доля, которой не хватает до 100%, уходит в снаряжение; катастрофа
- * дополнительно переводит треть золота, реагентов и припасов в снаряжение.
+ * Ужас: +30 п.п. к снаряжению. Катастрофа: дополнительно переводит треть золота, реагентов
+ * и припасов в снаряжение.
  */
 export function lootTableFor(level: number, floor: number, threat: Threat): LootTable {
   const delta = level - floor;
   const t: LootTable = {
-    gold: Math.max(0, 30 + delta),
-    reagents: Math.max(0, 20 + delta),
-    supplies: Math.max(0, 15 + delta),
+    gold: Math.max(0, 75 + delta),
+    reagents: Math.max(0, 50 + delta),
+    supplies: Math.max(0, 25 + delta),
     gear: Math.max(0, 5 + delta),
   };
 
-  if (threat !== "normal") {
-    const rewardTotal = t.gold + t.reagents + t.supplies + t.gear;
-    t.gear += Math.max(0, 100 - rewardTotal);
+  if (threat === "horror") {
+    // Ужас оставляет снаряжение чаще: +30 п.п., как было при прежних базовых шансах.
+    t.gear += 30;
   }
   if (threat === "catastrophe") {
     // Мини-босс: треть золота, реагентов и припасов переходит в снаряжение.

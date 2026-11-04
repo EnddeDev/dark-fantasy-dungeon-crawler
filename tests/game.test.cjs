@@ -363,32 +363,32 @@ test("levels are never capped by the floor, but late levels cost many runs", () 
 
 test("loot chances follow the stated percentages and scale with monster level", () => {
   const normal = content.lootTableFor(1, 1, "normal");
-  assert.equal(Math.round(normal.gold), 30);
-  assert.equal(Math.round(normal.reagents), 20);
-  assert.equal(Math.round(normal.supplies), 15);
+  assert.equal(Math.round(normal.gold), 75);
+  assert.equal(Math.round(normal.reagents), 50);
+  assert.equal(Math.round(normal.supplies), 25);
   assert.equal(Math.round(normal.gear), 5);
   assert.equal(normal.nothing, undefined, "«ничего» — не категория, а остаток после независимых бросков");
 
   const stronger = content.lootTableFor(2, 1, "normal");
-  assert.equal(Math.round(stronger.gold), 31);
-  assert.equal(Math.round(stronger.reagents), 21);
-  assert.equal(Math.round(stronger.supplies), 16);
+  assert.equal(Math.round(stronger.gold), 76);
+  assert.equal(Math.round(stronger.reagents), 51);
+  assert.equal(Math.round(stronger.supplies), 26);
   assert.equal(Math.round(stronger.gear), 6);
 
-  // Ужас: недостающая до 100% доля уходит в снаряжение, остальные категории сохраняются.
+  // Ужас: снаряжение +30 п.п., остальные категории сохраняются.
   const horror = content.lootTableFor(1, 1, "horror");
   assert.equal(Math.round(horror.gear), 35);
-  assert.equal(Math.round(horror.gold), 30);
-  assert.equal(Math.round(horror.reagents), 20);
-  assert.equal(Math.round(horror.supplies), 15);
+  assert.equal(Math.round(horror.gold), 75);
+  assert.equal(Math.round(horror.reagents), 50);
+  assert.equal(Math.round(horror.supplies), 25);
 
-  // Катастрофа: ещё треть золота, реагентов и припасов уходит в снаряжение.
+  // Катастрофа: треть золота, реагентов и припасов переходит в снаряжение.
   const catastrophe = content.lootTableFor(1, 1, "catastrophe");
   assert.ok(catastrophe.gear > horror.gear);
   assert.ok(catastrophe.gold > 0 && catastrophe.gold < horror.gold);
 
-  // Шанс, что не выпадет ничего: 0.70 × 0.80 × 0.85 × 0.95 ≈ 45%.
-  assert.ok(Math.abs(content.lootNoneChance(normal) - 45.22) < 0.01, `ничего: ${content.lootNoneChance(normal)}`);
+  // Шанс, что не выпадет ничего: 0.25 × 0.50 × 0.75 × 0.95 ≈ 8.9%.
+  assert.ok(Math.abs(content.lootNoneChance(normal) - 8.90625) < 0.01, `ничего: ${content.lootNoneChance(normal)}`);
 });
 
 test("награды с монстра выпадают независимо: золото и реагент могут прийти вместе", () => {
@@ -408,9 +408,9 @@ test("награды с монстра выпадают независимо: з
     if (!hasGold && !hasReagent && !drop.items.length && !drop.gear.length) none++;
   }
   const near = (value, target, label) => assert.ok(Math.abs(value / n - target) < 0.015, `${label}: ${value / n}, ждали ${target}`);
-  near(gold, 0.30, "золото");
-  near(reagent, 0.20, "реагенты");
-  near(both, 0.30 * 0.20, "золото и реагент вместе");
+  near(gold, 0.75, "золото");
+  near(reagent, 0.50, "реагенты");
+  near(both, 0.75 * 0.50, "золото и реагент вместе");
   near(none, content.lootNoneChance(content.lootTableFor(1, 1, "normal")) / 100, "ничего");
 });
 
