@@ -2099,6 +2099,9 @@ export function migrateGearItem(item: GearItem): GearItem {
  */
 export const SHOP_OFFERS_PER_SLOT = 6;
 
+/** Шанс, что каждая позиция витрины выходит уровня лавки. База при этом любая не выше уровня лавки. */
+export const SHOP_LEVEL_OFFER_CHANCE = 0.15;
+
 /**
  * Ассортимент лавки: не меньше 6 вариантов на каждый слот, только уровни ≤ уровня лавки.
  * Каждый вызов заново выбирает модели, изношенность, редкость и свойства — не перемешивает старый список.
@@ -2124,9 +2127,11 @@ export function rollShopStock(shopLevel: number, floor = 1, rng: () => number = 
     for (let i = 0; i < SHOP_OFFERS_PER_SLOT; i++) {
       const b = shuffled[i % shuffled.length];
       if (!b) continue;
+      /* Как в подземелье: уровень предмета может быть выше уровня базы. */
+      const atShopLevel = rng() < SHOP_LEVEL_OFFER_CHANCE;
       out.push(createGearItem({
         baseId: b.id,
-        level: b.level ?? 1,
+        level: atShopLevel ? lvl : b.level ?? 1,
         wear: rollFromTable(wearTable, rng),
         rarityWeights: rarityTable,
         floor: Math.max(1, floor),
