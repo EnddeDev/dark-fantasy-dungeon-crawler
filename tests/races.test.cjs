@@ -212,6 +212,9 @@ test("стойка врага даёт броню +25%, а не делит ур�
     const b = battle.newBattle(player(), 3, false, "classic");
     b.enemy.def = { ...b.enemy.def, race };
     b.enemy.passive = null;
+    /* Случайные эффекты монстра (укрепление и т.п.) не должны менять расчёт брони. */
+    b.enemy.effects = [];
+    b.enemy.effectPower = {};
     b.enemy.armor = 20;
     b.enemy.guard = false;
     const open = battle.damageAfterEnemyDefense(b, 40, "phys");

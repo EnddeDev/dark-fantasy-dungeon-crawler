@@ -1854,7 +1854,7 @@ function gainLoot(b: BattleState) {
     return;
   }
 
-  // Обычный монстр: 30% ничего, 30% золото, 20% реагенты, 15% припасы, 5% снаряжение.
+  // Обычный монстр: золото, реагенты, припасы и снаряжение выпадают каждое своим броском.
   const drop = rollEnemyLoot(e.level, b.floor, e.threat);
   b.loot = { gold: drop.gold, items: drop.items, gear: drop.gear, xp: enemyXpFor(b) };
 }

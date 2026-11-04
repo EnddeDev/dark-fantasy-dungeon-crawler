@@ -361,45 +361,57 @@ test("levels are never capped by the floor, but late levels cost many runs", () 
   assert.ok(mob.xp * 2 < early);
 });
 
-test("loot tables follow the stated percentages and scale with monster level", () => {
+test("loot chances follow the stated percentages and scale with monster level", () => {
   const normal = content.lootTableFor(1, 1, "normal");
-  assert.equal(Math.round(normal.nothing), 30);
-  assert.equal(Math.round(normal.gold), 30);
-  assert.equal(Math.round(normal.reagents), 20);
-  assert.equal(Math.round(normal.supplies), 15);
+  assert.equal(Math.round(normal.gold), 75);
+  assert.equal(Math.round(normal.reagents), 50);
+  assert.equal(Math.round(normal.supplies), 25);
   assert.equal(Math.round(normal.gear), 5);
+  assert.equal(normal.nothing, undefined, "«ничего» — не категория, а остаток после независимых бросков");
 
   const stronger = content.lootTableFor(2, 1, "normal");
-  assert.equal(Math.round(stronger.nothing), 26);
-  assert.equal(Math.round(stronger.gold), 31);
-  assert.equal(Math.round(stronger.reagents), 21);
-  assert.equal(Math.round(stronger.supplies), 16);
+  assert.equal(Math.round(stronger.gold), 76);
+  assert.equal(Math.round(stronger.reagents), 51);
+  assert.equal(Math.round(stronger.supplies), 26);
   assert.equal(Math.round(stronger.gear), 6);
 
-  // Ужас: доля «ничего» уходит в снаряжение, остальные категории сохраняются.
+  // Ужас: снаряжение +30 п.п., остальные категории сохраняются.
   const horror = content.lootTableFor(1, 1, "horror");
-  assert.equal(horror.nothing, 0);
   assert.equal(Math.round(horror.gear), 35);
-  assert.equal(Math.round(horror.gold), 30);
-  assert.equal(Math.round(horror.reagents), 20);
-  assert.equal(Math.round(horror.supplies), 15);
+  assert.equal(Math.round(horror.gold), 75);
+  assert.equal(Math.round(horror.reagents), 50);
+  assert.equal(Math.round(horror.supplies), 25);
 
-  // Катастрофа: ещё треть расходников и золота уходит в снаряжение.
+  // Катастрофа: треть золота, реагентов и припасов переходит в снаряжение.
   const catastrophe = content.lootTableFor(1, 1, "catastrophe");
-  assert.equal(catastrophe.nothing, 0);
   assert.ok(catastrophe.gear > horror.gear);
   assert.ok(catastrophe.gold > 0 && catastrophe.gold < horror.gold);
-  for (const t of [normal, horror, catastrophe]) {
-    const sum = t.nothing + t.gold + t.reagents + t.supplies + t.gear;
-    assert.ok(Math.abs(sum - 100) < 0.001, `сумма ${sum}`);
-  }
 
-  assert.equal(content.lootCategoryForRoll(normal, 0), "nothing");
-  assert.equal(content.lootCategoryForRoll(normal, 0.299), "nothing");
-  assert.equal(content.lootCategoryForRoll(normal, 0.3), "gold");
-  assert.equal(content.lootCategoryForRoll(normal, 0.6), "reagents");
-  assert.equal(content.lootCategoryForRoll(normal, 0.8), "supplies");
-  assert.equal(content.lootCategoryForRoll(normal, 0.95), "gear");
+  // Шанс, что не выпадет ничего: 0.25 × 0.50 × 0.75 × 0.95 ≈ 8.9%.
+  assert.ok(Math.abs(content.lootNoneChance(normal) - 8.90625) < 0.01, `ничего: ${content.lootNoneChance(normal)}`);
+});
+
+test("награды с монстра выпадают независимо: золото и реагент могут прийти вместе", () => {
+  const rng = lcg(91);
+  const n = 20000;
+  let gold = 0;
+  let reagent = 0;
+  let both = 0;
+  let none = 0;
+  for (let i = 0; i < n; i++) {
+    const drop = content.rollEnemyLoot(1, 1, "normal", rng);
+    const hasGold = drop.gold > 0;
+    const hasReagent = drop.items.some((id) => content.reagentPoolForFloor(1).includes(id));
+    if (hasGold) gold++;
+    if (hasReagent) reagent++;
+    if (hasGold && hasReagent) both++;
+    if (!hasGold && !hasReagent && !drop.items.length && !drop.gear.length) none++;
+  }
+  const near = (value, target, label) => assert.ok(Math.abs(value / n - target) < 0.015, `${label}: ${value / n}, ждали ${target}`);
+  near(gold, 0.75, "золото");
+  near(reagent, 0.50, "реагенты");
+  near(both, 0.75 * 0.50, "золото и реагент вместе");
+  near(none, content.lootNoneChance(content.lootTableFor(1, 1, "normal")) / 100, "ничего");
 });
 
 test("золото подземелья приходит вполовину", () => {
