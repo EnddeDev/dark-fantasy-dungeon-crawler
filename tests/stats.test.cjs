@@ -62,8 +62,8 @@ test("stat formulas count the full characteristic value including the starting p
   assert.equal(formulas.statActions(1), 1);
   assert.equal(formulas.statActions(10), 10);
   assert.equal(formulas.statEvasion(5), 0.25);
-  assert.equal(formulas.statConsumableDamage(1), 8.5);
-  assert.equal(formulas.statConsumableDamage(10), 22);
+  assert.equal(formulas.statConsumableDamage(1), 17);
+  assert.equal(formulas.statConsumableDamage(10), 35);
   assert.ok(Math.abs(formulas.statCritChance(1) - 0.03) < 1e-9);
   assert.ok(Math.abs(formulas.statCritChance(10) - 0.12) < 1e-9);
   assert.equal(formulas.statCritDamage(10), 1);
@@ -145,8 +145,8 @@ test("created and migrated items carry the new stat/effect rolls", () => {
 
 test("consumables use AGI, damage scrolls use INT, healing/support stays flat", () => {
   const stats = { str: 1, agi: 5, int: 5 };
-  assert.equal(content.consumablePower(content.ITEMS.acid_vial, stats), 14.5);
-  assert.equal(content.consumablePower(content.ITEMS.throwing_knife, stats), 14.5);
+  assert.equal(content.consumablePower(content.ITEMS.acid_vial, stats), 25);
+  assert.equal(content.consumablePower(content.ITEMS.throwing_knife, stats), 25);
   assert.equal(content.consumablePower(content.ITEMS.scroll_spark, stats), 20);
   assert.equal(content.consumablePower(content.ITEMS.potion_s, stats), 28);
   assert.equal(content.consumablePower(content.ITEMS.scroll_heal, stats), 32);

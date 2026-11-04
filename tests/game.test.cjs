@@ -820,7 +820,7 @@ test("throwing weapons are consumable, explosions pierce armor and living target
   assert.equal(thrown.bag.throwing_knife, undefined);
 
   const blast = battle.playerAct(fresh(), { type: "item", id: "blast_bomb" });
-  assert.ok(999 - blast.enemy.hp >= 8); // 7 + 1.5×ЛОВ(1), округление
+  assert.ok(999 - blast.enemy.hp >= 17); // 15 + 2×ЛОВ(1)
   assert.equal(blast.bag.blast_bomb, undefined);
 
   let afraid = battle.playerAct(fresh(), { type: "item", id: "fear_vial" });

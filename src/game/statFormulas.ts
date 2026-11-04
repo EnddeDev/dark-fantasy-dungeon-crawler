@@ -16,8 +16,8 @@ export const STAT_FORMULAS = {
   agi: {
     actionsPerPoint: 1,
     evasionPerPoint: 0.05,
-    consumableBase: 7,
-    consumablePerPoint: 1.5,
+    consumableBase: 15,
+    consumablePerPoint: 2,
     critChanceBase: 0.02,
     critChancePerPoint: 0.01,
     critDamagePerPoint: 0.10,

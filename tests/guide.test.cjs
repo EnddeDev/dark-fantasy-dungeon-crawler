@@ -63,7 +63,7 @@ test("guide codifies the new stat formulas and probability rule", () => {
   assert.ok(html.includes("Стойкость: 5% за каждое очко"));
   assert.ok(html.includes("Ход: 1 за каждое очко ЛОВ"));
   assert.ok(html.includes("Уклонение: 5% за каждое очко"));
-  assert.ok(html.includes("Урон расходников: 7 + 1.5 × ЛОВ"));
+  assert.ok(html.includes("Урон расходников: 15 + 2 × ЛОВ"));
   assert.ok(html.includes("Крит-шанс: 2% + 1% × ЛОВ"));
   assert.ok(html.includes("Магическое сопротивление: 5% за каждое очко"));
   assert.ok(html.includes("Урон приёмов и свитков: 10 + 2 × ИНТ"));
@@ -129,7 +129,7 @@ test("extra reference material is collapsed by default", () => {
 });
 
 test("guide keeps the current combat and crafting numbers", () => {
-  assert.ok(html.includes("Урон расходников — 7 + 1.5 × ЛОВ"));
+  assert.ok(html.includes("Урон расходников — 15 + 2 × ЛОВ"));
   assert.ok(html.includes("Обычные зелья лечения и поддержки работают без множителя"));
   assert.match(html, /25% сопротивления эффектам/);
   assert.ok(html.includes("Ускорение от снаряжения"));
