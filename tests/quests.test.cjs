@@ -354,7 +354,10 @@ test("лобби: алхимик открывается с приветстви�
   assert.ok(html.includes("Доверие 2/5"), "доверие показано");
   assert.ok(html.includes("Листы с рецептами"), "алхимик продаёт рецепты в своей вкладке");
   assert.ok(html.includes("Лист 1"), "первый лист показан");
-  assert.ok(html.includes("Алхимия варит зелья"), "варка живёт у алхимика");
+  assert.ok(html.includes('aria-label="Рецепты и создание"'), "у алхимика есть вкладки рецептов и создания");
+  assert.match(html, /aria-selected="true"[^>]*>Рецепты</, "по умолчанию открыты рецепты");
+  assert.match(html, /aria-selected="false"[^>]*>Создание</, "вкладка создания есть");
+  assert.ok(!html.includes("Алхимия варит зелья"), "варка скрыта, пока не открыта вкладка «Создание»");
   const shop = render({ initialTab: "shop" });
   assert.ok(!shop.includes("Купить рецепт"), "в магазине нет покупки рецептов");
   assert.ok(!shop.includes("Листы с рецептами"), "в магазине нет секции рецептов");

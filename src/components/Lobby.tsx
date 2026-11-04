@@ -348,6 +348,8 @@ export function Lobby({
   const [supplyGroup, setSupplyGroup] = useState<SupplyGroup>("potion");
   /* Сумка арсенала: припасы и реагенты в двух вкладках одной таблицы. */
   const [bagTab, setBagTab] = useState<"supplies" | "reagents">("supplies");
+  /* Алхимик и мастер: вкладки «Рецепты» (покупка листов) и «Создание» (варка). */
+  const [craftTab, setCraftTab] = useState<"recipes" | "brew">("recipes");
   /* «Начать заново»: подтверждение полного сброса прогресса. */
   const [restartConfirm, setRestartConfirm] = useState(false);
   const [infoTip, setInfoTip] = useState<InfoTip>(null);
@@ -719,13 +721,41 @@ export function Lobby({
     );
   };
 
+  /* Алхимик и мастер: переключатель между покупкой рецептов и варкой. */
+  const renderCraft = (station: CraftStation) => (
+    <div>
+      <div role="tablist" aria-label="Рецепты и создание" className="mb-4 grid max-w-md grid-cols-2 gap-2">
+        {(
+          [
+            ["recipes", "Рецепты"],
+            ["brew", "Создание"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={craftTab === id}
+            onClick={() => setCraftTab(id)}
+            className={`border px-4 py-2 font-display text-sm uppercase tracking-[0.1em] transition-colors ${
+              craftTab === id ? "border-flame bg-flame/10 text-flamehi" : "border-line bg-black/30 text-mute hover:border-flamedim hover:text-parch"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {craftTab === "recipes" ? renderRecipeShop(station) : renderStation(station)}
+    </div>
+  );
+
   /* Варка у алхимика и мастера: список листов и кнопки «Создать». Только обработчики вызывают контроллер. */
   const renderStation = (station: CraftStation) => (
               <div>
                 <p className="dropcap mb-4 max-w-2xl text-[1.02rem] leading-relaxed text-parch/85">
                   {station === "alchemy"
-                    ? "Алхимия варит зелья и свитки. Рецепты нельзя угадать: сначала купи лист у алхимика выше."
-                    : "Мастерская собирает метательные расходники: кинжалы, бомбы и прахи. Чертежи продаёт мастер выше."}
+                    ? "Алхимия варит зелья и свитки. Рецепты нельзя угадать: сначала купи лист у алхимика во вкладке «Рецепты»."
+                    : "Мастерская собирает метательные расходники: кинжалы, бомбы и прахи. Чертежи продаёт мастер во вкладке «Рецепты»."}
                   {" "}При создании есть {Math.round(BREW_FAILURE_CHANCE * 100)}% шанс неудачи — ингредиенты сгорят,
                   даже если ничего не выйдет.
                 </p>
@@ -739,7 +769,7 @@ export function Lobby({
                             <h4 className="font-display text-base uppercase tracking-[0.1em] text-mute">
                               Неизвестный рецепт
                             </h4>
-                            <p className="text-xs text-mute">Состав не раскрыт. Купи лист у {station === "workshop" ? "мастера" : "алхимика"} выше.</p>
+                            <p className="text-xs text-mute">Состав не раскрыт. Купи лист у {station === "workshop" ? "мастера" : "алхимика"} во вкладке «Рецепты».</p>
                           </div>
                         </div>
                       );
@@ -901,18 +931,8 @@ export function Lobby({
 
   /* Содержимое вкладки «Жители» по NPC: рецепты с варкой и кузница. */
   const npcServices = {
-    alchemist: (
-      <div>
-        {renderRecipeShop("alchemy")}
-        {renderStation("alchemy")}
-      </div>
-    ),
-    master: (
-      <div>
-        {renderRecipeShop("workshop")}
-        {renderStation("workshop")}
-      </div>
-    ),
+    alchemist: renderCraft("alchemy"),
+    master: renderCraft("workshop"),
     smith: renderForge(),
   };
 
