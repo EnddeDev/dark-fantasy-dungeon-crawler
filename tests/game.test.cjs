@@ -1127,36 +1127,19 @@ test("shop stock respects the shop level and covers every slot", () => {
   assert.equal(epics, 0, "на первом уровне лавки эпическое не появляется");
 });
 
-test("исследование стоит долю ценности вещи, а не фиксированные 20 × уровень", () => {
-  /* Редкость задана явно: без неё createGearItem бросает случайную и цены плавают. */
-  const mk = (baseId, level) => content.createGearItem({ baseId, level, wear: "worn", rarity: "common", identified: false });
-  const low = content.identifyReqs(mk("knife", 1));
-  const mid = content.identifyReqs(mk("sword", 3));
-  const high = content.identifyReqs(mk("soulstone", 6));
-  assert.deepEqual(low, { int: 2, gold: 1 }, "минимум 1 золото");
-  assert.equal(mid.int, 4);
-  assert.equal(mid.gold, 4);
-  assert.deepEqual(high, { int: 7, gold: 15 });
-  assert.ok(high.int > low.int && high.gold > mid.gold && mid.gold > low.gold);
-
-  /* Исследование окупается там, где выгоду не съедает округление цены до 5. */
-  for (const [baseId, level] of [["sword", 3], ["plate", 3], ["sword", 5], ["crown_husk", 6], ["soulstone", 5], ["soulstone", 8]]) {
-    const item = content.createGearItem({ baseId, level, wear: "worn", rarity: "common", identified: true });
-    const cost = content.identifyReqs(item).gold;
-    const gain = content.gearSellPrice(item) - content.gearSellPrice({ ...item, identified: false });
-    assert.ok(gain >= cost, `${baseId} ${level}: выгода ${gain} меньше цены исследования ${cost}`);
-  }
-
-  /* Ни в одном случае исследование не дороже самой вещи — в этом и был баг. */
-  for (const base of Object.values(content.GEAR_BASES)) {
-    for (let level = 1; level <= 10; level++) {
-      for (const wear of ["battered", "worn", "new"]) {
-        const item = content.createGearItem({ baseId: base.id, level, wear, rarity: "common", identified: false });
-        const cost = content.identifyReqs(item).gold;
-        assert.ok(cost <= content.gearSellPrice(item) * 0.5, `${base.id} ${level} ${wear}: исследование ${cost}`);
+test("исследование стоит 20 × уровень предмета, Интеллект растёт как раньше", () => {
+  /* Редкость задана явно: без неё createGearItem бросает случайную. */
+  const mk = (baseId, level, rarity = "common") => content.createGearItem({ baseId, level, wear: "worn", rarity, identified: false });
+  for (let level = 1; level <= 10; level++) {
+    for (const baseId of ["knife", "sword", "plate", "soulstone"]) {
+      for (const rarity of Object.keys(content.RARITY_META)) {
+        assert.equal(content.identifyReqs(mk(baseId, level, rarity)).gold, 20 * level, `${baseId} L${level} ${rarity}`);
       }
     }
   }
+  assert.deepEqual(content.identifyReqs(mk("knife", 1)), { int: 2, gold: 20 });
+  assert.deepEqual(content.identifyReqs(mk("sword", 3)), { int: 4, gold: 60 });
+  assert.deepEqual(content.identifyReqs(mk("soulstone", 6)), { int: 7, gold: 120 });
 });
 
 test("equipment slots: two hands, shield, rings and the full set", () => {
@@ -2256,30 +2239,14 @@ test("hero starts at full health with three stat points, two-handers hit twice a
   assert.ok(Math.abs(b[1] / a[1] - 2) < 0.2, `макс: ${b[1]} против ${a[1]}`);
 });
 
-test("исследование окупается: цена опознания не выше прибавки к продаже", () => {
-  const rarities = Object.keys(content.RARITY_META);
-  const wears = Object.keys(content.WEAR_META);
-  let free = 0;
-  for (const baseId of Object.keys(content.GEAR_BASES)) {
-    for (const rarity of rarities) {
-      for (const wear of wears) {
-        for (let level = 1; level <= 10; level++) {
-          const item = content.createGearItem(baseId, { level, rarity, wear, identified: false });
-          const asFound = content.gearSellPrice(item);
-          const known = content.gearSellPrice({ ...item, identified: true });
-          const cost = content.identifyReqs(item).gold;
-          const gain = known - asFound;
-          if (gain === 0) {
-            assert.equal(cost, 0, `${baseId} L${level}: опознание ничего не даёт, цена должна быть 0`);
-            free++;
-          } else {
-            assert.ok(cost >= 1 && cost <= gain, `${baseId} L${level} ${rarity} ${wear}: цена ${cost} при прибавке ${gain}`);
-          }
-        }
-      }
-    }
-  }
-  assert.ok(free > 0, "на дешёвых находках опознание должно быть бесплатным");
+test("кнопка «Исследовать все»: бесплатно то, что открывает Интеллект, остальное за 20 × уровень", () => {
+  const mk = (baseId, level) => content.createGearItem({ baseId, level, wear: "worn", rarity: "common", identified: false });
+  const low = mk("knife", 1);
+  const high = mk("soulstone", 6);
+  const known = { ...mk("sword", 3), identified: true };
+  const player = { stats: { str: 1, agi: 1, int: 3 }, armory: [low, high, known] };
+  assert.deepEqual(content.identifyAllPlan(player, 0), { count: 2, free: 1, gold: 120 });
+  assert.deepEqual(content.identifyAllPlan({ ...player, stats: { ...player.stats, int: 8 } }, 0), { count: 2, free: 2, gold: 0 });
 });
 
 /** Прибавка ценности от улучшения в кузнице — не меньше цены работы. */

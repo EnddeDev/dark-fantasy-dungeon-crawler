@@ -120,6 +120,20 @@ test("starter knife and rag show no requirements in the armory", () => {
   assert.ok(!html.includes("Нужно:"), "нет предупреждения о нехватке характеристик");
 });
 
+test("armory: кнопка «Исследовать все» показывает цену и не даёт платить без золота", () => {
+  const soul = content.createGearItem({ baseId: "soulstone", level: 6, wear: "worn", rarity: "common", identified: false });
+  const render = (gold) => renderToStaticMarkup(React.createElement(Lobby, {
+    player: makePlayer({ level: 3, gold, stats: { str: 1, agi: 1, int: 3 }, armory: [soul], passives: [] }),
+    controller: {}, shopStock: [], onStart: noop, onRestart: noop, best: 1, unlockedFloor: 2, initialTab: "armory",
+  }));
+  const poor = render(100);
+  assert.ok(poor.includes("Исследовать все · 1 · 120 зол."), "цена за неизученную вещь уровня 6");
+  assert.ok(poor.includes("не хватает 20 зол."), "подсказка о нехватке");
+  const rich = render(500);
+  assert.ok(rich.includes("Исследовать все · 1 · 120 зол."));
+  assert.ok(!rich.includes("не хватает"), "при достаточном золоте подсказки нет");
+});
+
 test("armory shows supplies and reagents from the bag", () => {
   const player = makePlayer({ bag: { potion_s: 2, scroll_heal: 1, moss: 3 } });
   const html = renderToStaticMarkup(React.createElement(Lobby, {

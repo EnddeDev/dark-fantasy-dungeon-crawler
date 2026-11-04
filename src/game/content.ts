@@ -1764,23 +1764,17 @@ export function scaledGearStats(item: GearItem) {
 
 /**
  * Ценность вещи без учёта качества: база × уровень × изношенность.
- * По ней считаются исследование и работа кузницы — иначе на дешёвых
- * вещах трата выходила дороже самой находки.
+ * По ней считаются работа кузницы и цены — иначе на дешёвых вещах трата
+ * выходила дороже самой находки.
  */
-/** Доля ценности вещи, которую стоит исследование. */
-export const IDENTIFY_SHARE = 0.03;
-
 export function gearBaseValue(item: GearItem): number {
   const base = GEAR_BASES[item.baseId] ?? GEAR_BASES.knife;
   return base.price * gearLevelMult(item) * WEAR_META[item.wear].priceMult;
 }
 
-/**
- * Требования исследования предмета: Интеллект растёт с уровнем,
- * золото — 3% цены продажи. Опознание поднимает цену продажи на 10%,
- * поэтому исследование всегда окупается; если округление цены до 5
- * съело всю разницу, опознание бесплатное.
- */
+/** Золото за исследование: 20 за каждый уровень предмета. */
+export const IDENTIFY_GOLD_PER_LEVEL = 20;
+
 /**
  * Сколько Интеллекта реально нужно на исследование: требование предмета минус
  * снижение от «Тайноведа» и легендарной крови. Все проверки обязаны считать
@@ -1790,15 +1784,28 @@ export function identifyIntReq(item: GearItem, intDiscount = 0): number {
   return Math.max(1, identifyReqs(item).int - Math.max(0, intDiscount));
 }
 
+/**
+ * Требования исследования предмета: Интеллект растёт с уровнем (1 + уровень, не выше 8),
+ * золото — 20 × уровень предмета.
+ */
 export function identifyReqs(item: GearItem): { int: number; gold: number } {
   const lvl = clampGearLevel(item.level ?? 1);
-  /* Исследование берёт 3% цены вещи, но никогда не дороже прибавки к продаже:
-     если округление съело разницу между опознанной и неопознанной ценой,
-     опознание бесплатное. */
-  const known = gearSellPrice({ ...item, identified: true });
-  const asFound = gearSellPrice({ ...item, identified: false });
-  const gold = known > asFound ? Math.max(1, Math.round(known * IDENTIFY_SHARE)) : 0;
-  return { int: Math.min(8, 1 + lvl), gold };
+  return { int: Math.min(8, 1 + lvl), gold: IDENTIFY_GOLD_PER_LEVEL * lvl };
+}
+
+/**
+ * План кнопки «Исследовать все»: сколько вещей в арсенале не исследовано и сколько
+ * золота нужно за те, что Интеллект не открывает. Вещи, доступные по ИНТ, идут бесплатно.
+ */
+export function identifyAllPlan(player: Player, intDiscount = 0): { count: number; free: number; gold: number } {
+  const pending = player.armory.filter((g) => !g.identified);
+  let free = 0;
+  let gold = 0;
+  for (const g of pending) {
+    if (player.stats.int >= identifyIntReq(g, intDiscount)) free++;
+    else gold += identifyReqs(g).gold;
+  }
+  return { count: pending.length, free, gold };
 }
 
 /** Разброс урона конкретного клинка: узкий (3–5) или размашистый (2–7). */
