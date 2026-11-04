@@ -3479,6 +3479,17 @@ test("яд масла: тик 10% от удара, а не от ЛОВ", () => {
   assert.ok(ended.log.some((l) => l.text.includes(`Яд масла отнимает ${tick} ОЗ`)), "яд тикает своим тиком");
 });
 
+test("масло на боссе не процентное: тик — 10% от удара, как у обычной цели", () => {
+  const b = quietEnemy(freshBattle(mkP({ level: 1, stats: { str: 1, agi: 1, int: 1 }, hp: 100, bag: { oil_fire: 1 } }), 1, false, "classic"));
+  b.isBoss = true;
+  b.enemy.hp = 9999;
+  b.enemy.maxHp = 9999;
+  const oiled = battle.playerAct({ ...b, queue: ["p", "e"], idx: 0 }, { type: "item", id: "oil_fire" });
+  const hit = withRandom(() => battle.playerAct({ ...oiled, queue: ["p", "e"], idx: 0 }, { type: "attack" }), 0.99);
+  const dealt = 9999 - hit.enemy.hp;
+  assert.equal(hit.enemy.statuses.oilTick, Math.max(1, Math.round(dealt * 0.1)), "тик масла — 10% от удара, а не % от ОЗ босса");
+});
+
 test("стихия масла учитывает род: конструкт получает ×1.5, зверь не получает света", () => {
   const constructB = monsterBattle("construct", "strong", ["attack"], { player: { bag: { oil_fire: 1 } } });
   constructB.enemy.hp = 9999;
