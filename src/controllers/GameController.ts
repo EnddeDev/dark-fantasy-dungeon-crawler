@@ -3,6 +3,7 @@ import { checkCharacterName } from "../game/characterName";
 import { rollShopStock } from "../game/content";
 import { BIOMES, biomeHealingAmount, biomeVision, mazeBiome } from "../game/biomes";
 import { genMaze, mazeSizeForFloor } from "../game/maze";
+import { deliverCarried, endRunBlessing, placeQuestMarks, questsForFloor, startRunBlessing } from "../game/quests";
 import type { Player } from "../game/types";
 import { SLOT_ORDER } from "../game/types";
 import { GameModel } from "../model/GameModel";
@@ -73,10 +74,13 @@ export class GameController {
   startRun(floor: number): void {
     const { unlockedFloor, best, player } = this.model.getSnapshot();
     if (!Number.isInteger(floor) || floor < 1 || floor > unlockedFloor) return;
-    const maze = genMaze(mazeSizeForFloor(floor), floor);
+    /* Задания этажа ставят метки на карту; благословение священника вступает в силу. */
+    const quests = questsForFloor(player, floor);
+    const maze = placeQuestMarks(genMaze(mazeSizeForFloor(floor), floor), quests);
+    const blessed = startRunBlessing(player);
     const nextPlayer: Player = {
-      ...player,
-      hp: derived(player).maxHp,
+      ...blessed,
+      hp: derived(blessed).maxHp,
       statuses: { wound: 0, curse: 0, poison: 0, chill: 0, fear: 0, wither: 0, burn: 0 },
     };
     const nextBest = Math.max(best, floor);
@@ -102,7 +106,9 @@ export class GameController {
         /* Ловушки видны сразу: на карте не остаётся скрытых механизмов. */
         revealedTraps: [...maze.traps],
         sprungTraps: [],
+        questCarry: [],
         log: [
+          ...(quests.length ? [`На этаже задания: ${quests.map((q) => q.title).join("; ")}.`] : []),
           `Спускаетесь на этаж ${floor}: ${BIOMES[mazeBiome(maze)].name}. Факел освещает круг радиусом ${biomeVision(mazeBiome(maze))}, но стены и запертые двери блокируют свет.`,
           `На ${maze.size}×${maze.size} карте: ${maze.monsters.length} монстров и ${maze.traps.length} ловушек. Все ловушки отмечены на карте с самого начала.`,
         ],
@@ -134,8 +140,9 @@ export class GameController {
     SLOT_ORDER.forEach((slot) => {
       if (equip[slot] && lostGearUids.has(equip[slot]!)) equip[slot] = null;
     });
+    /* Смерть гасит благословение похода; принесённое в вылазке пропадает вместе с трофеем. */
     const nextPlayer: Player = {
-      ...player,
+      ...endRunBlessing(player),
       bag,
       armory,
       equip,
@@ -155,7 +162,7 @@ export class GameController {
     const { run, player, best } = this.model.getSnapshot();
     if (!run || !run.maze.bossDefeated) return;
     const nf = run.floor + 1;
-    const maze = genMaze(mazeSizeForFloor(nf), nf);
+    const maze = placeQuestMarks(genMaze(mazeSizeForFloor(nf), nf), questsForFloor(player, nf));
     const d = derived(player);
     const nextBest = Math.max(best, nf);
     if (nf > best) this.saves.writeBest(nf);
@@ -215,12 +222,13 @@ export class GameController {
   leaveRun(): void {
     const { run, player } = this.model.getSnapshot();
     if (!run) return;
-    const d = derived(player);
+    /* Вернувшись живым, герой приносит трофеи и теряет благословение похода. */
+    const home = endRunBlessing(deliverCarried(player, run.questCarry));
     this.model.update({
       player: {
-        ...player,
-        gold: player.gold + run.gold,
-        hp: d.maxHp,
+        ...home,
+        gold: home.gold + run.gold,
+        hp: derived(home).maxHp,
         statuses: { wound: 0, curse: 0, poison: 0, chill: 0, fear: 0, wither: 0, burn: 0 },
       },
       path: [],

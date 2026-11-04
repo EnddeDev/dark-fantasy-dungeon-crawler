@@ -173,6 +173,89 @@ export interface GearItem {
   legendaryPassive?: LegendaryPassiveId;
 }
 
+/* ─────────────  ЗАДАНИЯ  ───────────── */
+
+export type QuestGiverId = "priest" | "smith" | "merchant" | "wizard" | "mercenary" | "villager";
+/** Убить существо на этаже, принести из подземелья или отдать реагенты. */
+export type QuestKind = "kill" | "fetch" | "reagents";
+/** Что приносим: трофей с существа, остатки товарища или живого товарища. */
+export type FetchSource = "drop" | "remains" | "captive";
+
+export type QuestReward =
+  | { kind: "gold"; amount: number }
+  | { kind: "supplies"; items: string[] }
+  | { kind: "gear"; level: number };
+
+export interface Quest {
+  id: string;
+  giver: QuestGiverId;
+  kind: QuestKind;
+  /** Этаж, где выполняется задание (для убийства и принесения). */
+  floor: number;
+  title: string;
+  text: string;
+  /** Вид существа: для убийства и трофея с существа. */
+  enemyId?: string;
+  enemyName?: string;
+  /** Источник принесённого предмета (только для вида «принести»). */
+  source?: FetchSource;
+  /** Название принесённого предмета. */
+  itemName?: string;
+  /** Реагенты: id и нужное количество. */
+  reagent?: string;
+  amount?: number;
+  reward: QuestReward;
+  /** Скидка 25% на одну покупку (кузнец и торговец, в части заданий). */
+  coupon: boolean;
+  /** Убийство: существо побеждено. */
+  done?: boolean;
+}
+
+/** Строка прилавка NPC: предмет, количество и цена. */
+export interface ShopLine {
+  id: string;
+  qty: number;
+  price: number;
+}
+
+/** Журнал заданий и торговцев героя. */
+export interface QuestLog {
+  /** Предложенные задания, ещё не взятые. */
+  offers: Quest[];
+  /** Взятые задания. */
+  active: Quest[];
+  /** id заданий, чей принесённый предмет уже в лобби. */
+  carried: string[];
+  /** Скидки 25% на следующую покупку. */
+  coupons: number;
+  /** Благословения, которые предлагает священник. */
+  blessingOffers: string[];
+  /** Благословение, купленное на следующий поход. */
+  blessingNext: string | null;
+  /** Волшебник: уникальные свитки и зелья, до 3 штук каждого. */
+  wizard: ShopLine[];
+  /** Сельчанин: реагенты по сниженной цене. */
+  villager: ShopLine[];
+  /** Наёмник: исследованное снаряжение с ценой ×2. */
+  mercenary: GearItem[];
+}
+
+/** Метка задания на карте этажа. */
+export interface QuestMark {
+  cell: number;
+  questId: string;
+  kind: "kill" | "drop" | "remains" | "captive";
+  /** Вид существа для убийства и трофея. */
+  enemyId?: string;
+  label: string;
+}
+
+/** Принесённое в вылазке: лежит в рюкзаке героя, пока он не вернулся в лобби. */
+export interface CarriedQuest {
+  questId: string;
+  label: string;
+}
+
 export type Threat = "normal" | "horror" | "catastrophe";
 export type EnemySeal = "items" | "skills" | "attack";
 
@@ -207,6 +290,10 @@ export interface Player {
   kills: number;
   /** Уровень лавки 1…10: задаёт шансы изношенности, редкости и ассортимент. */
   shopLevel: number;
+  /** Задания и торговцы. У старых сохранений поля нет — создаётся при загрузке. */
+  questLog?: QuestLog;
+  /** Благословение текущего похода (null — нет). */
+  blessing?: string | null;
 }
 
 export interface EnemyPassive {
@@ -250,6 +337,8 @@ export interface Maze {
   takenKeys: number[];
   /** Клетки-события: метка комнаты, видна на карте до подхода. */
   events: number[];
+  /** Метки заданий: убийство, трофей, остатки или товарищ. */
+  questMarks?: QuestMark[];
   usedEvents: number[];
   /**
    * События по комнатам: одна комната — одно событие, вид задаёт значок.
@@ -301,6 +390,8 @@ export interface Run {
   revealedTraps?: number[];
   /** Сработавшие ловушки: повторно не срабатывают. */
   sprungTraps?: number[];
+  /** Принесённое в этой вылазке: попадёт в лобби только при возвращении. */
+  questCarry?: CarriedQuest[];
 }
 
 export type ModalState =

@@ -13,6 +13,7 @@ import {
   Search,
   Shield,
   Sparkles,
+  ScrollText,
   ShoppingBag,
   Skull,
   Sword,
@@ -77,10 +78,12 @@ import { Bestiary } from "./Bestiary";
 import { ItemArt } from "./ItemArt";
 import { GearNote } from "./GearNote";
 import { GearCard } from "./GearCard";
+import { QuestsTab } from "./Quests";
+import { couponPreview, readyQuestCount } from "../game/quests";
 import { Btn, Meter, Modal, Panel, Pips, Tag } from "./ui";
 
 
-type Tab = "train" | "armory" | "shop" | "brew" | "workshop" | "forge" | "bestiary" | "guide";
+type Tab = "train" | "armory" | "shop" | "quests" | "brew" | "workshop" | "forge" | "bestiary" | "guide";
 export type ShopSection = "equipment" | "supplies" | "reagents" | "recipes";
 type SupplyGroup = "potion" | "throwable" | "scroll" | "special";
 type RecipeGroup = "potion" | "throwable" | "scroll" | "special";
@@ -306,6 +309,7 @@ const TAB_ICONS = {
   train: Brain,
   armory: Sword,
   shop: ShoppingBag,
+  quests: ScrollText,
   brew: FlaskConical,
   workshop: Wrench,
   forge: Hammer,
@@ -323,6 +327,7 @@ const TABS: { id: Tab; label: string; badge?: (p: Player) => number }[] = [
     badge: (p) => p.armory.filter((g) => !g.identified).length,
   },
   { id: "shop", label: "Магазин" },
+  { id: "quests", label: "Задания", badge: (p) => readyQuestCount(p) },
   { id: "brew", label: "Алхимия" },
   { id: "workshop", label: "Мастерская" },
   { id: "forge", label: "Кузница" },
@@ -631,6 +636,7 @@ export function Lobby({
       slot={slot}
       preferredSlot={mode === "inventory" ? chosenSlot ?? undefined : undefined}
       purchased={!!purchasedUids[item.uid]}
+      buyPrice={mode === "shop" ? couponPreview(player, gearBuyPrice(item)) : undefined}
       onInspect={() => setGearDetail({ uid: item.uid, inShop: mode === "shop" })}
       onEquip={(target, grip) => equipGear(item, chosenSlot && slotsForItem(item).includes(chosenSlot) ? chosenSlot : target, grip)}
       onUnequip={takeOff}
@@ -1168,7 +1174,7 @@ export function Lobby({
                       {shopSupplies.map((def) => {
                         const have = player.bag[def.id] ?? 0;
                         const levelOk = canBuySupply(def.id, player.shopLevel);
-                        const can = player.gold >= (def.price ?? 0) && levelOk;
+                        const can = player.gold >= couponPreview(player, def.price ?? 0) && levelOk;
                         const intReq = consumableIntReq(def, d.intDiscount);
                         const info = effectSummary(def);
                         return (
@@ -1204,7 +1210,7 @@ export function Lobby({
                             </div>
                             <div className="mt-3 flex items-center justify-between gap-2">
                               <span className="font-mono text-sm tab text-flamehi">
-                                {def.price} зол.{have > 0 && <span className="ml-2 text-mute">в сумке: {have}</span>}
+                                {couponPreview(player, def.price ?? 0)} зол.{have > 0 && <span className="ml-2 text-mute">в сумке: {have}</span>}
                               </span>
                               <div className="flex gap-2">
                                 {have > 0 && (
@@ -1276,7 +1282,7 @@ export function Lobby({
                       {shopReagents.map((def) => {
                         const have = player.bag[def.id] ?? 0;
                         const levelOk = canBuySupply(def.id, player.shopLevel);
-                        const can = player.gold >= (def.price ?? 0) && levelOk;
+                        const can = player.gold >= couponPreview(player, def.price ?? 0) && levelOk;
                         const cat = reagentCategoryOf(def);
                         const catLabel =
                           cat === "mineral" ? "минерал" : cat === "cloth" ? "ткань" : cat === "monster" ? "часть твари" : "растение";
@@ -1298,7 +1304,7 @@ export function Lobby({
                             <p className="mt-2 flex-1 text-[0.97rem] italic leading-snug text-mute">{def.desc}</p>
                             <div className="mt-3 flex items-center justify-between gap-2">
                               <span className="font-mono text-sm tab text-flamehi">
-                                {def.price} зол.{have > 0 && <span className="ml-2 text-mute">в сумке: {have}</span>}
+                                {couponPreview(player, def.price ?? 0)} зол.{have > 0 && <span className="ml-2 text-mute">в сумке: {have}</span>}
                               </span>
                               <div className="flex gap-2">
                                 {have > 0 && (
@@ -1353,11 +1359,11 @@ export function Lobby({
                               </p>
                             </div>
                             <div className="flex items-center gap-3">
-                              <span className="font-mono text-sm text-flame">{price} зол.</span>
+                              <span className="font-mono text-sm text-flame">{couponPreview(player, price)} зол.</span>
                               {known ? (
                                 <Tag tone="verd">изучен навсегда</Tag>
                               ) : (
-                                <Btn tone="flame" disabled={player.gold < price} onClick={() => buyRecipe(r)}>
+                                <Btn tone="flame" disabled={player.gold < couponPreview(player, price)} onClick={() => buyRecipe(r)}>
                                   Купить рецепт
                                 </Btn>
                               )}
@@ -1550,6 +1556,10 @@ export function Lobby({
                   </Panel>
                 </div>
               </div>
+            )}
+
+            {tab === "quests" && (
+              <QuestsTab player={player} controller={controller} unlockedFloor={unlockedFloor} say={say} />
             )}
 
             {tab === "bestiary" && <Bestiary />}

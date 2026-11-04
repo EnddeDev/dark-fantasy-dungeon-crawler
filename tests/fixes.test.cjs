@@ -222,8 +222,10 @@ function gameWithEvent(overrides = {}) {
   maze.v[1][2] = false;
   maze.h[1][1] = false;
   maze.h[1][2] = false;
-  if (maze.boss.x === 1 && maze.boss.y === 0) maze.boss = { x: size - 1, y: size - 2 };
-  if (maze.stairs.x === 1 && maze.stairs.y === 0) maze.stairs = { x: size - 1, y: size - 1 };
+  /* босс и лестница не должны стоять на пути к значку: иначе бой или спуск перехватят шаг */
+  const onPath = (c) => (c.x === 1 && c.y === 0) || (c.x === 2 && c.y === 0) || (c.x === 2 && c.y === 1);
+  if (onPath(maze.boss)) maze.boss = { x: size - 1, y: size - 2 };
+  if (onPath(maze.stairs)) maze.stairs = { x: size - 1, y: size - 1 };
   game.model.setRun({ ...run, maze });
   game.eventCell = mark;
   return game;

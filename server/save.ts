@@ -14,6 +14,7 @@
  * ограниченным.
  */
 import {
+  ENEMIES,
   EPIC_SKILLS,
   GEAR_BASES,
   ITEMS,
@@ -31,6 +32,8 @@ import { totalStatPoints } from "../src/game/progression";
 import { derived } from "../src/game/battle";
 import { CHARACTER_NAME_MAX, DEFAULT_CHARACTER_NAME } from "../src/game/characterName";
 import { SHOP_MAX_LEVEL } from "../src/game/world";
+import { BLESSING_IDS } from "../src/game/blessings";
+import { GIVER_ORDER } from "../src/game/quests";
 import {
   SLOT_ORDER,
   WEAR_RANGE,
@@ -38,6 +41,11 @@ import {
   type GearKind,
   type LegendaryPassiveId,
   type Player,
+  type Quest,
+  type QuestKind,
+  type QuestLog,
+  type QuestReward,
+  type ShopLine,
   type Slot,
   type StatKey,
 } from "../src/game/types";
@@ -69,6 +77,13 @@ const PASSIVE_IDS = new Set(Object.keys(GEAR_PASSIVES));
 const LEGENDARY_IDS = new Set(Object.keys(LEGENDARY_PASSIVES));
 const RECIPE_IDS = new Set(RECIPES.map((r) => r.id));
 const PASSIVE_RE = /^[a-z0-9_]{1,40}$/;
+const QUEST_KINDS: QuestKind[] = ["kill", "fetch", "reagents"];
+const FETCH_SOURCES = ["drop", "remains", "captive"] as const;
+const ENEMY_IDS = new Set(ENEMIES.map((e) => e.id));
+const BLESSING_SET = new Set<string>(BLESSING_IDS);
+const GIVER_SET = new Set<string>(GIVER_ORDER);
+/** Потолок этажа задания: выше открыть нельзя, но запас оставляем. */
+const QUEST_FLOOR_MAX = 200;
 
 function bad(reason: string): never {
   throw new HttpError(400, `Некорректное сохранение: ${reason}`);
@@ -179,6 +194,101 @@ function sanitizeGear(raw: unknown, index: number): GearItem {
  * Приводит сохранение к допустимому виду и проверяет инварианты.
  * `floors` — сколько этажей открыто (для запаса «событийных» характеристик).
  */
+function textOf(value: unknown, name: string, max: number): string {
+  if (typeof value !== "string" || value.length > max) bad(`${name}: некорректный текст`);
+  return value as string;
+}
+
+function listOf<T>(value: unknown, name: string, max: number, read: (item: unknown, index: number) => T): T[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > max) bad(`${name}: список`);
+  return (value as unknown[]).map(read);
+}
+
+function sanitizeReward(raw: unknown): QuestReward {
+  const r = asObject(raw, "награда задания");
+  if (r.kind === "gold") return { kind: "gold", amount: int(r.amount ?? 0, 0, GOLD_CAP, "награда золотом") };
+  if (r.kind === "supplies") {
+    const items = listOf(r.items, "припасы награды", 3, (id) => {
+      if (typeof id !== "string" || !ITEMS[id]) bad("неизвестный припас в награде");
+      return id as string;
+    });
+    return { kind: "supplies", items };
+  }
+  if (r.kind === "gear") return { kind: "gear", level: int(r.level ?? 1, 1, MAX_LEVEL, "уровень награды") };
+  bad("неизвестный вид награды");
+}
+
+function sanitizeQuest(raw: unknown): Quest {
+  const q = asObject(raw, "задание");
+  if (typeof q.id !== "string" || !/^[a-z0-9]{1,24}$/i.test(q.id)) bad("id задания");
+  if (typeof q.giver !== "string" || !GIVER_SET.has(q.giver)) bad("неизвестный NPC задания");
+  if (!QUEST_KINDS.includes(q.kind as QuestKind)) bad("неизвестный вид задания");
+  const quest: Quest = {
+    id: q.id as string,
+    giver: q.giver as Quest["giver"],
+    kind: q.kind as QuestKind,
+    floor: int(q.floor ?? 1, 1, QUEST_FLOOR_MAX, "этаж задания"),
+    title: textOf(q.title ?? "", "название задания", 120),
+    text: textOf(q.text ?? "", "описание задания", 400),
+    reward: sanitizeReward(q.reward),
+    coupon: q.coupon === true,
+  };
+  if (q.enemyId !== undefined) {
+    if (typeof q.enemyId !== "string" || !ENEMY_IDS.has(q.enemyId)) bad("неизвестное существо задания");
+    quest.enemyId = q.enemyId as string;
+  }
+  if (q.enemyName !== undefined) quest.enemyName = textOf(q.enemyName, "имя существа", 80);
+  if (q.source !== undefined) {
+    if (!FETCH_SOURCES.includes(q.source as (typeof FETCH_SOURCES)[number])) bad("неизвестный источник принесения");
+    quest.source = q.source as Quest["source"];
+  }
+  if (q.itemName !== undefined) quest.itemName = textOf(q.itemName, "название предмета задания", 160);
+  if (q.reagent !== undefined) {
+    if (typeof q.reagent !== "string" || !ITEMS[q.reagent]) bad("неизвестный реагент задания");
+    quest.reagent = q.reagent as string;
+  }
+  if (q.amount !== undefined) quest.amount = int(q.amount, 1, 50, "количество реагентов");
+  if (q.done === true) quest.done = true;
+  return quest;
+}
+
+function sanitizeShopLines(raw: unknown, name: string): ShopLine[] {
+  return listOf(raw, name, 12, (line) => {
+    const l = asObject(line, name);
+    if (typeof l.id !== "string" || !ITEMS[l.id]) bad(`${name}: неизвестный товар`);
+    return {
+      id: l.id as string,
+      qty: int(l.qty ?? 0, 0, 3, `${name}: количество`),
+      price: int(l.price ?? 0, 0, GOLD_CAP, `${name}: цена`),
+    };
+  });
+}
+
+/** Журнал заданий: задания, купоны, благословения и товары NPC. Вне схемы — 400. */
+function sanitizeQuestLog(raw: unknown): QuestLog {
+  const input = asObject(raw, "журнал заданий");
+  const blessingNext = input.blessingNext === undefined || input.blessingNext === null ? null : input.blessingNext;
+  if (blessingNext !== null && (typeof blessingNext !== "string" || !BLESSING_SET.has(blessingNext))) bad("благословение");
+  return {
+    offers: listOf(input.offers, "предложения заданий", 12, sanitizeQuest),
+    active: listOf(input.active, "взятые задания", 8, sanitizeQuest),
+    carried: listOf(input.carried, "принесённое", 40, (id) => {
+      if (typeof id !== "string" || id.length > 40) bad("принесённое задание");
+      return id as string;
+    }),
+    coupons: int(input.coupons ?? 0, 0, 20, "скидки"),
+    blessingOffers: listOf(input.blessingOffers, "благословения", 8, (id) => {
+      if (typeof id !== "string" || !BLESSING_SET.has(id)) bad("благословение священника");
+      return id as string;
+    }),
+    blessingNext: blessingNext as string | null,
+    wizard: sanitizeShopLines(input.wizard, "волшебник"),
+    villager: sanitizeShopLines(input.villager, "сельчанин"),
+    mercenary: listOf(input.mercenary, "наёмник", 6, (g, i) => sanitizeGear(g, i)),
+  };
+}
+
 export function sanitizePlayer(raw: unknown, floors = 1): Player {
   const input = asObject(raw, "герой");
   const level = int(input.level ?? 1, 1, MAX_LEVEL, "уровень");
@@ -288,6 +398,9 @@ export function sanitizePlayer(raw: unknown, floors = 1): Player {
     statuses,
     kills: int(input.kills ?? 0, 0, 1_000_000, "убийства"),
     shopLevel: int(input.shopLevel ?? 1, 1, SHOP_MAX_LEVEL, "уровень лавки"),
+    /* Журнал заданий отсутствует у старых сохранений — тогда клиент создаст его при загрузке. */
+    questLog: input.questLog === undefined ? undefined : sanitizeQuestLog(input.questLog),
+    blessing: typeof input.blessing === "string" && BLESSING_SET.has(input.blessing) ? input.blessing : null,
   };
 
   /* Здоровье не может превышать максимум по текущим характеристикам и снаряжению. */

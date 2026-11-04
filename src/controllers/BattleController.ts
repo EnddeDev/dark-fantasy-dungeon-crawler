@@ -1,5 +1,6 @@
 import { enemyStep, playerAct, type BattleState, type PlayerAction } from "../game/battle";
 import { grantXp } from "../game/content";
+import { applyMarkVictory, refreshAfterNewFloor } from "../game/quests";
 import { pruneRunLoot, usedFromBags } from "../game/runLoot";
 import { isBattleCurse } from "../game/traps";
 import type { Player } from "../game/types";
@@ -63,24 +64,32 @@ export class BattleController {
         chillTick: b.p.statuses.chillTick, curseTick: b.p.statuses.curseTick,
       },
     };
-    const { player: updated, levelsGained } = grantXp(withLoot, b.loot.xp);
+    const { player: afterXp, levelsGained } = grantXp(withLoot, b.loot.xp);
+
+    /* Монстр с меткой задания: убийство засчитывается, трофей уходит в вылазку. */
+    const monsterCell = run?.battleCell ?? null;
+    const mark = monsterCell === null ? undefined : run?.maze.questMarks?.find((q) => q.cell === monsterCell);
+    const { player: updatedQuest, carry } = applyMarkVictory(mark, afterXp);
 
     let nextUnlocked = unlockedFloor;
     if (b.isBoss) {
       nextUnlocked = Math.max(unlockedFloor, b.floor + 1);
       this.game.saveUnlockedFloor(nextUnlocked);
     }
+    /* Новый этаж пройден: появляются новые задания и обновляются товары. */
+    const updated = b.isBoss && nextUnlocked > unlockedFloor ? refreshAfterNewFloor(updatedQuest, nextUnlocked) : updatedQuest;
 
     const nextRun = run ? (() => {
-      const maze = b.isBoss ? { ...run.maze, bossDefeated: true } : run.maze;
+      const baseMaze = b.isBoss ? { ...run.maze, bossDefeated: true } : run.maze;
+      const maze = mark ? { ...baseMaze, questMarks: (baseMaze.questMarks ?? []).filter((q) => q !== mark) } : baseMaze;
       const lvlNote = levelsGained > 0 ? ` Повышен уровень (+${levelsGained * 3} очк. хар.)!` : "";
-      const monsterCell = run.battleCell ?? null;
       return {
         ...run,
         maze,
         battleCell: null,
         clearedMonsters:
           monsterCell === null ? run.clearedMonsters ?? [] : [...(run.clearedMonsters ?? []), monsterCell],
+        questCarry: carry ? [...(run.questCarry ?? []), carry] : run.questCarry,
         gold: run.gold + b.loot.gold,
         loot: [...run.loot, ...b.loot.items],
         gearLoot: [...run.gearLoot, ...b.loot.gear],

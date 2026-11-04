@@ -123,7 +123,7 @@ test("extra reference material is collapsed by default", () => {
   const reference = html.slice(referenceStart);
   assert.ok(reference.includes("<details"));
   assert.doesNotMatch(reference, /<details[^>]*\sopen/);
-  for (const id of ["guide-map", "guide-gear-details", "guide-levels", "guide-archetypes", "guide-craft", "guide-bestiary", "guide-events", "guide-return"]) {
+  for (const id of ["guide-map", "guide-gear-details", "guide-levels", "guide-archetypes", "guide-craft", "guide-quests", "guide-bestiary", "guide-events", "guide-return"]) {
     assert.ok(reference.includes(`id="${id}"`), `missing reference ${id}`);
   }
 });
