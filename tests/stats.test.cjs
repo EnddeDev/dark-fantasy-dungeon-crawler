@@ -91,6 +91,14 @@ test("тик задаёт источник: базовая формула, ×2 �
   assert.equal(statuses.dotBaseTick("poison", 1, () => 0.999), 4, "до +3 сверху");
   assert.equal(statuses.dotBaseTick("burn", 2, () => 0), 6, "огонь 3 × уровень 2");
   assert.equal(statuses.dotSkillTick("bleed", 3, () => 0), 6, "приём монстра: база × 2");
+  /* Приём героя: база от уровня героя + 1% макс. ОЗ цели (яд, кровь, проклятие). */
+  assert.equal(statuses.skillDotTick("poison", 4, 1000, () => 0), 4 + 10, "яд: база 4 + 1% от 1000");
+  assert.equal(statuses.skillDotTick("bleed", 2, 250, () => 0.999), 2 + 3 + 3, "кровь: база до +3, 1% от 250 = 3");
+  assert.equal(statuses.skillDotTick("curse", 1, 0, () => 0), 1, "проклятие: без ОЗ цели 1% даёт 0");
+  /* Приём героя огонь/лёд/кислота: база + уровень героя × 2. */
+  assert.equal(statuses.skillDotTick("burn", 3, 9999, () => 0), 9 + 6, "огонь: база 3×3 + уровень × 2");
+  assert.equal(statuses.skillDotTick("chill", 5, 9999, () => 0), 5 + 10, "лёд: база 5 + уровень × 2");
+  assert.equal(statuses.skillDotTick("blight", 2, 9999, () => 0), 4 + 4, "кислота: база 2×2 + уровень × 2");
   assert.equal(statuses.bossDotTick("bleed", 1000), 50, "кровотечение босса 5% от макс. ОЗ");
   assert.equal(statuses.bossDotTick("chill", 10), 1, "процент не ниже 1");
   assert.equal(statuses.magicTickFrom(6, 0), 6);

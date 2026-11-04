@@ -100,6 +100,7 @@ import {
   bossDotTick,
   dotBaseTick,
   dotSkillTick,
+  skillDotTick,
   magicTickFrom,
   oilAcidArmorCut,
   oilHitDamage,
@@ -2163,9 +2164,9 @@ function applyArmorSkill(b: BattleState, sk: ArmorSkillView) {
     b.enemy.statuses.stunAp = Math.min(2, b.enemy.statuses.stunAp + e.stun);
     push(b, `${b.enemy.def.name} теряет ${e.stun} ход (${sk.name}).`, "p");
   }
-  if (e.bleed && b.enemy.hp > 0) applyEnemyStatus(b, "bleed", e.bleed, dotBaseTick("bleed", b.p.level));
-  if (e.poison && b.enemy.hp > 0) applyEnemyStatus(b, "poison", e.poison, dotBaseTick("poison", b.p.level));
-  if (e.chill && b.enemy.hp > 0) applyEnemyStatus(b, "chill", e.chill, dotBaseTick("chill", b.p.level));
+  if (e.bleed && b.enemy.hp > 0) applyEnemyStatus(b, "bleed", e.bleed, skillDotTick("bleed", b.p.level, b.enemy.maxHp));
+  if (e.poison && b.enemy.hp > 0) applyEnemyStatus(b, "poison", e.poison, skillDotTick("poison", b.p.level, b.enemy.maxHp));
+  if (e.chill && b.enemy.hp > 0) applyEnemyStatus(b, "chill", e.chill, skillDotTick("chill", b.p.level, b.enemy.maxHp));
 
   const s = sk.self ?? {};
   if (s.guard) b.p.guard = true;
@@ -2304,10 +2305,10 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
       b.p.firstAttackDone = true;
 
       if (eff === "bleed") {
-        applyEnemyStatus(b, "bleed", techValue(ws, 3), dotBaseTick("bleed", b.p.level));
+        applyEnemyStatus(b, "bleed", techValue(ws, 3), skillDotTick("bleed", b.p.level, b.enemy.maxHp));
         push(b, `${b.enemy.def.name} истекает кровью (${b.enemy.statuses.bleed} раундов).`, "p");
       } else if (eff === "poison") {
-        applyEnemyStatus(b, "poison", techValue(ws, 3), dotBaseTick("poison", b.p.level));
+        applyEnemyStatus(b, "poison", techValue(ws, 3), skillDotTick("poison", b.p.level, b.enemy.maxHp));
         push(b, `${b.enemy.def.name} отравлен на ${b.enemy.statuses.poison} раунда.`, "p");
       } else if (eff === "guard") {
         b.p.guard = true;
@@ -2318,7 +2319,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
         b.p.statuses.tempArmor += wallArmor;
         push(b, `Стена щитов: Защита и +${wallArmor} брони до конца боя.`, "p");
       } else if (eff === "chill") {
-        applyEnemyStatus(b, "chill", techValue(ws, 2), dotBaseTick("chill", b.p.level));
+        applyEnemyStatus(b, "chill", techValue(ws, 2), skillDotTick("chill", b.p.level, b.enemy.maxHp));
         push(b, `${b.enemy.def.name} обморожен: лечение −50% и периодический урон (${b.enemy.statuses.chill} раунда).`, "p");
       } else if (eff === "sunder") {
         const breakAmount = techValue(ws, ws.id === "crushing_blow" ? 3 : 2);
@@ -2337,7 +2338,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
         b.p.statuses.shadowStep += techValue(ws, 1);
         push(b, "Пустой шаг: следующая атака ускользнёт, в следующем раунде +1 ход.", "p");
       } else if (eff === "curse_brand") {
-        applyEnemyStatus(b, "curse", techValue(ws, 3), dotBaseTick("curse", b.p.level));
+        applyEnemyStatus(b, "curse", techValue(ws, 3), skillDotTick("curse", b.p.level, b.enemy.maxHp));
         b.enemy.statuses.cursePower = 30;
         b.enemy.statuses.fear = Math.max(b.enemy.statuses.fear, statusRounds(b, techValue(ws, 1)));
         push(b, `${b.enemy.def.name} скован печатью проклятия: урон −30% и периодический магический урон.`, "p");
@@ -2391,7 +2392,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
         const dealt = elementalHit(b, dmg, " [Огненный шар]", "fire");
         applyVamp(b, dealt, 0, "skill", "magic");
         const burnRounds = epicMagnitude(sk.id, "rounds", skLevel);
-        setEnemyTick(b, "burn", burnRounds, dotBaseTick("burn", b.p.level));
+        setEnemyTick(b, "burn", burnRounds, skillDotTick("burn", b.p.level, b.enemy.maxHp));
         push(b, `${b.enemy.def.name} объят пламенем (${burnRounds} раунда).`, "p");
       } else if (sk.id === "blood_lance") {
         const dmg = Math.round(techniqueDamage(b.p.stats.int, epicMagnitude(sk.id, "scale", skLevel) / 2) * spellPowerMult * skillDamageMult(b));
@@ -2413,13 +2414,13 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
       } else if (sk.id === "shadow_volley") {
         const dmg = Math.round(techniqueDamage(b.p.stats.int, epicMagnitude(sk.id, "scale", skLevel) / 2) * spellPowerMult * skillDamageMult(b));
         const dealt = hitEnemy(b, dmg, "magic", " [Теневой росчерк]");
-        setEnemyTick(b, "chill", epicMagnitude(sk.id, "rounds", skLevel), dotBaseTick("chill", b.p.level));
+        setEnemyTick(b, "chill", epicMagnitude(sk.id, "rounds", skLevel), skillDotTick("chill", b.p.level, b.enemy.maxHp));
         applyVamp(b, dealt, 0, "skill", "magic");
       } else if (sk.id === "frost_nova") {
         const dmg = Math.round(techniqueDamage(b.p.stats.int, epicMagnitude(sk.id, "scale", skLevel) / 2) * spellPowerMult * skillDamageMult(b));
         const dealt = elementalHit(b, dmg, " [Дыхание склепа]", "ice");
         applyVamp(b, dealt, 0, "skill", "magic");
-        setEnemyTick(b, "chill", epicMagnitude(sk.id, "rounds", skLevel), dotBaseTick("chill", b.p.level));
+        setEnemyTick(b, "chill", epicMagnitude(sk.id, "rounds", skLevel), skillDotTick("chill", b.p.level, b.enemy.maxHp));
         b.enemy.statuses.stunAp = Math.min(4, b.enemy.statuses.stunAp + epicMagnitude(sk.id, "stun", skLevel));
         push(b, `${b.enemy.def.name} скован стужей и теряет 1 ход в следующем раунде.`, "p");
       }

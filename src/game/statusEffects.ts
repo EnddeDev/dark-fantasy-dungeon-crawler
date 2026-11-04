@@ -32,6 +32,23 @@ export function dotSkillTick(kind: DotKind, level: number, rng: () => number = M
   return dotBaseTick(kind, level, rng) * DOT_SKILL_MULT;
 }
 
+/** Тик приёма героя: яд, кровотечение и проклятие — +1% макс. ОЗ цели. */
+export const SKILL_TARGET_HP_PCT = 0.01;
+/** Тик приёма героя: огонь, лёд и кислота — +уровень героя × 2. */
+export const SKILL_LEVEL_MULT = 2;
+
+/**
+ * Тик приёма героя: базовая формула монстров (от уровня героя) плюс
+ * 1% макс. ОЗ цели для яда, кровотечения и проклятия, либо уровень героя × 2 для огня, льда и кислоты.
+ */
+export function skillDotTick(kind: DotKind, playerLevel: number, targetMaxHp: number, rng: () => number = Math.random): number {
+  const base = dotBaseTick(kind, playerLevel, rng);
+  if (kind === "burn" || kind === "chill" || kind === "blight") {
+    return base + Math.max(0, Math.floor(playerLevel)) * SKILL_LEVEL_MULT;
+  }
+  return base + Math.round(Math.max(0, targetMaxHp) * SKILL_TARGET_HP_PCT);
+}
+
 /** Тик на боссе: процент от его макс. ОЗ, не меньше 1. */
 export function bossDotTick(kind: DotKind, maxHp: number): number {
   return Math.max(1, Math.ceil(Math.max(0, maxHp) * BOSS_DOT_PCT[kind]));
