@@ -1,7 +1,9 @@
 import { useState, type ReactNode } from "react";
-import { Coins, Package } from "lucide-react";
+import { Coins, Info, Package } from "lucide-react";
 import { BLESSINGS, blessingPrice, type BlessingId } from "../game/blessings";
-import { ITEMS, RARITY_META, WEAR_META, scaledGearStats } from "../game/content";
+import { ITEMS, RECIPES, supplyLevel, type ItemDef } from "../game/content";
+import { isForgeReagent } from "../game/forge";
+import { reagentCategoryOf } from "../game/shopFilters";
 import {
   GIVER_ORDER,
   QUEST_ACTIVE_LIMIT,
@@ -22,7 +24,11 @@ import {
 } from "../game/quests";
 import type { LobbyController } from "../controllers/LobbyController";
 import { TRUST_MAX, type GearItem, type Player, type Quest, type QuestGiverId, type ShopLine } from "../game/types";
-import { Btn, Panel, Tag } from "./ui";
+import { Btn, Modal, Panel, Tag } from "./ui";
+import { GearCard } from "./GearCard";
+import { ItemArt } from "./ItemArt";
+
+const REAGENT_CAT_LABEL = { mineral: "минерал", cloth: "ткань", monster: "часть твари", plant: "растение" } as const;
 
 /** Портрет NPC из public/images/npcs. Если картины нет, показываем инициал на тёмном фоне. */
 export function NpcPortrait({ giver, className = "" }: { giver: QuestGiverId; className?: string }) {
@@ -111,6 +117,7 @@ export function QuestsTab({
   unlockedFloor,
   say,
   services = {},
+  onInspectMercenary,
 }: {
   player: Player;
   controller: LobbyController;
@@ -118,6 +125,8 @@ export function QuestsTab({
   say: (text: string | null) => void;
   /** Содержимое NPC, которое живёт в лобби: варка и рецепты алхимика и мастера, кузница. */
   services?: Partial<Record<QuestGiverId, ReactNode>>;
+  /** Открывает окно характеристик снаряжения наёмника (живёт в лобби). */
+  onInspectMercenary?: (item: GearItem) => void;
 }) {
   const log = logOf(player);
   /* Открываем того, у кого уже взято задание; иначе — священника. */
@@ -167,6 +176,7 @@ export function QuestsTab({
         activeFull={activeFull}
         say={say}
         services={services[giver]}
+        onInspectMercenary={onInspectMercenary}
       />
     </div>
   );
@@ -216,6 +226,7 @@ function NpcPanel({
   activeFull,
   say,
   services,
+  onInspectMercenary,
 }: {
   giver: QuestGiverId;
   player: Player;
@@ -224,6 +235,7 @@ function NpcPanel({
   activeFull: boolean;
   say: (text: string | null) => void;
   services?: ReactNode;
+  onInspectMercenary?: (item: GearItem) => void;
 }) {
   const meta = QUEST_GIVERS[giver];
   const log = logOf(player);
@@ -267,7 +279,14 @@ function NpcPanel({
             )}
           </section>
 
-          <NpcShop giver={giver} player={player} controller={controller} unlockedFloor={unlockedFloor} say={say} />
+          <NpcShop
+            giver={giver}
+            player={player}
+            controller={controller}
+            unlockedFloor={unlockedFloor}
+            say={say}
+            onInspectMercenary={onInspectMercenary}
+          />
 
           {services && <section className="space-y-3 border-t border-line pt-4">{services}</section>}
         </div>
@@ -282,12 +301,14 @@ function NpcShop({
   controller,
   unlockedFloor,
   say,
+  onInspectMercenary,
 }: {
   giver: QuestGiverId;
   player: Player;
   controller: LobbyController;
   unlockedFloor: number;
   say: (text: string | null) => void;
+  onInspectMercenary?: (item: GearItem) => void;
 }) {
   const trust = trustOf(player, giver);
   if (giver === "priest") return <BlessingShop player={player} controller={controller} unlockedFloor={unlockedFloor} say={say} />;
@@ -317,10 +338,12 @@ function NpcShop({
         player={player}
         note={(line) => `осталось ${line.qty} · в сумке ${player.bag[line.id] ?? 0}`}
         onBuy={(id) => say(controller.buyVillagerItem(id))}
+        reagents
       />
     );
   }
-  if (giver === "mercenary") return <MercenaryShop player={player} controller={controller} say={say} />;
+  if (giver === "mercenary")
+    return <MercenaryShop player={player} controller={controller} say={say} onInspect={onInspectMercenary} />;
   /* Алхимик и мастер продают рецепты в своей секции (services), кузнец — кузницу. */
   if (giver === "alchemist" || giver === "master") return null;
   return (
@@ -410,6 +433,7 @@ function LineShop({
   player,
   note,
   onBuy,
+  reagents = false,
 }: {
   title: string;
   lines: ShopLine[];
@@ -420,6 +444,8 @@ function LineShop({
   player: Player;
   note: (line: ShopLine) => string;
   onBuy: (id: string) => void;
+  /** Реагенты: картинка товара и окно характеристик. */
+  reagents?: boolean;
 }) {
   return (
     <section className="space-y-3">
@@ -432,6 +458,18 @@ function LineShop({
             const def = ITEMS[line.id];
             const shown = couponPreview(player, line.price);
             if (index >= slots) return <LockedRow key={line.id} trust={unlockAt(index)} />;
+            if (reagents && def) {
+              return (
+                <ReagentRow
+                  key={line.id}
+                  def={def}
+                  price={line.price}
+                  note={note(line)}
+                  player={player}
+                  onBuy={() => onBuy(line.id)}
+                />
+              );
+            }
             return (
               <div key={line.id} className="flex items-center justify-between gap-3 border border-line bg-black/30 p-3">
                 <div>
@@ -461,10 +499,12 @@ function MercenaryShop({
   player,
   controller,
   say,
+  onInspect,
 }: {
   player: Player;
   controller: LobbyController;
   say: (text: string | null) => void;
+  onInspect?: (item: GearItem) => void;
 }) {
   const items = logOf(player).mercenary;
   return (
@@ -473,10 +513,18 @@ function MercenaryShop({
       {items.length === 0 ? (
         <p className="text-sm text-mute">Наёмнику нечего предложить. Обновится при прохождении нового этажа.</p>
       ) : (
-        <div className="grid gap-2 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-2">
           {items.map((item, index) =>
             index < mercenarySlots(trustOf(player, "mercenary")) ? (
-              <MercenaryCard key={item.uid} item={item} player={player} onBuy={() => say(controller.buyMercenaryItem(item.uid))} />
+              <GearCard
+                key={item.uid}
+                item={item}
+                player={player}
+                mode="shop"
+                buyPrice={couponPreview(player, mercenaryPrice(item))}
+                onInspect={() => onInspect?.(item)}
+                onBuy={() => say(controller.buyMercenaryItem(item.uid))}
+              />
             ) : (
               <LockedRow key={item.uid} trust={openAtTrust(mercenarySlots, index)} />
             ),
@@ -500,28 +548,117 @@ function LockedRow({ trust }: { trust: number }) {
   );
 }
 
-function MercenaryCard({ item, player, onBuy }: { item: GearItem; player: Player; onBuy: () => void }) {
-  const st = scaledGearStats(item);
-  const price = mercenaryPrice(item);
+/** Реагент у сельчанина: картинка товара, цена и окно характеристик. */
+function ReagentRow({
+  def,
+  price,
+  note,
+  player,
+  onBuy,
+}: {
+  def: ItemDef;
+  price: number;
+  note: string;
+  player: Player;
+  onBuy: () => void;
+}) {
+  const [open, setOpen] = useState(false);
   const shown = couponPreview(player, price);
+  const cat = reagentCategoryOf(def);
   return (
-    <div className="flex items-center justify-between gap-3 border border-line bg-black/30 p-3">
-      <div>
-        <div className="font-display text-sm uppercase tracking-[0.1em] text-parch">{st.base.name}</div>
-        <div className="text-xs text-mute">
-          {RARITY_META[item.rarity].name} · {WEAR_META[item.wear].name} · уровень {item.level}
+    <>
+      <div className="flex flex-col gap-3 border border-line bg-black/30 p-3">
+        <div className="flex items-start gap-3">
+          <ItemArt id={def.id} name={def.name} size={56} />
+          <div className="min-w-0 flex-1">
+            <div className="font-display text-sm uppercase tracking-[0.1em] text-parch">{def.name}</div>
+            <div className="mt-1 flex flex-wrap gap-1">
+              <Tag tone="verd">{REAGENT_CAT_LABEL[cat]}</Tag>
+              <Tag tone="mute">ур. {supplyLevel(def.id)}</Tag>
+            </div>
+          </div>
+        </div>
+        <p className="text-xs italic text-mute">{def.desc}</p>
+        <div className="font-mono text-xs text-mute">{note}</div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Btn className="gap-1.5 px-2.5 py-2 text-[0.86rem]" onClick={() => setOpen(true)} title={`Подробнее: ${def.name}`}>
+            <Info size={14} aria-hidden /> Подробнее
+          </Btn>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-sm text-flame">
+              {shown !== price && <span className="mr-2 text-mute line-through">{price}</span>}
+              {shown} зол.
+            </span>
+            <Btn tone={player.gold >= shown ? "flame" : "ghost"} disabled={player.gold < shown} onClick={onBuy}>
+              Купить
+            </Btn>
+          </div>
         </div>
       </div>
-      <div className="flex shrink-0 flex-col items-end gap-2">
-        <span className="font-mono text-sm text-flame">
-          {shown !== price && <span className="mr-2 text-mute line-through">{price}</span>}
-          {shown} зол.
-        </span>
-        <Btn tone={player.gold >= shown ? "flame" : "ghost"} disabled={player.gold < shown} onClick={onBuy}>
-          Купить
-        </Btn>
+      {open && <ReagentInfo def={def} player={player} price={price} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+/** Характеристики реагента: что это, где нужен и годится ли в горн. Рецепты показываются только известные. */
+function ReagentInfo({
+  def,
+  player,
+  price,
+  onClose,
+}: {
+  def: ItemDef;
+  player: Player;
+  price: number;
+  onClose: () => void;
+}) {
+  const cat = reagentCategoryOf(def);
+  const shown = couponPreview(player, price);
+  const uses = RECIPES.filter((r) => r.need.includes(def.id) && player.knownRecipes.includes(r.id));
+  return (
+    <Modal
+      title={def.name}
+      sub={`${REAGENT_CAT_LABEL[cat]} · уровень ${supplyLevel(def.id)}`}
+      onClose={onClose}
+      actions={<Btn onClick={onClose}>Закрыть</Btn>}
+    >
+      <div className="flex flex-col gap-4 sm:flex-row">
+        <div className="shrink-0">
+          <ItemArt id={def.id} name={def.name} size={120} />
+        </div>
+        <div className="min-w-0 flex-1 space-y-3">
+          <p className="text-[0.98rem] italic leading-snug text-mute">{def.desc}</p>
+          <dl className="space-y-1">
+            {[
+              ["Категория", REAGENT_CAT_LABEL[cat]],
+              ["Уровень", `${supplyLevel(def.id)}`],
+              ["Цена", `${shown} зол.`],
+              ["В сумке", `${player.bag[def.id] ?? 0}`],
+              ["Годится для горна", isForgeReagent(def.id) ? "да" : "нет"],
+            ].map(([label, value]) => (
+              <div key={label} className="flex items-baseline justify-between gap-4 py-0.5">
+                <dt className="text-[0.98rem] text-mute">{label}</dt>
+                <dd className="text-right font-mono text-[0.98rem] tab text-parch">{value}</dd>
+              </div>
+            ))}
+          </dl>
+          <div className="border-t border-line pt-3">
+            <h4 className="sc mb-1 text-flamedim">Нужен в рецептах</h4>
+            {uses.length > 0 ? (
+              <ul className="space-y-1 text-[0.96rem] text-parch/90">
+                {uses.map((r) => (
+                  <li key={r.id}>{ITEMS[r.out].name}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[0.96rem] text-mute">
+                Среди известных рецептов его нет. Состав листов раскрывается после покупки.
+              </p>
+            )}
+          </div>
+        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 

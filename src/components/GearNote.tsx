@@ -59,12 +59,15 @@ export function GearNote({
   player,
   onClose,
   inShop = false,
+  buyPrice,
   onIdentify,
 }: {
   item: GearItem;
   player: Player;
   onClose: () => void;
   inShop?: boolean;
+  /** Цена покупки, если она не базовая (наёмник, скидка). */
+  buyPrice?: number;
   onIdentify?: (uid: string, mode: "int" | "gold") => void;
 }) {
   const st = scaledGearStats(item);
@@ -146,7 +149,7 @@ export function GearNote({
             <Row label="Диапазон состояния" value={`×${range.lo}–${range.hi}, базовый ×${range.base}`} />
             <Row label="Разброс параметров" value={`${spread > 0 ? "+" : ""}${spread}%`} />
             {item.dmgRoll && <Row label="Разброс клинка" value={`${st.base.dmg?.[0]}–${st.base.dmg?.[1]} → ${item.dmgRoll[0]}–${item.dmgRoll[1]}`} />}
-            <Row label={inShop ? "Цена покупки" : "Цена продажи"} value={`${inShop ? gearBuyPrice(item) : gearSellPrice(item)} зол.`} />
+            <Row label={inShop ? "Цена покупки" : "Цена продажи"} value={`${inShop ? buyPrice ?? gearBuyPrice(item) : gearSellPrice(item)} зол.`} />
           </dl>
         </DetailSection>
 

@@ -76,7 +76,7 @@ import { ItemArt } from "./ItemArt";
 import { GearNote } from "./GearNote";
 import { GearCard } from "./GearCard";
 import { QuestsTab } from "./Quests";
-import { couponPreview, readyQuestCount, recipeMinTrust, stationRecipeList, trustOf } from "../game/quests";
+import { couponPreview, mercenaryPrice, readyQuestCount, recipeMinTrust, stationRecipeList, trustOf } from "../game/quests";
 import type { CraftStation } from "../game/content";
 import { TRUST_MAX, type QuestGiverId } from "../game/types";
 import { Btn, Meter, Modal, Panel, Pips, Tag } from "./ui";
@@ -350,6 +350,8 @@ export function Lobby({
   const [bagTab, setBagTab] = useState<"supplies" | "reagents">("supplies");
   /* Алхимик и мастер: вкладки «Рецепты» (покупка листов) и «Создание» (варка). */
   const [craftTab, setCraftTab] = useState<"recipes" | "brew">("recipes");
+  /* Снаряжение наёмника открывается в том же окне подробностей, что и магазин. */
+  const [mercDetail, setMercDetail] = useState<GearItem | null>(null);
   /* «Начать заново»: подтверждение полного сброса прогресса. */
   const [restartConfirm, setRestartConfirm] = useState(false);
   const [infoTip, setInfoTip] = useState<InfoTip>(null);
@@ -1605,7 +1607,14 @@ export function Lobby({
             )}
 
             {tab === "quests" && (
-              <QuestsTab player={player} controller={controller} unlockedFloor={unlockedFloor} say={say} services={npcServices} />
+              <QuestsTab
+                player={player}
+                controller={controller}
+                unlockedFloor={unlockedFloor}
+                say={say}
+                services={npcServices}
+                onInspectMercenary={setMercDetail}
+              />
             )}
 
             {tab === "bestiary" && <Bestiary />}
@@ -1759,6 +1768,16 @@ export function Lobby({
             );
           })()}
         </Modal>
+      )}
+
+      {mercDetail && (
+        <GearNote
+          item={mercDetail}
+          player={player}
+          inShop
+          buyPrice={couponPreview(player, mercenaryPrice(mercDetail))}
+          onClose={() => setMercDetail(null)}
+        />
       )}
 
       {gearDetail && detailItem && (
