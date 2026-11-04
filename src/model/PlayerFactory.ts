@@ -1,6 +1,7 @@
 import { derived } from "../game/battle";
 import { DEFAULT_CHARACTER_NAME } from "../game/characterName";
 import { GEAR_BASES, ITEMS, RECIPES, createGearItem, isStarterItem, migrateGearItem } from "../game/content";
+import { initialQuestLog, normalizeQuestLog } from "../game/quests";
 import { normalizeStatMilestones } from "../game/statMilestones";
 import type { Player, Slot } from "../game/types";
 import { SLOT_ORDER } from "../game/types";
@@ -43,6 +44,7 @@ export class PlayerFactory {
       statuses: { wound: 0, curse: 0, poison: 0, chill: 0, fear: 0, wither: 0, burn: 0 },
       kills: 0,
       shopLevel: 1,
+      questLog: initialQuestLog(1),
     };
     /* В лобби герой всегда с полным здоровьем. */
     player.hp = derived(player).maxHp;
@@ -129,6 +131,11 @@ export class PlayerFactory {
           shopLevel: Math.max(1, Math.min(SHOP_MAX_LEVEL, Number(saved.shopLevel) || 1)),
           archetype: saved.archetype ?? null,
           statMilestones: saved.statMilestones ?? {},
+          /* Старое сохранение без заданий получает стартовый набор; журнал дополняется недостающими полями. */
+          questLog: saved.questLog
+            ? normalizeQuestLog(saved.questLog)
+            : initialQuestLog(Math.max(1, Math.min(SHOP_MAX_LEVEL, Number(saved.shopLevel) || 1))),
+          blessing: saved.blessing ?? null,
         };
         const migrated = normalizeStatMilestones(restored);
         /* Сохранение живёт только в лобби, поэтому здоровье там всегда полное. */

@@ -29,6 +29,15 @@ import type { GearItem, Player, Slot, StatKey } from "../game/types";
 import { SLOT_META } from "../game/types";
 import { SHOP_MAX_LEVEL, shopUpgradeCost } from "../game/world";
 import { rollShopStock } from "../game/content";
+import {
+  acceptQuest,
+  buyBlessing,
+  buyMercenaryItem,
+  buyVillagerItem,
+  buyWizardItem,
+  claimQuest,
+  couponCharge,
+} from "../game/quests";
 import type { GameModel } from "../model/GameModel";
 import { recipePrice } from "../model/pricing";
 
@@ -84,16 +93,17 @@ export class LobbyController {
   }
 
   buyConsumable(def: ItemDef): string | null {
-    const price = def.price ?? 0;
     const player = this.player;
-    if (player.gold < price || !canBuySupply(def.id, player.shopLevel)) return null;
+    const charge = couponCharge(player, def.price ?? 0);
+    if (player.gold < charge.cost || !canBuySupply(def.id, player.shopLevel)) return null;
     this.model.updatePlayer((p) => ({
       ...p,
-      gold: p.gold - price,
+      gold: p.gold - charge.cost,
       bag: { ...p.bag, [def.id]: (p.bag[def.id] ?? 0) + 1 },
+      questLog: charge.log,
     }));
     playSfx("buy");
-    return `Куплено: ${def.name}`;
+    return `Куплено: ${def.name}${charge.used ? " · скидка 25%" : ""}`;
   }
 
   sellSupply(def: ItemDef): string | null {
@@ -137,19 +147,71 @@ export class LobbyController {
 
   buyGear(item: GearItem): string | null {
     const player = this.player;
-    const price = gearBuyPrice(item);
-    if (player.gold < price) return null;
+    const charge = couponCharge(player, gearBuyPrice(item));
+    if (player.gold < charge.cost) return null;
     const auto = player.stats.int >= identifyIntReq(item, derived(player).intDiscount);
     this.model.updatePlayer((p) => ({
       ...p,
-      gold: p.gold - price,
+      gold: p.gold - charge.cost,
       armory: [{ ...item, identified: auto }, ...p.armory],
+      questLog: charge.log,
     }));
     this.model.setShopStock(this.model.getSnapshot().shopStock.filter((g) => g.uid !== item.uid));
     playSfx("buy");
-    return auto
-      ? `Куплено и исследовано: ${scaledGearStats(item).base.name}`
-      : `Куплено: ${scaledGearStats(item).base.name}`;
+    const name = scaledGearStats(item).base.name;
+    const sale = charge.used ? " · скидка 25%" : "";
+    return auto ? `Куплено и исследовано: ${name}${sale}` : `Куплено: ${name}${sale}`;
+  }
+
+  /* ─────────────  задания и торговцы  ───────────── */
+
+  acceptQuest(questId: string): string | null {
+    const next = acceptQuest(this.player, questId);
+    if (!next) return null;
+    this.model.setPlayer(next);
+    playSfx("buy");
+    const quest = next.questLog?.active.find((q) => q.id === questId);
+    return quest ? `Задание принято: ${quest.title}` : "Задание принято";
+  }
+
+  claimQuest(questId: string): string | null {
+    const res = claimQuest(this.player, questId);
+    if (!res) return null;
+    this.model.setPlayer(res.player);
+    playSfx("buy");
+    return res.message;
+  }
+
+  buyBlessing(id: string): string | null {
+    const res = buyBlessing(this.player, id, this.model.getSnapshot().unlockedFloor);
+    if (!res) return null;
+    this.model.setPlayer(res.player);
+    playSfx("buy");
+    return res.message;
+  }
+
+  buyWizardItem(id: string): string | null {
+    const res = buyWizardItem(this.player, id);
+    if (!res) return null;
+    this.model.setPlayer(res.player);
+    playSfx("buy");
+    return res.message;
+  }
+
+  buyVillagerItem(id: string): string | null {
+    const res = buyVillagerItem(this.player, id);
+    if (!res) return null;
+    this.model.setPlayer(res.player);
+    playSfx("buy");
+    return res.message;
+  }
+
+  buyMercenaryItem(uid: string): string | null {
+    const res = buyMercenaryItem(this.player, uid);
+    if (!res) return null;
+    this.model.setPlayer(res.player);
+    playSfx("buy");
+    return res.message;
   }
 
   /** План кнопки «Исследовать все» (см. identifyAllPlan в content.ts). */
@@ -228,13 +290,14 @@ export class LobbyController {
   }
 
   buyRecipe(recipe: Recipe): string | null {
-    const price = recipePrice(recipe);
     const player = this.player;
-    if (player.knownRecipes.includes(recipe.id) || player.gold < price) return null;
+    const charge = couponCharge(player, recipePrice(recipe));
+    if (player.knownRecipes.includes(recipe.id) || player.gold < charge.cost) return null;
     this.model.updatePlayer((p) => ({
       ...p,
-      gold: p.gold - price,
+      gold: p.gold - charge.cost,
       knownRecipes: [...p.knownRecipes, recipe.id],
+      questLog: charge.log,
     }));
     playSfx("buy");
     return `Рецепт изучен: ${ITEMS[recipe.out].name}`;

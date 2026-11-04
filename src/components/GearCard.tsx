@@ -33,6 +33,7 @@ export function GearCard({
   onUnequip,
   onSell,
   onBuy,
+  buyPrice: buyPriceOverride,
   purchased = false,
 }: {
   item: GearItem;
@@ -47,6 +48,8 @@ export function GearCard({
   onUnequip?: (slot: Slot) => void;
   onSell?: () => void;
   onBuy?: () => void;
+  /** Цена покупки, если она отличается от базовой (скидка, наценка наёмника). */
+  buyPrice?: number;
   purchased?: boolean;
 }) {
   const st = scaledGearStats(item);
@@ -58,7 +61,7 @@ export function GearCard({
   const req = gearRequirement(item);
   const wearable = canWear(item, player);
   const equipped = mode === "equipped";
-  const buyPrice = gearBuyPrice(item);
+  const buyPrice = buyPriceOverride ?? gearBuyPrice(item);
   const compact = equipped;
 
   return (

@@ -3104,3 +3104,22 @@ export function rollEnemyLoot(
   }
   return out;
 }
+
+/** Припасы, которые может дать награда задания: не выше этажа задания. */
+export function questSupplyPool(floor: number): string[] {
+  const pool = SUPPLY_POOL.filter((id) => supplyLevel(id) <= floor);
+  return pool.length ? pool : [...SUPPLY_POOL];
+}
+
+/** Снаряжение из награды задания: уровень по этажу, состояние — как у добычи подземелья. */
+export function rollQuestGear(level: number, rng: () => number = Math.random): GearItem {
+  const lvl = clampGearLevel(Math.max(1, Math.floor(level)));
+  return createGearItem({
+    baseId: pickGearBase(lvl, rng),
+    level: lvl,
+    floor: lvl,
+    wear: rollDungeonWear(rng),
+    rarityWeights: rarityWeightsFor("normal"),
+    rng,
+  });
+}

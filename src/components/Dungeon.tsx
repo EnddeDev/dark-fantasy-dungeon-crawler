@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Backpack, Footprints, Hammer, Info, X } from "lucide-react";
 import { GEAR_BASES, ITEMS, canWear, consumableIntReq, consumablePower, gearStatReqLabel, slotsForItem, wearRequirementNote } from "../game/content";
 import { TORCH, computeVisibility, openDirs } from "../game/maze";
+import { markAlwaysVisible } from "../game/quests";
 import { BIOMES, BIOME_MAP_COLORS, biomeHealingAmount, biomeVision, mazeBiome } from "../game/biomes";
 import { BiomeRule, BiomeTag, biomeStyle } from "./BiomeLabel";
 import type { GearItem, Player, Run, Slot } from "../game/types";
@@ -394,6 +395,32 @@ export function Dungeon({
                     <g key={`e${i}`} transform={`translate(${cx} ${cy}) rotate(45)`} className="breathe">
                       <rect x={-9} y={-9} width={18} height={18} fill={colors.wash} stroke={colors.accent} strokeWidth="2.4" />
                       <path d="M-4 0h8M0 -4v8" stroke="#a52a2a" strokeWidth="2.4" strokeLinecap="round" />
+                    </g>
+                  );
+                })}
+
+              {/* Метки заданий: восклицательный знак. Принесение видно даже в тумане войны;
+                  убийство — только в круге света, как и обычные монстры. */}
+              {(m.questMarks ?? [])
+                .filter(
+                  (q) =>
+                    markAlwaysVisible(q) ||
+                    visAt(q.cell % S, Math.floor(q.cell / S)) === 1 ||
+                    !!run.mapRevealed,
+                )
+                .map((q) => {
+                  const x = q.cell % S;
+                  const y = Math.floor(q.cell / S);
+                  const lit = visAt(x, y) > 0;
+                  const cx = x * CS + CS - 8;
+                  const cy = y * CS + 8;
+                  return (
+                    <g key={`qm${q.cell}`} transform={`translate(${cx} ${cy})`} opacity={lit ? 1 : 0.55}>
+                      <title>{q.label}</title>
+                      <path d="M0 -9 L9 0 L0 9 L-9 0 Z" fill="#2a1c06" stroke="#f0c25a" strokeWidth="1.6" />
+                      <text textAnchor="middle" dy="4" fontSize="12" fontWeight="bold" fill="#ffd66b">
+                        !
+                      </text>
                     </g>
                   );
                 })}

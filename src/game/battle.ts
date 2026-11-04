@@ -75,6 +75,7 @@ import {
   normalizeBiome,
   type BiomeId,
 } from "./biomes";
+import { blessingEffect } from "./blessings";
 import { BOSS_EFFECT_RESIST, enemyChance, enemyEffectPower, rollEnemyEffects } from "./enemyEffects";
 import { combatChance, emptyChanceLayers, staticChance, type ChanceKey, type ChanceLayers } from "./chances";
 import {
@@ -515,10 +516,15 @@ export function derived(pl: Player): DerivedStats {
   const titanHp = legendaryPower.titan_heart?.hp ?? 0;
   const titanArmor = legendaryPower.titan_heart?.armor ?? 0;
   const strFlat = statDamage(pl.stats.str);
-  const maxHp = statHealth(pl.stats.str) + hpBonus + (hasPassive("iron_will") ? 22 : 0) + mightHp + titanHp;
+  /* Благословение священника на поход: здоровье, броня и шансы из blessingEffect. */
+  const bless = blessingEffect(pl.blessing);
+  const baseHp = statHealth(pl.stats.str) + hpBonus + (hasPassive("iron_will") ? 22 : 0) + mightHp + titanHp;
+  const maxHp = baseHp + (bless.hpPct ? Math.round(baseHp * bless.hpPct) : 0);
 
   const chanceLayers = emptyChanceLayers();
   chanceLayers.evade.stats.push(statEvasion(pl.stats.agi));
+  if (bless.evade) chanceLayers.evade.effects.push(bless.evade);
+  if (bless.crit) chanceLayers.crit.effects.push(bless.crit);
   /* Уклонение от брони и аксессуаров: лёгкая броня и ловкие украшения. */
   if (evadeBonus > 0) chanceLayers.evade.items.push(evadeBonus);
   chanceLayers.crit.stats.push(statCritChance(pl.stats.agi));
@@ -564,7 +570,7 @@ export function derived(pl: Player): DerivedStats {
     if (g.passive === "assassin_shadow") firstRoundApBonus += passiveMagnitude("assassin_shadow", "ap", lvl);
     if (g.legendaryPassive === "time_weaver") firstRoundApBonus += legendaryMagnitude("time_weaver", "ap", lvl);
   }
-  const armor = Math.max(0, armorBonus) + titanArmor;
+  const armor = Math.max(0, armorBonus) + titanArmor + bless.armor;
   const evade = staticChance(chanceLayers.evade);
   const hit: [number, number] = hitLo > 0 ? [hitLo, hitHi] : [2, 4];
   const critChance = staticChance(chanceLayers.crit);
@@ -705,8 +711,11 @@ export function spawnEnemy(
   isBoss = false,
   rng: () => number = Math.random,
   forcedThreat?: Threat,
+  forcedEnemyId?: string,
 ): SpawnedEnemy {
-  const def = isBoss ? rollBoss(floor) : rollEnemy(floor, rng);
+  /* Вид задаётся заданием (убить или принести с существа); иначе — случайный по этажу. */
+  const forced = !isBoss && forcedEnemyId ? ENEMIES.find((e) => e.id === forcedEnemyId) : undefined;
+  const def = isBoss ? rollBoss(floor) : forced ?? rollEnemy(floor, rng);
   const threat: Threat = isBoss ? "catastrophe" : forcedThreat ?? rollThreat(rng);
   const level = isBoss ? floor : rollMonsterLevel(floor, rng);
   const meta = THREAT_META[threat];
@@ -923,9 +932,10 @@ export function newBattle(
   torchTurns = 0,
   initialBurning = 0,
   forcedThreat?: Threat,
+  forcedEnemyId?: string,
 ): BattleState {
   const d = derived(pl);
-  const s = spawnEnemy(floor, isBoss, Math.random, forcedThreat);
+  const s = spawnEnemy(floor, isBoss, Math.random, forcedThreat, forcedEnemyId);
   const def = s.def;
   const firstRoundAp = d.ap + d.firstRoundApBonus +
     (pl.passives.includes("first_blood") ? 1 : 0) +

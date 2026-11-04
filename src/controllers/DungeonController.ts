@@ -643,11 +643,39 @@ export class DungeonController {
       return;
     }
 
+    /* Остатки товарища и живой товарищ: метка задания на клетке, шаг подбирает её. */
+    const fetchMark = (r.maze.questMarks ?? []).find(
+      (q) => q.cell === idx && (q.kind === "remains" || q.kind === "captive"),
+    );
+    if (fetchMark) {
+      const captive = fetchMark.kind === "captive";
+      r = {
+        ...r,
+        maze: { ...r.maze, questMarks: (r.maze.questMarks ?? []).filter((q) => q !== fetchMark) },
+        questCarry: [...(r.questCarry ?? []), { questId: fetchMark.questId, label: fetchMark.label }],
+        log: [...r.log, captive ? `${fetchMark.label}: он идёт за тобой.` : `Найдено: ${fetchMark.label}.`],
+      };
+      commitPlayer();
+      this.model.setRun(r);
+      this.model.setModal({
+        kind: "note",
+        title: captive ? "Живой товарищ" : "Остатки товарища",
+        body: captive
+          ? "Он идёт за тобой, опираясь на плечо. Выведи его из подземелья живым — в лагере он получит помощь, а ты награду."
+          : "Ты собираешь то, что осталось. Вернёшься живым — отнесёшь в лагерь.",
+      });
+      return;
+    }
+
     if (m.monsters.includes(idx) && !(r.clearedMonsters ?? []).includes(idx)) {
+      /* Монстр с меткой задания — существо, которое нужно убить или с которого снять трофей. */
+      const questMark = (r.maze.questMarks ?? []).find((q) => q.cell === idx && (q.kind === "kill" || q.kind === "drop"));
       r = { ...r, battleCell: idx, log: [...r.log, "Из темноты наперерез выходит обитатель этажа."] };
       commitPlayer();
       this.model.setRun(r);
-      this.model.setBattle(newBattle({ ...player, hp, statuses, bag: stepBag }, r.floor, false, biome, r.torchTurns ?? 0, 0));
+      this.model.setBattle(
+        newBattle({ ...player, hp, statuses, bag: stepBag }, r.floor, false, biome, r.torchTurns ?? 0, 0, undefined, questMark?.enemyId),
+      );
       this.model.setScreen("battle");
       return;
     }
