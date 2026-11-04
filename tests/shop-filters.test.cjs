@@ -96,3 +96,27 @@ test("сортировка реагентов по цене и по назван
     assert.ok(byName[i - 1].name.localeCompare(byName[i].name) <= 0);
   }
 });
+
+test("тип брони: лёгкая, средняя и тяжёлая; вместе со слотом дают пересечение", () => {
+  const rng = () => 0.5;
+  const make = (baseId) => content.createGearItem({ baseId, level: 1, identified: true, rng });
+  const heads = Object.values(content.GEAR_BASES).filter((b) => b.slot === "head").map((b) => make(b.id));
+  const wrists = Object.values(content.GEAR_BASES).filter((b) => b.slot === "wrists").map((b) => make(b.id));
+  for (const cls of ["light", "medium", "heavy"]) {
+    assert.ok(heads.some((g) => content.gearClassFor(g) === cls), `есть шлем класса ${cls}`);
+  }
+  const headHeavy = heads.find((g) => content.gearClassFor(g) === "heavy");
+  assert.equal(shop.shopGearMatches(headHeavy, "all", "all"), true, "без фильтров всё проходит");
+  assert.equal(shop.shopGearMatches(headHeavy, "head", "heavy"), true, "шлем и тяжёлый — проходит");
+  assert.equal(shop.shopGearMatches(headHeavy, "head", "light"), false, "шлем, но не лёгкий — нет");
+  assert.equal(shop.shopGearMatches(headHeavy, "wrists", "heavy"), false, "тяжёлый, но не наручи — нет");
+  assert.equal(shop.shopGearMatches(headHeavy, "all", "heavy"), true, "любой слот, тяжёлый — проходит");
+  const mixed = [...heads, ...wrists];
+  const picked = mixed.filter((g) => shop.shopGearMatches(g, "wrists", "medium"));
+  assert.ok(wrists.some((g) => content.gearClassFor(g) === "medium"), "есть средние наручи");
+  assert.ok(picked.length > 0, "наручи средние проходят фильтр");
+  for (const g of picked) {
+    assert.equal(g.slot, "wrists");
+    assert.equal(content.gearClassFor(g), "medium");
+  }
+});

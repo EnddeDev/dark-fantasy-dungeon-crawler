@@ -2,8 +2,8 @@
  * Фильтры и сортировка лавки: припасы по уровню, реагенты по категории и порядку.
  * Чистые функции — их проверяют тесты, а экран только вызывает их.
  */
-import type { ItemDef, ReagentCat } from "./content";
-import type { Slot } from "./types";
+import { gearClassFor, type ArmorGearClass, type ItemDef, type ReagentCat } from "./content";
+import type { GearItem, Slot } from "./types";
 
 /** Фильтр припасов по уровню: 0 — все уровни. */
 export type SupplyLevelFilter = 0 | number;
@@ -58,6 +58,19 @@ export const SLOT_FILTERS: Record<Exclude<SlotFilter, "all">, Slot[]> = {
   rings: ["ring1", "ring2"],
   amulet: ["amulet"],
 };
+
+/** Фильтр по типу брони в магазине: лёгкая, средняя, тяжёлая; all — любой тип. */
+export type GearClassFilter = "all" | ArmorGearClass;
+
+/**
+ * Снаряжение проходит фильтры магазина: слот и тип брони работают вместе.
+ * Тип берётся у базы предмета (gearClassFor); без типа считается средним.
+ */
+export function shopGearMatches(item: GearItem, slot: SlotFilter, gearClass: GearClassFilter): boolean {
+  if (slot !== "all" && !SLOT_FILTERS[slot].includes(item.slot)) return false;
+  if (gearClass !== "all" && gearClassFor(item) !== gearClass) return false;
+  return true;
+}
 
 /** Кнопка фильтра для слота, которую выбирают при «Выбрать предмет». */
 export function slotFilterOf(slot: Slot): SlotFilter {

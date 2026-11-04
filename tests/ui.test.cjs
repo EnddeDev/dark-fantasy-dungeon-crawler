@@ -348,13 +348,32 @@ test("shop supplies filter by level and reagents open sorted by level with categ
   for (const label of ["Растения", "Части тварей", "Минералы и камни", "Ткани"]) {
     assert.ok(reagents.includes(label), `категория «${label}» есть`);
   }
-  assert.ok(reagents.includes('aria-label="Сортировка реагентов"'), "сортировка реагентов есть");
+  assert.ok(!reagents.includes('aria-label="Сортировка реагентов"'), "сортировки реагентов в магазине нет");
   /* По умолчанию — по уровню: самый младший камень (уровень 1) идёт раньше самого старшего (уровень 5). */
   const firstStone = reagents.indexOf(content.ITEMS.stone_river.name);
   const lastStone = reagents.indexOf(content.ITEMS.stone_diamond.name);
   assert.ok(firstStone > 0 && lastStone > firstStone, "камни уровня 1 идут раньше камней уровня 5");
   const firstPlant = reagents.indexOf(content.ITEMS.herb.name);
   assert.ok(firstPlant > 0 && firstPlant < lastStone, "растения уровня 1 стоят в начале списка, до камней уровня 5");
+});
+
+test("shop gear: type filter light/medium/heavy next to slots, no sort control; armory keeps sort", () => {
+  const player = makePlayer({ gold: 5000, shopLevel: 5, armory: [] });
+  const shop = renderToStaticMarkup(React.createElement(Lobby, {
+    player, controller: {}, shopStock: [], onStart: noop, best: 1, unlockedFloor: 2, initialTab: "shop", initialShopSection: "equipment",
+  }));
+  assert.ok(shop.includes('aria-label="Тип брони"'), "группа фильтра типа брони есть в магазине");
+  const typeGroup = shop.slice(shop.indexOf('aria-label="Тип брони"'));
+  for (const label of ["Любой тип", "Лёгкий", "Средний", "Тяжёлый"]) {
+    assert.ok(typeGroup.includes(`>${label}</button>`), `кнопка «${label}» есть`);
+  }
+  assert.ok(!shop.includes('aria-label="Сортировка"'), "в магазине сортировки снаряжения нет");
+
+  const armory = renderToStaticMarkup(React.createElement(Lobby, {
+    player, controller: {}, shopStock: [], onStart: noop, best: 1, unlockedFloor: 2, initialTab: "armory",
+  }));
+  assert.ok(armory.includes('aria-label="Сортировка"'), "в арсенале сортировка осталась");
+  assert.ok(!armory.includes('aria-label="Тип брони"'), "тип брони фильтрует только магазин");
 });
 
 test("left panel shows main stats as icons with values; name and description appear only on hover", () => {

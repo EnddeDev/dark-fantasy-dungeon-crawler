@@ -56,15 +56,15 @@ import type { ArchetypeId } from "../game/archetypes";
 import { canChooseStatMilestone, chosenStatMilestone, statMilestoneOptions, type StatMilestoneTier } from "../game/statMilestones";
 import { SHOP_MAX_LEVEL, shopRarityTable, shopUpgradeCost, shopWearTable } from "../game/world";
 import {
-  SLOT_FILTERS,
   reagentCategoryOf,
   shopReagentList,
   shopSupplyList,
   slotFilterOf,
   supplyLevelOptions,
   type ReagentFilter,
-  type ReagentSort,
   type SlotFilter,
+  type GearClassFilter,
+  shopGearMatches,
   type SupplyLevelFilter,
 } from "../game/shopFilters";
 import { forgeFailChance, forgeOptions, forgeReagentPlan, type ForgeUpgradeKind } from "../game/forge";
@@ -366,8 +366,8 @@ export function Lobby({
   const [chosenSlot, setChosenSlot] = useState<Slot | null>(null);
   const [supplyLevelFilter, setSupplyLevelFilter] = useState<SupplyLevelFilter>(0);
   const [reagentFilter, setReagentFilter] = useState<ReagentFilter>("all");
-  /* Реагенты по умолчанию сортируются по уровню, потом по цене. */
-  const [reagentSort, setReagentSort] = useState<ReagentSort>("level");
+  /* Тип брони фильтрует только прилавок магазина. */
+  const [shopGearClass, setShopGearClass] = useState<GearClassFilter>("all");
   const [forgeUid, setForgeUid] = useState<string | null>(null);
   const [forgeConfirm, setForgeConfirm] = useState<{ uid: string; kind: ForgeUpgradeKind } | null>(null);
   const [forgeUseReagents, setForgeUseReagents] = useState(true);
@@ -449,18 +449,21 @@ export function Lobby({
   const shopReagents = shopReagentList(
     Object.values(ITEMS).filter((i) => i.kind === "reagent" && (i.price ?? 0) > 0),
     reagentFilter,
-    reagentSort,
+    /* Реагенты в магазине всегда по уровню, потом по цене. */
+    "level",
   );
   const wearTable = shopWearTable(player.shopLevel);
   const rarityTable = shopRarityTable(player.shopLevel);
   const upgradeCost = player.shopLevel >= SHOP_MAX_LEVEL ? 0 : shopUpgradeCost(player.shopLevel);
   const xpNeed = xpForNextLevel(player.level);
 
-  const filterGear = (items: GearItem[]) => {
+  /* В магазине сортировки нет: порядок прилавка. В арсенале сортировка из выбора игрока. */
+  const filterGear = (items: GearItem[], mode: "shop" | "armory" = "armory") => {
+    const sort: GearSort = mode === "shop" ? "recent" : gearSort;
     const q = gearQuery.trim().toLowerCase();
     const filtered = items.filter((g) => {
       const st = scaledGearStats(g);
-      if (gearSlot !== "all" && !SLOT_FILTERS[gearSlot].includes(g.slot)) return false;
+      if (!shopGearMatches(g, gearSlot, mode === "shop" ? shopGearClass : "all")) return false;
       if (onlyUnknown && g.identified) return false;
       if (gearRarity === "unknown" && g.identified) return false;
       if (gearRarity !== "all" && gearRarity !== "unknown" && (!g.identified || g.rarity !== gearRarity)) return false;
@@ -478,15 +481,15 @@ export function Lobby({
       return haystack.includes(q);
     });
     const sorted = [...filtered];
-    if (gearSort === "price") sorted.sort((a, b) => gearBuyPrice(a) - gearBuyPrice(b));
-    if (gearSort === "damage") {
+    if (sort === "price") sorted.sort((a, b) => gearBuyPrice(a) - gearBuyPrice(b));
+    if (sort === "damage") {
       const dmg = (g: GearItem) => {
         const r = scaledGearStats(g).dmg;
         return r ? (r[0] + r[1]) / 2 : -1;
       };
       sorted.sort((a, b) => dmg(b) - dmg(a));
     }
-    if (gearSort === "rarity") {
+    if (sort === "rarity") {
       sorted.sort((a, b) => {
         const ra = a.identified ? RARITY_RANK[a.rarity] : -1;
         const rb = b.identified ? RARITY_RANK[b.rarity] : -1;
@@ -505,7 +508,7 @@ export function Lobby({
     setChosenSlot(null);
   };
 
-  const gearFilters = (
+  const renderGearFilters = (mode: "shop" | "armory") => (
     <div className="space-y-2.5 border border-line bg-black/30 p-2.5">
       <label className="flex items-center gap-2 border border-line bg-soot px-3 py-2 focus-within:border-flamedim">
         <Search size={16} className="shrink-0 text-mute" aria-hidden />
@@ -549,6 +552,28 @@ export function Lobby({
             </button>
           ))}
         </div>
+        {mode === "shop" && (
+          <div className="flex flex-wrap gap-1" role="group" aria-label="Тип брони">
+            {([
+              ["all", "Любой тип"],
+              ["light", "Лёгкий"],
+              ["medium", "Средний"],
+              ["heavy", "Тяжёлый"],
+            ] as [GearClassFilter, string][]).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={shopGearClass === value}
+                onClick={() => setShopGearClass(value)}
+                className={`border px-2.5 py-1.5 font-mono text-[0.92rem] transition-colors ${
+                  shopGearClass === value ? "border-flamedim bg-flame/15 text-flamehi" : "border-line text-mute hover:text-parch"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
         <select
           value={gearRarity}
           onChange={(e) => setGearRarity(e.target.value as RarityFilter)}
@@ -562,6 +587,7 @@ export function Lobby({
           <option value="epic">Эпическое</option>
           <option value="legendary">Легендарное</option>
         </select>
+        {mode === "armory" && (
         <label className="flex items-center gap-1.5 border border-line bg-soot px-2 py-1.5 font-mono text-[0.92rem] text-mute">
           <ArrowDownUp size={13} aria-hidden />
           <select
@@ -576,6 +602,7 @@ export function Lobby({
             <option value="rarity">Редкость</option>
           </select>
         </label>
+        )}
         <label className="flex cursor-pointer items-center gap-1.5 font-mono text-[0.92rem] text-mute">
           <input type="checkbox" checked={onlyUnknown} onChange={(e) => setOnlyUnknown(e.target.checked)} className="accent-[#e0a33c]" />
           <EyeOff size={13} aria-hidden />
@@ -1171,7 +1198,7 @@ export function Lobby({
                       <button className="text-mute underline underline-offset-2 hover:text-parch" onClick={() => { setChosenSlot(null); setGearSlot("all"); }}>Показать все</button>
                     </div>
                   )}
-                  {gearFilters}
+                  {renderGearFilters("armory")}
                   <p className="my-3 text-[0.92rem] leading-relaxed text-mute">Приёмы, свойства и исследование — в окне «Подробнее».</p>
                   {visibleInventory.length > 0 ? (
                     <div className="grid grid-cols-1 gap-3 min-[1600px]:grid-cols-2">
@@ -1360,10 +1387,10 @@ export function Lobby({
                         Обновить прилавок (25 зол.)
                       </Btn>
                     </div>
-                    {gearFilters}
-                    {filterGear(shopStock).length > 0 ? (
+                    {renderGearFilters("shop")}
+                    {filterGear(shopStock, "shop").length > 0 ? (
                       <div className="mt-3 grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
-                        {filterGear(shopStock).map((g) => renderGearCard(g, "shop"))}
+                        {filterGear(shopStock, "shop").map((g) => renderGearCard(g, "shop"))}
                       </div>
                     ) : (
                       <div className="mt-3 flex flex-col items-center gap-3 border border-dashed border-line py-12 text-center">
@@ -1501,19 +1528,6 @@ export function Lobby({
                           {label}
                         </button>
                       ))}
-                      <label className="ml-auto flex items-center gap-1.5 border border-line bg-soot px-2 py-1 font-mono text-[0.92rem] text-mute">
-                        <ArrowDownUp size={13} aria-hidden />
-                        <select
-                          value={reagentSort}
-                          onChange={(e) => setReagentSort(e.target.value as ReagentSort)}
-                          aria-label="Сортировка реагентов"
-                          className="bg-transparent text-parch outline-none"
-                        >
-                          <option value="level">По уровню</option>
-                          <option value="price">По цене</option>
-                          <option value="name">По названию</option>
-                        </select>
-                      </label>
                       <span className="font-mono text-[0.86rem] text-mute">Показано: {shopReagents.length}</span>
                     </div>
                     {shopReagents.length === 0 && (
