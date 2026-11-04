@@ -769,7 +769,7 @@ export function Dungeon({
               Ловушки: <span className="text-rubric">1 на 16 клеток</span> · все отмечены на карте с первого шага
             </p>
             <p className="mt-1 font-mono text-[0.88rem] text-parch/80">
-              Пустая клетка: <span className="text-verd">10%</span> находка · знакомый путь: тишина
+              Пустая клетка: <span className="text-verd">тишина</span> · находок на пустых клетках нет
             </p>
             <p className="mt-1.5">
               Кликни любую клетку — маршрут прочертится на чертеже и пойдёт сам. После боя или ловушки его можно

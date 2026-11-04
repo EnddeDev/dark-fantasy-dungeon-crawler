@@ -67,7 +67,7 @@ export function ModalView({ game, state }: { game: GameController; state: GameSt
               маршрут остановится перед ними, случайно наступить нельзя.
             </li>
             <li>
-              <b className="text-flame">Пустая клетка:</b> 10% небольшая находка, знакомый путь — тишина.
+              <b className="text-flame">Пустая клетка:</b> тишина. Находок на пустых клетках нет.
             </li>
             <li>
               <b className="text-flame">События в комнатах:</b> один зал — одно событие. Зелёная капля —

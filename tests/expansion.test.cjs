@@ -127,6 +127,12 @@ test("shop offers six variants per slot, gates supplies by level and sells them"
   assert.equal(content.canBuySupply("sapper_kit", 1), false);
   assert.equal(content.canBuySupply("sapper_kit", 2), true);
   assert.ok(content.supplySellPrice(content.ITEMS.moss) > 0);
+  const halfOfOld = (price) => Math.max(1, Math.round(Math.max(1, Math.round((price * 0.45) / 5) * 5) / 2));
+  assert.equal(content.supplySellPrice(content.ITEMS.tear), halfOfOld(65), "реагент продаётся вдвое дешевле прежней цены");
+  assert.equal(content.supplySellPrice(content.ITEMS.moss), halfOfOld(28));
+  assert.ok(content.supplySellPrice(content.ITEMS.tear) < 30, "слеза банши продаётся дешевле прежних 30");
+  const potion = Object.values(content.ITEMS).find((d) => d.kind === "potion" && d.price);
+  assert.equal(content.supplySellPrice(potion), Math.max(1, Math.round((potion.price * 0.45) / 5) * 5), "припасы по-прежнему за 45%");
   for (const id of ["sapper_kit", "lockpicks", "tattered_map", "water_skin", "field_torch"]) {
     assert.equal(content.ITEMS[id].kind, "special");
   }

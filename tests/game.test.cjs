@@ -22,7 +22,6 @@ function loadGameModule(name) {
 
 const maze = loadGameModule("maze");
 const content = loadGameModule("content");
-const events = loadGameModule("events");
 const battle = loadGameModule("battle");
 /**
  * Бой с нейтральным врагом: род «никакой» и тип «сильный» не дают ни
@@ -335,15 +334,13 @@ test("torch never sees through walls or an unopened door", () => {
   assert.equal(throughDoor[3][0], 0);
 });
 
-test("empty cells only ever offer a small find, never a random fight or trap", () => {
-  assert.deepEqual(
-    [0, 0.599, 0.899, 0.9, 0.999].map((r) => events.rollStepEvent(false, r)),
-    ["quiet", "quiet", "quiet", "find", "find"],
-  );
-  assert.deepEqual(
-    [0, 0.5, 0.899, 0.9, 0.999].map((r) => events.rollStepEvent(true, r)),
-    ["quiet", "quiet", "quiet", "quiet", "quiet"],
-  );
+test("пустая клетка никогда не даёт находку: ни золото, ни реагент, ни случайный бой", () => {
+  const src = fs.readFileSync(path.join("src", "controllers", "DungeonController.ts"), "utf8");
+  assert.ok(!src.includes("rollStepEvent"), "шаг не бросает кубик на находку");
+  assert.ok(!src.includes("Math.random() < 0.05"), "при входе на клетку нет 5% реагентов");
+  assert.ok(!src.includes("Среди камней"), "золото из-под камней убрано");
+  assert.ok(!src.includes("В щели найден"), "реагент из щели убран");
+  assert.ok(!fs.existsSync(path.join("src", "game", "events.ts")), "модуль случайных находок удалён");
 });
 
 test("levels are never capped by the floor, but late levels cost many runs", () => {

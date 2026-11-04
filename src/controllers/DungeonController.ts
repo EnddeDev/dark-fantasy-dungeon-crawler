@@ -1,8 +1,7 @@
 import { derived, newBattle, rollConsumableLoot, rollGearDrop } from "../game/battle";
 import { biomeHealingAmount, mazeBiome } from "../game/biomes";
 import { playSfx } from "../audio/sfx";
-import { CHEST_RARITY_WEIGHTS, DUNGEON_GOLD_SHARE, GEAR_BASES, ITEMS, consumableIntReq, consumablePower, dungeonGold, equipItem, grantXp, pick, randInt, reagentPoolForFloor, scaledGearStats, unequipSlot } from "../game/content";
-import { rollStepEvent } from "../game/events";
+import { CHEST_RARITY_WEIGHTS, DUNGEON_GOLD_SHARE, GEAR_BASES, ITEMS, consumableIntReq, consumablePower, equipItem, grantXp, pick, reagentPoolForFloor, scaledGearStats, unequipSlot } from "../game/content";
 import { cellIdx, findPath, openDirs, wallBetween } from "../game/maze";
 import { pruneRunLoot } from "../game/runLoot";
 import { CHILL_HEAL_MULT, curseTickFrom, magicTickFrom, refreshedTick, trapTickFrom } from "../game/statusEffects";
@@ -512,15 +511,6 @@ export class DungeonController {
       return;
     }
 
-    if (!knownPath && Math.random() < 0.05) {
-      const count = randInt(1, 3);
-      const found: string[] = [];
-      for (let i = 0; i < count; i++) found.push(pick(reagentPoolForFloor(r.floor)));
-      r = { ...r, loot: [...r.loot, ...found] };
-      r.log.push(`Под камнями найдены реагенты: ${found.map((id) => ITEMS[id].name).join(", ")}.`);
-      found.forEach((id) => (stepBag[id] = (stepBag[id] ?? 0) + 1));
-    }
-
     const commitPlayer = () => this.model.setPlayer({ ...player, hp, statuses, bag: stepBag });
 
     /* Ловушки всегда видны: скрытых механизмов на карте нет. */
@@ -680,23 +670,6 @@ export class DungeonController {
       return;
     }
 
-    const event = rollStepEvent(knownPath);
-    if (event === "find") {
-      if (Math.random() < 0.5) {
-        const foundGold = dungeonGold(randInt(5 + r.floor * 2, 12 + r.floor * 4));
-        r.gold += foundGold;
-        r.log.push(`Среди камней найдены ${foundGold} золотых монет.`);
-        commitPlayer();
-      } else {
-        const reagent = pick(reagentPoolForFloor(r.floor));
-        r = { ...r, loot: [...r.loot, reagent] };
-        r.log.push(`В щели найден реагент: ${ITEMS[reagent].name}.`);
-        stepBag[reagent] = (stepBag[reagent] ?? 0) + 1;
-        commitPlayer();
-      }
-      this.model.setRun(r);
-      return;
-    }
     r.log.push(
       knownPath
         ? "Знакомый коридор. Ты помнишь, где потрескался камень."
