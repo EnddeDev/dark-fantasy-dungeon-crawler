@@ -2897,8 +2897,12 @@ export function rollThreat(rng: () => number = Math.random): Threat {
   return threatForRoll(rng());
 }
 
+/**
+ * Шансы наград с обычного монстра, в процентах. Каждая категория выпадает
+ * отдельным броском: монстр может отдать золото, реагент и снаряжение сразу
+ * или не отдать ничего.
+ */
 export interface LootTable {
-  nothing: number;
   gold: number;
   reagents: number;
   supplies: number;
@@ -2906,12 +2910,10 @@ export interface LootTable {
 }
 
 /**
- * Базовая таблица обычного монстра: 30% ничего, 30% золото, 20% реагенты,
- * 15% припасы, 5% снаряжение.
- * За каждый уровень монстра выше этажа «ничего» теряет 1 п.п., а золото,
- * реагенты, припасы и снаряжение получают по 1 п.п. (итого −4 п.п. у «ничего»).
- * Ужас: всё, кроме «ничего», превращается в снаряжение.
- * Катастрофа: минус 8 п.п. у «ничего», прибавка снаряжению, золоту и реагентам.
+ * Базовые шансы обычного монстра: золото 30%, реагенты 20%, припасы 15%, снаряжение 5%.
+ * За каждый уровень монстра выше этажа каждая категория получает +1 п.п., ниже — −1 п.п.
+ * Ужас и катастрофа: доля, которой не хватает до 100%, уходит в снаряжение; катастрофа
+ * дополнительно переводит треть золота, реагентов и припасов в снаряжение.
  */
 export function lootTableFor(level: number, floor: number, threat: Threat): LootTable {
   const delta = level - floor;
@@ -2920,35 +2922,32 @@ export function lootTableFor(level: number, floor: number, threat: Threat): Loot
     reagents: Math.max(0, 20 + delta),
     supplies: Math.max(0, 15 + delta),
     gear: Math.max(0, 5 + delta),
-    nothing: 0,
   };
-  const rewardTotal = t.gold + t.reagents + t.supplies + t.gear;
-  t.nothing = Math.max(0, 100 - rewardTotal);
 
   if (threat !== "normal") {
-    // Ужас и катастрофа не оставляют пустых рук: доля «ничего» уходит в снаряжение.
-    t.gear += t.nothing;
-    t.nothing = 0;
+    const rewardTotal = t.gold + t.reagents + t.supplies + t.gear;
+    t.gear += Math.max(0, 100 - rewardTotal);
   }
   if (threat === "catastrophe") {
-    // Мини-босс: ещё треть расходников и золота тоже превращается в снаряжение.
+    // Мини-босс: треть золота, реагентов и припасов переходит в снаряжение.
     const moved = (t.gold + t.reagents + t.supplies) * 0.3;
     t.gold *= 0.7;
     t.reagents *= 0.7;
     t.supplies *= 0.7;
     t.gear += moved;
   }
-
-  const total = t.nothing + t.gold + t.reagents + t.supplies + t.gear || 1;
-  if (Math.abs(total - 100) > 0.0001) {
-    const scale = 100 / total;
-    t.nothing *= scale;
-    t.gold *= scale;
-    t.reagents *= scale;
-    t.supplies *= scale;
-    t.gear *= scale;
-  }
   return t;
+}
+
+/** Шанс (в процентах), что с монстра не выпадет ничего: все четыре броска провалились. */
+export function lootNoneChance(t: LootTable): number {
+  const miss = (chance: number) => 1 - Math.min(100, Math.max(0, chance)) / 100;
+  return miss(t.gold) * miss(t.reagents) * miss(t.supplies) * miss(t.gear) * 100;
+}
+
+/** Независимый бросок на категорию: выпадает, если случайное число меньше шанса в процентах. */
+function lootHit(chance: number, rng: () => number): boolean {
+  return rng() * 100 < chance;
 }
 
 /**
@@ -2960,16 +2959,6 @@ export const DUNGEON_GOLD_SHARE = 0.5;
 /** Применяет долю подземелья к сумме золота: минимум одна монета. */
 export function dungeonGold(value: number): number {
   return Math.max(1, Math.floor(value * DUNGEON_GOLD_SHARE));
-}
-
-export function lootCategoryForRoll(table: LootTable, roll: number): keyof LootTable {
-  let r = Math.max(0, Math.min(0.999999, roll)) * 100;
-  const order: (keyof LootTable)[] = ["nothing", "gold", "reagents", "supplies", "gear"];
-  for (const key of order) {
-    if (r < table[key]) return key;
-    r -= table[key];
-  }
-  return "gear";
 }
 
 /**
@@ -3073,7 +3062,10 @@ function pickGearBase(level: number, rng: () => number = Math.random): string {
   return usable[0].id;
 }
 
-/** Дроп с обычного монстра: 30% ничего, 30% золото, 20% реагенты, 15% припасы, 5% снаряжение. */
+/**
+ * Дроп с обычного монстра: золото, реагенты, припасы и снаряжение выпадают каждое
+ * своим броском с шансом из lootTableFor. Вместе они могут выпасть все сразу.
+ */
 export function rollEnemyLoot(
   level: number,
   floor: number,
@@ -3081,38 +3073,34 @@ export function rollEnemyLoot(
   rng: () => number = Math.random,
 ): { gold: number; items: string[]; gear: GearItem[] } {
   const table = lootTableFor(level, floor, threat);
-  const category = lootCategoryForRoll(table, rng());
   const out: { gold: number; items: string[]; gear: GearItem[] } = { gold: 0, items: [], gear: [] };
 
-  if (category === "nothing") return out;
-  if (category === "gold") {
+  if (lootHit(table.gold, rng)) {
     out.gold = dungeonGold(randInt(6 + level * 3, 14 + level * 6, rng));
-    return out;
   }
-  if (category === "reagents") {
+  if (lootHit(table.reagents, rng)) {
     const pool = reagentPoolForFloor(floor);
     out.items.push(pick(pool, rng));
     if (rng() < 0.25) out.items.push(pick(pool, rng));
-    return out;
   }
-  if (category === "supplies") {
+  if (lootHit(table.supplies, rng)) {
     const pool = SUPPLY_POOL.filter((id) => supplyLevel(id) <= floor);
     out.items.push(pick(pool.length ? pool : SUPPLY_POOL, rng));
-    return out;
   }
-
-  /* Уровень вещи равен уровню монстра, с которого она выпала.
-     Нового в подземелье не бывает: 75% изношенное, 25% ношенное. */
-  const itemLevel = clampGearLevel(Math.max(1, Math.floor(level)));
-  out.gear.push(
-    createGearItem({
-      baseId: pickGearBase(level, rng),
-      level: itemLevel,
-      floor: level,
-      wear: rollDungeonWear(rng),
-      rarityWeights: rarityWeightsFor(threat),
-      rng,
-    }),
-  );
+  if (lootHit(table.gear, rng)) {
+    /* Уровень вещи равен уровню монстра, с которого она выпала.
+       Нового в подземелье не бывает: 75% изношенное, 25% ношенное. */
+    const itemLevel = clampGearLevel(Math.max(1, Math.floor(level)));
+    out.gear.push(
+      createGearItem({
+        baseId: pickGearBase(level, rng),
+        level: itemLevel,
+        floor: level,
+        wear: rollDungeonWear(rng),
+        rarityWeights: rarityWeightsFor(threat),
+        rng,
+      }),
+    );
+  }
   return out;
 }

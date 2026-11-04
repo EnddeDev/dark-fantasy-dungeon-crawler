@@ -6,6 +6,7 @@ import {
   CHEST_RARITY_WEIGHTS,
   ENEMIES,
   THREAT_META,
+  lootNoneChance,
   lootTableFor,
   rarityWeightsFor,
 } from "../game/content";
@@ -21,7 +22,6 @@ import { RARITY_TEXT } from "./ui";
 const THREATS: Threat[] = ["normal", "horror", "catastrophe"];
 const pct = (v: number) => `${Math.round(v * 10) / 10}%`;
 const LOOT_LABELS = [
-  ["nothing", "Ничего", Package],
   ["gold", "Золото", Coins],
   ["reagents", "Реагенты", FlaskConical],
   ["supplies", "Припасы", Package],
@@ -136,7 +136,7 @@ export function Bestiary() {
                 <span className="flex items-center gap-1.5 text-parch/85"><Icon size={13} aria-hidden />{label}</span>
                 <span className="h-2.5 border border-line bg-black/50">
                   <span
-                    className={`block h-full transition-[width] duration-300 ${key === "gear" ? "bg-flame" : key === "nothing" ? "bg-line" : "bg-verd/70"}`}
+                    className={`block h-full transition-[width] duration-300 ${key === "gear" ? "bg-flame" : "bg-verd/70"}`}
                     style={{ width: `${table[key]}%` }}
                   />
                 </span>
@@ -145,8 +145,9 @@ export function Bestiary() {
             ))}
           </div>
           <p className="mt-3 text-[0.88rem] leading-snug text-mute">
-            Для обычного монстра база: 30% ничего, 30% золото, 20% реагенты, 15% припасы, 5% снаряжение.
-            Каждый уровень выше этажа переносит по 1 п.п. из «ничего» в каждую полезную категорию.
+            Каждая категория выпадает отдельным броском, так что монстр может отдать несколько наград сразу.
+            База обычного монстра: 30% золото, 20% реагенты, 15% припасы, 5% снаряжение; каждый уровень выше
+            этажа добавляет по 1 п.п. к каждой категории. Ничего не выпадет с шансом {pct(lootNoneChance(table))}.
           </p>
         </section>
 
