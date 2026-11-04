@@ -141,11 +141,11 @@ function tickDot(
 /** Что делает масло на клинке: короткая строка для подсказки. */
 const OIL_BLADE_TEXT = {
   magic: "при каждом ударе сразу 3 + 3×ИНТ магического урона",
-  fire: "6 урона огнём за раунд",
-  ice: "3 урона льдом за раунд и −5% силы атаки врага за очко ИНТ",
-  acid: "10 урона кислотой за раунд и броня врага −(1 + ЛОВ)",
+  fire: "урон огнём за раунд: 10% от удара",
+  ice: "урон льдом за раунд: 10% от удара, и −5% силы атаки врага за очко ИНТ",
+  acid: "урон кислотой за раунд: 10% от удара, и броня врага −(1 + ЛОВ)",
   light: "при каждом ударе сразу 2×ИНТ света и 25% промахов врага",
-  poison: "2 + ЛОВ урона ядом за раунд",
+  poison: "урон ядом за раунд: 10% от удара",
 } as const;
 
 /** Строка «сколько это в числах» для подсказки. */
@@ -569,14 +569,14 @@ export function enemyEffectChips(b: BattleState): EffectChip[] {
     if (kind === "fire") {
       chips.push({
         id: "burn", name: oilName, polarity: "bad", rounds: s.oilRounds,
-        details: ["Огонь масла: 6 урона за раунд."],
-        boosts: [], dot: tick(oilTickDamage("fire", agi, magicRes), "огонь"), color: EFFECT_COLORS.burn,
+        details: [`Огонь масла: ${s.oilTick} урона за раунд (10% от удара, которым наложено).`],
+        boosts: [], dot: tick(oilTickDamage("fire", s.oilTick, magicRes), "огонь"), color: EFFECT_COLORS.burn,
       });
     } else if (kind === "poison") {
       chips.push({
         id: "poison", name: oilName, polarity: "bad", rounds: s.oilRounds,
-        details: ["Яд масла: 2 + ЛОВ героя урона за раунд."],
-        boosts: [], dot: tick(oilTickDamage("poison", agi, 0), "физический"), color: EFFECT_COLORS.poison,
+        details: [`Яд масла: ${s.oilTick} урона за раунд (10% от удара, которым наложено).`],
+        boosts: [], dot: tick(oilTickDamage("poison", s.oilTick, 0), "физический"), color: EFFECT_COLORS.poison,
       });
     } else if (kind === "ice") {
       const cut = oilIceAttackCut(int);
@@ -584,7 +584,7 @@ export function enemyEffectChips(b: BattleState): EffectChip[] {
         id: "frost", name: oilName, polarity: "bad", rounds: s.oilRounds,
         details: [`Сила атаки и физических приёмов −${Math.round(cut * 100)}% (5% за очко ИНТ героя).`],
         boosts: [{ stat: "Атака", value: `−${Math.round(cut * 100)}%` }],
-        dot: tick(oilTickDamage("ice", agi, magicRes), "магический"), color: EFFECT_COLORS.frost,
+        dot: tick(oilTickDamage("ice", s.oilTick, magicRes), "магический"), color: EFFECT_COLORS.frost,
       });
     } else if (kind === "acid") {
       const cut = oilAcidArmorCut(agi);
@@ -592,7 +592,7 @@ export function enemyEffectChips(b: BattleState): EffectChip[] {
         id: "acid", name: oilName, polarity: "bad", rounds: s.oilRounds,
         details: [`Броня твари снижена на ${cut} (1 + ЛОВ героя).`],
         boosts: [{ stat: "Броня", value: `−${cut}` }], highlight: "armor",
-        dot: tick(oilTickDamage("acid", agi, magicRes), "магический"), color: EFFECT_COLORS.acid,
+        dot: tick(oilTickDamage("acid", s.oilTick, magicRes), "магический"), color: EFFECT_COLORS.acid,
       });
     } else if (kind === "light") {
       chips.push({

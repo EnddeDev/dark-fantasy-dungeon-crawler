@@ -1,24 +1,45 @@
 /**
  * Единые правила негативных эффектов.
  * Периодический урон задаёт источник наложения: у каждого предмета, приёма,
- * монстра и ловушки свой тик. Тик не зависит от макс. ОЗ цели.
+ * монстра и ловушки свой тик. Боссы получают периодику процентом от макс. ОЗ.
  */
 export type DotKind = "bleed" | "poison" | "burn" | "chill" | "curse" | "blight";
 
 /**
- * Доля силы источника, которая уходит в тик. Сила — та же величина, что даёт
- * урон источника: у расходника — его урон, у приёма — урон приёма, у монстра — его атака.
+ * Значение периодического урона: у монстров и у героя одно и то же.
+ * Яд 1, кровотечение 1, огонь 3, лёд 1, кислота (порча) 2, проклятие 1.
  */
-export const DOT_SHARE = {
-  consumable: { poison: 0.2, bleed: 0.25, chill: 0.15, blight: 0.15 },
-  weapon: { poison: 0.2, bleed: 0.25, chill: 0.15, curse: 0.15 },
-  spell: { burn: 0.25, chill: 0.15 },
-  monster: { bleed: 0.25, poison: 0.2, burn: 0.3, chill: 0.15, curse: 0.15 },
-} as const;
+export const DOT_VALUE: Record<DotKind, number> = {
+  poison: 1, bleed: 1, burn: 3, chill: 1, curse: 1, blight: 2,
+};
 
-/** Тик по силе источника: не меньше 1. */
-export function dotTickFrom(power: number, share: number): number {
-  return Math.max(1, Math.round(Math.max(0, power) * share));
+/** Боссы получают периодику процентом от своего макс. ОЗ (как раньше). */
+export const BOSS_DOT_PCT: Record<DotKind, number> = {
+  bleed: 0.05, poison: 0.04, burn: 0.05, chill: 0.03, curse: 0.03, blight: 0.03,
+};
+
+/** Приём монстра берёт базовую формулу атаки и умножает на это. */
+export const DOT_SKILL_MULT = 2;
+
+/** Базовая формула: случайно от значение × уровень до значение × уровень + 3. */
+export function dotBaseTick(kind: DotKind, level: number, rng: () => number = Math.random): number {
+  const lo = DOT_VALUE[kind] * Math.max(1, Math.floor(level));
+  return lo + Math.floor(rng() * 4);
+}
+
+/** Тик от приёма монстра: базовая формула × 2. */
+export function dotSkillTick(kind: DotKind, level: number, rng: () => number = Math.random): number {
+  return dotBaseTick(kind, level, rng) * DOT_SKILL_MULT;
+}
+
+/** Тик на боссе: процент от его макс. ОЗ, не меньше 1. */
+export function bossDotTick(kind: DotKind, maxHp: number): number {
+  return Math.max(1, Math.ceil(Math.max(0, maxHp) * BOSS_DOT_PCT[kind]));
+}
+
+/** Тик масла: 10% от урона удара, которым масло наложено. */
+export function oilTickFromHit(damage: number): number {
+  return Math.max(1, Math.round(Math.max(0, damage) * 0.1));
 }
 
 /** Тик магического эффекта, который режется сопротивлением цели. */
@@ -104,30 +125,14 @@ export function oilHitDamage(kind: OilKind, int: number): number {
 }
 
 /**
- * Периодический урон масла за раунд до сопротивлений и уязвимости.
- * Огонь 6, лёд 3, кислота 10, яд 2 + ЛОВ героя. Разовые виды (магия, свет) тиков не дают — возвращают 0.
+ * Периодический урон масла за раунд: тик — 10% от удара, которым масло наложено.
+ * Огонь, лёд и кислота режутся магическим сопротивлением, яд — нет.
+ * Разовые виды (магия, свет) тиков не дают — возвращают 0.
  */
-export function oilTickBase(kind: OilKind, agi: number): number {
-  switch (kind) {
-    case "fire":
-      return 6;
-    case "ice":
-      return 3;
-    case "acid":
-      return 10;
-    case "poison":
-      return 2 + Math.max(0, agi);
-    default:
-      return 0;
-  }
-}
-
-/** Периодический урон масла за тик: огонь, лёд и кислота режутся магическим сопротивлением, яд — нет. */
-export function oilTickDamage(kind: OilKind, agi: number, magicResist: number): number {
-  const base = oilTickBase(kind, agi);
-  if (base <= 0) return 0;
-  if (kind === "poison") return base;
-  return magicTickFrom(base, magicResist);
+export function oilTickDamage(kind: OilKind, tick: number, magicResist: number): number {
+  if (kind !== "fire" && kind !== "ice" && kind !== "acid" && kind !== "poison") return 0;
+  if (kind === "poison") return Math.max(1, tick);
+  return magicTickFrom(tick, magicResist);
 }
 
 /** Доля, на которую льдом снижена сила атаки врага (0.05 за каждое очко ИНТ героя). */

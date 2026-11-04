@@ -139,18 +139,20 @@ test("масло на клинке видно герою синим, масло 
   frost.p.stats.int = 10;
   frost.enemy.statuses.oilType = "ice";
   frost.enemy.statuses.oilRounds = 3;
+  frost.enemy.statuses.oilTick = 3;
   const ice = effects.enemyEffectChips(frost).find((c) => c.id === "frost");
   assert.ok(ice, "лёд на враге — иконка льда");
   assert.equal(ice.polarity, "bad");
   assert.equal(ice.boosts[0].value, "−50%", "5% за очко ИНТ при ИНТ 10");
-  assert.equal(ice.dot.perTick, 3, "лёд: 3 урона за раунд");
+  assert.equal(ice.dot.perTick, 3, "лёд: тик из удара, 3 урона за раунд");
 
   const fire = fight("none", ["guard"]);
   fire.enemy.statuses.oilType = "fire";
   fire.enemy.statuses.oilRounds = 3;
+  fire.enemy.statuses.oilTick = 6;
   const flame = effects.enemyEffectChips(fire).find((c) => c.name === "Огонь масла");
   assert.ok(flame, "огонь на враге — иконка огня");
-  assert.equal(flame.dot.perTick, 6, "огонь масла: 6 урона за раунд");
+  assert.equal(flame.dot.perTick, 6, "огонь масла: тик из удара, 6 урона за раунд");
   assert.equal(flame.dot.ticks, 3);
 });
 
