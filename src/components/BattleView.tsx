@@ -100,6 +100,8 @@ export function BattleView({
   const wsReq = ws ? Math.max(1, ws.intReq - b.p.intDiscount) : 0;
   const wsIntOk = ws ? b.p.stats.int >= wsReq : false;
   const wsReady = ws && wsIntOk && b.p.weaponCd === 0;
+  /* Страх: герой уже в защите, атаки, приёмы и бегство закрыты, рюкзак открыт. */
+  const feared = b.p.statuses.fear > 0;
 
   /* Ведомость пересчитывается каждый рендер: эффекты сразу видны в числах */
   const r = combatReadout(b);
@@ -480,8 +482,9 @@ export function BattleView({
               </div>
             )}
 
-            {(b.p.statuses.sealAttack > 0 || b.p.statuses.sealSkills > 0 || b.p.statuses.sealItems > 0) && (
+            {(feared || b.p.statuses.sealAttack > 0 || b.p.statuses.sealSkills > 0 || b.p.statuses.sealItems > 0) && (
               <div className="mb-2 flex flex-wrap gap-1.5">
+                {feared && <Tag tone="rubric">Страх: только рюкзак и защита</Tag>}
                 {b.p.statuses.sealAttack > 0 && <Tag tone="rubric">Печать оков: удар запрещён</Tag>}
                 {b.p.statuses.sealSkills > 0 && <Tag tone="rubric">Печать забвения: приёмы запрещены</Tag>}
                 {b.p.statuses.sealItems > 0 && <Tag tone="rubric">Печать немоты: расходники запрещены</Tag>}
@@ -489,10 +492,10 @@ export function BattleView({
             )}
             {menu === "main" && (
               <div className="grid grid-cols-2 gap-2">
-                <Btn tone="flame" disabled={!myTurn || b.p.statuses.sealAttack > 0} onClick={() => act({ type: "attack" })}>
+                <Btn tone="flame" disabled={!myTurn || feared || b.p.statuses.sealAttack > 0} onClick={() => act({ type: "attack" })}>
                   Удар
                 </Btn>
-                <Btn tone={wsReady || b.p.epicSkills.length > 0 || b.p.armorSkills.length > 0 ? "flame" : "ghost"} disabled={!myTurn || b.p.statuses.sealSkills > 0} onClick={() => setMenu("skill")}>
+                <Btn tone={wsReady || b.p.epicSkills.length > 0 || b.p.armorSkills.length > 0 ? "flame" : "ghost"} disabled={!myTurn || feared || b.p.statuses.sealSkills > 0} onClick={() => setMenu("skill")}>
                   Приёмы
                 </Btn>
                 <Btn disabled={!myTurn || b.p.statuses.sealItems > 0} onClick={() => setMenu("item")}>
@@ -501,7 +504,7 @@ export function BattleView({
                 <Btn tone="verd" disabled={!myTurn} onClick={() => act({ type: "guard" })}>
                   Защита
                 </Btn>
-                <Btn tone="danger" disabled={!myTurn} onClick={() => act({ type: "flee" })}>
+                <Btn tone="danger" disabled={!myTurn || feared} onClick={() => act({ type: "flee" })}>
                   Сбежать
                 </Btn>
               </div>
