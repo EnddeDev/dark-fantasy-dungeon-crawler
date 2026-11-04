@@ -2754,8 +2754,9 @@ test("кузница: реагенты кладутся в горн, а перг
 
   const short = forge.forgeReagentPlan({ scrap_metal: 3, moss: 1, parchment: 9 }, need);
   assert.equal(short.scrap, 3);
-  assert.equal(short.total, 4);
+  assert.equal(short.total, 3, "лом есть на 3 из 5 — мох в набор не подменяет");
   assert.ok(!("parchment" in short.picked), "пергамент в горн не идёт");
+  assert.ok(!("moss" in short.picked), "мох не заменяет металлолом");
 
   const full = forge.forgeReagentPlan({ scrap_metal: 30, moss: 3, tear: 2, magic_ink: 9, vial: 9 }, need);
   assert.equal(full.scrap, 5, "обязательный металлолом");
@@ -2768,14 +2769,14 @@ test("кузница: реагенты кладутся в горн, а перг
     { scrap_metal: 30, moss: 3, tear: 2, bone: 4, parchment: 9, magic_ink: 9, vial: 9 },
     newNeed,
   );
-  /* Обязательные доли: 10 металлолома и 5 ткани; ткани нет — добираем дешёвыми. */
+  /* Обязательные доли: 10 металлолома и 5 ткани. Ткани нет — её не заменяют другие реагенты. */
   assert.equal(big.scrap, 10, "металлолома ровно 10, а не весь набор");
-  assert.equal(big.total, 15);
+  assert.equal(big.total, 10, "без ткани набор неполный: только лом");
   assert.equal(big.picked.parchment, undefined);
   assert.equal(big.picked.magic_ink, undefined);
   assert.equal(big.picked.vial, undefined);
-  assert.equal(big.picked.bone, 4, "нехватку ткани добрали дешёвыми реагентами");
-  assert.equal(big.picked.moss, 1);
+  assert.equal(big.picked.bone, undefined, "кость не заменяет ткань");
+  assert.equal(big.picked.moss, undefined, "мох не заменяет ткань");
 
   /* Качество и уровень: металлолом в горн не идёт, даже если он единственный. */
   const rarityOpt = forge.forgeOptions(item).find((o) => o.kind === "rarity");
@@ -2785,7 +2786,11 @@ test("кузница: реагенты кладутся в горн, а перг
   assert.equal(scrapOnly.scrap, 0);
   const mixed = forge.forgeReagentPlan({ scrap_metal: 50, moss: 3, bone: 4 }, rarityNeed);
   assert.equal(mixed.scrap, 0, "металлолом не участвует");
-  assert.equal(mixed.total, 5, "набор добирается другими реагентами");
+  /* Состав качества: кость 2, порох 2, мох 1. Кости 4 не заменяет порох, которого нет. */
+  assert.equal(mixed.total, 3, "берётся только состав: кость 2 и мох 1");
+  assert.equal(mixed.picked.bone, 2, "кости по доле, не больше");
+  assert.equal(mixed.picked.moss, 1);
+  assert.equal(mixed.picked.powder, undefined, "пороха нет — кость его не заменяет");
   assert.equal(mixed.picked.scrap_metal, undefined);
   const wearNeed2 = wearOpt;
   assert.equal(forge.forgeReagentPlan({ scrap_metal: 50 }, wearNeed2).scrap, 5, "на изношенность металлолом идёт");
@@ -2803,8 +2808,8 @@ test("кузница: реагенты кладутся в горн, а перг
   assert.equal(failing.success, false);
   assert.equal(failing.destroyed, false);
   assert.equal(failing.player.armory.length, 1, "предмет остаётся в арсенале");
-  assert.equal(failing.reagentsUsed, 4, "взяли только мох: качество делают без металлолома");
-  assert.equal(failing.player.bag.moss, undefined, "реагенты ушли в горн, хотя улучшения не случилось");
+  assert.equal(failing.reagentsUsed, 1, "взяли только долю мха из состава качества: лом не идёт, остальной мох не подменяет");
+  assert.equal(failing.player.bag.moss, 3, "лишний мох остаётся в сумке");
   assert.equal(failing.player.bag.scrap_metal, 10, "металлолом не тронут");
 
   /* Без реагентов та же неудача уничтожает предмет. */
@@ -3971,4 +3976,19 @@ test("playerAct при оглушении даёт тот же пропуск, �
   assert.equal(viaAct.enemy.hp, base.enemy.hp, "атака не прошла");
   const notStunned = battle.skipStunnedTurn({ ...stunned, p: { ...stunned.p, statuses: { ...stunned.p.statuses, stunAp: 0 } } });
   assert.equal(notStunned.idx, 0, "без оглушения пропуска нет");
+});
+
+test("кузница: сумма реагентов без нужного состава не даёт улучшения за реагенты", () => {
+  const item = content.createGearItem({ baseId: "sword", level: 1, wear: "battered", rarity: "common", identified: true });
+  /* Качество обычного: кость 2, порох 2, мох 1. Пять костной пыли — сумма есть, состава нет. */
+  const wrong = mkP({ gold: 5000, armory: [item], bag: { bone: 5 } });
+  const wrongRes = forge.forgeUpgrade(wrong, item.uid, "rarity", () => 0.99, true);
+  assert.equal(wrongRes.reagentsUsed, 2, "в горн уходит только кость по доле, не вся сумма");
+  assert.equal(wrongRes.player.bag.bone, 3, "остальная кость в сумке");
+  assert.equal(forge.forgeReagentPlan({ bone: 5 }, forge.forgeOptions(item).find((o) => o.kind === "rarity")).total, 2);
+
+  /* Полный состав: кость 2, порох 2, мох 1 — набор 5 из 5. */
+  const full = mkP({ gold: 5000, armory: [item], bag: { bone: 2, powder: 2, moss: 1 } });
+  const fullRes = forge.forgeUpgrade(full, item.uid, "rarity", () => 0.99, true);
+  assert.equal(fullRes.reagentsUsed, 5, "полный состав уходит целиком");
 });

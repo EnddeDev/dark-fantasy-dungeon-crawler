@@ -354,7 +354,10 @@ test("лобби: алхимик открывается с приветстви�
   assert.ok(html.includes("Доверие 2/5"), "доверие показано");
   assert.ok(html.includes("Листы с рецептами"), "алхимик продаёт рецепты в своей вкладке");
   assert.ok(html.includes("Лист 1"), "первый лист показан");
-  assert.ok(html.includes("Алхимия варит зелья"), "варка живёт у алхимика");
+  assert.ok(html.includes('aria-label="Рецепты и создание"'), "у алхимика есть вкладки рецептов и создания");
+  assert.match(html, /aria-selected="true"[^>]*>Рецепты</, "по умолчанию открыты рецепты");
+  assert.match(html, /aria-selected="false"[^>]*>Создание</, "вкладка создания есть");
+  assert.ok(!html.includes("Алхимия варит зелья"), "варка скрыта, пока не открыта вкладка «Создание»");
   const shop = render({ initialTab: "shop" });
   assert.ok(!shop.includes("Купить рецепт"), "в магазине нет покупки рецептов");
   assert.ok(!shop.includes("Листы с рецептами"), "в магазине нет секции рецептов");
@@ -532,3 +535,51 @@ test("рецепты: делятся по цене на шесть частей,
   assert.equal(quests.canLearnRecipe(freshPlayer(), alch), true, "самый дешёвый лист алхимика открыт сразу");
 });
 
+
+test("лобби: наёмник показывает картинку и характеристики, сельчанин — картинку и окно реагента", () => {
+  const { Lobby } = loadUi("src/components/Lobby.tsx", "lobby-merchant-info");
+  const base = PlayerFactory.createInitial();
+  const log = {
+    ...quests.emptyQuestLog(),
+    ...quests.initialQuestLog(1),
+    mercenary: quests.rollMercenaryStock(3).slice(0, 3),
+    trust: { ...quests.zeroTrust(), mercenary: 3, villager: 3 },
+  };
+  const render = (giver, extra = {}) => {
+    const player = {
+      ...base,
+      gold: 5000,
+      questLog: {
+        ...log,
+        active: [questOf("kill", { id: `${giver}-q`, giver, title: "Охота" })],
+      },
+    };
+    return renderToStaticMarkup(
+      React.createElement(Lobby, {
+        player,
+        controller: {},
+        shopStock: [],
+        onStart: () => {},
+        onRestart: () => {},
+        best: 1,
+        unlockedFloor: 3,
+        initialTab: "quests",
+        ...extra,
+      }),
+    );
+  };
+
+  const merc = render("mercenary");
+  const first = quests.logOf({ ...base, questLog: log }).mercenary[0];
+  const mercName = content.scaledGearStats(first).base.name;
+  assert.ok(merc.includes(`aria-label="${mercName}"`), "карточка наёмника — та же, что в магазине снаряжения");
+  assert.ok(merc.includes(`title="Подробнее: ${mercName}"`), "у наёмника есть «Подробнее»");
+  assert.ok(merc.includes(`ур. ${first.level ?? 1}`), "в карточке наёмника видны характеристики предмета (уровень, класс, требования)");
+
+  const villager = render("villager");
+  const reagent = quests.logOf({ ...base, questLog: log }).villager[0];
+  const reagentName = content.ITEMS[reagent.id].name;
+  assert.ok(villager.includes(`title="Подробнее: ${reagentName}"`), "у реагента сельчанина есть «Подробнее»");
+  assert.ok(villager.includes(reagentName), "карточка реагента с названием и картинкой");
+  assert.ok(!villager.includes("Нужен в рецептах"), "окно характеристик закрыто до нажатия");
+});

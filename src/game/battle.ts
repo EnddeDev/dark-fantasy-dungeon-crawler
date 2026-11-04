@@ -1875,6 +1875,13 @@ function beginTurn(b: BattleState) {
   const side = b.queue[b.idx];
   if (!side) return;
 
+  /* Страх: в свой ход герой сам встаёт в защиту, без кнопки. */
+  if (side === "p" && b.p.statuses.fear > 0) {
+    b.p.guard = true;
+    flash(b, "p", "guard", 0);
+    push(b, "Страх сковывает волю: ты в защите. Можно достать вещь из рюкзака или остаться в защите.", "e");
+  }
+
   if (b.biome === "ice" && side === "p") {
     b.p.hp = Math.max(0, b.p.hp - ICE_TURN_DAMAGE);
     flash(b, "p", "hit", ICE_TURN_DAMAGE);
@@ -1919,6 +1926,7 @@ function advance(b: BattleState) {
     b.p.statuses.sealItems = Math.max(0, b.p.statuses.sealItems - 1);
     b.p.statuses.sealSkills = Math.max(0, b.p.statuses.sealSkills - 1);
     b.p.statuses.sealAttack = Math.max(0, b.p.statuses.sealAttack - 1);
+    b.p.statuses.fear = Math.max(0, b.p.statuses.fear - 1);
   }
   const idx = b.idx + 1;
   if (idx >= b.queue.length) {
@@ -2255,14 +2263,9 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
   if (b0.over || b0.queue[b0.idx] !== "p") return b0;
   if (b0.p.statuses.stunAp > 0) return skipStunnedTurn(b0);
   const b = clone(b0);
-  if (b.p.statuses.fear > 0) {
-    b.p.statuses.fear--;
-    b.p.guard = true;
-    flash(b, "p", "guard", 0);
-    push(b, "Страх сковывает волю: ты автоматически уходишь в защиту.", "e");
-    advance(b);
-    return b;
-  }
+  /* Страх: защиту герой уже занял в начале хода (beginTurn). Пока страх держится,
+     атаковать, применять приёмы и бежать нельзя; рюкзак и защита доступны. */
+  const fearTurn = b.p.statuses.fear > 0;
   const previousGuard = b.p.guard;
   b.p.guard = false;
 
@@ -2271,6 +2274,10 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
     push(b, msg, "sys");
     return b;
   };
+
+  if (fearTurn && a.type !== "item" && a.type !== "guard") {
+    return err("Страх: атаковать, применять приёмы и бежать нельзя. Доступны рюкзак и защита.");
+  }
 
   const spellPowerMult =
     (hasPassive(b, "resonance") ? 1.4 : 1) * (1 + legPower(b, "archmage_blood", "spellDamage") / 100);
@@ -2797,6 +2804,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
     return b;
   }
   if (b.over) return b;
+  if (fearTurn) b.p.guard = true;
   if (!freeAction) advance(b);
   return b;
 }
@@ -3217,7 +3225,7 @@ export function enemyStep(b0: BattleState): BattleState {
       if (landed && b.p.hp > 0 && Math.random() > resistChance) {
         if (!immuneNote(b, "fear")) {
           b.p.statuses.fear = Math.max(b.p.statuses.fear, 2);
-          push(b, "Страх на 2 раунда: в свой ход ты автоматически уходишь в защиту.", "e");
+          push(b, "Страх на 2 раунда: в свой ход ты сам встаёшь в защиту. Атаки и приёмы закрыты, рюкзак доступен.", "e");
         }
         e.guard = true;
         flash(b, "e", "guard", 0);
@@ -3490,7 +3498,7 @@ export function combatReadout(b: BattleState): CombatReadout {
   if (b.p.statuses.wither > 0)
     defMods.push({ id: "wither", label: "Увядание", good: false, rounds: b.p.statuses.wither, detail: "Любое лечение переходит в магический урон." });
   if (b.p.statuses.fear > 0)
-    defMods.push({ id: "fear", label: "Страх", good: false, rounds: b.p.statuses.fear, detail: "Автоматическая защита в твой ход." });
+    defMods.push({ id: "fear", label: "Страх", good: false, rounds: b.p.statuses.fear, detail: "В твой ход ты в защите сам. Атаки и приёмы закрыты, рюкзак доступен." });
   if (b.p.statuses.sealAttack > 0)
     defMods.push({ id: "sealAttack", label: "Печать оков", good: false, rounds: b.p.statuses.sealAttack, detail: "Обычная атака запрещена в этот ход." });
   if (b.p.statuses.sealSkills > 0)
