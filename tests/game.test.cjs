@@ -1871,6 +1871,7 @@ test("warlock: skill damage, cooldown reduction and lifesteal", () => {
   b.p.gearEffects.push("skill_damage", "skill_cd", "skill_vamp", "skill_scale");
   b.p.hp = Math.floor(b.p.maxHp * 0.5);
   const rnd = Math.random; Math.random = () => 0.99;
+  b.p.concentration = 5; // приём требует концентрацию
   const after = battle.playerAct(b, { type: "weapon_skill" });
   Math.random = rnd;
   assert.ok(after.enemy.hp < b.enemy.hp);
@@ -2660,6 +2661,7 @@ test("multi-hit technique deals normal attacks without the flat technique bonus"
   b.enemy.hp = 5000; b.enemy.maxHp = 5000; b.enemy.armor = 0; b.enemy.passive = null; b.enemy.effects = []; b.enemy.effectPower = {};
   b.p.evade = 0; b.p.critChance = 0;
   const old = Math.random; Math.random = () => 0.99;
+  b.p.concentration = 5; // приём требует концентрацию
   const after = battle.playerAct(b, { type: "weapon_skill" });
   Math.random = old;
   const dealt = 5000 - after.enemy.hp;
@@ -3389,6 +3391,7 @@ test("приём накладывает истощение на два хода"
   const rnd = Math.random;
   const b = withTechnique("ward_shatter");
   Math.random = () => 0.9;
+  b.p.concentration = 5; // приём требует концентрацию
   const after = battle.playerAct(b, { type: "weapon_skill" });
   Math.random = rnd;
   assert.equal(after.enemy.depleted, 2);
@@ -3830,12 +3833,14 @@ function applyWithoutLuck(b, act) {
 test("шипы врага ранят за физический приём, но не за магический", () => {
   /* «Истощающий удар» — приём меча, бьёт физикой. */
   const physical = thornsBattle("ward_shatter", "sword");
+  physical.p.concentration = 5; // приём требует концентрацию
   const afterPhys = applyWithoutLuck(physical, () => battle.playerAct(physical, { type: "weapon_skill" }));
   assert.ok(afterPhys.p.hp < physical.p.hp, "физический приём задел шипы");
   assert.ok(afterPhys.log.some((l) => l.text.includes("Шипы противника")), "нет сообщения о шипах врага");
 
   /* «Истощающее слово» — приём посоха, урон магический. */
   const magic = thornsBattle("ward_unravel", "staff");
+  magic.p.concentration = 5; // приём требует концентрацию
   const afterMagic = applyWithoutLuck(magic, () => battle.playerAct(magic, { type: "weapon_skill" }));
   assert.equal(afterMagic.p.hp, magic.p.hp, "магический приём шипы не задевает");
   assert.ok(!afterMagic.log.some((l) => l.text.includes("Шипы противника")), "шипы сработали на магию");
