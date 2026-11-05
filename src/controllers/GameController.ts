@@ -235,8 +235,8 @@ export class GameController {
    * Выход в лобби. Без победы над стражем текущего яруса теряется доля добытого
    * (EXIT_LOSS_RATE); сначала показываем окно с потерями, уходим после подтверждения.
    */
-  leaveRun(confirmed = false): void {
-    const { run, player } = this.model.getSnapshot();
+  leaveRun(confirmed = false, unlockFloor?: number): void {
+    const { run, player, unlockedFloor } = this.model.getSnapshot();
     if (!run) return;
     /* Победа над стражем в этом походе (любого яруса) снимает потери при выходе. */
     const rate = run.bossSlain || run.maze.bossDefeated ? 0 : EXIT_LOSS_RATE;
@@ -253,6 +253,9 @@ export class GameController {
     const savedItems = run.loot.length - plan.droppedItems.length;
     const savedGear = run.gearLoot.length - plan.droppedGear.length;
     const lostNote = rate > 0 ? ` Потеряно при выходе без стража: ${plan.lostGold} золота, ${plan.droppedItems.length} расходуемых и ${plan.droppedGear.length} снаряжения.` : "";
+    const opened = unlockFloor !== undefined && unlockFloor > unlockedFloor ? unlockFloor : null;
+    if (opened !== null) this.saves.writeUnlockedFloor(opened);
+    const openedNote = opened !== null ? ` Открыт ярус ${opened}.` : "";
     this.model.update({
       player: {
         ...home,
@@ -260,6 +263,7 @@ export class GameController {
         hp: derived(home).maxHp,
         statuses: { wound: 0, curse: 0, poison: 0, chill: 0, fear: 0, wither: 0, burn: 0 },
       },
+      ...(opened !== null ? { unlockedFloor: opened } : {}),
       path: [],
       pathPaused: false,
       shopStock: rollShopStock(player.shopLevel, run.floor),
@@ -268,9 +272,19 @@ export class GameController {
       modal: {
         kind: "note",
         title: "Возвращение в лобби",
-        body: `Ты выбрался живым! Сохранено ${savedGold} золота, ${savedItems} расходуемых предметов и ${savedGear} ед. трофейного снаряжения.${lostNote} Теперь можно распределить очки опыта и исследовать находки.`,
+        body: `Ты выбрался живым! Сохранено ${savedGold} золота, ${savedItems} расходуемых предметов и ${savedGear} ед. трофейного снаряжения.${lostNote}${openedNote} Теперь можно распределить очки опыта и исследовать находки.`,
       },
     });
+  }
+
+  /**
+   * Выход с лестницы: страж этажа повержен, поэтому уход без потерь. Следующий ярус открывается
+   * для лобби, а спуск не делается — герой возвращается в лобби.
+   */
+  leaveFromStairs(): void {
+    const { run } = this.model.getSnapshot();
+    if (!run || !run.maze.bossDefeated) return;
+    this.leaveRun(true, run.floor + 1);
   }
 
   saveUnlockedFloor(floor: number): void {

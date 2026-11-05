@@ -209,6 +209,7 @@ export function ModalView({ game, state }: { game: GameController; state: GameSt
           actions={
             <>
               <Btn onClick={close}>Остаться на этаже</Btn>
+              <Btn onClick={() => game.leaveFromStairs()}>Выйти без потерь, ярус {(run?.floor ?? 1) + 1} откроется</Btn>
               <Btn tone="flame" onClick={() => game.descend()}>
                 Спуститься на этаж {(run?.floor ?? 1) + 1}
               </Btn>

@@ -43,6 +43,10 @@ function fight(id, { hp = 200, atk, armor = 0, heroHp } = {}) {
   b.enemy.mtype = "strong";
   b.enemy.passive = null;
   b.enemy.effects = [];
+  b.enemy.effectPower = {};
+  b.enemy.revived = false;
+  b.enemy.level = 1;
+  b.enemy.statuses = { ...b.enemy.statuses, burn: 0, burnTick: 0, curse: 0, cursePower: 0, bleed: 0, poison: 0, chill: 0, fear: 0, stunAp: 0, oilType: null, oilRounds: 0, oilTick: 0 };
   b.enemy.maxHp = hp;
   b.enemy.hp = hp;
   if (atk) b.enemy.atk = atk;

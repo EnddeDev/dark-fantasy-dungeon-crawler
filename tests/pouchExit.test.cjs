@@ -21,7 +21,7 @@ const pouch = load("src/game/pouch.ts", "pouch");
 const battle = load("src/game/battle.ts", "battle");
 const runExit = load("src/game/runExit.ts", "runExit");
 const { GameController } = load("src/controllers/GameController.ts", "game-controller");
-const { MemoryStorage } = load("src/model/SaveRepository.ts", "save-repository");
+const { MemoryStorage, SaveRepository } = load("src/model/SaveRepository.ts", "save-repository");
 const { PlayerFactory } = load("src/model/PlayerFactory.ts", "player-factory");
 
 function hero(extra = {}) {
@@ -143,4 +143,30 @@ test("выход: страж, побеждённый раньше в этом п
   const snap = game.model.getSnapshot();
   assert.equal(snap.modal.kind, "note", "окна потерь нет");
   assert.equal(snap.player.gold, PlayerFactory.createInitial().gold + 50, "всё золото на месте");
+});
+
+test("лестница: выход без потерь открывает следующий ярус и возвращает в лобби", () => {
+  const storage = new MemoryStorage();
+  const game = new GameController(storage);
+  game.enterLobby("train");
+  game.startRun(1);
+  game.model.updateRun((run) => ({ ...run, gold: 50, maze: { ...run.maze, bossDefeated: true } }));
+  game.model.update({ unlockedFloor: 1 });
+  game.leaveFromStairs();
+  const snap = game.model.getSnapshot();
+  assert.equal(snap.screen, "lobby");
+  assert.equal(snap.run, null);
+  assert.equal(snap.unlockedFloor, 2, "ярус 2 открыт");
+  assert.equal(new SaveRepository(storage).readUnlockedFloor(), 2, "открытие сохранено");
+  assert.equal(snap.player.gold, PlayerFactory.createInitial().gold + 50, "потерь нет");
+  assert.match(snap.modal.body, /Открыт ярус 2/);
+});
+
+test("лестница: без повержённого стража выход не делается", () => {
+  const game = new GameController(new MemoryStorage());
+  game.enterLobby("train");
+  game.startRun(1);
+  game.leaveFromStairs();
+  assert.notEqual(game.model.getSnapshot().screen, "lobby", "экран не сменился");
+  assert.ok(game.model.getSnapshot().run, "поход продолжается");
 });
