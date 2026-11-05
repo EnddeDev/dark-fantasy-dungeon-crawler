@@ -229,6 +229,22 @@ export function playerEffectChips(b: BattleState): EffectChip[] {
       highlight: "armor", color: EFFECT_COLORS.buff,
     });
   }
+  if (s.invulnerable > 0) {
+    chips.push({
+      id: "fullGuard", name: "Неуязвимость", polarity: "good", rounds: s.invulnerable,
+      details: ["Не проходят удары, приёмы и периодический урон."],
+      boosts: [{ stat: "Урон по тебе", value: "0" }],
+      highlight: "armor", color: EFFECT_COLORS.buff,
+    });
+  }
+  if (s.bulwarkStrike > 0) {
+    chips.push({
+      id: "guard", name: "Стойка бастиона", polarity: "good", rounds: null, unit: "следующая атака",
+      details: [`Следующая обычная атака получит +${s.bulwarkStrike} урона от брони стойки.`],
+      boosts: [{ stat: "Урон атаки", value: `+${s.bulwarkStrike}` }],
+      highlight: "armor", color: EFFECT_COLORS.buff,
+    });
+  }
   if (s.dodgeNext > 0) {
     chips.push({
       id: "dodge", name: "Пустой шаг", polarity: "good", rounds: s.dodgeNext, unit: "удар",
