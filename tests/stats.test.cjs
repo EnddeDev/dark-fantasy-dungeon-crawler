@@ -207,19 +207,16 @@ test("stun skips a turn, fear auto-guards, wither turns healing into damage, chi
   const attacked = battle.playerAct(turnStart, { type: "attack" });
   assert.equal(attacked.enemy.hp, 5000, "в страхе удар не проходит");
   assert.equal(attacked.idx, 1, "ход не уходит после запрета");
-  assert.notEqual(battle.playerAct(turnStart, { type: "flee" }).over, "flee", "в страхе бегство закрыто");
+  assert.equal(battle.playerAct(turnStart, { type: "flee" }).over, "flee", "в страхе побег разрешён, как обычный");
   const guarded = battle.playerAct(turnStart, { type: "guard" });
   assert.equal(guarded.p.guard, true);
-  assert.equal(guarded.p.statuses.fear, 0, "страх закончился вместе с ходом");
+  assert.equal(guarded.p.statuses.fear, 1, "страх не тратится на ходу героя — тает в конце раунда");
   const itemStart = fearStart({ potion_s: 1 });
   const usedItem = battle.playerAct(itemStart, { type: "item", id: "potion_s" });
   assert.equal(usedItem.bag.potion_s, undefined, "рюкзак в страхе работает");
   assert.equal(usedItem.idx, 2, "предмет тратит ход");
   assert.equal(usedItem.p.guard, true, "защита держится весь ход страха");
-  assert.equal(usedItem.p.statuses.fear, 0);
-  const twoTurns = battle.enemyStep(fearStart({ potion_s: 1 }, 2));
-  const second = battle.playerAct(battle.enemyStep(battle.playerAct(twoTurns, { type: "guard" })), { type: "guard" });
-  assert.equal(second.p.statuses.fear, 0, "два хода страха снимаются по одному");
+  assert.equal(usedItem.p.statuses.fear, 1, "страх держится весь раунд");
 
   const withered = mk({ potion_s: 1 });
   withered.p.statuses.wither = 1;

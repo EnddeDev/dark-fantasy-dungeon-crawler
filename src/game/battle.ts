@@ -39,6 +39,20 @@ import {
   type WeaponSkillDef,
 } from "./content";
 import {
+  GOLEM_FIRE_MULT,
+  GOLEM_REFLECT_SHARE,
+  MONSTER_RULES,
+  MOVE_LABELS,
+  RAT_CALL_HEAL_SHARE,
+  ROT_ROUNDS,
+  SEER_REPEAT_DODGE,
+  boneShieldUp,
+  nextRotStacks,
+  ogreRageMult,
+  piercingArmorCap,
+  ratCallDue,
+} from "./monsterRules";
+import {
   ELEMENT_NAMES,
   MONSTER_RACE_META,
   MONSTER_TYPE_META,
@@ -114,6 +128,7 @@ import {
 import { damageTypeName, isDamageElement } from "./damageTypes";
 import { ARCHETYPES, type ArchetypeId } from "./archetypes";
 import type { GearEffectId, GearPassiveId } from "./gearEffects";
+import { pouchIds } from "./pouch";
 import {
   GEAR_PASSIVE_BASE,
   MAX_EXTRA_AP,
@@ -212,6 +227,12 @@ export interface BattleState {
     forceGuard: number;
     /** Прошлый ход врага закончился промахом: следующий ход — приём. */
     lastMiss: boolean;
+    /** Крыса: зов стаи уже был за этот бой. */
+    ruleUsed?: boolean;
+    /** Костяной воин: щит поднят в этом раунде. */
+    shield?: boolean;
+    /** Пророк: ход, объявленный в начале раунда. */
+    announced?: EnemyMove | null;
     /**
      * Общая перезарядка приёмов с негативными эффектами: номер раунда,
      * с которого приёмы снова доступны. 0 — приёмы не на перезарядке.
@@ -262,6 +283,8 @@ export interface BattleState {
     /** Счётчики за текущий ход героя: сбрасываются, когда очередь переходит дальше. */
     turnConsumables: number;
     turnScrolls: number;
+    /** Зелье из сумки за ход: первое не тратит ход. */
+    turnPouch: number;
     /** Концентрация 0–5: атака +1, приём −1, расходник +1, защита +2; при 5 — спец-приём архетипа. */
     concentration: number;
     /** Библиотека душ: первый удар по герою в бою уже заблокирован. */
@@ -277,6 +300,9 @@ export interface BattleState {
       poisonStacks?: number;
       rage: number;
       sundered: number;
+      /** Гниение: слои брони (не больше двух) и раунды до конца. */
+      rot?: number;
+      rotRounds?: number;
       stunAp: number;
       smoke: number;
       /** Раунды действия зелья скорости: +1 ход в раунде. */
@@ -320,8 +346,10 @@ export interface BattleState {
       burn: number;
       /** Обморожение: лечение −50% и периодический урон. */
       chill: number;
-      /** Страх: автоматическая защита в ход цели. */
+      /** Страх: автоматическая защита в ход цели. Не обновляется, пока держится. */
       fear: number;
+      /** Иммунитет к страху после окончания: 1 раунд. */
+      fearImmune: number;
       /** Увядание: лечение переходит в магический урон. */
       wither: number;
       /** Холодное касание призрака: раунды, в которые лечение не действует. */
@@ -339,11 +367,18 @@ export interface BattleState {
     firstAttackDone: boolean;
   };
   bag: Record<string, number>;
+  /** Зелья из сумки (до трёх видов): первое за ход не тратит ход. */
+  pouch: string[];
   /** Созданное в бою (свитки мудреца, расходники ниндзя): лежит в bag, герою после боя не переходит. */
   conjured: Record<string, number>;
   queue: ("p" | "e")[];
   idx: number;
   round: number;
+  /** Пророк: последний приём героя и повтор подряд. */
+  lastSkill?: string | null;
+  repeatSkill?: boolean;
+  /** Плачущая тень: броня поглощает не больше половины удара. */
+  piercing?: boolean;
   log: LogLine[];
   over: null | "win" | "lose" | "flee";
   fleeRate: number;
@@ -1027,6 +1062,7 @@ export function newBattle(
       immortalUsed: false,
       turnConsumables: 0,
       turnScrolls: 0,
+      turnPouch: 0,
       concentration: 0,
       sageWardUsed: false,
       statuses: {
@@ -1064,6 +1100,7 @@ export function newBattle(
         curseTick: pl.statuses.curseTick ?? 0,
         chill: pl.statuses.chill ?? 0,
         fear: pl.statuses.fear ?? 0,
+        fearImmune: 0,
         wither: pl.statuses.wither ?? 0,
         noHeal: 0,
         darkness: 0,
@@ -1075,6 +1112,7 @@ export function newBattle(
       firstAttackDone: false,
     },
     bag: { ...pl.bag },
+    pouch: pouchIds(pl),
     conjured: {},
     queue: buildQueue(firstRoundAp, s.ap),
     idx: 0,
@@ -1098,6 +1136,9 @@ export function newBattle(
   if (s.passive) {
     push(b, `Пассивный эффект: ${s.passive.name} — ${s.passive.desc}`, "sys");
   }
+  const rule = MONSTER_RULES[b.enemy.def.id];
+  if (rule) push(b, `Правило: ${rule.title} — ${rule.text}`, "sys");
+  prepareRoundRules(b);
   beginTurn(b);
   return b;
 }
@@ -1624,6 +1665,19 @@ function hitEnemy(
     push(b, `Мрак вампира съедает удар: промах.${note}`, "e");
     return 0;
   }
+  /* Костяной воин: поднятый щит принимает первую физическую атаку раунда. */
+  if (b.enemy.shield && kind === "phys") {
+    b.enemy.shield = false;
+    flash(b, "e", "miss", 0);
+    push(b, `Костяной щит принимает удар.${note}`, "e");
+    return 0;
+  }
+  /* Пророк предвидит повтор прошлого приёма и уходит от него. */
+  if (b.enemy.def.id === "seer" && b.repeatSkill && Math.random() < SEER_REPEAT_DODGE) {
+    flash(b, "e", "miss", 0);
+    push(b, `${b.enemy.def.name} предвидел повтор приёма и уходит от удара.${note}`, "e");
+    return 0;
+  }
   /* Базовое уклонение — параметр породы и телосложения, оно остаётся;
      уклонение от эффектов при истощении гаснет. */
   const effectEvade = effectsDepleted(b) ? 0 : eChance(b, "evade");
@@ -1643,6 +1697,14 @@ function hitEnemy(
   if (thorns > 0 && b.p.hp > 0) {
     b.p.hp -= thorns;
     push(b, `Шипы противника ранят тебя: −${thorns} ОЗ.`, "e");
+  }
+  /* Шлаковая шкура: 10% физического урона по стражу возвращается герою. */
+  if (b.enemy.def.id === "golem" && kind === "phys" && d > 0 && b.p.hp > 0) {
+    const back = Math.round(d * GOLEM_REFLECT_SHARE);
+    if (back > 0) {
+      b.p.hp -= back;
+      push(b, `Шлаковая шкура возвращает тебе ${back} урона.`, "e");
+    }
   }
   /* Дракон копит ярость: после трёх твоих попаданий бьёт вдвое и залечивает раны. */
   if (b.enemy.def.race === "dragon" && b.enemy.hp > 0 && !effectsDepleted(b)) {
@@ -1669,7 +1731,7 @@ function elementalHit(
   note: string,
   element: DamageElement | undefined,
 ): number {
-  const mult = raceElementMult(b.enemy.def.race, element);
+  const mult = enemyElementMult(b, element);
   if (element && mult <= 0) {
     flash(b, "e", "miss", 0);
     push(b, `${b.enemy.def.name} не получает урона от стихии (${ELEMENT_NAMES[element]}).${note}`, "sys", element);
@@ -1682,12 +1744,19 @@ function elementalHit(
   return hitEnemy(b, raw, "magic", note, false, element);
 }
 
+/** Множитель стихии с учётом правил вида: огонь по Стражу из шлака вдвое слабее. */
+export function enemyElementMult(b: BattleState, element: DamageElement | undefined): number {
+  const base = raceElementMult(b.enemy.def.race, element);
+  if (b.enemy.def.id === "golem" && element === "fire") return base * GOLEM_FIRE_MULT;
+  return base;
+}
+
 /** В защите (кнопка «Защита») броня героя растёт на 25% до его следующего хода. Урон не делится. */
 export const GUARD_ARMOR_MULT = 1.25;
 
 /** Броня героя в бою сейчас: надетая, временная, тоник и раскол; в защите — ×1.25. */
 export function playerArmorNow(b: BattleState): number {
-  const base = Math.max(0, b.p.armor + b.p.statuses.tempArmor + (b.p.statuses.ironTonic > 0 ? 4 : 0) - b.p.statuses.sundered);
+  const base = Math.max(0, b.p.armor + b.p.statuses.tempArmor + (b.p.statuses.ironTonic > 0 ? 4 : 0) - b.p.statuses.sundered - (b.p.statuses.rot ?? 0));
   return b.p.guard ? Math.round(base * GUARD_ARMOR_MULT) : base;
 }
 
@@ -1705,7 +1774,7 @@ function damageAfterPlayerDefense(
   const effArmor = playerArmorNow(b);
   if (kind === "phys") {
     if (!ignoreDefense) {
-      d -= effArmor;
+      d -= b.piercing ? piercingArmorCap(d, effArmor) : effArmor;
       d = Math.round(d * (1 - combatChance(b.p.chanceLayers.fortify)));
     }
   } else if (!ignoreDefense) {
@@ -1811,6 +1880,11 @@ function incoming(
   b.p.hp -= d;
   flash(b, "p", "hit", d);
   push(b, `${src} — тебе ${d} урона.`, "e");
+  /* Угольный бес: каждое попадание поджигает героя на раунд. */
+  if (b.enemy.def.id === "imp" && b.p.hp > 0) {
+    setPlayerTick(b, "burn", statusRounds(b, 1), dotBaseTick("burn", b.enemy.level));
+    push(b, "Угольный жар поджигает тебя на 1 раунд.", "e");
+  }
 
   // Ядовитый враг отравляет игрока физическим уроном.
   if (b.enemy.passive?.id === "venom" && kind === "phys" && b.p.hp > 0 && !tryResist(b, "яд")) {
@@ -1889,6 +1963,25 @@ function gainLoot(b: BattleState) {
 }
 
 /** Environmental tick at the start of the active side's turn. Called once per queue step. */
+/**
+ * Страх героя. Не обновляется, пока держится, и не возвращается сразу после окончания:
+ * после него 1 раунд иммунитета. Если герой уже походил в этом раунде, страх
+ * переходит на следующий раунд целиком (2 раунда счётчика), иначе — на текущий.
+ */
+/** После страха герой ещё столько раундов не боится (иммунитет тает по одному в конце раунда). */
+const FEAR_IMMUNE_ROUNDS = 3;
+
+function applyHeroFear(b: BattleState, note: string) {
+  if (b.p.statuses.fear > 0) return;
+  if (b.p.statuses.fearImmune > 0) {
+    push(b, "Страх не действует: ты держишься после прошлого приступа.", "sys");
+    return;
+  }
+  const heroTurnLeft = b.queue.slice(b.idx + 1).includes("p");
+  b.p.statuses.fear = heroTurnLeft ? 1 : 2;
+  push(b, note, "e");
+}
+
 function beginTurn(b: BattleState) {
   if (b.over) return;
   const side = b.queue[b.idx];
@@ -1935,17 +2028,30 @@ function beginTurn(b: BattleState) {
   }
 }
 
+/** Правила, которые готовятся в начале раунда: щит костяного воина и объявление пророка. */
+function prepareRoundRules(b: BattleState) {
+  const e = b.enemy;
+  if (e.def.id === "bone") {
+    e.shield = boneShieldUp(b.round);
+    if (e.shield) push(b, `${e.def.name} поднимает костяной щит: первая атака героя в этом раунде будет заблокирована.`, "e");
+  }
+  if (e.def.id === "seer" && e.hp > 0 && !b.over) {
+    e.announced = chooseEnemyMove(b);
+    push(b, `${e.def.name} объявляет: ${MOVE_LABELS[e.announced] ?? e.announced}.`, "e");
+  }
+}
+
 function advance(b: BattleState) {
   if (b.over) return;
   /* Счётчики хода героя начинаются заново, когда очередь уходит дальше. */
   b.p.turnConsumables = 0;
   b.p.turnScrolls = 0;
+  b.p.turnPouch = 0;
   //.Печати живут ровно один ход игрока: снимаются после его действия.
   if (b.queue[b.idx] === "p") {
     b.p.statuses.sealItems = Math.max(0, b.p.statuses.sealItems - 1);
     b.p.statuses.sealSkills = Math.max(0, b.p.statuses.sealSkills - 1);
     b.p.statuses.sealAttack = Math.max(0, b.p.statuses.sealAttack - 1);
-    b.p.statuses.fear = Math.max(0, b.p.statuses.fear - 1);
   }
   const idx = b.idx + 1;
   if (idx >= b.queue.length) {
@@ -2013,7 +2119,7 @@ function advance(b: BattleState) {
     if (b.enemy.statuses.oilType && b.enemy.statuses.oilRounds > 0 && b.enemy.hp > 0) {
       const kind = b.enemy.statuses.oilType;
       const element = isDamageElement(kind) ? kind : undefined;
-      const mult = element ? raceElementMult(b.enemy.def.race, element) : 1;
+      const mult = element ? enemyElementMult(b, element) : 1;
       const raw = oilTickDamage(kind, b.enemy.statuses.oilTick, eChance(b, "magic_resist"));
       if (raw > 0 && mult > 0) {
         const d = Math.max(1, Math.round(raw * mult));
@@ -2056,7 +2162,26 @@ function advance(b: BattleState) {
     const prevWound = b.p.statuses.wound;
     const prevPoison = b.p.statuses.poison;
 
+    const fearWas = b.p.statuses.fear;
+    if (fearWas > 0) {
+      b.p.statuses.fear = fearWas - 1;
+      if (b.p.statuses.fear === 0) {
+        b.p.statuses.fearImmune = FEAR_IMMUNE_ROUNDS;
+        push(b, `Страх отпустил. Ещё ${FEAR_IMMUNE_ROUNDS} раунда тебя не испугать.`, "sys");
+      }
+    } else if (b.p.statuses.fearImmune > 0) {
+      b.p.statuses.fearImmune -= 1;
+    }
+
     b.p.statuses.wound = Math.max(0, b.p.statuses.wound - 1);
+    /* Гниение: слои держатся два раунда, потом броня возвращается. */
+    if ((b.p.statuses.rotRounds ?? 0) > 0) {
+      b.p.statuses.rotRounds = (b.p.statuses.rotRounds ?? 0) - 1;
+      if (b.p.statuses.rotRounds === 0 && (b.p.statuses.rot ?? 0) > 0) {
+        b.p.statuses.rot = 0;
+        push(b, "Гниение отступило: броня вернулась.", "sys");
+      }
+    }
     if (!isBattleCurse(b.p.statuses.curse)) b.p.statuses.curse = Math.max(0, b.p.statuses.curse - 1);
     b.p.statuses.poison = Math.max(0, b.p.statuses.poison - 1);
     b.p.statuses.burn = Math.max(0, b.p.statuses.burn - 1);
@@ -2147,6 +2272,7 @@ function advance(b: BattleState) {
       push(b, "Каменная кожа осыпалась: входящий урон больше не снижен.", "sys");
     b.queue = buildQueue(pAp, eAp);
     push(b, `— Раунд ${b.round} —`, "sys");
+    prepareRoundRules(b);
 
     if (b.enemy.hp <= 0 && !tryRevive(b)) {
       b.enemy.hp = 0;
@@ -2424,8 +2550,8 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
     return b;
   };
 
-  if (fearTurn && a.type !== "item" && a.type !== "guard") {
-    return err("Страх: атаковать, применять приёмы и бежать нельзя. Доступны рюкзак и защита.");
+  if (fearTurn && a.type !== "item" && a.type !== "guard" && a.type !== "flee") {
+    return err("Страх: атаковать и применять приёмы нельзя. Доступны рюкзак, защита и побег.");
   }
 
   const spellPowerMult =
@@ -2433,6 +2559,15 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
 
   if (a.type === "attack" && b.p.statuses.sealAttack > 0) return err("Печать оков запрещает обычную атаку в этот ход.");
   if ((a.type === "weapon_skill" || a.type === "epic_skill" || a.type === "armor_skill") && b.p.statuses.sealSkills > 0) return err("Печать забвения запрещает приёмы в этот ход.");
+  /* Пророк запоминает приём: повтор того же приёма подряд он предвидит. */
+  if (takeTurn) {
+    const skillKey =
+      a.type === "weapon_skill" || a.type === "epic_skill" || a.type === "armor_skill" || a.type === "archetype_skill"
+        ? `${a.type}:${(a as { id?: string }).id ?? ""}`
+        : null;
+    b.repeatSkill = skillKey !== null && skillKey === b.lastSkill;
+    b.lastSkill = skillKey;
+  }
   if (a.type === "item" && b.p.statuses.sealItems > 0) return err("Печать немоты запрещает расходники в этот ход.");
 
   /* Расходник, который не тратит ход: игрок остаётся на своём ходу (Ниндзя 10, Мудрец 10). */
@@ -2933,16 +3068,26 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
       } else {
         push(b, "Эхо мысли сохраняет свиток — он не истлел!", "p");
       }
-      /* Ниндзя 10: первый расходник за ход не тратит ход. Мудрец 10: первый свиток за ход не тратит ход. */
+      /* Ниндзя 10: первый расходник за ход не тратит ход. Мудрец 10: первый свиток за ход не тратит ход.
+         Сумка: первое зелье из слотов за ход не тратит ход. Сумка и ниндзя считаются независимо. */
       const isScroll = def.kind === "scroll";
-      const freeUse = isScroll
-        ? hasPassive(b, "arch_sage_10") && b.p.turnScrolls < 1
-        : hasPassive(b, "arch_ninja_10") && b.p.turnConsumables < 1;
-      b.p.turnConsumables += 1;
+      const pouchFree = def.kind === "potion" && b.pouch.includes(a.id) && b.p.turnPouch < 1;
+      const ninjaFree = !isScroll && hasPassive(b, "arch_ninja_10") && b.p.turnConsumables < 1;
+      const freeUse = isScroll ? hasPassive(b, "arch_sage_10") && b.p.turnScrolls < 1 : pouchFree || ninjaFree;
+      if (pouchFree) b.p.turnPouch += 1;
+      else b.p.turnConsumables += 1;
       if (isScroll) b.p.turnScrolls += 1;
       if (freeUse) {
         freeAction = true;
-        push(b, isScroll ? "Свиток не тратит ход: можно применить ещё один." : "Первый расходник за ход не тратит ход.", "p");
+        push(
+          b,
+          isScroll
+            ? "Свиток не тратит ход: можно применить ещё один."
+            : pouchFree
+              ? "Зелье из сумки не тратит ход."
+              : "Первый расходник за ход не тратит ход.",
+          "p",
+        );
       }
       break;
     }
@@ -3042,10 +3187,7 @@ function applyRaceStrike(b: BattleState, isStrike: boolean, rawBase: number, res
     const stacks = applyPlayerDot(b, "wound", 3, dotBaseTick("bleed", e.level));
     if (stacks > 0) push(b, `Клыки рвут плоть: кровотечение на 3 раунда, наложений ${stacks}.`, "e");
   } else if (race === "ghost" && lands()) {
-    if (!immuneNote(b, "fear")) {
-      b.p.statuses.fear = Math.max(b.p.statuses.fear, 2);
-      push(b, "Прикосновение призрака сеет страх на 2 раунда.", "e");
-    }
+    if (!immuneNote(b, "fear")) applyHeroFear(b, "Прикосновение призрака сеет страх на раунд.");
   } else if (race === "beast" && lands()) {
     if (Math.random() < 0.5) {
       const stacks = applyPlayerDot(b, "wound", 3, dotBaseTick("bleed", e.level));
@@ -3061,10 +3203,7 @@ function applyRaceStrike(b: BattleState, isStrike: boolean, rawBase: number, res
         push(b, "Адское пламя липнет к коже: горение на 3 раунда.", "e");
       }
     } else {
-      if (!immuneNote(b, "fear")) {
-        b.p.statuses.fear = Math.max(b.p.statuses.fear, 2);
-        push(b, "Взгляд демона парализует волю: страх на 2 раунда.", "e");
-      }
+      if (!immuneNote(b, "fear")) applyHeroFear(b, "Взгляд демона парализует волю: страх на раунд.");
     }
   }
 }
@@ -3219,8 +3358,17 @@ export function enemyStep(b0: BattleState): BattleState {
     return b;
   }
 
+  /* Крыса зовёт стаю: при половине ОЗ лечится и делает лишний ход (раз за бой). */
+  if (e.def.id === "vermin" && ratCallDue(e.hp, e.maxHp, !!e.ruleUsed)) {
+    e.ruleUsed = true;
+    const heal = healEnemy(b, Math.round(e.maxHp * RAT_CALL_HEAL_SHARE));
+    push(b, `${e.def.name} зовёт стаю: +${heal} ОЗ и лишний ход.`, "e");
+    b.queue.splice(b.idx + 1, 0, "e");
+  }
   const chill = enemyChill(b);
-  const move = chooseEnemyMove(b);
+  /* Пророк уже объявил ход в начале раунда; остальные выбирают ход сейчас. */
+  const move = e.announced ?? chooseEnemyMove(b);
+  e.announced = null;
   armEnemyCooldown(b, move);
   const isStrikeMove = STRIKE_MOVES.includes(move);
   /* Промах запоминается только на один ход: после решения флаг снимаем. */
@@ -3235,8 +3383,12 @@ export function enemyStep(b0: BattleState): BattleState {
     }
   }
   base = enemyMoveDamage(b, move, isStrikeMove, base);
+  /* Огр-мясник звереет, когда герой ранен. */
+  if (e.def.id === "brute") base = Math.round(base * ogreRageMult(b.p.hp, b.p.maxHp));
   const resistChance = playerResistChance(b);
   const hpBeforeMove = b.p.hp;
+  /* Плачущая тень: броня не держит больше половины её удара. */
+  b.piercing = e.def.id === "wraith";
 
   switch (move) {
     case "guard": {
@@ -3248,7 +3400,15 @@ export function enemyStep(b0: BattleState): BattleState {
     }
     case "heavy": {
       push(b, `${e.def.name} обрушивает сокрушительный удар!`, "e");
-      if (!incoming(b, Math.round(base * 1.7 * chill), "phys", `${e.def.name} пробивает с плеча`)) e.lastMiss = true;
+      const landed = incoming(b, Math.round(base * 1.7 * chill), "phys", `${e.def.name} пробивает с плеча`);
+      if (!landed) e.lastMiss = true;
+      /* Гнилой ходок: тяжёлый удар снимает слой брони на два раунда. */
+      else if (e.def.id === "husk" && b.p.hp > 0) {
+        const stacks = nextRotStacks(b.p.statuses.rot ?? 0);
+        b.p.statuses.rot = stacks;
+        b.p.statuses.rotRounds = ROT_ROUNDS;
+        push(b, `Гниение: броня −${stacks} на ${ROT_ROUNDS} раунда.`, "e");
+      }
       break;
     }
     case "wound": {
@@ -3392,10 +3552,7 @@ export function enemyStep(b0: BattleState): BattleState {
       const landed = incoming(b, Math.round(base * 0.6 * chill), "magic", `${e.def.name} рычит тебе в лицо`);
       if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0 && Math.random() > resistChance) {
-        if (!immuneNote(b, "fear")) {
-          b.p.statuses.fear = Math.max(b.p.statuses.fear, 2);
-          push(b, "Страх на 2 раунда: в свой ход ты сам встаёшь в защиту. Атаки и приёмы закрыты, рюкзак доступен.", "e");
-        }
+        if (!immuneNote(b, "fear")) applyHeroFear(b, "Страх на раунд: в свой ход ты сам встаёшь в защиту. Атаки и приёмы закрыты, рюкзак и побег доступны.");
         e.guard = true;
         flash(b, "e", "guard", 0);
       }
@@ -3625,6 +3782,15 @@ export function combatReadout(b: BattleState): CombatReadout {
       flat: -b.p.statuses.sundered,
       good: false,
       detail: `Броня снижена на ${b.p.statuses.sundered} до конца боя; каждое новое наложение складывается.`,
+    });
+  if ((b.p.statuses.rot ?? 0) > 0)
+    defMods.push({
+      id: "rot",
+      label: "Гниение",
+      flat: -(b.p.statuses.rot ?? 0),
+      good: false,
+      rounds: b.p.statuses.rotRounds,
+      detail: `Броня снижена на ${b.p.statuses.rot} от гниения ходока; новый удар добавляет слой, не больше двух.`,
     });
   if (b.p.statuses.stone > 0)
     defMods.push({

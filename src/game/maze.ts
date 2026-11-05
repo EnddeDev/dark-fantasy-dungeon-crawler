@@ -38,6 +38,29 @@ export function roomIndexAt(m: Maze, x: number, y: number): number {
   return m.rooms.findIndex((r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h);
 }
 
+/**
+ * Ловушки, до которых герой дойдёт не больше чем за `steps` шагов от клетки.
+ * Учитывает стены: факел раскрывает механизмы, которые действительно рядом по пути.
+ */
+export function trapsWithin(m: Maze, from: Cell, steps: number): number[] {
+  const seen = new Set<number>([cellIdx(from.x, from.y, m.size)]);
+  let frontier: Cell[] = [from];
+  for (let d = 0; d < steps; d++) {
+    const next: Cell[] = [];
+    for (const c of frontier) {
+      for (const [dx, dy] of openDirs(m, c.x, c.y)) {
+        const n = { x: c.x + dx, y: c.y + dy };
+        const i = cellIdx(n.x, n.y, m.size);
+        if (seen.has(i)) continue;
+        seen.add(i);
+        next.push(n);
+      }
+    }
+    frontier = next;
+  }
+  return m.traps.filter((i) => seen.has(i));
+}
+
 export function openDirs(m: Maze, x: number, y: number): [number, number][] {
   const out: [number, number][] = [];
   for (const [dx, dy] of [

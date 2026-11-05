@@ -162,6 +162,7 @@ export function QuestsTab({
             giver={id}
             selected={giver === id}
             ready={log.active.filter((q) => q.giver === id && questReady(q, player)).length}
+            available={log.offers.filter((q) => q.giver === id).length}
             trust={trustOf(player, id)}
             onSelect={() => setGiver(id)}
           />
@@ -186,12 +187,14 @@ function NpcTabButton({
   giver,
   selected,
   ready,
+  available,
   trust,
   onSelect,
 }: {
   giver: QuestGiverId;
   selected: boolean;
   ready: number;
+  available: number;
   trust: number;
   onSelect: () => void;
 }) {
@@ -209,6 +212,14 @@ function NpcTabButton({
       <NpcPortrait giver={giver} className="h-20 w-20 border border-line" />
       <span className="font-display text-xs uppercase tracking-[0.1em] text-parch">{meta.role}</span>
       <TrustPips value={trust} />
+      {available > 0 && (
+        <span
+          className="absolute left-1 top-1 animate-pulse border border-verd bg-verd/20 px-1.5 font-mono text-xs text-verd"
+          title="Есть задание, которое можно взять"
+        >
+          !
+        </span>
+      )}
       {ready > 0 && (
         <span className="absolute right-1 top-1 bg-verd px-1.5 font-mono text-xs text-ink" title="Можно сдать">
           {ready}

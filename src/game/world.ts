@@ -583,8 +583,8 @@ export const EXTRA_ITEMS: ItemDef[] = [
     use: { type: "special_water" },
     desc: "Снимает горение на карте в Огненных недрах." },
   { id: "field_torch", name: "Факел", kind: "special", price: 35, level: 1, minFloor: 1,
-    use: { type: "special_torch", rounds: 5 },
-    desc: "+1 к видимости на 5 ходов по карте. В Тёмном подземелье на это время снимает штраф мрака." },
+    use: { type: "special_torch", rounds: 20 },
+    desc: "Работает только на карте: 20 ходов, ловушки в двух шагах видны, обход и обезвреживание с преимуществом. Здесь же +1 к видимости." },
 
   /* припасы: новая вариативность */
   { id: "potion_haste", name: "Зелье скорости", kind: "potion", price: 110,

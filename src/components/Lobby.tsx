@@ -76,10 +76,11 @@ import { ItemArt } from "./ItemArt";
 import { GearNote } from "./GearNote";
 import { GearCard } from "./GearCard";
 import { QuestsTab } from "./Quests";
-import { couponPreview, mercenaryPrice, readyQuestCount, recipeMinTrust, stationRecipeList, trustOf } from "../game/quests";
+import { availableQuestCount, couponPreview, mercenaryPrice, readyQuestCount, recipeMinTrust, stationRecipeList, trustOf } from "../game/quests";
 import type { CraftStation } from "../game/content";
 import { TRUST_MAX, type QuestGiverId } from "../game/types";
 import { Btn, Meter, Modal, Panel, Pips, Tag } from "./ui";
+import { PouchSlots } from "./PouchSlots";
 
 
 type Tab = "train" | "armory" | "shop" | "quests" | "bestiary" | "guide";
@@ -307,7 +308,7 @@ const TAB_ICONS = {
 
 const RARITY_RANK: Record<RarityTier, number> = { common: 0, rare: 1, epic: 2, legendary: 3 };
 
-const TABS: { id: Tab; label: string; badge?: (p: Player) => number }[] = [
+const TABS: { id: Tab; label: string; badge?: (p: Player) => number; alert?: (p: Player) => number }[] = [
   { id: "train", label: "Развитие", badge: (p) => p.statPoints },
   {
     id: "armory",
@@ -315,7 +316,7 @@ const TABS: { id: Tab; label: string; badge?: (p: Player) => number }[] = [
     badge: (p) => p.armory.filter((g) => !g.identified).length,
   },
   { id: "shop", label: "Магазин" },
-  { id: "quests", label: "Жители", badge: (p) => readyQuestCount(p) },
+  { id: "quests", label: "Жители", badge: (p) => readyQuestCount(p), alert: (p) => availableQuestCount(p) },
   { id: "bestiary", label: "Бестиарий" },
   { id: "guide", label: "Как играть" },
 ];
@@ -325,6 +326,7 @@ export function Lobby({
   controller,
   shopStock,
   onStart,
+  onSetPouch,
   onRestart,
   best,
   unlockedFloor,
@@ -335,6 +337,7 @@ export function Lobby({
   controller: LobbyController;
   shopStock: GearItem[];
   onStart: (floor: number) => void;
+  onSetPouch?: (index: number, id: string | null) => string | null;
   /** Полный сброс прогресса — кнопка «Начать заново». */
   onRestart: () => void;
   best: number;
@@ -985,6 +988,11 @@ export function Lobby({
                 Начать с этажа {selectedFloor}
               </Btn>
             </div>
+            {onSetPouch && (
+              <div className="mt-3">
+                <PouchSlots player={player} onSet={onSetPouch} />
+              </div>
+            )}
             <div className="mt-3 flex max-w-full gap-2 overflow-x-auto pb-1" role="group" aria-label="Выбор этажа подземелья">
               {Array.from({ length: unlockedFloor }, (_, i) => i + 1).map((floor) => (
                 <button
@@ -1021,6 +1029,14 @@ export function Lobby({
                   {count > 0 && (
                     <span className="border border-flame bg-flame/20 px-1.5 py-0.5 font-mono text-[0.81rem] text-flamehi">
                       {count}
+                    </span>
+                  )}
+                  {t.alert && t.alert(player) > 0 && (
+                    <span
+                      title="Есть задание, которое можно взять"
+                      className="animate-pulse border border-verd bg-verd/20 px-1.5 py-0.5 font-mono text-[0.81rem] text-verd"
+                    >
+                      !
                     </span>
                   )}
                   {tab === t.id && <span className="absolute inset-x-0 bottom-0 h-px bg-flame" />}

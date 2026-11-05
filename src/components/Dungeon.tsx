@@ -8,6 +8,7 @@ import { BiomeRule, BiomeTag, biomeStyle } from "./BiomeLabel";
 import type { GearItem, Player, Run, Slot } from "../game/types";
 import { SLOT_META, SLOT_ORDER } from "../game/types";
 import { ItemArt } from "./ItemArt";
+import { PouchSlots } from "./PouchSlots";
 import { GearNote } from "./GearNote";
 import { Btn, Modal, Tag } from "./ui";
 
@@ -28,6 +29,7 @@ export function Dungeon({
   onUnequip,
   onCancelPath,
   onResumePath,
+  onSetPouch,
 }: {
   run: Run;
   player: Player;
@@ -43,6 +45,7 @@ export function Dungeon({
   onUnequip: (slot: Slot) => void;
   onCancelPath: () => void;
   onResumePath: () => void;
+  onSetPouch?: (index: number, id: string | null) => string | null;
 }) {
   const m = run.maze;
   const biome = mazeBiome(m);
@@ -445,9 +448,9 @@ export function Dungeon({
                   );
                 })}
 
-              {/* Ловушки видны все и сразу: скрытых механизмов на карте нет. */}
+              {/* Ловушки скрыты, пока карта или факел их не раскроют. Сработавшие не показываем. */}
               {(m.traps ?? [])
-                .filter((i) => !(run.sprungTraps ?? []).includes(i))
+                .filter((i) => (run.revealedTraps ?? []).includes(i) && !(run.sprungTraps ?? []).includes(i))
                 .map((i) => {
                   const x = i % S;
                   const y = Math.floor(i / S);
@@ -831,6 +834,7 @@ export function Dungeon({
           actions={<Btn onClick={() => setBagOpen(false)}>Закрыть</Btn>}
         >
           <div className="space-y-5">
+            {onSetPouch && <PouchSlots player={player} onSet={onSetPouch} />}
             <section aria-label="Снаряжение в рюкзаке">
               <div className="sc mb-2 text-[0.86rem] text-flamedim">Снаряжение · {player.armory.length}</div>
               {player.armory.length === 0 ? (

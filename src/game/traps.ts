@@ -1,6 +1,8 @@
 /**
  * Ловушки подземелья: обычный механизм, яд, кровотечение и проклятие.
  * Проклятие держится до конца следующего боя; «Горечь полыни» снимает его заранее.
+ * Ловушки скрыты, пока их не раскроет карта или факел. С факелом обход и обезвреживание
+ * бросаются с преимуществом: два броска, берётся лучший.
  */
 import type { StatKey } from "./types";
 import { refreshedTick, trapTickFrom } from "./statusEffects";
@@ -38,6 +40,10 @@ export interface TrapSetup {
   /** Дополнительные шансы от снаряжения/пассивов. */
   bypassBonus?: number;
   stoneSkin?: boolean;
+  /** Максимальное здоровье героя: от него считается урон. */
+  maxHp: number;
+  /** Факел горит: обход и обезвреживание с преимуществом. */
+  advantage?: boolean;
 }
 
 export interface TrapState {
@@ -52,11 +58,16 @@ export interface TrapState {
   cursePower: number;
   bypassChance: number;
   disarmChance: number;
+  /** Бросок с преимуществом (факел): два броска, берётся лучший. */
+  advantage: boolean;
 }
 
-export function trapDamage(floor: number, stoneSkin = false): number {
-  const base = 6 + Math.max(1, Math.floor(floor)) * 4;
-  return Math.max(1, Math.round(base * (stoneSkin ? 0.75 : 1)));
+/** Урон ловушки: 8% максимального здоровья героя, не меньше 4. Каменная кожа −25%. */
+export const TRAP_DAMAGE_PCT = 0.08;
+export const TRAP_DAMAGE_MIN = 4;
+export function trapDamage(maxHp: number, stoneSkin = false): number {
+  const mult = stoneSkin ? 0.75 : 1;
+  return Math.max(TRAP_DAMAGE_MIN, Math.round(Math.max(0, maxHp) * TRAP_DAMAGE_PCT * mult));
 }
 
 /** Обход — от Ловкости; обезвреживание набором сапёра — от Интеллекта. */
@@ -71,13 +82,20 @@ export function makeTrap(setup: TrapSetup): TrapState {
   const kind = setup.kind;
   return {
     kind,
-    damage: kind === "curse" ? 0 : trapDamage(setup.floor, setup.stoneSkin),
+    damage: kind === "curse" ? 0 : trapDamage(setup.maxHp, setup.stoneSkin),
     rounds: kind === "poison" || kind === "bleed" ? 3 : 0,
     tick: kind === "poison" || kind === "bleed" ? trapTickFrom(kind, setup.floor) : 0,
     cursePower: kind === "curse" ? 30 : 0,
     bypassChance: trapBypassChance(setup.stats, setup.bypassBonus),
     disarmChance: trapDisarmChance(setup.stats, setup.bypassBonus),
+    advantage: !!setup.advantage,
   };
+}
+
+/** Шанс действия с учётом преимущества: лучший из двух бросков. */
+export function trapChance(trap: TrapState, action: "bypass" | "disarm"): number {
+  const c = action === "bypass" ? trap.bypassChance : trap.disarmChance;
+  return trap.advantage ? 1 - (1 - c) * (1 - c) : c;
 }
 
 /** Подготовка: −10% последствий за каждое очко Силы, максимум −90%. */
@@ -122,7 +140,9 @@ export function resolveTrap(
     };
   }
   const chance = action === "bypass" ? trap.bypassChance : trap.disarmChance;
-  const success = rng() < chance;
+  const first = rng();
+  const roll = trap.advantage ? Math.min(first, rng()) : first;
+  const success = roll < chance;
   if (success) {
     return {
       success: true, damage: 0, rounds: 0, cursePower: 0, usedKit: action === "disarm", xp,

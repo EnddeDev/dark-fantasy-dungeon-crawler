@@ -2,7 +2,7 @@ import { derived, newBattle, rollConsumableLoot, rollGearDrop } from "../game/ba
 import { biomeHealingAmount, mazeBiome } from "../game/biomes";
 import { playSfx } from "../audio/sfx";
 import { CHEST_RARITY_WEIGHTS, DUNGEON_GOLD_SHARE, GEAR_BASES, ITEMS, consumableIntReq, consumablePower, equipItem, grantXp, pick, reagentPoolForFloor, scaledGearStats, unequipSlot } from "../game/content";
-import { cellIdx, findPath, openDirs, wallBetween } from "../game/maze";
+import { cellIdx, findPath, openDirs, trapsWithin, wallBetween } from "../game/maze";
 import { pruneRunLoot } from "../game/runLoot";
 import { CHILL_HEAL_MULT, curseTickFrom, magicTickFrom, refreshedTick, trapTickFrom } from "../game/statusEffects";
 import { applyTrapOutcome, isBattleCurse, lockpickChance, makeTrap, resolveTrap, rollTrapKind, type TrapAction } from "../game/traps";
@@ -260,7 +260,7 @@ export class DungeonController {
       const np = this.state.player;
       this.model.setRun({ ...next, battleCell: null });
       this.model.setBattle(
-        newBattle({ ...np, hp: Math.max(1, np.hp) }, next.floor, false, mazeBiome(next.maze), next.torchTurns ?? 0, 0, ev.summon.battle),
+        newBattle({ ...np, hp: Math.max(1, np.hp) }, next.floor, false, mazeBiome(next.maze), 0, 0, ev.summon.battle),
       );
       this.model.setScreen("battle");
       return;
@@ -429,8 +429,15 @@ export class DungeonController {
       nextRun = { ...run, burning: 0, log: [...run.log, "Бурдюк с водой смочил плащ: горение перед боем снято."] };
       msg = "Бурдюк с водой: горение перед боем снято.";
     } else if (u.type === "special_torch") {
-      nextRun = { ...run, torchTurns: (u.rounds ?? 5) + 1, log: [...run.log, "Факел разгорелся: +1 видимость на 5 ходов по карте."] };
-      msg = "Факел: +1 к видимости на 5 ходов по карте. Штраф мрака снят, пока он горит.";
+      /* Факел работает только на карте: раскрывает ловушки в двух шагах и даёт бросок с преимуществом. */
+      const lit = u.rounds ?? 20;
+      nextRun = {
+        ...run,
+        torchTurns: lit + 1,
+        revealedTraps: [...new Set([...(run.revealedTraps ?? []), ...trapsWithin(run.maze, run.pos, 2)])],
+        log: [...run.log, `Факел разгорелся: ${lit} ходов по карте, ловушки в двух шагах видны.`],
+      };
+      msg = `Факел горит ${lit} ходов по карте: ловушки в двух шагах видны, обход и обезвреживание с преимуществом.`;
     } else {
       return;
     }
@@ -468,6 +475,8 @@ export class DungeonController {
     const statuses = { ...player.statuses };
     const stepBag = { ...player.bag };
     const biome = mazeBiome(m);
+    /* Факел, горевший до шага, даёт преимущество на ловушку этого шага. */
+    const torchLit = (src.torchTurns ?? 0) > 0;
     if ((r.torchTurns ?? 0) > 0) r.torchTurns = (r.torchTurns ?? 0) - 1;
 
     if (statuses.wound > 0 && !d.legendaryPassives.includes("titan_heart")) {
@@ -513,9 +522,9 @@ export class DungeonController {
 
     const commitPlayer = () => this.model.setPlayer({ ...player, hp, statuses, bag: stepBag });
 
-    /* Ловушки всегда видны: скрытых механизмов на карте нет. */
-    if ((r.revealedTraps ?? []).length !== m.traps.length) {
-      r = { ...r, revealedTraps: [...new Set([...(r.revealedTraps ?? []), ...m.traps])] };
+    /* Ловушки скрыты: факел раскрывает те, что в двух шагах от героя. */
+    if (torchLit) {
+      r = { ...r, revealedTraps: [...new Set([...(r.revealedTraps ?? []), ...trapsWithin(m, { x: nx, y: ny }, 2)])] };
     }
 
     if (m.boss.x === nx && m.boss.y === ny && !m.bossDefeated) {
@@ -523,7 +532,7 @@ export class DungeonController {
       r = { ...r, battleCell: null };
       commitPlayer();
       this.model.setRun(r);
-      this.model.setBattle(newBattle({ ...player, hp, statuses, bag: stepBag }, r.floor, true, mazeBiome(r.maze), r.torchTurns ?? 0, 0));
+      this.model.setBattle(newBattle({ ...player, hp, statuses, bag: stepBag }, r.floor, true, mazeBiome(r.maze), 0, 0));
       this.model.setScreen("battle");
       return;
     }
@@ -533,7 +542,7 @@ export class DungeonController {
         r = { ...r, battleCell: null };
         commitPlayer();
         this.model.setRun(r);
-        this.model.setBattle(newBattle({ ...player, hp, statuses, bag: stepBag }, r.floor, true, mazeBiome(r.maze), r.torchTurns ?? 0, 0));
+        this.model.setBattle(newBattle({ ...player, hp, statuses, bag: stepBag }, r.floor, true, mazeBiome(r.maze), 0, 0));
         this.model.setScreen("battle");
         return;
       }
@@ -620,7 +629,10 @@ export class DungeonController {
     if (m.traps.includes(idx) && !(r.sprungTraps ?? []).includes(idx)) {
       const swiftBonus = d.rareAffixes.filter((x) => x === "swift").length * 0.12;
       const bypassBonus = (has("light_step") ? 0.3 : 0) + swiftBonus;
-      const trap = makeTrap({ kind: rollTrapKind(), floor: r.floor, stats: player.stats, bypassBonus, stoneSkin: has("stone_skin") });
+      const trap = makeTrap({
+        kind: rollTrapKind(), floor: r.floor, stats: player.stats, bypassBonus, stoneSkin: has("stone_skin"),
+        maxHp: d.maxHp, advantage: torchLit,
+      });
       r = {
         ...r,
         revealedTraps: [...new Set([...(r.revealedTraps ?? []), idx])],
@@ -664,7 +676,7 @@ export class DungeonController {
       commitPlayer();
       this.model.setRun(r);
       this.model.setBattle(
-        newBattle({ ...player, hp, statuses, bag: stepBag }, r.floor, false, biome, r.torchTurns ?? 0, 0, undefined, questMark?.enemyId),
+        newBattle({ ...player, hp, statuses, bag: stepBag }, r.floor, false, biome, 0, 0, undefined, questMark?.enemyId),
       );
       this.model.setScreen("battle");
       return;

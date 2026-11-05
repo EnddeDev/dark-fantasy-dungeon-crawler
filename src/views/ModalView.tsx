@@ -3,7 +3,7 @@ import { Btn, Modal, Tag } from "../components/ui";
 import type { GameController } from "../controllers/GameController";
 import { BIOMES, biomeVision, mazeBiome } from "../game/biomes";
 import { ITEMS, WEAR_META, scaledGearStats } from "../game/content";
-import { lockpickChance, TRAP_META } from "../game/traps";
+import { lockpickChance, trapChance, TRAP_META } from "../game/traps";
 import { choiceChance, mapEventById, type MapEventKind } from "../game/world";
 import type { GameState } from "../model/types";
 
@@ -94,17 +94,17 @@ export function ModalView({ game, state }: { game: GameController; state: GameSt
       return (
         <Modal
           title={TRAP_META[trap.kind].name}
-          sub={TRAP_META[trap.kind].desc}
+          sub={trap.advantage ? `${TRAP_META[trap.kind].desc} Факел: бросок с преимуществом.` : TRAP_META[trap.kind].desc}
           actions={
             <>
               <Btn tone="flame" onClick={() => game.dungeon.takeTrap("prepare")}>
                 Подготовиться и принять · −{Math.round((1 - prep) * 100)}%
               </Btn>
               <Btn tone="verd" onClick={() => game.dungeon.takeTrap("bypass")}>
-                Обойти · {Math.round(trap.bypassChance * 100)}%
+                Обойти · {Math.round(trapChance(trap, "bypass") * 100)}%
               </Btn>
               <Btn tone="ghost" disabled={!hasKit} onClick={() => game.dungeon.takeTrap("disarm")}>
-                Обезвредить · {Math.round(trap.disarmChance * 100)}%{hasKit ? "" : " (нужен набор)"}
+                Обезвредить · {Math.round(trapChance(trap, "disarm") * 100)}%{hasKit ? "" : " (нужен набор)"}
               </Btn>
             </>
           }
@@ -209,6 +209,7 @@ export function ModalView({ game, state }: { game: GameController; state: GameSt
           actions={
             <>
               <Btn onClick={close}>Остаться на этаже</Btn>
+              <Btn onClick={() => game.leaveFromStairs()}>Выйти без потерь, ярус {(run?.floor ?? 1) + 1} откроется</Btn>
               <Btn tone="flame" onClick={() => game.descend()}>
                 Спуститься на этаж {(run?.floor ?? 1) + 1}
               </Btn>
@@ -218,6 +219,27 @@ export function ModalView({ game, state }: { game: GameController; state: GameSt
           <p>
             Ниже обитают более опасные монстры и новый Босс-страж, но сундуки там богаче, а шанс найти Эпическое
             и Легендарное снаряжение выше. Передышка на ступенях восстановит 10 здоровья.
+          </p>
+        </Modal>
+      );
+
+    case "leave":
+      return (
+        <Modal
+          title="Уйти с этажа без стража"
+          sub="В этом походе ещё никто из стражей не повержен — уход заберёт 20% добычи"
+          actions={
+            <>
+              <Btn onClick={close}>Остаться в подземелье</Btn>
+              <Btn tone="danger" onClick={() => game.leaveRun(true)}>
+                Уйти с потерями
+              </Btn>
+            </>
+          }
+        >
+          <p>
+            Выход без победы над стражем яруса теряет 20% добытого: {modal.gold} золота, {modal.items} расходуемых
+            предметов и {modal.gear} ед. снаряжения. Победа над стражем текущего яруса снимает штраф.
           </p>
         </Modal>
       );

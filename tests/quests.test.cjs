@@ -77,10 +77,10 @@ function questOf(kind, extra = {}) {
   };
 }
 
-test("новый герой получает журнал заданий с двумя предложениями и полным набором товаров", () => {
+test("новый герой получает журнал заданий с тремя предложениями и полным набором товаров", () => {
   const p = freshPlayer();
   const log = quests.logOf(p);
-  assert.equal(log.offers.length, 2, "два задания на старте");
+  assert.equal(log.offers.length, 3, "три задания на старте");
   assert.equal(log.blessingOffers.length, 6, "все шесть благословений у священника, закрытые с замком");
   assert.ok(log.wizard.length > 0 && log.wizard.length <= 6, "волшебник продаёт до шести позиций");
   assert.ok(log.villager.length > 0 && log.villager.length <= 5, "проходимец продаёт до пяти реагентов");
@@ -94,7 +94,7 @@ test("старое сохранение без журнала загружает
   delete saved.questLog;
   const restored = PlayerFactory.restore(saved);
   const log = quests.logOf(restored);
-  assert.ok(Array.isArray(log.offers) && log.offers.length === 2, "журнал создан при загрузке");
+  assert.ok(Array.isArray(log.offers) && log.offers.length === 3, "журнал создан при загрузке");
   assert.equal(restored.blessing ?? null, null);
 });
 
@@ -247,7 +247,7 @@ test("принесённое в вылазке сдаётся только в л
   assert.equal(res.player.gold, p.gold + 300);
 });
 
-test("новый этаж: появляются 1–2 задания и обновляются товары, активные задания и благословение остаются", () => {
+test("новый этаж: появляются три задания и обновляются товары, активные задания и благословение остаются", () => {
   const active = questOf("kill", { id: "a" });
   const before = freshPlayer({
     questLog: {
@@ -259,7 +259,7 @@ test("новый этаж: появляются 1–2 задания и обно
   });
   const after = quests.refreshAfterNewFloor(before, 3, Math.random);
   const log = quests.logOf(after);
-  assert.ok(log.offers.length >= 1 && log.offers.length <= 2);
+  assert.equal(log.offers.length, 3, "три новых задания за этаж");
   assert.equal(log.active[0].id, "a", "взятое задание на месте");
   assert.equal(log.blessingNext, "keen", "купленное на поход не теряется");
   assert.ok(log.wizard.length > 0);
@@ -415,7 +415,7 @@ test("вылазка: задание этажа ставит метку, бла�
 
   game.model.setPlayer({ ...inRun.player, questLog: { ...quests.logOf(inRun.player), carried: [] } });
   game.model.setRun({ ...inRun.run, questCarry: [{ questId: "k1", label: "Охота" }] });
-  game.leaveRun();
+  game.leaveRun(true);
   const home = game.model.getSnapshot().player;
   assert.equal(home.blessing ?? null, null, "благословение гаснет при выходе");
   assert.deepEqual(quests.logOf(home).carried, ["k1"], "принесённое сдаётся в лобби");

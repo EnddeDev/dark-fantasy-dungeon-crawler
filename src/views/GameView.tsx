@@ -35,6 +35,7 @@ export function GameView({
             controller={game.lobby}
             shopStock={shopStock}
             onStart={(floor) => game.startRun(floor)}
+            onSetPouch={(index, id) => game.setPouchSlot(index, id)}
             onRestart={() => game.restart()}
             best={best}
             unlockedFloor={unlockedFloor}
@@ -57,6 +58,7 @@ export function GameView({
             onUnequip={(slot) => game.dungeon.unequip(slot)}
             onCancelPath={() => game.dungeon.cancelPath()}
             onResumePath={() => game.dungeon.resumePath()}
+            onSetPouch={(index, id) => game.setPouchSlot(index, id)}
           />
         )}
         {screen === "battle" && battle && (
