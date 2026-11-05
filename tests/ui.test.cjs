@@ -24,7 +24,8 @@ function load(entry, name) {
 }
 
 const { Lobby } = load("src/components/Lobby.tsx", "lobby");
-const { Rail } = load("src/components/Rail.tsx", "rail");
+const { Rail, EffectTip, EffectList, summedEffectEntries } = load("src/components/Rail.tsx", "rail");
+const { gearEffectTotals } = load("src/game/gearEffectTotals.ts", "gear-effect-totals");
 const { Dungeon } = load("src/components/Dungeon.tsx", "dungeon");
 const { BattleView } = load("src/components/BattleView.tsx", "battle-view");
 const battle = load("src/game/battle.ts", "battle");
@@ -390,4 +391,39 @@ test("left panel shows main stats as icons with values; name and description app
   assert.ok(!html.includes(">Сила<") && !html.includes(">Ловкость<") && !html.includes(">Интеллект<"));
   assert.ok(!html.includes("+10 ОЗ, +1 урона"), "описание прироста не выводится в карточке");
   assert.ok(!html.includes("Ходы в раунде"), "описание характеристики не выводится в карточке");
+});
+
+test("left panel sums the same gear effect over worn items; the hover tip lists each item's share", () => {
+  const wornWisdom = (baseId, roll) => ({
+    ...content.createGearItem({ baseId, wear: "worn", rarity: "common", identified: true, level: 1, rng: () => 0.5 }),
+    effects: ["wisdom"], effectRolls: { wisdom: roll },
+  });
+  const knife = wornWisdom("knife", 6);
+  const amulet = wornWisdom("amulet", 6);
+  const ring = wornWisdom("ring_band", 4);
+  const player = makePlayer({
+    armory: [knife, amulet, ring],
+    equip: { ...makePlayer().equip, mainHand: knife.uid, amulet: amulet.uid, ring1: ring.uid },
+  });
+  const entries = summedEffectEntries([knife, amulet, ring]);
+  assert.equal(entries.length, 1, "одна запись на эффект");
+  const list = renderToStaticMarkup(React.createElement(EffectList, { entries, empty: "пусто" }));
+  assert.ok(list.includes("Предметов: 3"), "три предмета дают одну запись с числом предметов");
+  assert.ok(list.includes("+16% к множителю от Интеллекта"), "значение складывается: 6 + 6 + 4");
+  assert.ok(!list.includes("+6% к множителю от Интеллекта"), "одиночное значение первого предмета не выводится");
+
+  const [wisdom] = gearEffectTotals([knife, amulet, ring]);
+  const tip = renderToStaticMarkup(React.createElement(EffectTip, {
+    id: "tip-test",
+    entry: {
+      id: "effect-wisdom", title: "Мудрость", detail: wisdom.detail,
+      breakdown: wisdom.sources.map((s) => ({ name: s.name, level: s.level, detail: s.detail })),
+    },
+  }));
+  assert.ok(tip.includes('role="tooltip"'), "подсказка открывается по наведению");
+  assert.ok(tip.includes("От предметов"), "в подсказке есть список предметов");
+  for (const base of [knife, amulet, ring]) {
+    assert.ok(tip.includes(content.GEAR_BASES[base.baseId].name), `в подсказке назван ${base.baseId}`);
+  }
+  assert.ok(tip.includes("+6% к множителю от Интеллекта") && tip.includes("+4% к множителю от Интеллекта"), "у каждого предмета своё значение");
 });

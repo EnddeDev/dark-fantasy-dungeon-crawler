@@ -209,7 +209,11 @@ export const GEAR_PASSIVES: Record<GearPassiveId, GearPassiveDef> = {
 
 /** Описание эффекта с учётом уровня предмета. */
 export function effectDetail(id: GearEffectId, level = 1, rolledBase?: number): string {
-  const n = effectMagnitude(id, level, rolledBase);
+  return effectTotalDetail(id, effectMagnitude(id, level, rolledBase));
+}
+
+/** Описание эффекта по уже известному значению: одного предмета или суммы по всем надетым. */
+export function effectTotalDetail(id: GearEffectId, n: number): string {
   switch (id) {
     case "damage_resist": return `−${n} урона за каждый входящий удар`;
     case "thorns": return `+${n} урона врагу за каждую физическую атаку по тебе`;
