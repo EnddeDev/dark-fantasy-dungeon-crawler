@@ -75,7 +75,7 @@ export const EXTRA_GEAR: GearBaseDef[] = [
   /* ── ПРАВАЯ РУКА: двуручное оружие занимает обе руки ── */
   G({
     id: "greatsword", name: "Клеймор следопыта", slot: "mainHand", hands: 2,
-    dmg: [18, 30], price: 460, level: 3, minFloor: 3, idIntReq: 5, idGoldCost: 80,
+    dmg: [18, 30], level: 3, minFloor: 3, idIntReq: 5, idGoldCost: 80,
     desc: "Метр ржавой стали: медленно, но вскрывает латы вместе с тем, кто в них стоит.",
     preferredEpic: "blood_lance",
     weaponSkill: {
@@ -86,7 +86,7 @@ export const EXTRA_GEAR: GearBaseDef[] = [
   }),
   G({
     id: "spear", name: "Копьё пещерного охотника", slot: "mainHand", hands: 2,
-    dmg: [15, 24], price: 380, level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 70,
+    dmg: [15, 24], level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 70,
     desc: "Древко обмотано сухожилиями, наконечник точен в один уклон.",
     preferredEpic: "shadow_volley",
     weaponSkill: {
@@ -97,7 +97,7 @@ export const EXTRA_GEAR: GearBaseDef[] = [
   }),
   G({
     id: "warhammer2", name: "Осадный молот", slot: "mainHand", hands: 2,
-    dmg: [30, 48], price: 690, level: 5, minFloor: 5, idIntReq: 6, idGoldCost: 110,
+    dmg: [30, 48], level: 5, minFloor: 5, idIntReq: 6, idGoldCost: 110,
     desc: "Собран из баллистиры. Ломает стены, если до них дотянуться.",
     preferredEpic: "frost_nova",
     weaponSkill: {
@@ -110,7 +110,7 @@ export const EXTRA_GEAR: GearBaseDef[] = [
   /* ── ЛЕВАЯ РУКА: кинжалы и щиты ── */
   G({
     id: "dagger", name: "Кинжал затяжки", slot: "offHand",
-    dmg: [3, 5], price: 90, level: 1, minFloor: 1, idIntReq: 2, idGoldCost: 30,
+    dmg: [3, 5], level: 1, minFloor: 1, idIntReq: 2, idGoldCost: 30,
     desc: "Вторая рука не должна бездельничать.",
     preferredEpic: "shadow_volley",
     weaponSkill: {
@@ -121,19 +121,19 @@ export const EXTRA_GEAR: GearBaseDef[] = [
   }),
   G({
     id: "shield_round", name: "Круглый щит", slot: "offHand", shield: true,
-    armor: 2, hp: 14, price: 130, level: 1, minFloor: 1, idIntReq: 2, idGoldCost: 35,
+    armor: 2, hp: 14, level: 1, minFloor: 1, idIntReq: 2, idGoldCost: 35,
     desc: "Дуб, полоса и вмятина от чьего-то размаха.",
     preferredEpic: "ash_aegis",
   }),
   G({
     id: "shield_tower", name: "Башенный щит", slot: "offHand", shield: true,
-    armor: 4, hp: 34, evade: -0.02, price: 420, level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 80,
+    armor: 4, hp: 34, evade: -0.02, level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 80,
     desc: "Целая дверь, приставленная к лицу. Немного тормозит шаг.",
     preferredEpic: "ash_aegis",
   }),
   G({
     id: "buckler", name: "Калёный полущит", slot: "offHand", shield: true,
-    armor: 1, hp: 12, evade: 0.03, price: 180, level: 1, minFloor: 1, idIntReq: 2, idGoldCost: 40,
+    armor: 1, hp: 12, evade: 0.03, level: 1, minFloor: 1, idIntReq: 2, idGoldCost: 40,
     desc: "Лёгкий: закрывает и не мешает двигаться.",
     preferredEpic: "ash_aegis",
   }),
@@ -141,25 +141,25 @@ export const EXTRA_GEAR: GearBaseDef[] = [
   /* ── ШЛЕМЫ ── */
   G({
     id: "coif", name: "Капюшон контриника", slot: "head",
-    armor: 1, hp: 8, price: 70, level: 1, minFloor: 1, idIntReq: 2, idGoldCost: 30,
+    armor: 1, hp: 8, level: 1, minFloor: 1, idIntReq: 2, idGoldCost: 30,
     desc: "Сшит из колец и упрямства.",
     preferredEpic: "ash_aegis",
   }),
   G({
     id: "helm", name: "Шлем стражи", slot: "head",
-    armor: 2, hp: 18, price: 210, level: 2, minFloor: 2, idIntReq: 3, idGoldCost: 55,
+    armor: 2, hp: 18, level: 2, minFloor: 2, idIntReq: 3, idGoldCost: 55,
     desc: "С каймой и следом от топора.",
     preferredEpic: "ash_aegis",
   }),
   G({
     id: "greathelm", name: "Латный шлем", slot: "head",
-    armor: 4, hp: 34, evade: -0.02, price: 470, level: 4, minFloor: 4, idIntReq: 5, idGoldCost: 90,
+    armor: 4, hp: 34, evade: -0.02, level: 4, minFloor: 4, idIntReq: 5, idGoldCost: 90,
     desc: "Мир за решёткой виден хуже, но зато не долетает.",
     preferredEpic: "frost_nova",
   }),
   G({
     id: "crown_husk", name: "Венец пустого трона", slot: "head",
-    armor: 3, hp: 30, price: 640, level: 6, minFloor: 6, idIntReq: 6, idGoldCost: 120,
+    armor: 3, hp: 30, level: 6, minFloor: 6, idIntReq: 6, idGoldCost: 120,
     desc: "Тяжёлый, холодный и почему-то знакомый.",
     preferredEpic: "blood_lance",
   }),
@@ -167,19 +167,19 @@ export const EXTRA_GEAR: GearBaseDef[] = [
   /* ── БОТИНКИ ── */
   G({
     id: "shoes", name: "Кожаные ботинки", slot: "feet",
-    hp: 8, evade: 0.04, price: 65, level: 1, minFloor: 1, idIntReq: 2, idGoldCost: 30,
+    hp: 8, evade: 0.04, level: 1, minFloor: 1, idIntReq: 2, idGoldCost: 30,
     desc: "Просто ботинки. Но без них подземелье дороже.",
     preferredEpic: "shadow_volley",
   }),
   G({
     id: "greaves", name: "Наголенники", slot: "feet",
-    armor: 2, hp: 16, price: 240, level: 2, minFloor: 2, idIntReq: 3, idGoldCost: 55,
+    armor: 2, hp: 16, level: 2, minFloor: 2, idIntReq: 3, idGoldCost: 55,
     desc: "Бьёшь по щиколоткам — они бьют в ответ.",
     preferredEpic: "ash_aegis",
   }),
   G({
     id: "strider_boots", name: "Сапоги дальнобойщика", slot: "feet",
-    hp: 14, evade: 0.09, price: 360, level: 4, minFloor: 4, idIntReq: 4, idGoldCost: 80,
+    hp: 14, evade: 0.09, level: 4, minFloor: 4, idIntReq: 4, idGoldCost: 80,
     desc: "Подошвы помнят больше лестниц, чем ты.",
     preferredEpic: "shadow_volley",
   }),
@@ -187,19 +187,19 @@ export const EXTRA_GEAR: GearBaseDef[] = [
   /* ── НАРУЧИ ── */
   G({
     id: "wraps", name: "Витые наручи", slot: "wrists",
-    armor: 1, hp: 10, price: 80, level: 1, minFloor: 1, idIntReq: 2, idGoldCost: 30,
+    armor: 1, hp: 10, level: 1, minFloor: 1, idIntReq: 2, idGoldCost: 30,
     desc: "Кожа в три оборота — и ты не режешь себе запястья.",
     preferredEpic: "ash_aegis",
   }),
   G({
     id: "vambraces", name: "Латные наручи", slot: "wrists",
-    armor: 3, hp: 24, price: 340, level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 70,
+    armor: 3, hp: 24, level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 70,
     desc: "Держат отвод от удара снизу вверх.",
     preferredEpic: "blood_lance",
   }),
   G({
     id: "runed_bracers", name: "Рунные наручи", slot: "wrists",
-    armor: 2, hp: 22, evade: 0.05, price: 520, level: 5, minFloor: 5, idIntReq: 5, idGoldCost: 100,
+    armor: 2, hp: 22, evade: 0.05, level: 5, minFloor: 5, idIntReq: 5, idGoldCost: 100,
     desc: "Руны гасят первые секунды чужого заклинания.",
     preferredEpic: "fireball",
   }),
@@ -207,25 +207,25 @@ export const EXTRA_GEAR: GearBaseDef[] = [
   /* ── КОЛЬЦА (можно надеть в оба слота колец) ── */
   G({
     id: "ring_band", name: "Гладкое кольцо", slot: "ring1", altSlots: ["ring1", "ring2"],
-    hp: 10, price: 90, level: 1, minFloor: 1, idIntReq: 2, idGoldCost: 35,
+    hp: 10, level: 1, minFloor: 1, idIntReq: 2, idGoldCost: 35,
     desc: "Ничего не значит. Или значит, пока на нём ничего нет.",
     preferredEpic: "ash_aegis",
   }),
   G({
     id: "ring_edge", name: "Кольцо-лезвие", slot: "ring1", altSlots: ["ring1", "ring2"],
-    hp: 12, price: 280, level: 2, minFloor: 2, idIntReq: 3, idGoldCost: 60,
+    hp: 12, level: 2, minFloor: 2, idIntReq: 3, idGoldCost: 60,
     desc: "Носить удобно — если не сжимать кулак.",
     preferredEpic: "blood_lance",
   }),
   G({
     id: "ring_ward", name: "Перстень оберега", slot: "ring1", altSlots: ["ring1", "ring2"],
-    armor: 2, hp: 16, price: 380, level: 4, minFloor: 4, idIntReq: 4, idGoldCost: 85,
+    armor: 2, hp: 16, level: 4, minFloor: 4, idIntReq: 4, idGoldCost: 85,
     desc: "Щёлкает, когда рядом зло.",
     preferredEpic: "frost_nova",
   }),
   G({
     id: "ring_venom", name: "Кольцо с бороздкой", slot: "ring1", altSlots: ["ring1", "ring2"],
-    hp: 18, evade: 0.05, price: 470, level: 5, minFloor: 5, idIntReq: 5, idGoldCost: 95,
+    hp: 18, evade: 0.05, level: 5, minFloor: 5, idIntReq: 5, idGoldCost: 95,
     desc: "Бороздка заполнена тем, что не высыхает.",
     preferredEpic: "fireball",
   }),
@@ -233,19 +233,19 @@ export const EXTRA_GEAR: GearBaseDef[] = [
   /* ── ОБЕРЕГИ ── */
   G({
     id: "tooth", name: "Зуб из-под лестницы", slot: "amulet",
-    hp: 14, price: 110, level: 1, minFloor: 1, idIntReq: 2, idGoldCost: 35,
+    hp: 14, level: 1, minFloor: 1, idIntReq: 2, idGoldCost: 35,
     desc: "Кто-то его потерял и не вернулся искать.",
     preferredEpic: "shadow_volley",
   }),
   G({
     id: "icon", name: "Икона без лика", slot: "amulet",
-    hp: 26, price: 330, level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 70,
+    hp: 26, level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 70,
     desc: "Лицо вырезано, чтобы не глядело обратно.",
     preferredEpic: "ash_aegis",
   }),
   G({
     id: "soulstone", name: "Камень души", slot: "amulet",
-    hp: 34, armor: 1, price: 560, level: 5, minFloor: 5, idIntReq: 5, idGoldCost: 110,
+    hp: 34, armor: 1, level: 5, minFloor: 5, idIntReq: 5, idGoldCost: 110,
     desc: "Тёплый, пока ты жив.",
     preferredEpic: "fireball",
   }),
@@ -253,7 +253,7 @@ export const EXTRA_GEAR: GearBaseDef[] = [
   /* ── ФОКУСЫ: аксессуар для левой руки, поэтому конкурирует со щитом ── */
   G({
     id: "focus_rune", name: "Рунный фокус", slot: "offHand", stat: "int",
-    hp: 12, price: 240, level: 2, minFloor: 2, idIntReq: 3, idGoldCost: 55,
+    hp: 12, level: 2, minFloor: 2, idIntReq: 3, idGoldCost: 55,
     desc: "Камень с прорезью: в неё смотрят, чтобы увидеть чужую мысль.",
     preferredEpic: "frost_nova",
   }),
@@ -261,7 +261,7 @@ export const EXTRA_GEAR: GearBaseDef[] = [
   /* ── ВОЛШЕБНАЯ ПАЛОЧКА ── */
   G({
     id: "wand_ash", name: "Пепельная палочка", slot: "mainHand", stat: "int",
-    dmg: [6, 10], price: 300, level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 65,
+    dmg: [6, 10], level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 65,
     desc: "Обгоревший кончик всё ещё держит искру.",
     preferredEpic: "fireball",
     weaponSkill: {
