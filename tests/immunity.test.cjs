@@ -101,7 +101,7 @@ test("страх не обновляется, пока держится", () => 
   assert.equal(after.p.statuses.fear, 1, "повторный страх не продлевает");
 });
 
-test("страх заканчивается в конце раунда и даёт 1 раунд иммунитета", () => {
+test("страх заканчивается в конце раунда и даёт 3 раунда иммунитета", () => {
   const b = fight("ghost", ["attack"]);
   b.queue = ["p", "e"];
   b.idx = 0;
@@ -111,7 +111,9 @@ test("страх заканчивается в конце раунда и даё
   assert.equal(afterHero.p.statuses.fear, 1, "страх не тает на ходу героя");
   const roundEnd = withRandom(() => battle.enemyStep(afterHero));
   assert.equal(roundEnd.p.statuses.fear, 0, "страх кончился в конце раунда");
-  assert.equal(roundEnd.p.statuses.fearImmune, 1, "следующий раунд защищён");
+  assert.equal(roundEnd.p.statuses.fearImmune, 3, "три раунда защищён");
+  const tick = withRandom(() => battle.enemyStep({ ...roundEnd, idx: 0, queue: ["e"] }));
+  assert.equal(tick.p.statuses.fearImmune, 2, "иммунитет тает по одному в конце раунда");
   const nextRound = withRandom(() => battle.enemyStep({ ...roundEnd, idx: 0, queue: ["e", "p"] }));
   assert.equal(nextRound.p.statuses.fear, 0, "в защищённом раунде страх не ставится");
 });

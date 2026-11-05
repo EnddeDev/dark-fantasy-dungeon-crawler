@@ -226,7 +226,7 @@ export function ModalView({ game, state }: { game: GameController; state: GameSt
       return (
         <Modal
           title="Уйти с этажа без стража"
-          sub="Страж яруса ещё жив — проход к лестнице не открыт"
+          sub="В этом походе ещё никто из стражей не повержен — уход заберёт 20% добычи"
           actions={
             <>
               <Btn onClick={close}>Остаться в подземелье</Btn>

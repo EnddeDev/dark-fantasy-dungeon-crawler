@@ -379,6 +379,8 @@ export interface Maze {
 }
 
 export interface Run {
+  /** Страж хоть одного яруса в этом походе побеждён: выход без потерь. */
+  bossSlain?: boolean;
   floor: number;
   maze: Maze;
   pos: Cell;

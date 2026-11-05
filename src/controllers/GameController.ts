@@ -238,7 +238,8 @@ export class GameController {
   leaveRun(confirmed = false): void {
     const { run, player } = this.model.getSnapshot();
     if (!run) return;
-    const rate = run.maze.bossDefeated ? 0 : EXIT_LOSS_RATE;
+    /* Победа над стражем в этом походе (любого яруса) снимает потери при выходе. */
+    const rate = run.bossSlain || run.maze.bossDefeated ? 0 : EXIT_LOSS_RATE;
     if (rate > 0 && !confirmed) {
       const counts = exitLossCounts(run, rate);
       this.model.update({ modal: { kind: "leave", gold: counts.gold, items: counts.items, gear: counts.gear } });

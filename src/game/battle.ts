@@ -1968,6 +1968,9 @@ function gainLoot(b: BattleState) {
  * после него 1 раунд иммунитета. Если герой уже походил в этом раунде, страх
  * переходит на следующий раунд целиком (2 раунда счётчика), иначе — на текущий.
  */
+/** После страха герой ещё столько раундов не боится (иммунитет тает по одному в конце раунда). */
+const FEAR_IMMUNE_ROUNDS = 3;
+
 function applyHeroFear(b: BattleState, note: string) {
   if (b.p.statuses.fear > 0) return;
   if (b.p.statuses.fearImmune > 0) {
@@ -2163,11 +2166,11 @@ function advance(b: BattleState) {
     if (fearWas > 0) {
       b.p.statuses.fear = fearWas - 1;
       if (b.p.statuses.fear === 0) {
-        b.p.statuses.fearImmune = 1;
-        push(b, "Страх отпустил. В следующем раунде тебя не испугать.", "sys");
+        b.p.statuses.fearImmune = FEAR_IMMUNE_ROUNDS;
+        push(b, `Страх отпустил. Ещё ${FEAR_IMMUNE_ROUNDS} раунда тебя не испугать.`, "sys");
       }
     } else if (b.p.statuses.fearImmune > 0) {
-      b.p.statuses.fearImmune = 0;
+      b.p.statuses.fearImmune -= 1;
     }
 
     b.p.statuses.wound = Math.max(0, b.p.statuses.wound - 1);

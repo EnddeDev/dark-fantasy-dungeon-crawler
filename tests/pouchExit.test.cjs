@@ -132,3 +132,15 @@ test("выход без победы над стражем: сначала ок�
   assert.equal(lobby.modal.kind, "note", "без окна потерь");
   assert.equal(lobby.player.gold, PlayerFactory.createInitial().gold + 50, "всё золото на месте");
 });
+
+test("выход: страж, побеждённый раньше в этом походе, снимает потери и на следующем ярусе", () => {
+  const game = new GameController(new MemoryStorage());
+  game.enterLobby("train");
+  game.startRun(1);
+  /* Страж 1 яруса побеждён, герой спустился на 2 ярус, страж 2 яруса ещё жив. */
+  game.model.updateRun((run) => ({ ...run, gold: 50, floor: 2, bossSlain: true, maze: { ...run.maze, bossDefeated: false } }));
+  game.leaveRun();
+  const snap = game.model.getSnapshot();
+  assert.equal(snap.modal.kind, "note", "окна потерь нет");
+  assert.equal(snap.player.gold, PlayerFactory.createInitial().gold + 50, "всё золото на месте");
+});

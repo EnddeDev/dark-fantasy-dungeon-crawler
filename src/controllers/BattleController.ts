@@ -96,6 +96,7 @@ export class BattleController {
       const lvlNote = levelsGained > 0 ? ` Повышен уровень (+${levelsGained * 3} очк. хар.)!` : "";
       return {
         ...run,
+        bossSlain: run.bossSlain || b.isBoss,
         maze,
         battleCell: null,
         clearedMonsters:
