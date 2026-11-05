@@ -49,11 +49,12 @@ import {
   epicMagnitude,
   legendaryMagnitude,
   rareAffixMagnitude,
+  scaleByLevel,
   scaleMultByLevel,
   scaleGearStatByLevel,
   rollEffectBase,
+  GEAR_EFFECT_BASE,
   techniqueIntReq,
-  gearLevelMultiplier,
   ARMOR_CURVE,
   armorValue,
 } from "./gearScaling";
@@ -201,54 +202,47 @@ export const PASSIVES: Record<StatKey, Record<"5" | "10", [Passive, Passive]>> =
 
 export const WEAR_META: Record<
   WearTier,
-  { name: string; mult: number; priceMult: number; desc: string }
+  { name: string; mult: number; desc: string }
 > = {
   new: {
     name: "Новое",
     mult: WEAR_RANGE.new.base,
-    priceMult: 1.35,
     desc: `Множитель ×${WEAR_RANGE.new.base} к характеристикам предмета.`,
   },
   worn: {
     name: "Ношенное",
     mult: WEAR_RANGE.worn.base,
-    priceMult: 1.0,
     desc: `Множитель ×${WEAR_RANGE.worn.base} к характеристикам предмета.`,
   },
   battered: {
     name: "Изношенное",
     mult: WEAR_RANGE.battered.base,
-    priceMult: 0.7,
     desc: `Множитель ×${WEAR_RANGE.battered.base} к характеристикам предмета.`,
   },
 };
 
 export const RARITY_META: Record<
   RarityTier,
-  { name: string; tone: "mute" | "verd" | "flame" | "rubric"; priceMult: number; summary: string }
+  { name: string; tone: "mute" | "verd" | "flame" | "rubric"; summary: string }
 > = {
   common: {
     name: "Обычное",
     tone: "mute",
-    priceMult: 1.0,
     summary: "Только базовые характеристики (и техника оружия).",
   },
   rare: {
     name: "Редкое",
     tone: "verd",
-    priceMult: 1.45,
     summary: "Базовые характеристики + 1 дополнительный параметр.",
   },
   epic: {
     name: "Эпическое",
     tone: "flame",
-    priceMult: 2.1,
     summary: "Свойство Редкого + особая активная способность предмета.",
   },
   legendary: {
     name: "Легендарное",
     tone: "rubric",
-    priceMult: 3.1,
     summary: "Свойства Редкого и Эпического + уникальный пассивный эффект.",
   },
 };
@@ -648,7 +642,6 @@ export interface GearBaseDef {
   id: string;
   name: string;
   slot: Slot;
-  price: number;
   minFloor: number;
   /** Уровень предмета 1…10: требования исследования и ассортимент лавки. */
   level?: number;
@@ -692,7 +685,6 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
     name: "Ржавый финский нож",
     slot: "weapon",
     dmg: [4, 6],
-    price: 55,
     minFloor: 1,
     idIntReq: 2,
     idGoldCost: 30,
@@ -714,7 +706,6 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
     name: "Рапира дуэлянта",
     slot: "weapon",
     dmg: [5, 8],
-    price: 155,
     minFloor: 1,
     idIntReq: 3,
     idGoldCost: 45,
@@ -736,7 +727,6 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
     name: "Меч стражи",
     slot: "weapon",
     dmg: [6, 10],
-    price: 175,
     minFloor: 1,
     idIntReq: 3,
     idGoldCost: 50,
@@ -758,7 +748,6 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
     name: "Боевой посох пепла",
     slot: "weapon",
     dmg: [6, 9],
-    price: 190,
     minFloor: 1,
     idIntReq: 3,
     idGoldCost: 50,
@@ -780,7 +769,6 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
     name: "Топор палача",
     slot: "weapon",
     dmg: [8, 13],
-    price: 310,
     minFloor: 2,
     idIntReq: 4,
     idGoldCost: 70,
@@ -802,7 +790,6 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
     name: "Молот паломника",
     slot: "weapon",
     dmg: [10, 16],
-    price: 490,
     minFloor: 3,
     idIntReq: 5,
     idGoldCost: 90,
@@ -824,7 +811,6 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
     name: "Клинок бездны",
     slot: "weapon",
     dmg: [12, 18],
-    price: 780,
     minFloor: 4,
     idIntReq: 6,
     idGoldCost: 115,
@@ -849,7 +835,6 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
     slot: "armor",
     armor: 1,
     hp: 6,
-    price: 45,
     minFloor: 1,
     idIntReq: 2,
     idGoldCost: 25,
@@ -862,7 +847,6 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
     slot: "armor",
     armor: 2,
     hp: 14,
-    price: 185,
     minFloor: 1,
     idIntReq: 3,
     idGoldCost: 50,
@@ -876,7 +860,6 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
     armor: 2,
     hp: 16,
     evade: 0.06,
-    price: 300,
     minFloor: 2,
     idIntReq: 4,
     idGoldCost: 65,
@@ -889,7 +872,6 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
     slot: "armor",
     armor: 4,
     hp: 28,
-    price: 430,
     minFloor: 3,
     idIntReq: 5,
     idGoldCost: 85,
@@ -903,7 +885,6 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
     name: "Амулет живой воды",
     slot: "trinket",
     hp: 16,
-    price: 150,
     minFloor: 1,
     idIntReq: 3,
     idGoldCost: 45,
@@ -916,7 +897,6 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
     slot: "trinket",
     hp: 20,
     armor: 1,
-    price: 260,
     minFloor: 2,
     idIntReq: 4,
     idGoldCost: 60,
@@ -929,7 +909,6 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
     slot: "trinket",
     hp: 10,
     evade: 0.1,
-    price: 320,
     minFloor: 2,
     idIntReq: 4,
     idGoldCost: 70,
@@ -943,7 +922,6 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
     hp: 18,
     armor: 1,
     evade: 0.06,
-    price: 440,
     minFloor: 3,
     idIntReq: 5,
     idGoldCost: 90,
@@ -1330,48 +1308,48 @@ export function rollScaleMult(stat: StatKey, rng: () => number = Math.random): n
 const ARCHETYPE_GEAR: GearBaseDef[] = [
   {
     id: "bulwark_mace", name: "Булава бастиона", slot: "mainHand", gearClass: "medium", stat: "str", archetype: "bulwark",
-    dmg: [6, 10], armor: 1, hp: 12, price: 420, level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 80,
+    dmg: [6, 10], armor: 1, hp: 12, level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 80,
     desc: "Короткая булава для боя за щитом. Чем тяжелее доспех, тем страшнее её ответ.",
     preferredEpic: "ash_aegis",
     weaponSkill: { id: "bulwark_answer", name: "Ответ бастиона", intReq: 3, cooldown: 2, scaleStat: "str", scaleMult: 2.0, effect: "armor_damage", desc: "Удар щитом и булавой: урон оружия + 2.0×СИЛ и +50% брони к урону; включает Защиту." },
   },
   {
     id: "barbarian_greataxe", name: "Секира кровавого обета", slot: "mainHand", hands: 2, gearClass: "heavy", stat: "str", archetype: "barbarian",
-    dmg: [24, 39], hp: 26, price: 760, level: 5, minFloor: 5, idIntReq: 5, idGoldCost: 120,
+    dmg: [24, 39], hp: 26, level: 5, minFloor: 5, idIntReq: 5, idGoldCost: 120,
     desc: "Двуручная секира втрое тяжелее одноручного топора. Не защищает — заставляет бить первым и последним.",
     preferredEpic: "blood_lance",
     weaponSkill: { id: "blood_reckoning", name: "Кровавый расчёт", intReq: 4, cooldown: 3, scaleStat: "str", scaleMult: 3.0, effect: "missing_hp", desc: "Урон оружия + 3.0×СИЛ; за каждые 10% недостающего здоровья +6% урона (до 60%)." },
   },
   {
     id: "blood_hide", name: "Шкура кровавого зверя", slot: "body", gearClass: "medium", stat: "str", archetype: "barbarian",
-    hp: 64, price: 520, level: 4, minFloor: 4, idIntReq: 4, idGoldCost: 90,
+    hp: 64, level: 4, minFloor: 4, idIntReq: 4, idGoldCost: 90,
     desc: "Не держит удар — держит жизнь. Варвар выбирает мясо и кровь вместо стали.",
     preferredEpic: "blood_lance",
   },
   {
     id: "assassin_stiletto", name: "Стилет последней ночи", slot: "mainHand", gearClass: "light", stat: "agi", archetype: "assassin",
-    dmg: [5, 8], price: 480, level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 85,
+    dmg: [5, 8], level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 85,
     desc: "Тонкий клинок для первого удара. В начале боя находит щель в любой броне.",
     preferredEpic: "shadow_volley",
     weaponSkill: { id: "death_mark", name: "Метка смерти", intReq: 3, cooldown: 3, scaleStat: "agi", scaleMult: 2.2, effect: "guaranteed_crit", desc: "Урон оружия + 2.2×ЛОВ; в первые 2 раунда крит гарантирован." },
   },
   {
     id: "ninja_kusarigama", name: "Кусаригама тени", slot: "mainHand", gearClass: "light", stat: "agi", archetype: "ninja",
-    dmg: [5, 7], price: 460, level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 85,
+    dmg: [5, 7], level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 85,
     desc: "Серп на цепи. Не сильнее меча, но оставляет руку свободной для порохов и ядов.",
     preferredEpic: "shadow_volley",
     weaponSkill: { id: "shadow_snare", name: "Теневой захват", intReq: 3, cooldown: 2, scaleStat: "agi", scaleMult: 1.8, effect: "debuff_damage", desc: "Урон оружия + 1.8×ЛОВ; +10% урона за каждый негативный эффект на враге (до 40%)." },
   },
   {
     id: "warlock_scepter", name: "Скипетр тёмного пакта", slot: "mainHand", gearClass: "light", stat: "int", archetype: "warlock",
-    dmg: [6, 9], price: 540, level: 4, minFloor: 4, idIntReq: 5, idGoldCost: 100,
+    dmg: [6, 9], level: 4, minFloor: 4, idIntReq: 5, idGoldCost: 100,
     desc: "Не для удара — для печати. Каждый приём возвращает часть крови владельца.",
     preferredEpic: "fireball",
     weaponSkill: { id: "pact_drain", name: "Отток пакта", intReq: 4, cooldown: 2, scaleStat: "int", scaleMult: 3.0, effect: "skill_leech", desc: "Урон оружия + 3.0×ИНТ сквозь броню; лечит на 25% нанесённого урона и сокращает откат этого приёма на 1." },
   },
   {
     id: "sage_censer", name: "Кадило живого слова", slot: "mainHand", gearClass: "light", stat: "int", archetype: "sage",
-    dmg: [5, 8], price: 560, level: 4, minFloor: 4, idIntReq: 5, idGoldCost: 100,
+    dmg: [5, 8], level: 4, minFloor: 4, idIntReq: 5, idGoldCost: 100,
     desc: "Дым от кадла складывается в строки. Мудрец творит свитки прямо в бою.",
     preferredEpic: "ash_aegis",
     weaponSkill: { id: "word_creation", name: "Слово творения", intReq: 4, cooldown: 3, scaleStat: "int", scaleMult: 2.4, effect: "create_scroll", desc: "Урон оружия + 2.4×ИНТ; создаёт 1 случайный свиток и сразу применяет его без траты хода." },
@@ -1664,11 +1642,6 @@ function weaponTypeOfBase(item: GearItem): WeaponType | null {
 
 let gearSeq = 100;
 
-/** Множитель цены по уровню предмета: 1 + 0.17 × уровень (1-й — 1.17, 10-й — 2.7). */
-export function gearLevelMult(item: GearItem): number {
-  return gearLevelMultiplier(item.level ?? 1);
-}
-
 export function canTwoHandGrip(item: GearItem): boolean {
   const meta = weaponMetaFor(item);
   if (!meta) return false;
@@ -1762,16 +1735,6 @@ export function scaledGearStats(item: GearItem) {
   return { base, kind, dmg, armor, hp, evade, evadePp, skill: weaponSkillFor(item), level, wearMult: m };
 }
 
-/**
- * Ценность вещи без учёта качества: база × уровень × изношенность.
- * По ней считаются работа кузницы и цены — иначе на дешёвых вещах трата
- * выходила дороже самой находки.
- */
-export function gearBaseValue(item: GearItem): number {
-  const base = GEAR_BASES[item.baseId] ?? GEAR_BASES.knife;
-  return base.price * gearLevelMult(item) * WEAR_META[item.wear].priceMult;
-}
-
 /** Золото за исследование: 20 за каждый уровень предмета. */
 export const IDENTIFY_GOLD_PER_LEVEL = 20;
 
@@ -1845,19 +1808,100 @@ export function rollWearMult(wear: WearTier, rng: () => number = Math.random): n
   return Number((range.lo + rng() * (range.hi - range.lo)).toFixed(3));
 }
 
-export function gearBuyPrice(item: GearItem): number {
-  const base = GEAR_BASES[item.baseId] ?? GEAR_BASES.knife;
-  /* Пока предмет не исследован, лавочник берёт цену от изношенности и уровня, без наценки за редкость */
-  const wearMult = WEAR_META[item.wear].priceMult;
-  const rarityMult = item.identified ? RARITY_META[item.rarity].priceMult : 1.0;
-  return Math.max(20, Math.round((base.price * gearLevelMult(item) * wearMult * rarityMult) / 5) * 5);
+/* ─────────────  ОЧКИ ПОЛЕЗНОСТИ И ЦЕНА  ───────────── */
+
+/** Золота за одно очко полезности. */
+export const GEAR_POINT_GOLD = 3;
+
+/**
+ * Веса очков полезности. Очки считаются по фактическим значениям предмета,
+ * поэтому уровень, состояние и качество входят в цену сами.
+ */
+export const GEAR_POINT_WEIGHTS = {
+  /** за единицу среднего урона */
+  damage: 1,
+  /** за единицу брони */
+  armor: 2,
+  /** за единицу здоровья */
+  hp: 0.3,
+  /** за 1% уклонения */
+  evade: 3,
+  /** за эффект или свойство на 1 уровне; дальше растёт вместе со значением эффекта */
+  effect: 5,
+  /** приём оружия: база + за масштаб − за откат, но не ниже минимума */
+  techniqueBase: 8,
+  techniqueScale: 3,
+  techniqueCooldown: 1.5,
+  techniqueMin: 3,
+  /** приём брони */
+  armorSkill: 6,
+  /** эпический приём */
+  epicSkill: 20,
+  /** пассивка архетипа */
+  passive: 15,
+  /** легендарная пассивка */
+  legendaryPassive: 25,
+} as const;
+
+/** Очки полезности по частям предмета. */
+export interface GearPointParts {
+  damage: number;
+  armor: number;
+  hp: number;
+  evade: number;
+  effects: number;
+  technique: number;
+  armorSkill: number;
+  epicSkill: number;
+  passive: number;
+  legendaryPassive: number;
 }
 
+/** Очки эффекта: класс × (значение на уровне предмета / значение на 1 уровне). */
+function effectPoints(id: GearEffectId, level: number): number {
+  const w = GEAR_POINT_WEIGHTS.effect;
+  const def = GEAR_EFFECT_BASE[id];
+  if (!def || def.value <= 0) return w;
+  const p = def.precision ?? 1;
+  return w * (scaleByLevel(def.value, level, p) / scaleByLevel(def.value, 1, p));
+}
+
+/** Разбивка очков полезности по частям предмета. */
+export function gearPointParts(item: GearItem): GearPointParts {
+  const w = GEAR_POINT_WEIGHTS;
+  const s = scaledGearStats(item);
+  const level = item.level ?? 1;
+  const skill = weaponSkillFor(item);
+  const damage = s.dmg ? (s.dmg[0] + s.dmg[1]) / 2 : 0;
+  return {
+    damage: w.damage * damage,
+    armor: w.armor * (s.armor ?? 0),
+    hp: w.hp * (s.hp ?? 0),
+    evade: w.evade * (s.evadePp ?? 0),
+    effects: (item.effects ?? []).reduce((sum, id) => sum + effectPoints(id, level), 0),
+    technique: skill
+      ? Math.max(w.techniqueMin, w.techniqueBase + w.techniqueScale * skill.scaleMult - w.techniqueCooldown * skill.cooldown)
+      : 0,
+    armorSkill: item.armorSkill ? w.armorSkill : 0,
+    epicSkill: item.epicSkill ? w.epicSkill : 0,
+    passive: item.passive ? w.passive : 0,
+    legendaryPassive: item.legendaryPassive ? w.legendaryPassive : 0,
+  };
+}
+
+/** Итог очков полезности предмета. */
+export function gearUtilityPoints(item: GearItem): number {
+  return Object.values(gearPointParts(item)).reduce((a, b) => a + b, 0);
+}
+
+/** Покупка: очки × золото за очко, округлено до 5, не ниже 20. */
+export function gearBuyPrice(item: GearItem): number {
+  return Math.max(20, Math.round((gearUtilityPoints(item) * GEAR_POINT_GOLD) / 5) * 5);
+}
+
+/** Продажа: 45% от цены покупки, не ниже 10. */
 export function gearSellPrice(item: GearItem): number {
-  const base = GEAR_BASES[item.baseId] ?? GEAR_BASES.knife;
-  const wearMult = WEAR_META[item.wear].priceMult;
-  const rarityMult = item.identified ? RARITY_META[item.rarity].priceMult : 0.9;
-  return Math.max(10, Math.round((base.price * gearLevelMult(item) * wearMult * rarityMult * 0.45) / 5) * 5);
+  return Math.max(10, Math.round((gearUtilityPoints(item) * GEAR_POINT_GOLD * 0.45) / 5) * 5);
 }
 
 
