@@ -210,6 +210,33 @@ test("battle puts actions in the center and the log under the enemy on the right
 });
 
 
+test("battle shows the concentration meter and the archetype special, enabled only at 5", () => {
+  const p = makePlayer({ archetype: "barbarian" });
+  const render = (conc) => {
+    const b = freshBattle(p, 1);
+    b.queue = ["p", "e"];
+    b.idx = 0;
+    b.p.concentration = conc;
+    return renderToStaticMarkup(React.createElement(BattleView, {
+      battle: b, onAct: noop, onEnemyTurn: noop, onContinue: noop,
+    }));
+  };
+  const buttonAt = (html) => {
+    const at = html.indexOf("Спец-приём: Кровавый расчёт");
+    assert.ok(at > 0, "кнопка спец-приёма есть у варвара");
+    const start = html.lastIndexOf("<button", at);
+    return html.slice(start, at);
+  };
+  const low = render(3);
+  assert.ok(low.includes("Концентрация"), "шкала концентрации видна");
+  assert.ok(low.includes("3/5"));
+  assert.ok(/ disabled=""/.test(buttonAt(low)), "при 3 кнопка закрыта");
+  const full = render(5);
+  assert.ok(full.includes("5/5"));
+  assert.ok(!/ disabled=""/.test(buttonAt(full)), "при 5 кнопка открыта");
+});
+
+
 test("dungeon map renders distinct biome palettes, textures and rules", () => {
   const cases = [
     ["swamp", "Подземное болото", "#9fb87a", "Лечение обоих участников −50%"],

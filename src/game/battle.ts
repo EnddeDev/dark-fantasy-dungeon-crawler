@@ -112,7 +112,7 @@ import {
   type OilKind,
 } from "./statusEffects";
 import { damageTypeName, isDamageElement } from "./damageTypes";
-import type { ArchetypeId } from "./archetypes";
+import { ARCHETYPES, type ArchetypeId } from "./archetypes";
 import type { GearEffectId, GearPassiveId } from "./gearEffects";
 import {
   GEAR_PASSIVE_BASE,
@@ -262,6 +262,8 @@ export interface BattleState {
     /** Счётчики за текущий ход героя: сбрасываются, когда очередь переходит дальше. */
     turnConsumables: number;
     turnScrolls: number;
+    /** Концентрация 0–5: атака +1, приём −1, расходник +1, защита +2; при 5 — спец-приём архетипа. */
+    concentration: number;
     /** Библиотека душ: первый удар по герою в бою уже заблокирован. */
     sageWardUsed: boolean;
     statuses: {
@@ -296,6 +298,10 @@ export interface BattleState {
       pactElixir: number;
       /** Полная защита от урона (свитки/приёмы мудреца). */
       fullGuard: number;
+      /** Неуязвимость (спец-приём колдуна): поглощает удары, приёмы и периодический урон. */
+      invulnerable: number;
+      /** Броня стойки, которая добавится к следующей обычной атаке бастиона (один раз). */
+      bulwarkStrike: number;
       /** Неуловимость: физические атаки врага проходят мимо, раунды. */
       evadeTurn: number;
       /** Ответный замах: каждый физический удар врага, который прошёл, получает ответ, раунды. */
@@ -333,6 +339,8 @@ export interface BattleState {
     firstAttackDone: boolean;
   };
   bag: Record<string, number>;
+  /** Созданное в бою (свитки мудреца, расходники ниндзя): лежит в bag, герою после боя не переходит. */
+  conjured: Record<string, number>;
   queue: ("p" | "e")[];
   idx: number;
   round: number;
@@ -350,6 +358,7 @@ export type PlayerAction =
   | { type: "armor_skill"; id: string }
   | { type: "item"; id: string }
   | { type: "guard" }
+  | { type: "archetype_skill" }
   | { type: "flee"; rate?: number };
 
 let flashSeq = 0;
@@ -904,6 +913,7 @@ function clone(b: BattleState): BattleState {
       statuses: { ...b.p.statuses, immune: { ...b.p.statuses.immune } },
     },
     bag: { ...b.bag },
+    conjured: { ...b.conjured },
     log: b.log.slice(-70),
     queue: [...b.queue],
     loot: {
@@ -1017,6 +1027,7 @@ export function newBattle(
       immortalUsed: false,
       turnConsumables: 0,
       turnScrolls: 0,
+      concentration: 0,
       sageWardUsed: false,
       statuses: {
         wound: pl.statuses.wound,
@@ -1039,6 +1050,8 @@ export function newBattle(
         immune: {},
         pactElixir: 0,
         fullGuard: 0,
+        invulnerable: 0,
+        bulwarkStrike: 0,
         evadeTurn: 0,
         counterTurn: 0,
         tempArmor: 0,
@@ -1062,6 +1075,7 @@ export function newBattle(
       firstAttackDone: false,
     },
     bag: { ...pl.bag },
+    conjured: {},
     queue: buildQueue(firstRoundAp, s.ap),
     idx: 0,
     round: 1,
@@ -1713,7 +1727,7 @@ function damageAfterPlayerDefense(
 
 /** Шанс, что удар по герою вообще попадёт (промахи мрака, ослепления, уклонения). Блокировки, которые срабатывают всегда, дают 0. */
 function playerHitChance(b: BattleState, kind: "phys" | "magic", strike: boolean, ignoreDefense: boolean): number {
-  if (b.p.statuses.fullGuard > 0 || b.p.statuses.dodgeNext > 0 || b.p.statuses.smoke > 0) return 0;
+  if (b.p.statuses.fullGuard > 0 || b.p.statuses.invulnerable > 0 || b.p.statuses.dodgeNext > 0 || b.p.statuses.smoke > 0) return 0;
   if (!ignoreDefense && kind === "phys" && b.p.statuses.evadeTurn > 0) return 0;
   let p = 1;
   const darkMiss = (b.torchTurns ?? 0) > 0 ? 0 : biomeMissChance(b.biome);
@@ -1749,6 +1763,11 @@ function incoming(
   if (enemyOil(b, "light") && Math.random() < OIL_BLIND_MISS) {
     flash(b, "p", "miss", 0);
     push(b, `${b.enemy.def.name} ослеплён светом: ${src} — промах.`, "sys");
+    return false;
+  }
+  if (b.p.statuses.invulnerable > 0) {
+    flash(b, "p", "guard", 0);
+    push(b, `Неуязвимость поглощает удар (${src}).`, "p");
     return false;
   }
   if (b.p.statuses.fullGuard > 0) {
@@ -1931,29 +1950,30 @@ function advance(b: BattleState) {
   const idx = b.idx + 1;
   if (idx >= b.queue.length) {
     /* конец раунда */
-    if (b.p.statuses.wound > 0 && !hasLeg(b, "titan_heart")) {
+    const warded = b.p.statuses.invulnerable > 0;
+    if (!warded && b.p.statuses.wound > 0 && !hasLeg(b, "titan_heart")) {
       const stacks = playerDotStacks(b, "wound");
       const d = b.p.statuses.woundTick * stacks;
       b.p.hp -= d;
       push(b, `Кровотечение отнимает ${d} здоровья${stacks > 1 ? ` (${stacks} наложения)` : ""}.`, "sys");
     }
-    if (b.p.statuses.poison > 0 && b.p.hp > 0) {
+    if (!warded && b.p.statuses.poison > 0 && b.p.hp > 0) {
       const stacks = playerDotStacks(b, "poison");
       const d = b.p.statuses.poisonTick * stacks;
       b.p.hp -= d;
       push(b, `Яд в твоей крови отнимает ${d} здоровья${stacks > 1 ? ` (${stacks} наложения)` : ""}.`, "e");
     }
-    if (b.p.statuses.burn > 0 && b.p.hp > 0) {
+    if (!warded && b.p.statuses.burn > 0 && b.p.hp > 0) {
       const d = b.p.statuses.burnTick;
       b.p.hp -= d;
       push(b, `Горение отнимает ${d} здоровья.`, "e");
     }
-    if (b.p.statuses.chill > 0 && b.p.hp > 0) {
+    if (!warded && b.p.statuses.chill > 0 && b.p.hp > 0) {
       const d = magicTickFrom(b.p.statuses.chillTick, combatChance(b.p.chanceLayers.magicResist));
       b.p.hp -= d;
       push(b, `Обморожение отнимает ${d} здоровья и режет лечение вдвое.`, "e");
     }
-    if (b.p.statuses.curse > 0 && b.p.hp > 0) {
+    if (!warded && b.p.statuses.curse > 0 && b.p.hp > 0) {
       const d = magicTickFrom(b.p.statuses.curseTick, combatChance(b.p.chanceLayers.magicResist));
       b.p.hp -= d;
       push(b, `Проклятие выжигает ${d} здоровья.`, "e");
@@ -2050,6 +2070,7 @@ function advance(b: BattleState) {
     b.p.statuses.quickblade = Math.max(0, b.p.statuses.quickblade - 1);
     b.p.statuses.pactElixir = Math.max(0, b.p.statuses.pactElixir - 1);
     b.p.statuses.fullGuard = Math.max(0, b.p.statuses.fullGuard - 1);
+    b.p.statuses.invulnerable = Math.max(0, b.p.statuses.invulnerable - 1);
     b.p.statuses.evadeTurn = Math.max(0, b.p.statuses.evadeTurn - 1);
     b.p.statuses.counterTurn = Math.max(0, b.p.statuses.counterTurn - 1);
     for (const k of IMMUNITY_EFFECTS) {
@@ -2146,16 +2167,134 @@ function advance(b: BattleState) {
 }
 
 const CREATED_SCROLLS = ["scroll_bolt", "scroll_heal", "scroll_frost", "scroll_terror"];
+/* ═══════════  СОЗДАННОЕ В БОЮ И КОНЦЕНТРАЦИЯ  ═══════════ */
+
+/** Созданное в бою кладётся в боевой рюкзак и помечается, чтобы не перейти герою после боя. */
+function addConjured(b: BattleState, id: string) {
+  b.bag[id] = (b.bag[id] ?? 0) + 1;
+  b.conjured[id] = (b.conjured[id] ?? 0) + 1;
+}
+
+/** Расход из рюкзака: сначала тратится созданное в бою, поэтому личный запас не меняется. */
+function spendBagItem(b: BattleState, id: string) {
+  b.bag[id] = (b.bag[id] ?? 0) - 1;
+  if (b.bag[id] <= 0) delete b.bag[id];
+  const c = b.conjured[id] ?? 0;
+  if (c > 0) {
+    if (c === 1) delete b.conjured[id];
+    else b.conjured[id] = c - 1;
+  }
+}
+
+/** Рюкзак героя после боя (победа, побег, сохранение): без созданного в бою. */
+export function persistentBag(b: BattleState): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [id, n] of Object.entries(b.bag)) {
+    const left = n - (b.conjured[id] ?? 0);
+    if (left > 0) out[id] = left;
+  }
+  return out;
+}
+
+export const MAX_CONCENTRATION = 5;
+/** Спец-приём архетипа открывается при полной концентрации и тратит её всю. */
+const SPECIAL_CONCENTRATION = 5;
+/** Пул расходников ниндзя: метательные, дымовая бомба исключена — она не наносит урона. */
+const NINJA_CONJURE_POOL = ["serrated_knife", "poison_dart", "acid_vial", "blast_bomb"];
+const NINJA_CONJURED = 5;
+const NINJA_THROWS = 2;
+const SAGE_CONJURED = 2;
+const SAGE_VAMP_BONUS = 0.25;
+const WARLOCK_HP_SHARE = 0.5;
+
+/** Концентрация за ход: атака +1, приём −1, расходник +1, защита +2. Только для хода героя, не для внутренних розыгрышей. */
+function adjustConcentration(b: BattleState, type: PlayerAction["type"]) {
+  const before = b.p.concentration;
+  let delta = 0;
+  if (type === "attack") delta = 1;
+  else if (type === "weapon_skill" || type === "epic_skill" || type === "armor_skill") delta = -1;
+  else if (type === "item") delta = 1;
+  else if (type === "guard") delta = 2;
+  if (delta === 0) return;
+  b.p.concentration = Math.max(0, Math.min(MAX_CONCENTRATION, before + delta));
+  if (before < MAX_CONCENTRATION && b.p.concentration === MAX_CONCENTRATION && b.p.archetype) {
+    push(b, `Концентрация ${MAX_CONCENTRATION}/${MAX_CONCENTRATION}: спец-приём «${ARCHETYPES[b.p.archetype].special.name}» готов.`, "p");
+  }
+}
+
+/** Причина, по которой спец-приём сейчас нельзя применить (или null). Концентрация не тратится при отказе. */
+function archetypeSpecialBlock(b: BattleState): string | null {
+  const arch = b.p.archetype;
+  if (!arch) return "У тебя нет архетипа: спец-приём недоступен.";
+  if (b.p.concentration < SPECIAL_CONCENTRATION) {
+    return `Спец-приём открывается при концентрации ${SPECIAL_CONCENTRATION} (сейчас ${b.p.concentration}).`;
+  }
+  if (b.p.statuses.sealSkills > 0) return "Печать забвения запрещает приёмы в этот ход.";
+  if (arch === "barbarian" && b.p.hp >= b.p.maxHp) return "Кровавый расчёт нужен недостающее здоровье: концентрация не потрачена.";
+  if (arch === "ninja" && b.p.statuses.sealItems > 0) return "Печать немоты запрещает расходники в этот ход.";
+  return null;
+}
+
+/** Спец-приём архетипа. Вызывается только после archetypeSpecialBlock. */
+function runArchetypeSpecial(b: BattleState, arch: ArchetypeId) {
+  const sp = ARCHETYPES[arch].special;
+  push(b, `«${sp.name}»: концентрация потрачена.`, "p");
+  if (arch === "barbarian") {
+    const missing = b.p.maxHp - b.p.hp;
+    hitEnemy(b, Math.max(1, missing), "phys", ` [${sp.name}: недостающее здоровье ${missing}]`);
+  } else if (arch === "bulwark") {
+    b.p.guard = true;
+    const armorNow = Math.max(1, Math.round(playerArmorNow(b)));
+    const heal = healPlayer(b, armorNow);
+    if (heal > 0) flash(b, "p", "heal", heal);
+    b.p.statuses.bulwarkStrike = armorNow;
+    push(b, `Стойка-щит: +${heal} здоровья; следующая атака получит +${armorNow} урона от брони.`, "p");
+  } else if (arch === "assassin") {
+    const { d } = calcWeaponRoll(b, 1, 0, { forceCrit: true });
+    const dealt = hitEnemy(b, d, "phys", ` [${sp.name}, КРИТ!]`);
+    applyVamp(b, dealt, 0.2, "weapon");
+    if (dealt > 0) oilOnHit(b, dealt);
+    weaponHitEffects(b);
+  } else if (arch === "ninja") {
+    ninjaVolley(b);
+  } else if (arch === "warlock") {
+    b.p.hp = Math.max(1, Math.round(b.p.maxHp * WARLOCK_HP_SHARE));
+    b.p.statuses.invulnerable = Math.max(b.p.statuses.invulnerable, 1);
+    push(b, `Жертвенный пакт: здоровье ${b.p.hp}/${b.p.maxHp}, неуязвимость на 1 ход.`, "p");
+  } else if (arch === "sage") {
+    const created = createScrolls(b, SAGE_CONJURED);
+    push(b, `Слово созидания создаёт свитки: ${created.join(", ")}.`, "p");
+    if (created.length > 0) castCreatedScroll(b, created[0], SAGE_VAMP_BONUS);
+  }
+}
+
+/** Град снарядов: 5 расходников в боевой рюкзак, 2 из них сразу бросаются во врага по обычным правилам. */
+function ninjaVolley(b: BattleState) {
+  const made: string[] = [];
+  for (let i = 0; i < NINJA_CONJURED; i++) {
+    const id = pick(NINJA_CONJURE_POOL);
+    addConjured(b, id);
+    made.push(id);
+  }
+  push(b, `Град снарядов: в рюкзак легли ${made.map((id) => ITEMS[id]?.name ?? id).join(", ")}.`, "p");
+  const left = made.filter((id) => b.p.stats.int >= consumableIntReq(ITEMS[id], b.p.intDiscount));
+  for (let i = 0; i < NINJA_THROWS && left.length > 0 && !b.over; i++) {
+    const id = pick(left);
+    left.splice(left.indexOf(id), 1);
+    Object.assign(b, actInternal(b, { type: "item", id }, false));
+  }
+}
+
 function createScrolls(b: BattleState, count: number): string[] {
   const out: string[] = [];
   for (let i = 0; i < count; i++) {
     const id = pick(CREATED_SCROLLS);
-    b.bag[id] = (b.bag[id] ?? 0) + 1;
+    addConjured(b, id);
     out.push(ITEMS[id]?.name ?? id);
   }
   return out;
 }
-function castCreatedScroll(b: BattleState, name: string) {
+function castCreatedScroll(b: BattleState, name: string, extraMagicVamp = 0) {
   const id = CREATED_SCROLLS.find((x) => ITEMS[x]?.name === name);
   if (!id || !b.bag[id]) return;
   const def = ITEMS[id];
@@ -2167,16 +2306,15 @@ function castCreatedScroll(b: BattleState, name: string) {
   } else if (def.use?.type === "chill") {
     const dealt = elementalHit(b, Math.round(power * mult), ` [${def.name}, сотворён]`, def.use?.element ?? "ice");
     applyEnemyStatus(b, "chill", 3, dotBaseTick("chill", b.p.level));
-    applyVamp(b, dealt, 0, "scroll", "magic");
+    applyVamp(b, dealt, extraMagicVamp, "scroll", "magic");
   } else if (def.use?.type === "terror") {
     b.enemy.forceGuard = Math.max(b.enemy.forceGuard, 2);
     push(b, `${def.name} сразу применяется: враг держит защиту.`, "p");
   } else {
     const dealt = elementalHit(b, Math.round(power * mult), ` [${def.name}, сотворён]`, def.use?.element);
-    applyVamp(b, dealt, 0, "scroll", "magic");
+    applyVamp(b, dealt, extraMagicVamp, "scroll", "magic");
   }
-  b.bag[id]--;
-  if (b.bag[id] <= 0) delete b.bag[id];
+  spendBagItem(b, id);
 }
 function consumableDamageMult(b: BattleState, def: { kind: string; use?: { type: string } }) {
   const isScroll = def.kind === "scroll";
@@ -2262,6 +2400,12 @@ export function skipStunnedTurn(b0: BattleState): BattleState {
 export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
   if (b0.over || b0.queue[b0.idx] !== "p") return b0;
   if (b0.p.statuses.stunAp > 0) return skipStunnedTurn(b0);
+  return actInternal(b0, a, true);
+}
+
+/** takeTurn=false — внутренний розыгрыш (бросок расходника приёмом ниндзя): ход не тратится, концентрация не меняется. */
+function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): BattleState {
+  if (b0.over || b0.queue[b0.idx] !== "p") return b0;
   const b = clone(b0);
   /* Страх: защиту герой уже занял в начале хода (beginTurn). Пока страх держится,
      атаковать, применять приёмы и бежать нельзя; рюкзак и защита доступны. */
@@ -2292,7 +2436,15 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
     case "attack": {
       const firstStrike = !b.p.firstAttackDone && hasPassive(b, "arch_assassin_10");
       const { d, crit } = calcWeaponRoll(b);
-      const dealt = hitEnemy(b, d, "phys", crit ? " Критический удар!" : "");
+      /* Бастион: после стойки следующая обычная атака получает броню стойки как прямой урон (один раз). */
+      const strikeBonus = b.p.statuses.bulwarkStrike;
+      b.p.statuses.bulwarkStrike = 0;
+      const dealt = hitEnemy(
+        b,
+        d + strikeBonus,
+        "phys",
+        (crit ? " Критический удар!" : "") + (strikeBonus > 0 ? ` [Стойка: +${strikeBonus}]` : ""),
+      );
       applyVamp(b, dealt, 0, "weapon");
       if (dealt > 0) oilOnHit(b, dealt);
       b.p.firstAttackDone = true;
@@ -2769,8 +2921,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
         passivePower(b, "sage_library", "save") / 100;
       const saveScroll = def.kind === "scroll" && scrollSaveChance > 0 && Math.random() < scrollSaveChance;
       if (!saveScroll) {
-        b.bag[a.id] = (b.bag[a.id] ?? 0) - 1;
-        if (b.bag[a.id] <= 0) delete b.bag[a.id];
+        spendBagItem(b, a.id);
       } else {
         push(b, "Эхо мысли сохраняет свиток — он не истлел!", "p");
       }
@@ -2788,6 +2939,15 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
       break;
     }
 
+    case "archetype_skill": {
+      const problem = archetypeSpecialBlock(b);
+      if (problem) return err(problem);
+      const arch = b.p.archetype!;
+      b.p.concentration = 0;
+      runArchetypeSpecial(b, arch);
+      break;
+    }
+
     case "flee": {
       b.over = "flee";
       b.fleeRate = a.rate ?? 0.4 + Math.random() * 0.3;
@@ -2796,7 +2956,8 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
     }
   }
 
-  if (b.enemy.hp <= 0 && !tryRevive(b)) {
+  if (takeTurn && !b.over) adjustConcentration(b, a.type);
+  if (!b.over && b.enemy.hp <= 0 && !tryRevive(b)) {
     b.enemy.hp = 0;
     b.over = "win";
     gainLoot(b);
@@ -2805,7 +2966,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
   }
   if (b.over) return b;
   if (fearTurn) b.p.guard = true;
-  if (!freeAction) advance(b);
+  if (takeTurn && !freeAction) advance(b);
   return b;
 }
 
@@ -3348,6 +3509,7 @@ export function combatReadout(b: BattleState): CombatReadout {
   const missingBonus = gearRageBonus + (b.p.stats.str * effectPower(b, "might")) / 100 +
     (effectPower(b, "missing_hp_damage") / 100) * Math.min(10, Math.floor(missingHpRatio(b) * 10)) +
     (hasPassive(b, "arch_barbarian_5") ? Math.floor(missingHpRatio(b) * 10) * 0.04 : 0);
+  if (b.p.statuses.bulwarkStrike > 0) dmgMods.push({ id: "bulwark_strike", label: "Стойка бастиона", flat: b.p.statuses.bulwarkStrike, good: true, detail: "Следующая обычная атака получит этот урон от брони стойки." });
   if (missingBonus > 0) dmgMods.push({ id: "missing_hp", label: "Ярость/Мощь", mult: 1 + missingBonus, good: true, detail: "Недостающее здоровье и Сила усиливают удар." });
   const enemyMissingBonus = (effectPower(b, "enemy_missing_damage") / 100) * Math.min(10, Math.floor(enemyMissingRatio(b) * 10)) +
     (hasPassive(b, "arch_barbarian_10") && enemyMissingRatio(b) >= 0.5 ? 0.35 : 0);
@@ -3524,6 +3686,7 @@ export function combatReadout(b: BattleState): CombatReadout {
   if (b.p.statuses.tempArmor > 0) defMods.push({ id: "tempArmor", label: "Стена щитов", flat: b.p.statuses.tempArmor, good: true, detail: "Временная броня до конца боя." });
   if (b.p.statuses.ironTonic > 0) defMods.push({ id: "ironTonic", label: "Железная кожа", flat: 4, good: true, rounds: b.p.statuses.ironTonic, detail: "+4 брони и +4 регенерации." });
   if (b.p.statuses.fullGuard > 0) defMods.push({ id: "fullGuard", label: "Полная защита", good: true, rounds: b.p.statuses.fullGuard, detail: "Полностью поглощает входящий урон." });
+  if (b.p.statuses.invulnerable > 0) defMods.push({ id: "invulnerable", label: "Неуязвимость", good: true, rounds: b.p.statuses.invulnerable, detail: "Не проходят удары, приёмы и периодический урон." });
   if (b.p.statuses.dodgeNext > 0) defMods.push({ id: "dodgeNext", label: "Пустой шаг", good: true, rounds: b.p.statuses.dodgeNext, detail: "Следующая атака врага полностью ускользнёт." });
   if (b.p.statuses.evadeTurn > 0) defMods.push({ id: "evadeTurn", label: "Неуловимость", good: true, rounds: b.p.statuses.evadeTurn, detail: "Физические атаки врага проходят мимо." });
   if (b.p.statuses.counterTurn > 0) defMods.push({ id: "counterTurn", label: "Ответный замах", good: true, rounds: b.p.statuses.counterTurn, detail: "Каждый физический удар врага, который прошёл, получает ответ." });

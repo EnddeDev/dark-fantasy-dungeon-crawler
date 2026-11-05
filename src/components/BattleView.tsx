@@ -15,9 +15,11 @@ import {
 import { GEAR_EFFECTS, GEAR_PASSIVES, effectDetail } from "../game/gearEffects";
 import { MONSTER_RACE_META, MONSTER_TYPE_META, WEAKNESS_STEP, monsterEvade, raceTraits } from "../game/monsters";
 import { STAT_META, armorSkillDesc, epicSkillDesc } from "../game/content";
+import { ARCHETYPES } from "../game/archetypes";
 import {
   ENEMY_COOLDOWN_MOVES,
   ENEMY_MOVE_COOLDOWN,
+  MAX_CONCENTRATION,
   combatReadout,
   enemyArmorNow,
   enemyMoveCooldownLeft,
@@ -310,6 +312,20 @@ export function BattleView({
               <span className="font-mono text-sm tab text-parch">{b.p.hp}/{b.p.maxHp}</span>
             </div>
 
+            {/* Концентрация: атака +1, приём −1, расходник +1, защита +2; при 5 открывается спец-приём */}
+            <div
+              className="mt-2 grid grid-cols-[auto_1fr_auto] items-center gap-x-3"
+              title="Атака +1, приём −1, расходник +1, защита +2. При 5 открывается спец-приём архетипа и концентрация тратится целиком."
+            >
+              <span className="sc text-flamedim">Концентрация</span>
+              <div className="flex gap-1" role="meter" aria-valuemin={0} aria-valuemax={MAX_CONCENTRATION} aria-valuenow={b.p.concentration} aria-label="Концентрация">
+                {Array.from({ length: MAX_CONCENTRATION }, (_, i) => (
+                  <span key={i} className={`h-2 flex-1 ${i < b.p.concentration ? "bg-flame" : "bg-black/50"}`} />
+                ))}
+              </div>
+              <span className="font-mono text-sm tab text-parch">{b.p.concentration}/{MAX_CONCENTRATION}</span>
+            </div>
+
             {/* Эффекты героя: под здоровьем, как и положено по раскладке панели */}
             {playerChips.length > 0 && (
               <div className="relative z-20 mt-2">
@@ -490,6 +506,21 @@ export function BattleView({
                 {b.p.statuses.sealItems > 0 && <Tag tone="rubric">Печать немоты: расходники запрещены</Tag>}
               </div>
             )}
+            {menu === "main" && b.p.archetype && (
+              <div className="mb-2 space-y-1">
+                <Btn
+                  tone="flame"
+                  className="w-full"
+                  disabled={!myTurn || feared || b.p.concentration < MAX_CONCENTRATION || b.p.statuses.sealSkills > 0}
+                  title={ARCHETYPES[b.p.archetype].special.desc}
+                  onClick={() => act({ type: "archetype_skill" })}
+                >
+                  Спец-приём: {ARCHETYPES[b.p.archetype].special.name} · {b.p.concentration}/{MAX_CONCENTRATION}
+                </Btn>
+                <p className="text-[0.85rem] leading-snug text-mute">{ARCHETYPES[b.p.archetype].special.desc}</p>
+              </div>
+            )}
+
             {menu === "main" && (
               <div className="grid grid-cols-2 gap-2">
                 <Btn tone="flame" disabled={!myTurn || feared || b.p.statuses.sealAttack > 0} onClick={() => act({ type: "attack" })}>

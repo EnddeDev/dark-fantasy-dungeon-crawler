@@ -1,4 +1,4 @@
-import { enemyStep, playerAct, skipStunnedTurn, type BattleState, type PlayerAction } from "../game/battle";
+import { enemyStep, persistentBag, playerAct, skipStunnedTurn, type BattleState, type PlayerAction } from "../game/battle";
 import { grantXp } from "../game/content";
 import { applyMarkVictory, refreshAfterNewFloor } from "../game/quests";
 import { pruneRunLoot, usedFromBags } from "../game/runLoot";
@@ -16,18 +16,19 @@ export class BattleController {
   act(action: PlayerAction): void {
     const battle = this.model.getSnapshot().battle;
     if (!battle) return;
-    const bagBefore = { ...battle.bag };
+    /* Созданное в бою (свитки мудреца, расходники ниндзя) не считается личным запасом. */
+    const bagBefore = persistentBag(battle);
     const next = playerAct(battle, action);
     this.model.setBattle(next);
     /* Потраченное в бою перестаёт быть «найденным»: иначе штраф за поражение
        спишет его повторно из личного запаса. */
-    const used = usedFromBags(bagBefore, next.bag);
+    const used = usedFromBags(bagBefore, persistentBag(next));
     if (Object.keys(used).length) {
       this.model.updateRun((run) => (run ? { ...run, loot: pruneRunLoot(run.loot, used) } : run));
     }
     /* Сумка героя в модели держится в актуальном виде: по ней считаются штрафы
        за поражение и побег, и она не должна отставать от боевой. */
-    this.model.updatePlayer((p) => ({ ...p, bag: { ...next.bag } }));
+    this.model.updatePlayer((p) => ({ ...p, bag: persistentBag(next) }));
     this.resolveEnd(next);
   }
 
@@ -53,7 +54,7 @@ export class BattleController {
     const { battle, player, run, unlockedFloor } = this.model.getSnapshot();
     if (!battle || battle.over !== "win") return;
     const b = battle;
-    const bag = { ...b.bag };
+    const bag = persistentBag(b);
     b.loot.items.forEach((id) => (bag[id] = (bag[id] ?? 0) + 1));
     const withLoot: Player = {
       ...player,
@@ -134,7 +135,7 @@ export class BattleController {
     const basePlayer: Player = {
       ...player,
       hp: b.p.hp,
-      bag: b.bag,
+      bag: persistentBag(b),
       statuses: {
         wound: b.p.statuses.wound,
         curse: isBattleCurse(b.p.statuses.curse) ? 0 : b.p.statuses.curse,
