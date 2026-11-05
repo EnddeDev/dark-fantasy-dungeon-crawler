@@ -13,11 +13,12 @@ import {
   STAT_ORDER,
   xpForNextLevel,
 } from "../game/content";
-import { GEAR_EFFECTS, GEAR_PASSIVES, effectDetail, passiveDetail } from "../game/gearEffects";
+import { GEAR_PASSIVES, passiveDetail } from "../game/gearEffects";
+import { gearEffectTotals } from "../game/gearEffectTotals";
 import { archetypeByMilestone } from "../game/archetypes";
 import { statMilestoneById } from "../game/statMilestones";
 import { combatReadout, derived, equippedList, techniqueSkillScale, type BattleState } from "../game/battle";
-import type { Player, Run } from "../game/types";
+import type { GearItem, Player, Run } from "../game/types";
 import { Btn, Meter } from "./ui";
 import { StatBadge } from "./StatBadge";
 import { MetricBadge, tipAlignForColumn } from "./MetricBadge";
@@ -31,24 +32,97 @@ type EffectEntry = {
   source?: string;
   badge?: string;
   negative?: boolean;
+  /** Вклад каждого предмета: показывается во всплывающем окне при наведении. */
+  breakdown?: { name: string; level?: number; detail: string }[];
+  note?: string;
 };
 
-function EffectList({ entries, empty }: { entries: EffectEntry[]; empty: string }) {
+/** Всплывающее окно записи: итог и вклад каждого предмета. */
+export function EffectTip({ id, entry }: { id: string; entry: EffectEntry }) {
+  if (!entry.breakdown) return null;
+  return (
+    <div
+      role="tooltip"
+      id={id}
+      className="pointer-events-none absolute left-0 top-full z-50 mt-2 w-[min(19rem,72vw)] border border-flamedim bg-black/95 p-2.5 text-left shadow-[0_10px_30px_rgba(0,0,0,0.75)]"
+    >
+      <div className="font-display text-[0.95rem] uppercase tracking-[0.06em] text-flamehi">{entry.title}</div>
+      <p className="mt-1.5 text-[0.86rem] leading-snug text-parch/90">Итог: {entry.detail}</p>
+      <p className="mt-1.5 border-t border-line/70 pt-1.5 text-[0.84rem] text-mute">От предметов:</p>
+      <ul className="mt-1 space-y-1">
+        {entry.breakdown.map((part, i) => (
+          <li key={i} className="text-[0.86rem] leading-snug text-parch/90">
+            <span className="text-flamehi">{part.name}</span>
+            {part.level ? <span className="text-mute"> · ур. {part.level}</span> : null}: {part.detail}
+          </li>
+        ))}
+      </ul>
+      {entry.note && <p className="mt-1.5 border-t border-line/70 pt-1.5 text-[0.84rem] leading-snug text-mute">{entry.note}</p>}
+    </div>
+  );
+}
+
+/** Числовые эффекты суммируются по всем надетым исследованным вещам; подсказка показывает вклад каждой. */
+export function summedEffectEntries(worn: GearItem[]): EffectEntry[] {
+  return gearEffectTotals(worn).map((total) => ({
+    id: `effect-${total.id}`,
+    title: total.name,
+    detail: total.detail,
+    source: [...new Set(total.sources.map((s) => s.name))].join(", "),
+    badge: total.sources.length > 1 ? `Предметов: ${total.sources.length}` : undefined,
+    breakdown: total.sources.map((s) => ({ name: s.name, level: s.level, detail: s.detail })),
+    note: total.stacking === "max" ? "Дополнительные ходы не складываются: действует наибольшее значение, не больше 3." : undefined,
+  }));
+}
+
+/** Запись со всплывающим окном: итог, вклад каждого предмета и примечание. */
+function EffectCard({ entry }: { entry: EffectEntry }) {
+  const [open, setOpen] = useState(false);
+  const tipId = `effect-tip-${entry.id}`;
+  const card = (
+    <div className={`border-l-2 bg-black/20 py-2 pl-3 pr-2 ${entry.negative ? "border-rubric/70" : "border-flamedim/70"}`}>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+        <h4 className={`font-display text-[1.05rem] uppercase leading-snug tracking-[0.05em] ${entry.negative ? "text-rubric" : "text-flamehi"}`}>
+          {entry.title}
+        </h4>
+        {entry.badge && <span className="font-mono text-[0.86rem] text-mute">{entry.badge}</span>}
+      </div>
+      <p className="mt-1 text-[0.97rem] leading-relaxed text-parch/85">{entry.detail}</p>
+      {entry.source && <p className="mt-1 text-[0.89rem] leading-snug text-mute">Источник: {entry.source}</p>}
+    </div>
+  );
+  if (!entry.breakdown) return card;
+  return (
+    <div
+      className="relative"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <div
+        tabIndex={0}
+        role="button"
+        aria-describedby={open ? tipId : undefined}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onClick={() => setOpen((o) => !o)}
+        className="cursor-help focus:outline-none focus-visible:ring-1 focus-visible:ring-flame"
+      >
+        {card}
+      </div>
+      {open && (
+        <EffectTip id={tipId} entry={entry} />
+      )}
+    </div>
+  );
+}
+
+export function EffectList({ entries, empty }: { entries: EffectEntry[]; empty: string }) {
   if (!entries.length) return <p className="text-[0.98rem] leading-relaxed text-mute">{empty}</p>;
 
   return (
     <div className="space-y-2.5">
       {entries.map((entry) => (
-        <div key={entry.id} className={`border-l-2 bg-black/20 py-2 pl-3 pr-2 ${entry.negative ? "border-rubric/70" : "border-flamedim/70"}`}>
-          <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
-            <h4 className={`font-display text-[1.05rem] uppercase leading-snug tracking-[0.05em] ${entry.negative ? "text-rubric" : "text-flamehi"}`}>
-              {entry.title}
-            </h4>
-            {entry.badge && <span className="font-mono text-[0.86rem] text-mute">{entry.badge}</span>}
-          </div>
-          <p className="mt-1 text-[0.97rem] leading-relaxed text-parch/85">{entry.detail}</p>
-          {entry.source && <p className="mt-1 text-[0.89rem] leading-snug text-mute">Источник: {entry.source}</p>}
-        </div>
+        <EffectCard key={entry.id} entry={entry} />
       ))}
     </div>
   );
@@ -173,10 +247,6 @@ export function Rail({
   };
   worn.forEach((item) => {
     const source = item.baseId;
-    item.effects.forEach((id) => {
-      const effect = GEAR_EFFECTS[id];
-      if (effect) addGearEffect(`effect-${id}`, effect.name, effectDetail(id, item.level ?? 1, item.effectRolls?.[id]), source);
-    });
     if (item.passive) {
       const passive = GEAR_PASSIVES[item.passive];
       if (passive) addGearEffect(`passive-${item.passive}`, passive.name, passiveDetail(item.passive, item.level ?? 1), source);
@@ -190,11 +260,14 @@ export function Rail({
       addGearEffect(`legendary-${item.legendaryPassive}`, passive.name, legendaryPassiveDesc(item.legendaryPassive, item.level ?? 1), source);
     }
   });
-  const gearEntries: EffectEntry[] = [...gearEffects.values()].map((entry) => ({
-    ...entry,
-    source: [...entry.sources].map((id) => GEAR_BASES[id]?.name ?? id).join(", "),
-    badge: entry.count > 1 ? `Предметов: ${entry.count}` : undefined,
-  }));
+  const gearEntries: EffectEntry[] = [
+    ...summedEffectEntries(worn),
+    ...[...gearEffects.values()].map((entry) => ({
+      ...entry,
+      source: [...entry.sources].map((id) => GEAR_BASES[id]?.name ?? id).join(", "),
+      badge: entry.count > 1 ? `Предметов: ${entry.count}` : undefined,
+    })),
+  ];
 
   const current: EffectEntry[] = readout
     ? [...readout.dmgMods, ...readout.defMods].map((mod) => ({
