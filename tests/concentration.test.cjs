@@ -47,6 +47,9 @@ function fightFor(extra = {}) {
   b.p.hp = b.p.maxHp;
   b.enemy.hp = b.enemy.maxHp = 500;
   b.enemy.armor = 0;
+  /* Раса и тип врага задаются явно: от них зависит урон физического удара. */
+  b.enemy.def = { ...b.enemy.def, race: "none" };
+  b.enemy.mtype = "strong";
   return b;
 }
 
@@ -203,4 +206,62 @@ test("у каждого архетипа есть спец-приём с наз�
     const sp = archetypes.ARCHETYPES[id].special;
     assert.ok(sp && sp.name && sp.desc, `${id}: спец-приём описан`);
   }
+});
+
+/* Приём требует 1 концентрации и тратит её на использование. */
+function swordFor(extra = {}) {
+  const item = load("content").createGearItem({ baseId: "sword", level: 5, wear: "worn", rarity: "common", identified: true, rng: () => 0.5 });
+  item.effects = [];
+  item.effectRolls = {};
+  item.passive = undefined;
+  item.legendaryPassive = undefined;
+  return fightFor({
+    armory: [item],
+    equip: { mainHand: item.uid, offHand: null, head: null, body: null, feet: null, wrists: null, ring1: null, ring2: null, amulet: null },
+    stats: { str: 14, agi: 1, int: 6 },
+    ...extra,
+  });
+}
+
+test("приём оружия без концентрации не применяется и ничего не тратит", () => {
+  const b = swordFor();
+  assert.ok(b.p.weaponSkill, "у меча есть приём");
+  b.p.concentration = 0;
+  const next = withRandom(0.99, () => battle.playerAct(b, { type: "weapon_skill" }));
+  assert.equal(next.p.concentration, 0);
+  assert.equal(next.p.weaponCd, 0, "перезарядка не запущена");
+  assert.equal(next.enemy.hp, b.enemy.hp, "удара не было");
+  assert.ok(next.log.some((l) => l.text.includes("требует 1 концентрации")));
+});
+
+test("приём оружия с 1 концентрацией применяется и тратит её", () => {
+  const b = swordFor();
+  b.p.concentration = 1;
+  const next = withRandom(0.99, () => battle.playerAct(b, { type: "weapon_skill" }));
+  assert.ok(next.enemy.hp < b.enemy.hp, "приём ударил");
+  assert.equal(next.p.concentration, 0, "−1 за приём");
+});
+
+test("приём брони без концентрации отклоняется, с 1 — срабатывает", () => {
+  const content = load("content");
+  const item = content.createGearItem({ baseId: "plate", level: 3, rarity: "legendary", identified: true, wear: "new", rng: () => 0.5 });
+  const worn = { ...item, armorSkill: "heavy_fort" };
+  const hero = player({
+    armory: [worn],
+    equip: { mainHand: null, offHand: null, head: null, body: worn.uid, feet: null, wrists: null, ring1: null, ring2: null, amulet: null },
+    stats: { str: 10, agi: 1, int: 6 },
+  });
+  assert.deepEqual(battle.derived(hero).armorSkills.map((s) => s.id), ["heavy_fort"]);
+  const pl = fightFor(hero);
+  pl.p.hp = 50;
+  pl.p.concentration = 0;
+  const refused = battle.playerAct(pl, { type: "armor_skill", id: "heavy_fort" });
+  assert.equal(refused.p.hp, 50, "лечения нет");
+  assert.equal(refused.p.concentration, 0);
+  assert.equal(refused.p.armorCds.heavy_fort ?? 0, 0, "откат не запущен");
+
+  pl.p.concentration = 1;
+  const used = battle.playerAct(pl, { type: "armor_skill", id: "heavy_fort" });
+  assert.ok(used.p.hp > 50, "приём сработал");
+  assert.equal(used.p.concentration, 0);
 });

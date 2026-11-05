@@ -2206,6 +2206,11 @@ const NINJA_THROWS = 2;
 const SAGE_CONJURED = 2;
 const SAGE_VAMP_BONUS = 0.25;
 const WARLOCK_HP_SHARE = 0.5;
+/** Любой приём (оружия, эпический, брони) требует концентрации и тратит её на использование (−1). */
+const TECHNIQUE_CONCENTRATION = 1;
+function techniqueConcentrationMsg(b: BattleState): string {
+  return `Приём требует ${TECHNIQUE_CONCENTRATION} концентрации (сейчас ${b.p.concentration}).`;
+}
 
 /** Концентрация за ход: атака +1, приём −1, расходник +1, защита +2. Только для хода героя, не для внутренних розыгрышей. */
 function adjustConcentration(b: BattleState, type: PlayerAction["type"]) {
@@ -2476,6 +2481,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
     case "weapon_skill": {
       const ws = b.p.weaponSkill;
       if (!ws) return err("У этого оружия нет особого приёма.");
+      if (b.p.concentration < TECHNIQUE_CONCENTRATION) return err(techniqueConcentrationMsg(b));
       if (b.p.weaponCd > 0) return err(`Приём «${ws.name}» перезаряжается ещё ${b.p.weaponCd} р.`);
       const req = Math.max(1, ws.intReq - b.p.intDiscount);
       if (b.p.stats.int < req) return err(`Для приёма «${ws.name}» требуется ИНТ ${req}.`);
@@ -2600,6 +2606,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
     case "epic_skill": {
       const sk = b.p.epicSkills.find((s) => s.id === a.id);
       if (!sk) return err("Эта способность недоступна.");
+      if (b.p.concentration < TECHNIQUE_CONCENTRATION) return err(techniqueConcentrationMsg(b));
       const cd = b.p.epicCds[sk.id] ?? 0;
       if (cd > 0) return err(`«${sk.name}» перезаряжается (${cd} р.).`);
       const req = Math.max(1, sk.intReq - b.p.intDiscount);
@@ -2651,6 +2658,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
     case "armor_skill": {
       const sk = b.p.armorSkills.find((s) => s.id === a.id);
       if (!sk) return err("Этот приём брони недоступен.");
+      if (b.p.concentration < TECHNIQUE_CONCENTRATION) return err(techniqueConcentrationMsg(b));
       const cd = b.p.armorCds[sk.id] ?? 0;
       if (cd > 0) return err(`«${sk.name}» перезаряжается (${cd} р.).`);
       const req = sk.intReq <= 0 ? 0 : Math.max(1, sk.intReq - (sk.scaleStat === "int" ? b.p.intDiscount : 0));

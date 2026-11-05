@@ -436,6 +436,7 @@ test("число урона у приёма в меню совпадает с у
     assert.ok(!b.over, `${baseId}: герой погиб до хода`);
     const readout = battle.combatReadout(b);
     assert.ok(readout.techMin !== null && readout.techMin <= readout.techMax, `${baseId}: диапазон приёма`);
+    b.p.concentration = 5; // приём требует концентрацию
     const after = withRandom(0.99, () => battle.playerAct(b, { type: "weapon_skill" }));
     const hits = after.log
       .filter((l) => l.text.includes("[Приём:") && l.text.includes("получает"))

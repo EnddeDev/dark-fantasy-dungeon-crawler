@@ -61,6 +61,8 @@ function battleFor(pl) {
   b.queue = ["p", "e"];
   b.idx = 0;
   b.p.hp = b.p.maxHp;
+  /* Приём тратит концентрацию: тесты приёмов стартуют с полной шкалой. */
+  b.p.concentration = 5;
   return b;
 }
 

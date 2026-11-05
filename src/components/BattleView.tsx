@@ -549,10 +549,14 @@ export function BattleView({
                     ← назад
                   </button>
                 </div>
+                <p className={`text-sm ${b.p.concentration < 1 ? "text-rubric" : "text-mute"}`}>
+                  Каждый приём тратит 1 концентрации. Сейчас: {b.p.concentration}/{MAX_CONCENTRATION}
+                  {b.p.concentration < 1 ? " — приёмы недоступны, пока не накопится концентрация." : "."}
+                </p>
                 <div className="grid max-h-56 gap-2 overflow-y-auto pr-1">
                   {ws ? (
                     <button
-                      disabled={!myTurn || !wsIntOk || b.p.weaponCd > 0}
+                      disabled={!myTurn || !wsIntOk || b.p.weaponCd > 0 || b.p.concentration < 1}
                       onClick={() => act({ type: "weapon_skill" })}
                       className="flex items-center justify-between gap-3 border border-line bg-slab2 px-3 py-2 text-left transition-colors enabled:hover:border-flame enabled:hover:bg-flame/10 disabled:opacity-45"
                     >
@@ -586,7 +590,7 @@ export function BattleView({
                     return (
                       <button
                         key={sk.id}
-                        disabled={!myTurn || !intOk || cd > 0}
+                        disabled={!myTurn || !intOk || cd > 0 || b.p.concentration < 1}
                         onClick={() => act({ type: "epic_skill", id: sk.id })}
                         className="flex items-center justify-between gap-3 border border-flamedim/70 bg-slab2 px-3 py-2 text-left transition-colors enabled:hover:border-flame enabled:hover:bg-flame/10 disabled:opacity-45"
                       >
@@ -610,7 +614,7 @@ export function BattleView({
                     return (
                       <button
                         key={sk.id}
-                        disabled={!myTurn || !statOk || cd > 0 || b.p.statuses.sealSkills > 0}
+                        disabled={!myTurn || !statOk || cd > 0 || b.p.statuses.sealSkills > 0 || b.p.concentration < 1}
                         onClick={() => act({ type: "armor_skill", id: sk.id })}
                         className="flex items-center justify-between gap-3 border border-flamedim/70 bg-slab2 px-3 py-2 text-left transition-colors enabled:hover:border-flame enabled:hover:bg-flame/10 disabled:opacity-45"
                       >
