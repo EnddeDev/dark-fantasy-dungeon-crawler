@@ -3,6 +3,8 @@ import { checkCharacterName } from "../game/characterName";
 import { rollShopStock } from "../game/content";
 import { BIOMES, biomeHealingAmount, biomeVision, mazeBiome } from "../game/biomes";
 import { genMaze, mazeSizeForFloor } from "../game/maze";
+import { applyExitLoss, EXIT_LOSS_RATE, exitLossCounts, planExitLoss } from "../game/runExit";
+import { setPouchSlot as setPouch } from "../game/pouch";
 import { deliverCarried, endRunBlessing, placeQuestMarks, questsForFloor, startRunBlessing } from "../game/quests";
 import type { Player } from "../game/types";
 import { SLOT_ORDER } from "../game/types";
@@ -104,7 +106,7 @@ export class GameController {
         battleCell: null,
         clearedMonsters: [],
         /* Ловушки видны сразу: на карте не остаётся скрытых механизмов. */
-        revealedTraps: [...maze.traps],
+        revealedTraps: [],
         sprungTraps: [],
         questCarry: [],
         log: [
@@ -177,7 +179,7 @@ export class GameController {
         keys: 0,
         torchTurns: 0,
         mapRevealed: false,
-        revealedTraps: [...maze.traps],
+        revealedTraps: [],
         sprungTraps: [],
         burning: 0,
         log: [...run.log, `Спуск на этаж ${nf}: ${BIOMES[mazeBiome(maze)].name}. ${BIOMES[mazeBiome(maze)].effect}`],
@@ -212,6 +214,16 @@ export class GameController {
   }
 
   /** Смена имени героя из боковой панели. Возвращает текст ошибки или null, если имя сохранено. */
+  /** Сумка с зельями: меняется вне боя. Возвращает текст ошибки или null. */
+  setPouchSlot(index: number, id: string | null): string | null {
+    const { battle, player } = this.model.getSnapshot();
+    if (battle) return "В бою сумку не переложить.";
+    const res = setPouch(player, index, id);
+    if (!res.ok) return res.error;
+    this.model.updatePlayer((p) => ({ ...p, pouch: res.pouch }));
+    return null;
+  }
+
   renameHero(raw: string): string | null {
     const check = checkCharacterName(raw);
     if (!check.ok) return check.error;
@@ -219,15 +231,31 @@ export class GameController {
     return null;
   }
 
-  leaveRun(): void {
+  /**
+   * Выход в лобби. Без победы над стражем текущего яруса теряется доля добытого
+   * (EXIT_LOSS_RATE); сначала показываем окно с потерями, уходим после подтверждения.
+   */
+  leaveRun(confirmed = false): void {
     const { run, player } = this.model.getSnapshot();
     if (!run) return;
+    const rate = run.maze.bossDefeated ? 0 : EXIT_LOSS_RATE;
+    if (rate > 0 && !confirmed) {
+      const counts = exitLossCounts(run, rate);
+      this.model.update({ modal: { kind: "leave", gold: counts.gold, items: counts.items, gear: counts.gear } });
+      return;
+    }
+    const plan = planExitLoss(run, rate);
+    const kept = rate > 0 ? applyExitLoss(player, plan) : player;
     /* Вернувшись живым, герой приносит трофеи и теряет благословение похода. */
-    const home = endRunBlessing(deliverCarried(player, run.questCarry));
+    const home = endRunBlessing(deliverCarried(kept, run.questCarry));
+    const savedGold = run.gold - plan.lostGold;
+    const savedItems = run.loot.length - plan.droppedItems.length;
+    const savedGear = run.gearLoot.length - plan.droppedGear.length;
+    const lostNote = rate > 0 ? ` Потеряно при выходе без стража: ${plan.lostGold} золота, ${plan.droppedItems.length} расходуемых и ${plan.droppedGear.length} снаряжения.` : "";
     this.model.update({
       player: {
         ...home,
-        gold: home.gold + run.gold,
+        gold: home.gold + savedGold,
         hp: derived(home).maxHp,
         statuses: { wound: 0, curse: 0, poison: 0, chill: 0, fear: 0, wither: 0, burn: 0 },
       },
@@ -239,7 +267,7 @@ export class GameController {
       modal: {
         kind: "note",
         title: "Возвращение в лобби",
-        body: `Ты выбрался живым! Сохранено ${run.gold} золота, ${run.loot.length} расходуемых предметов и ${run.gearLoot.length} ед. трофейного снаряжения. Теперь можно распределить очки опыта и исследовать находки.`,
+        body: `Ты выбрался живым! Сохранено ${savedGold} золота, ${savedItems} расходуемых предметов и ${savedGear} ед. трофейного снаряжения.${lostNote} Теперь можно распределить очки опыта и исследовать находки.`,
       },
     });
   }

@@ -14,6 +14,7 @@ import type { Threat } from "../game/types";
 import { mazeSizeForFloor } from "../game/maze";
 import { MONSTER_RACE_META, MONSTER_TYPE_META, raceTraits } from "../game/monsters";
 import { ENEMY_COOLDOWN_MOVES, ENEMY_MOVE_COOLDOWN } from "../game/battle";
+import { MONSTER_RULES, MOVE_LABELS } from "../game/monsterRules";
 import { FoePortrait } from "./FoeArt";
 import { ElementRow } from "./DamageTypeIcon";
 import { raceElementRows } from "../game/damageTypes";
@@ -27,27 +28,6 @@ const LOOT_LABELS = [
   ["supplies", "Припасы", Package],
   ["gear", "Снаряжение", Swords],
 ] as const;
-
-const MOVE_LABELS: Record<string, string> = {
-  attack: "атака",
-  heavy: "сокрушение",
-  guard: "защита",
-  wound: "рана",
-  curse: "проклятие",
-  drain: "похищение",
-  sunder: "раскол брони",
-  bell_stun: "оглушение",
-  poison: "яд",
-  multi: "двойной выпад",
-  terror: "насмешка",
-  seal_items: "печать немоты",
-  seal_skills: "печать забвения",
-  seal_attack: "печать оков",
-  intimidate: "запугивание",
-  darkness: "мрак",
-  cold_touch: "холодное касание",
-  hell_force: "сила ада",
-};
 
 export function Bestiary() {
   const [floor, setFloor] = useState(1);
@@ -217,6 +197,12 @@ export function Bestiary() {
                     <span className="font-mono text-[0.84rem] text-mute">с этажа {enemy.minFloor}</span>
                   </div>
                   <p className="mt-1 text-[0.92rem] italic leading-snug text-mute">{enemy.flavor}</p>
+                  {MONSTER_RULES[enemy.id] && (
+                    <p className="mt-1 text-[0.9rem] leading-snug text-parch/85">
+                      <span className="font-display uppercase tracking-[0.06em] text-flamehi">Правило: {MONSTER_RULES[enemy.id].title}.</span>{" "}
+                      {MONSTER_RULES[enemy.id].text}
+                    </p>
+                  )}
                   <p className="mt-1 font-mono text-[0.84rem] text-parch/75">
                     {[...new Set(enemy.moves)]
                       .map((mv) => `${MOVE_LABELS[mv] ?? mv}${ENEMY_COOLDOWN_MOVES.includes(mv) ? " ⟳" : ""}`)

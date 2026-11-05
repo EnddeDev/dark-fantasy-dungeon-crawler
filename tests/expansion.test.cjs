@@ -86,7 +86,7 @@ test("trap preparation caps at 90%, failures keep base effects, kit is spent onl
   assert.equal(traps.prepareMultiplier(9), 0.1);
   assert.equal(traps.prepareMultiplier(20), 0.1);
   const stats = { str: 2, agi: 5, int: 4 };
-  const poison = traps.makeTrap({ kind: "poison", floor: 3, stats });
+  const poison = traps.makeTrap({ kind: "poison", floor: 3, stats, maxHp: 100 });
   const prepared = traps.resolveTrap(poison, "prepare", stats, false, 3, () => 0.99);
   assert.equal(prepared.damage, Math.ceil(poison.damage * 0.8));
   assert.equal(prepared.rounds, Math.ceil(poison.rounds * 0.8));
@@ -105,7 +105,7 @@ test("trap preparation caps at 90%, failures keep base effects, kit is spent onl
   const noKit = traps.resolveTrap(poison, "disarm", stats, false, 3, () => 0);
   assert.equal(noKit.success, false);
   assert.equal(noKit.usedKit, false);
-  const curse = traps.makeTrap({ kind: "curse", floor: 2, stats });
+  const curse = traps.makeTrap({ kind: "curse", floor: 2, stats, maxHp: 100 });
   const cursed = traps.resolveTrap(curse, "prepare", stats, false, 2, () => 0.99);
   const statuses = traps.applyTrapOutcome({ wound: 0, curse: 0, poison: 0 }, curse, cursed);
   assert.equal(statuses.curse, traps.BATTLE_CURSE);

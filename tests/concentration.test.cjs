@@ -50,6 +50,9 @@ function fightFor(extra = {}) {
   /* Раса и тип врага задаются явно: от них зависит урон физического удара. */
   b.enemy.def = { ...b.enemy.def, race: "none" };
   b.enemy.mtype = "strong";
+  /* Редкие свойства врага (каменная шкура −25% урона) случайны: снимаем их. */
+  b.enemy.passive = null;
+  b.enemy.effects = [];
   return b;
 }
 

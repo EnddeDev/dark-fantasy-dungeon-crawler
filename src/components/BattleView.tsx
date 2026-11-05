@@ -500,7 +500,7 @@ export function BattleView({
 
             {(feared || b.p.statuses.sealAttack > 0 || b.p.statuses.sealSkills > 0 || b.p.statuses.sealItems > 0) && (
               <div className="mb-2 flex flex-wrap gap-1.5">
-                {feared && <Tag tone="rubric">Страх: только рюкзак и защита</Tag>}
+                {feared && <Tag tone="rubric">Страх: рюкзак, защита и побег</Tag>}
                 {b.p.statuses.sealAttack > 0 && <Tag tone="rubric">Печать оков: удар запрещён</Tag>}
                 {b.p.statuses.sealSkills > 0 && <Tag tone="rubric">Печать забвения: приёмы запрещены</Tag>}
                 {b.p.statuses.sealItems > 0 && <Tag tone="rubric">Печать немоты: расходники запрещены</Tag>}
@@ -535,7 +535,7 @@ export function BattleView({
                 <Btn tone="verd" disabled={!myTurn} onClick={() => act({ type: "guard" })}>
                   Защита
                 </Btn>
-                <Btn tone="danger" disabled={!myTurn || feared} onClick={() => act({ type: "flee" })}>
+                <Btn tone="danger" disabled={!myTurn} onClick={() => act({ type: "flee" })}>
                   Сбежать
                 </Btn>
               </div>
@@ -668,6 +668,9 @@ export function BattleView({
                             <span className="block font-display text-[1.02rem] uppercase tracking-[0.1em] text-flamehi">
                               {def.name} <span className="font-mono text-[0.84rem] text-flame">×{n}</span>
                               {dmgType && <DamageTypeTag id={dmgType} size={14} className="ml-2" />}
+                              {def.kind === "potion" && b.pouch.includes(id) && b.p.turnPouch < 1 && (
+                                <span className="ml-2 font-mono text-[0.78rem] text-verd">из сумки · без хода</span>
+                              )}
                             </span>
                             <span className="block text-[0.89rem] leading-snug text-mute">{def.desc}</span>
                           </span>

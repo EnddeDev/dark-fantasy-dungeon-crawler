@@ -126,11 +126,17 @@ test("MVC: GameController starts a run, returns to lobby and persists only safe 
   assert.equal(storage.getItem(SaveRepository.PLAYER_KEY), savedInLobby, "run state must not be saved mid-dungeon");
 
   game.model.updateRun((run) => ({ ...run, gold: 40 }));
+  /* Страж яруса жив: выход сначала открывает окно с потерями и ничего не забирает. */
   game.leaveRun();
+  const asking = game.model.getSnapshot();
+  assert.equal(asking.screen, "dungeon", "без подтверждения герой остаётся в подземелье");
+  assert.equal(asking.modal.kind, "leave");
+  assert.equal(asking.modal.gold, 8, "20% от 40 золота");
+  game.leaveRun(true);
   const lobby = game.model.getSnapshot();
   assert.equal(lobby.screen, "lobby");
   assert.equal(lobby.run, null);
-  assert.equal(lobby.player.gold, PlayerFactory.createInitial().gold + 40);
+  assert.equal(lobby.player.gold, PlayerFactory.createInitial().gold + 32, "вернулось 80% золота");
   assert.ok(storage.getItem(SaveRepository.PLAYER_KEY), "lobby progress is persisted");
 });
 
@@ -231,37 +237,32 @@ test("MVC: a monster on the map starts a battle and victory clears its cell", ()
   assert.equal(after.run.maze.monsters.includes(cell), true, "расстановка этажа остаётся неизменной");
 });
 
-test("MVC: every trap is visible from the first step of the floor", () => {
+test("MVC: ловушки скрыты; факел раскрывает ловушки в двух шагах от героя", () => {
   const game = makeGame();
   game.enterLobby("train");
   game.startRun(1);
   const started = game.model.getSnapshot();
-  assert.deepEqual(
-    [...(started.run.revealedTraps ?? [])].sort((a, b) => a - b),
-    [...started.run.maze.traps].sort((a, b) => a - b),
-    "на старте этажа видны все ловушки",
-  );
+  assert.deepEqual(started.run.revealedTraps ?? [], [], "на старте этажа ловушки скрыты");
   assert.ok(started.run.maze.traps.length > 0);
 
-  /* Даже если бежать по этажу, список остаётся полным — скрытых ловушек нет. */
+  /* Шаг без факела ничего не раскрывает. */
   game.closeModal();
-  const run = started.run;
-  const [dx, dy] = cleanStep(run);
+  const [dx, dy] = cleanStep(started.run);
   game.dungeon.move(dx, dy);
   const moved = game.model.getSnapshot();
-  assert.deepEqual(
-    [...(moved.run.revealedTraps ?? [])].sort((a, b) => a - b),
-    [...moved.run.maze.traps].sort((a, b) => a - b),
-  );
+  assert.deepEqual(moved.run.revealedTraps ?? [], [], "шаг без факела не раскрывает");
 
-  /* Спуск на новый этаж тоже открывает все ловушки сразу. */
-  game.model.updateRun((r) => ({ ...r, maze: { ...r.maze, bossDefeated: true } }));
-  game.descend();
-  const descended = game.model.getSnapshot();
+  /* Факел: раскрывает ровно ловушки в двух шагах от текущей клетки, по стенам. */
+  const withTorch = { ...moved.run, torchTurns: 0 };
+  game.model.setRun(withTorch);
+  game.model.updatePlayer((p) => ({ ...p, bag: { ...p.bag, field_torch: 1 } }));
+  game.dungeon.useFieldItem("field_torch");
+  const lit = game.model.getSnapshot();
+  assert.equal(lit.run.torchTurns, 21, "факел горит 20 ходов (+1 на текущий шаг)");
   assert.deepEqual(
-    [...(descended.run.revealedTraps ?? [])].sort((a, b) => a - b),
-    [...descended.run.maze.traps].sort((a, b) => a - b),
-    "после спуска все ловушки этажа отмечены",
+    [...(lit.run.revealedTraps ?? [])].sort((a, b) => a - b),
+    maze.trapsWithin(lit.run.maze, lit.run.pos, 2).sort((a, b) => a - b),
+    "раскрыты только ловушки в двух шагах",
   );
 });
 

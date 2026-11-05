@@ -427,11 +427,14 @@ export function allBlessingOffers(): string[] {
     .map((id) => id);
 }
 
-/** Журнал новой игры: два задания с первого этажа и полный набор товаров. */
+/** Новых заданий: три в начале игры и три за каждый новый пройденный этаж. */
+export const QUEST_OFFERS_PER_FLOOR = 3;
+
+/** Журнал новой игры: три задания с первого этажа и полный набор товаров. */
 export function initialQuestLog(shopLevel: number, rng: () => number = Math.random): QuestLog {
   return {
     ...emptyQuestLog(),
-    offers: rollQuestOffers([], [], 1, 2, rng),
+    offers: rollQuestOffers([], [], 1, QUEST_OFFERS_PER_FLOOR, rng),
     blessingOffers: allBlessingOffers(),
     wizard: rollWizardStock(shopLevel, 1, rng),
     villager: rollVillagerStock(rng),
@@ -445,7 +448,7 @@ export function initialQuestLog(shopLevel: number, rng: () => number = Math.rand
  */
 export function refreshAfterNewFloor(player: Player, unlockedFloor: number, rng: () => number = Math.random): Player {
   const log = logOf(player);
-  const count = rng() < 0.5 ? 1 : 2;
+  const count = QUEST_OFFERS_PER_FLOOR;
   const nextLog: QuestLog = {
     ...log,
     offers: rollQuestOffers(log.offers, log.active, unlockedFloor, count, rng, log.trust),
@@ -776,4 +779,9 @@ export function applyMarkVictory(
 /** Количество заданий, которые можно сдать прямо сейчас (для значка вкладки). */
 export function readyQuestCount(player: Player): number {
   return logOf(player).active.filter((q) => questReady(q, player)).length;
+}
+
+/** Задания, которые можно взять: предложения, ещё не принятые в работу. */
+export function availableQuestCount(player: Player): number {
+  return logOf(player).offers.length;
 }

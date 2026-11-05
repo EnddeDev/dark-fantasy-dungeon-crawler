@@ -281,6 +281,8 @@ export interface Player {
   gold: number;
   /** Расходники, свитки и реагенты: id -> количество */
   bag: Record<string, number>;
+  /** Сумка с зельями: три слота (id зелья или null). Нет поля — сумка пустая. */
+  pouch?: (string | null)[];
   /** Купленные в лавке рецепты: знание сохраняется между вылазками. */
   knownRecipes: string[];
   /** Инвентарь снаряжения (оружие, броня, украшения) */
@@ -413,6 +415,8 @@ export type ModalState =
   | { kind: "chest"; gold: number; items: string[]; gear: GearItem[]; xp: number }
   | { kind: "key" }
   | { kind: "stairs" }
+  /** Выход без победы над стражем: сколько уйдёт при подтверждении. */
+  | { kind: "leave"; gold: number; items: number; gear: number }
   | { kind: "death"; cause: string; lost: number; lostGear: number }
   | { kind: "event"; eventId: string; cell: number; result?: { title: string; good: string; bad?: string } }
   | { kind: "note"; title: string; body: string };
