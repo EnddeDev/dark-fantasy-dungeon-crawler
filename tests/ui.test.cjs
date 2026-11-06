@@ -33,7 +33,7 @@ const battle = load("src/game/battle.ts", "battle");
 /** Бой с нейтральным врагом: род «никакой» и тип «сильный» не дают ни уклонения, ни иммунитетов. */
 function freshBattle(pl, floor, isBoss, biome, torchTurns, burning) {
   const b = battle.newBattle(pl, floor, isBoss, biome, torchTurns, burning);
-  b.enemy.def = { ...b.enemy.def, race: "none", type: "strong" };
+  b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none", type: "strong" };
   b.enemy.mtype = "strong";
   return b;
 }
@@ -454,4 +454,17 @@ test("left panel sums the same gear effect over worn items; the hover tip lists 
     assert.ok(tip.includes(content.GEAR_BASES[base.baseId].name), `в подсказке назван ${base.baseId}`);
   }
   assert.ok(tip.includes("+6% к множителю от Интеллекта") && tip.includes("+4% к множителю от Интеллекта"), "у каждого предмета своё значение");
+});
+
+test("сумка с зельями лежит в арсенале под «Надето на персонаже», а не в выборе яруса", () => {
+  const player = makePlayer({ bag: { potion_s: 1 } });
+  const common = { player, controller: {}, shopStock: [], onStart: noop, best: 1, unlockedFloor: 2, onSetPouch: () => null };
+  const armory = renderToStaticMarkup(React.createElement(Lobby, { ...common, initialTab: "armory" }));
+  const at = armory.indexOf('aria-label="Сумка с зельями"');
+  assert.ok(at > 0, "в арсенале есть сумка");
+  assert.ok(at > armory.indexOf("Надето на персонаже"), "сумка под экипировкой");
+  assert.ok(at < armory.indexOf('id="armory-inventory"'), "сумка до инвентаря");
+  const floor = renderToStaticMarkup(React.createElement(Lobby, { ...common }));
+  assert.ok(floor.includes("Выбор яруса"), "панель выбора яруса видна");
+  assert.ok(!floor.includes('aria-label="Сумка с зельями"'), "в выборе яруса сумки нет");
 });

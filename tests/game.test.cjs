@@ -29,7 +29,7 @@ const battle = loadGameModule("battle");
  */
 function freshBattle(pl, floor, isBoss, biome, torchTurns, burning) {
   const b = battle.newBattle(pl, floor, isBoss, biome, torchTurns, burning);
-  b.enemy.def = { ...b.enemy.def, race: "none", type: "strong" };
+  b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none", type: "strong" };
   b.enemy.mtype = "strong";
   return b;
 }
@@ -812,7 +812,7 @@ test("throwing weapons are consumable, explosions pierce armor and living target
     b.enemy.hp = 999;
     b.enemy.maxHp = 999;
     b.enemy.armor = 200;
-    b.enemy.def = { ...b.enemy.def, race: "none", type: "agile", moves: ["attack"] };
+    b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none", type: "agile", moves: ["attack"] };
     b.enemy.moves = ["attack"];
     b.p.hp = 300;
     b.p.maxHp = 300;
@@ -997,7 +997,7 @@ test("haste, terror, stone skin and acid change the fight as described", () => {
     b.enemy.hp = 5000;
     b.enemy.maxHp = 5000;
     b.enemy.armor = 6;
-    b.enemy.def = { ...b.enemy.def, race: "none", type: "agile", moves: ["attack"] };
+    b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none", type: "agile", moves: ["attack"] };
     b.enemy.moves = ["attack"];
     b.enemy.passive = null;
     b.enemy.effects = [];
@@ -1583,7 +1583,7 @@ test("battle consumable damage uses AGI for consumables and INT for damage scrol
     const b = freshBattle(pl, 1);
     b.queue = ["p", "e", "e", "e"];
     b.enemy.hp = 5000; b.enemy.maxHp = 5000; b.enemy.armor = 0;
-    b.enemy.def = { ...b.enemy.def, race: "none", type: "agile", moves: ["attack"] };
+    b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none", type: "agile", moves: ["attack"] };
     b.enemy.moves = ["attack"]; b.enemy.passive = null;
     b.p.hp = 500; b.p.maxHp = 500; b.p.evade = 0;
     return b;
@@ -1629,7 +1629,7 @@ test("magical scroll bonuses do not amplify non-scroll consumables", () => {
     const b = freshBattle(pl, 1);
     b.queue = ["p", "e", "e", "e"];
     b.enemy.hp = 5000; b.enemy.maxHp = 5000; b.enemy.armor = 6;
-    b.enemy.def = { ...b.enemy.def, race: "none", type: "agile", moves: ["attack"] };
+    b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none", type: "agile", moves: ["attack"] };
     b.enemy.moves = ["attack"]; b.enemy.passive = null;
     b.enemy.effects = []; b.enemy.effectPower = {};
     b.p.hp = 500; b.p.maxHp = 500; b.p.evade = 0;
@@ -2292,7 +2292,7 @@ test("приёмы с негативными эффектами уходят н�
     b.enemy.hp = 9999;
     b.enemy.maxHp = 9999;
     b.enemy.moves = ["seal_attack"];
-    b.enemy.def = { ...b.enemy.def, moves: ["seal_attack"] };
+    b.enemy.def = { ...b.enemy.def, id: "fixture", moves: ["seal_attack"] };
     b.queue = ["p", "e"];
     b.idx = 1;
     return b;
@@ -2330,7 +2330,7 @@ test("в бою дебаффы монстра идут не чаще раза в
     b.enemy.hp = 99999;
     b.enemy.maxHp = 99999;
     b.enemy.moves = ["attack", "curse", "terror", "wound"];
-    b.enemy.def = { ...b.enemy.def, moves: ["attack", "curse", "terror", "wound"] };
+    b.enemy.def = { ...b.enemy.def, id: "fixture", moves: ["attack", "curse", "terror", "wound"] };
     return b;
   };
   const applied = new Set();
@@ -2550,7 +2550,7 @@ test("enemy move choice is the argmax of expected damage across random hero stat
       const b = freshBattle(mkP({ level: 1 + (i % 9), stats: { str: 4, agi: 4, int: 4 }, hp: 200 }), 1 + (i % 10), false, "classic");
       b.p.armor = (i * 7) % 40;
       b.enemy.moves = allMoves.filter((_, k) => (k + i) % 3 !== 0);
-      b.enemy.def = { ...b.enemy.def, moves: [...b.enemy.moves] };
+      b.enemy.def = { ...b.enemy.def, id: "fixture", moves: [...b.enemy.moves] };
       const chosen = battle.chooseEnemyMove(b);
       const best = Math.max(...b.enemy.moves.map((m) => battle.enemyExpectedMoveDamage(b, m)));
       assert.ok(battle.enemyExpectedMoveDamage(b, chosen) >= best - 1e-6, `${chosen} хуже лучшего: ${best}`);
@@ -2606,7 +2606,7 @@ test("weapon effects bleed, poison and sunder trigger on a plain hit", () => {
   b.idx = 0;
   b.enemy.hp = 5000; b.enemy.maxHp = 5000; b.enemy.armor = 10;
   b.enemy.effects = []; b.enemy.effectPower = {};
-  b.enemy.def = { ...b.enemy.def, race: "none", type: "agile" };
+  b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none", type: "agile" };
   b.enemy.moves = ["attack"];
   /* Биом и защитные шансы врага фиксированы: тест про свойства оружия, а не про удачу. */
   b.biome = "classic";
@@ -2684,7 +2684,7 @@ test("supplies have levels tied to minimum drop floor and new statuses work", ()
     const b = freshBattle(pl, 5);
     b.queue = ["p", "e"]; b.idx = 0;
     b.enemy.hp = 5000; b.enemy.maxHp = 5000; b.enemy.armor = 0; b.enemy.passive = null; b.enemy.effects = []; b.enemy.effectPower = {};
-    b.enemy.def = { ...b.enemy.def, race: "none", type: "agile", moves: ["attack"] };
+    b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none", type: "agile", moves: ["attack"] };
     b.enemy.moves = ["attack"];
     return battle.playerAct(b, { type: "item", id });
   };
@@ -3018,7 +3018,7 @@ function monsterBattle(race, type, moves, extra = {}) {
   const b = freshBattle(pl, 1);
   b.queue = ["p", "e", "e", "e", "e"];
   b.idx = 0;
-  b.enemy.def = { ...b.enemy.def, race, type, moves };
+  b.enemy.def = { ...b.enemy.def, id: "fixture", race, type, moves };
   b.enemy.moves = moves;
   b.enemy.mtype = monsters.coerceMonsterType(race, type);
   b.enemy.hp = 400;
@@ -3356,7 +3356,7 @@ function withTechnique(skillId, baseId = "sword") {
   p.equip = { ...p.equip, mainHand: g.uid };
   p.hp = battle.derived(p).maxHp;
   const b = battle.newBattle(p, 1, false, undefined, 20, false);
-  b.enemy.def = { ...b.enemy.def, race: "none", type: "strong" };
+  b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none", type: "strong" };
   b.enemy.mtype = "strong";
   b.enemy.passive = null;
   b.enemy.effects = [];
@@ -3676,7 +3676,7 @@ test("истощение гасит лечение, эффекты и ярост
 
   const furyDamage = (depleted) => {
     const b = structuredClone(seed);
-    b.enemy.def = { ...b.enemy.def, race: "dragon" };
+    b.enemy.def = { ...b.enemy.def, id: "fixture", race: "dragon" };
     b.enemy.moves = ["attack"];
     b.enemy.atk = [10, 10];
     b.enemy.fury = 3;
@@ -3884,7 +3884,7 @@ test("шипы героя отвечают на физическую атаку 
 test("враг с магией выбирает её, когда физический удар бессилен", () => {
   const b = freshBattle(mkP({ level: 5, stats: { str: 6, agi: 2, int: 2 }, hp: 200 }), 1);
   b.enemy.moves = ["attack", "curse"];
-  b.enemy.def = { ...b.enemy.def, moves: ["attack", "curse"] };
+  b.enemy.def = { ...b.enemy.def, id: "fixture", moves: ["attack", "curse"] };
   b.enemy.effectPower = {};
   b.p.armor = 999;
   b.p.hp = 300;
@@ -3953,7 +3953,7 @@ test("кнопка «Защита» не делит урон пополам, а 
       b.p.hp = 300; b.p.maxHp = 300;
       b.p.armor = armor; b.p.guard = guard;
       b.p.statuses.stone = 0; b.p.statuses.tempArmor = 0; b.p.statuses.ironTonic = 0; b.p.statuses.sundered = 0;
-      b.enemy.moves = ["attack"]; b.enemy.def = { ...b.enemy.def, moves: ["attack"] };
+      b.enemy.moves = ["attack"]; b.enemy.def = { ...b.enemy.def, id: "fixture", moves: ["attack"] };
       b.enemy.atk = [40, 40];
       b.enemy.statuses.blight = 0; b.enemy.statuses.curse = 0;
       const s = battle.enemyStep(b);

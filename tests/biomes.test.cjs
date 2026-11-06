@@ -21,7 +21,7 @@ const battle = load("battle");
 /** Бой с нейтральным врагом: род «никакой» и тип «сильный» не дают ни уклонения, ни иммунитетов. */
 function freshBattle(pl, floor, isBoss, biome, torchTurns, burning) {
   const b = battle.newBattle(pl, floor, isBoss, biome, torchTurns, burning);
-  b.enemy.def = { ...b.enemy.def, race: "none", type: "strong" };
+  b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none", type: "strong" };
   b.enemy.mtype = "strong";
   return b;
 }
@@ -46,7 +46,7 @@ function withRandom(value, fn) {
 function combat(biome, extra = {}) {
   const b = freshBattle(player(extra), 3, false, biome);
   b.enemy.hp = 5000; b.enemy.maxHp = 5000; b.enemy.armor = 0;
-  b.enemy.def = { ...b.enemy.def, race: "none", type: "agile", moves: ["attack"] };
+  b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none", type: "agile", moves: ["attack"] };
   b.enemy.moves = ["attack"]; b.enemy.passive = null;
   b.enemy.effects = []; b.enemy.effectPower = {};
   b.p.hp = 500; b.p.maxHp = 500; b.p.armor = 0; b.p.evade = 0;
@@ -132,7 +132,7 @@ test("swamp halves non-potion healing for both sides but leaves potions intact",
 test("ice costs the player 3 HP per own turn and weakens physical strikes by 25%", () => {
   const b = combat("ice");
   b.queue = ["p", "e", "p", "e"]; b.idx = 0; b.p.hp = 100;
-  b.enemy.moves = ["guard"]; b.enemy.def = { ...b.enemy.def, moves: ["guard"] };
+  b.enemy.moves = ["guard"]; b.enemy.def = { ...b.enemy.def, id: "fixture", moves: ["guard"] };
   let next = battle.playerAct(b, { type: "guard" });
   assert.equal(next.p.hp, 100); // ход врага не морозит игрока
   next = battle.enemyStep(next);
@@ -185,7 +185,7 @@ test("fire burns both sides only on the hero's turn", () => {
   b.p.hp = 100; b.p.armor = 999;
   b.enemy.hp = 1000; b.enemy.maxHp = 1000; b.enemy.statuses.burning = 1;
   b.enemy.effects = []; b.enemy.effectPower = {}; b.enemy.passive = null;
-  b.enemy.moves = ["guard"]; b.enemy.def = { ...b.enemy.def, moves: ["guard"] };
+  b.enemy.moves = ["guard"]; b.enemy.def = { ...b.enemy.def, id: "fixture", moves: ["guard"] };
   b.queue = ["p", "e", "p", "e", "p", "e"]; b.idx = 0;
 
   /* Ход героя: огонь молчит до начала следующего его хода. */

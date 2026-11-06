@@ -33,7 +33,7 @@ function player(extra = {}) {
 /** Нейтральный бой: как в остальных тестах, но тип врага совпадает с mtype. */
 function fight(race, mtype = "strong", extra = {}) {
   const b = battle.newBattle(player(extra), 3, false, "classic");
-  b.enemy.def = { ...b.enemy.def, race, type: mtype };
+  b.enemy.def = { ...b.enemy.def, id: "fixture", race, type: mtype };
   b.enemy.mtype = mtype;
   b.enemy.hp = 500; b.enemy.maxHp = 500; b.enemy.armor = 0;
   b.enemy.moves = ["attack"]; b.enemy.passive = null; b.enemy.effects = []; b.enemy.effectPower = {};
@@ -130,7 +130,7 @@ test("после воскрешения нежить теряет половин
 test("вампир: каждое попадание накладывает слабость, она копится весь бой", () => {
   const b = fight("vampire", "smart");
   b.enemy.moves = ["attack"];
-  b.enemy.def = { ...b.enemy.def, type: "smart" };
+  b.enemy.def = { ...b.enemy.def, id: "fixture", type: "smart" };
   const once = withRandom(0.5, () => battle.enemyStep({ ...b, queue: ["e", "p"], idx: 0 }));
   assert.equal(once.p.statuses.weakness, 1);
   const twice = withRandom(0.5, () => battle.enemyStep({ ...once, queue: ["e", "p"], idx: 0 }));
@@ -210,7 +210,7 @@ test("свойства рода показываются в бестиарии �
 test("стойка врага даёт броню +25%, а не делит урон пополам, у всех родов", () => {
   for (const race of ["none", "undead", "dragon"]) {
     const b = battle.newBattle(player(), 3, false, "classic");
-    b.enemy.def = { ...b.enemy.def, race };
+    b.enemy.def = { ...b.enemy.def, id: "fixture", race };
     b.enemy.passive = null;
     /* Случайные эффекты монстра (укрепление и т.п.) не должны менять расчёт брони. */
     b.enemy.effects = [];
