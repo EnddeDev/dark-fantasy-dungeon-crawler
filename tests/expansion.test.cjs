@@ -20,7 +20,7 @@ const battle = load("battle");
 /** Бой с нейтральным врагом: род «никакой» и тип «сильный» не дают ни уклонения, ни иммунитетов. */
 function freshBattle(pl, floor, isBoss, biome, torchTurns, burning) {
   const b = battle.newBattle(pl, floor, isBoss, biome, torchTurns, burning);
-  b.enemy.def = { ...b.enemy.def, race: "none", type: "strong" };
+  b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none", type: "strong" };
   b.enemy.mtype = "strong";
   return b;
 }

@@ -39,7 +39,7 @@ function fight(race, moves, bag = {}) {
     passives: [], statuses: { wound: 0, curse: 0, poison: 0 }, kills: 0, shopLevel: 1,
   };
   const b = battle.newBattle(pl, 1, false, undefined, 20, false);
-  b.enemy.def = { ...b.enemy.def, race, type: "strong", moves };
+  b.enemy.def = { ...b.enemy.def, id: "fixture", race, type: "strong", moves };
   b.enemy.moves = moves;
   b.enemy.mtype = monsters.coerceMonsterType(race, "strong");
   b.enemy.passive = null;

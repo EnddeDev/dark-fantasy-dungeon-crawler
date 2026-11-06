@@ -48,7 +48,7 @@ function fightFor(extra = {}) {
   b.enemy.hp = b.enemy.maxHp = 500;
   b.enemy.armor = 0;
   /* Раса и тип врага задаются явно: от них зависит урон физического удара. */
-  b.enemy.def = { ...b.enemy.def, race: "none" };
+  b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none" };
   b.enemy.mtype = "strong";
   /* Редкие свойства врага (каменная шкура −25% урона) случайны: снимаем их. */
   b.enemy.passive = null;

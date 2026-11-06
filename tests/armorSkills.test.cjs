@@ -190,7 +190,7 @@ test("бой: неуловимость отводит физические ат�
   b = battle.playerAct(b, { type: "armor_skill", id: "light_evade" });
   assert.equal(b.p.statuses.evadeTurn, 1);
   b.p.chanceLayers.evade = { stats: [], items: [], effects: [] };
-  b.enemy.def = { ...b.enemy.def, race: "none", type: "strong" };
+  b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none", type: "strong" };
   b.enemy.moves = ["attack"];
   b.enemy.statuses.stunAp = 0;
   b.queue = ["e"];
@@ -206,7 +206,7 @@ test("бой: ответный замах отвечает на каждый у�
   let b = battleFor(strong);
   b.p.statuses.counterTurn = 1;
   b.p.chanceLayers.evade = { stats: [], items: [], effects: [] };
-  b.enemy.def = { ...b.enemy.def, race: "none", type: "strong" };
+  b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none", type: "strong" };
   b.enemy.moves = ["attack"];
   b.enemy.statuses.stunAp = 0;
   b.enemy.hp = 9999;

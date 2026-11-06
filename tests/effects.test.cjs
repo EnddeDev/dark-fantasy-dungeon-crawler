@@ -39,7 +39,7 @@ function plainBattle(extra = {}) {
     ...extra,
   };
   const b = battle.newBattle(pl, 1, false, undefined, 20, false);
-  b.enemy.def = { ...b.enemy.def, race: "none", type: "strong" };
+  b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none", type: "strong" };
   b.enemy.mtype = "strong";
   b.enemy.passive = null;
   b.enemy.effects = [];
@@ -110,7 +110,7 @@ test("эффекты: магический тик режется сопроти�
 
 test("эффекты: монстр с иммунитетом показывает щит с глифом эффекта", () => {
   const b = plainBattle();
-  b.enemy.def = { ...b.enemy.def, race: "undead" };
+  b.enemy.def = { ...b.enemy.def, id: "fixture", race: "undead" };
   const chips = effects.enemyEffectChips(b);
   const immunity = chips.filter((c) => c.immune);
   const ids = immunity.map((c) => c.id).sort();

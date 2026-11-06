@@ -25,7 +25,7 @@ const battle = load("battle");
 /** Бой с нейтральным врагом: род «никакой» и тип «сильный» не дают ни уклонения, ни иммунитетов. */
 function freshBattle(pl, floor, isBoss, biome, torchTurns, burning) {
   const b = battle.newBattle(pl, floor, isBoss, biome, torchTurns, burning);
-  b.enemy.def = { ...b.enemy.def, race: "none", type: "strong" };
+  b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none", type: "strong" };
   b.enemy.mtype = "strong";
   return b;
 }
@@ -174,7 +174,7 @@ test("stun skips a turn, fear auto-guards, wither turns healing into damage, chi
     b.queue = ["p", "e", "p", "e"];
     b.idx = 0;
     b.enemy.hp = 5000; b.enemy.maxHp = 5000; b.enemy.armor = 0;
-    b.enemy.def = { ...b.enemy.def, race: "none", type: "agile", moves: ["attack"] };
+    b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none", type: "agile", moves: ["attack"] };
     b.enemy.moves = ["attack"];
     b.enemy.passive = null;
     b.enemy.effects = []; b.enemy.effectPower = {};

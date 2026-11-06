@@ -988,11 +988,6 @@ export function Lobby({
                 Начать с этажа {selectedFloor}
               </Btn>
             </div>
-            {onSetPouch && (
-              <div className="mt-3">
-                <PouchSlots player={player} onSet={onSetPouch} />
-              </div>
-            )}
             <div className="mt-3 flex max-w-full gap-2 overflow-x-auto pb-1" role="group" aria-label="Выбор этажа подземелья">
               {Array.from({ length: unlockedFloor }, (_, i) => i + 1).map((floor) => (
                 <button
@@ -1210,6 +1205,11 @@ export function Lobby({
                     })}
                   </div>
                   <p className="mt-3 text-[0.92rem] leading-relaxed text-mute">Снятая вещь появится в инвентаре справа. Её эффекты сразу перестанут учитываться в листе персонажа.</p>
+                  {onSetPouch && (
+                    <div className="mt-4">
+                      <PouchSlots player={player} onSet={onSetPouch} />
+                    </div>
+                  )}
                 </section>
 
                 <section id="armory-inventory" aria-label="Инвентарь снаряжения" className="min-w-0 scroll-mt-4 border border-line bg-black/20 p-3">
