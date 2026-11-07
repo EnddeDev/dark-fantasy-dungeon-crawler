@@ -159,7 +159,8 @@ test("created and migrated items carry the new stat/effect rolls", () => {
 
 test("consumables use AGI, damage scrolls use INT, healing/support stays flat", () => {
   const stats = { str: 1, agi: 5, int: 5 };
-  assert.equal(content.consumablePower(content.ITEMS.acid_vial, stats), 25);
+  /* acid_vial на 2 уровне: +10% урона расходников */
+  assert.equal(content.consumablePower(content.ITEMS.acid_vial, stats), 28);
   assert.equal(content.consumablePower(content.ITEMS.throwing_knife, stats), 25);
   assert.equal(content.consumablePower(content.ITEMS.scroll_spark, stats), 20);
   assert.equal(content.consumablePower(content.ITEMS.potion_s, stats), 28);

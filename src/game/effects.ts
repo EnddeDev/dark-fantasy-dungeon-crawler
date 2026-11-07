@@ -32,7 +32,7 @@ export const EFFECT_ICON_IDS = [
   "sunder", "stun", "rage", "haste", "stone", "iron", "blood", "quickblade",
   "pact", "fullGuard", "tempArmor", "dodge", "smoke", "shadow", "darkness",
   "noHeal", "sealItems", "sealSkills", "sealAttack", "guard", "fury",
-  "depleted", "regen", "thorns", "oil", "frost", "acid", "blind", "unknown",
+  "depleted", "regen", "thorns", "oil", "frost", "acid", "blind", "resist", "vamp_hits", "unknown",
 ] as const;
 
 export type EffectIconId = (typeof EFFECT_ICON_IDS)[number];
@@ -210,6 +210,30 @@ export function playerEffectChips(b: BattleState): EffectChip[] {
       details: ["+4 брони и +4 регенерации за раунд."],
       boosts: [{ stat: "Броня", value: "+4" }],
       highlight: "armor", color: EFFECT_COLORS.buff,
+    });
+  }
+  if (s.regenPotion > 0) {
+    chips.push({
+      id: "regen", name: "Зелье регенерации", polarity: "good", rounds: s.regenPotion,
+      details: ["+5 здоровья в конце каждого раунда."],
+      boosts: [{ stat: "Здоровье", value: "+5/раунд" }],
+      highlight: "armor", color: EFFECT_COLORS.buff,
+    });
+  }
+  if (s.resistPotion > 0) {
+    chips.push({
+      id: "resist", name: "Зелье стойкости", polarity: "good", rounds: s.resistPotion,
+      details: ["+25% стойкости к эффектам врага."],
+      boosts: [{ stat: "Стойкость", value: "+25%" }],
+      highlight: "armor", color: EFFECT_COLORS.buff,
+    });
+  }
+  if (s.vampHits > 0) {
+    chips.push({
+      id: "vamp_hits", name: "Вампирская кровь", polarity: "good", rounds: s.vampHits,
+      details: ["Следующие удары оружием или приёмом возвращают 25% урона здоровьем."],
+      boosts: [{ stat: "Похищение жизни", value: "+25%" }],
+      highlight: "dmg", color: EFFECT_COLORS.buff,
     });
   }
   if (s.tempArmor > 0) {
