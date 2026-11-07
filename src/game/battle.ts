@@ -760,7 +760,7 @@ export function spawnEnemy(
   /* Вид задаётся заданием (убить или принести с существа); иначе — случайный по этажу. */
   const forced = !isBoss && forcedEnemyId ? ENEMIES.find((e) => e.id === forcedEnemyId) : undefined;
   const def = isBoss ? rollBoss(floor) : forced ?? rollEnemy(floor, rng);
-  const threat: Threat = isBoss ? "catastrophe" : forcedThreat ?? rollThreat(rng);
+  const threat: Threat = isBoss ? "catastrophe" : forcedThreat ?? rollThreat(rng, floor);
   const level = isBoss ? floor : rollMonsterLevel(floor, rng);
   const meta = THREAT_META[threat];
 
