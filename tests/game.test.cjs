@@ -2229,7 +2229,7 @@ test("acceleration gear gives 0/1/2/3 extra actions by level 1/5/7/10 every roun
 test("starter gear has no stat or level requirements", () => {
   const initial = PlayerFactory.createInitial();
   const zero = { ...initial, stats: { str: 0, agi: 0, int: 0 } };
-  assert.equal(initial.armory.length, 2);
+  assert.equal(initial.armory.length, 3);
   for (const item of initial.armory) {
     assert.equal(content.gearRequiresNothing(item), true, `${item.baseId}: без требований`);
     assert.equal(content.gearRequirement(item).stat, null);
@@ -2239,6 +2239,11 @@ test("starter gear has no stat or level requirements", () => {
 
   /* Стартовые вещи без требований при любом качестве и в любом сохранении. */
   for (const item of initial.armory) {
+    /* Ботинки — стартовые по экземпляру (noReq), а не по базе: базовый список обносков не трогаем. */
+    if (item.baseId === "shoes") {
+      assert.equal(content.gearRequiresNothing(item), true, "стартовые ботинки без требования");
+      continue;
+    }
     assert.equal(content.isStarterItem(item), true, `${item.baseId}: это стартовая вещь`);
     assert.equal(content.gearRequiresNothing({ ...item, rarity: "epic", wear: "new" }), true, "редкость не добавляет требований");
     assert.equal(content.gearRequiresNothing({ baseId: item.baseId, level: 1 }), true, "старое сохранение без полей тоже без требований");

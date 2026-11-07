@@ -159,7 +159,7 @@ export function BattleView({
           : (b.p.statuses.weakness ?? 0) > 0
           ? { text: `Слабость −${Math.round((b.p.statuses.weakness ?? 0) * WEAKNESS_STEP * 100)}% (${b.p.statuses.weakness} нал.)`, tone: "rubric" }
           : undefined,
-      hint: `${b.p.weaponName} + ${statDamage(b.p.stats.str)} от СИЛ`,
+      hint: `${b.p.weaponName} + ${statDamage(b.p.stats.str, b.p.passives)} от СИЛ`,
     },
     {
       label: "По противнику",
@@ -379,7 +379,7 @@ export function BattleView({
                 <div className="mt-3 space-y-1.5 border-t border-line/70 pt-2.5 text-[0.92rem] leading-snug">
                   <p className="text-mute">
                     Расчёт удара: <b className="text-parch">{b.p.hit[0]}–{b.p.hit[1]}</b> по оружию +{" "}
-                    <b className="text-parch">{statDamage(b.p.stats.str)}</b> от СИЛ (2 + {b.p.stats.str})
+                    <b className="text-parch">{statDamage(b.p.stats.str, b.p.passives)}</b> от СИЛ (2 + {statDamage(b.p.stats.str, b.p.passives) - 2})
                     {r.dmgMods.filter((m) => m.mult && m.mult !== 1).length
                       ? `, затем множители ${r.dmgMods
                           .filter((m) => m.mult && m.mult !== 1)
@@ -643,10 +643,10 @@ export function BattleView({
                   </button>
                 </div>
                 <div className="grid max-h-56 gap-2 overflow-y-auto pr-1">
-                  {Object.entries(b.bag).filter(([id]) => ITEMS[id]?.use && ITEMS[id]?.kind !== "special" && ITEMS[id]?.kind !== "reagent").length === 0 && (
+                  {Object.entries(b.bag).filter(([id]) => ITEMS[id]?.use && (ITEMS[id]?.kind !== "special" || ITEMS[id]?.use?.type === "special_water") && ITEMS[id]?.kind !== "reagent").length === 0 && (
                     <p className="text-sm italic text-mute">Рюкзак пуст: зелья, свитки и метательное оружие продаются в магазине.</p>
                   )}
-                  {Object.entries(b.bag).filter(([id]) => ITEMS[id]?.use && ITEMS[id]?.kind !== "special" && ITEMS[id]?.kind !== "reagent").map(([id, n]) => {
+                  {Object.entries(b.bag).filter(([id]) => ITEMS[id]?.use && (ITEMS[id]?.kind !== "special" || ITEMS[id]?.use?.type === "special_water") && ITEMS[id]?.kind !== "reagent").map(([id, n]) => {
                     const def = ITEMS[id];
                     const u = def.use!;
                     const req = consumableIntReq(def, b.p.intDiscount);

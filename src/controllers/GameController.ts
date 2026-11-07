@@ -107,6 +107,7 @@ export class GameController {
         clearedMonsters: [],
         /* Ловушки видны сразу: на карте не остаётся скрытых механизмов. */
         revealedTraps: [],
+        revealedEvents: [],
         sprungTraps: [],
         questCarry: [],
         log: [
@@ -180,6 +181,7 @@ export class GameController {
         torchTurns: 0,
         mapRevealed: false,
         revealedTraps: [],
+        revealedEvents: [],
         sprungTraps: [],
         burning: 0,
         log: [...run.log, `Спуск на этаж ${nf}: ${BIOMES[mazeBiome(maze)].name}. ${BIOMES[mazeBiome(maze)].effect}`],

@@ -328,7 +328,7 @@ export function upgradeRarity(item: GearItem, rng: () => number = Math.random): 
     archetype: arch,
   }).filter((id) => id !== "ap" || canRollExtraAp(next, out.level ?? 1));
   /* Новое качество обязано дать положенное число свойств: аксессуар — минимум одно. */
-  const target = effectCountForGear({ kind, rarity: next, weaponType });
+  const target = effectCountForGear({ kind, rarity: next, weaponType, stat });
   const need = Math.max(0, target - have.length);
   out.effects = [...have, ...pickUnique(pool, need, rng, have)] as GearEffectId[];
   out.effectRolls = { ...(out.effectRolls ?? {}) };

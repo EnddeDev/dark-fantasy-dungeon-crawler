@@ -33,11 +33,17 @@ export const STAT_FORMULAS = {
  * Здоровье = базовые 10 + 10 за каждое очко Силы.
  * Сила 0 — 10 ОЗ, Сила 1 — 20 ОЗ, Сила 10 — 110 ОЗ.
  */
-export function statHealth(str: number): number {
-  return STAT_FORMULAS.str.healthBase + STAT_FORMULAS.str.healthPerPoint * Math.max(0, Math.floor(str));
+/** Варвар на 10 рубеже: от СИЛ здоровье ×3, урон ×2. База (10 ОЗ, 2 урона) не меняется. */
+export const BARBARIAN_10_ID = "arch_barbarian_10";
+export const BARBARIAN_10_STR = { healthMult: 3, damageMult: 2 } as const;
+
+export function statHealth(str: number, passives?: readonly string[]): number {
+  const mult = passives?.includes(BARBARIAN_10_ID) ? BARBARIAN_10_STR.healthMult : 1;
+  return STAT_FORMULAS.str.healthBase + STAT_FORMULAS.str.healthPerPoint * mult * Math.max(0, Math.floor(str));
 }
-export function statDamage(str: number): number {
-  return STAT_FORMULAS.str.damageBase + STAT_FORMULAS.str.damagePerPoint * Math.max(0, str);
+export function statDamage(str: number, passives?: readonly string[]): number {
+  const mult = passives?.includes(BARBARIAN_10_ID) ? BARBARIAN_10_STR.damageMult : 1;
+  return STAT_FORMULAS.str.damageBase + STAT_FORMULAS.str.damagePerPoint * mult * Math.max(0, str);
 }
 export function statTenacity(str: number): number {
   return STAT_FORMULAS.str.tenacityPerPoint * Math.max(0, str);

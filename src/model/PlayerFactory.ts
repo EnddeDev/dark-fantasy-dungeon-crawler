@@ -18,6 +18,7 @@ export class PlayerFactory {
     /* Стартовое снаряжение не требует характеристик и уровня. */
     const starterWeapon = { ...createGearItem({ baseId: "knife", wear: "worn", rarity: "common", identified: true }), noReq: true };
     const starterArmor = { ...createGearItem({ baseId: "rag", wear: "worn", rarity: "common", identified: true }), noReq: true };
+    const starterBoots = { ...createGearItem({ baseId: "shoes", wear: "worn", rarity: "common", identified: true }), noReq: true };
     const player: Player = {
       name: DEFAULT_CHARACTER_NAME,
       level: 1,
@@ -26,15 +27,15 @@ export class PlayerFactory {
       stats: { str: 1, agi: 1, int: 1 },
       hp: 10,
       gold: 220,
-      bag: { potion_s: 2, antidote: 1, scroll_spark: 1, moss: 1, fire: 1 },
+      bag: { potion_s: 2, antidote: 1, scroll_spark: 1, moss: 1, fire: 1, field_torch: 2, sapper_kit: 1 },
       knownRecipes: [],
-      armory: [starterWeapon, starterArmor],
+      armory: [starterWeapon, starterArmor, starterBoots],
       equip: {
         mainHand: starterWeapon.uid,
         offHand: null,
         head: null,
         body: starterArmor.uid,
-        feet: null,
+        feet: starterBoots.uid,
         wrists: null,
         ring1: null,
         ring2: null,

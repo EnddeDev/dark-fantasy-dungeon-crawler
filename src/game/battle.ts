@@ -567,10 +567,10 @@ export function derived(pl: Player): DerivedStats {
   const swiftEvade = (rareAffixPower.swift?.evade ?? 0) / 100;
   const titanHp = legendaryPower.titan_heart?.hp ?? 0;
   const titanArmor = legendaryPower.titan_heart?.armor ?? 0;
-  const strFlat = statDamage(pl.stats.str);
+  const strFlat = statDamage(pl.stats.str, pl.passives);
   /* Благословение священника на поход: здоровье, броня и шансы из blessingEffect. */
   const bless = blessingEffect(pl.blessing);
-  const baseHp = statHealth(pl.stats.str) + hpBonus + (hasPassive("iron_will") ? 22 : 0) + mightHp + titanHp;
+  const baseHp = statHealth(pl.stats.str, pl.passives) + hpBonus + (hasPassive("iron_will") ? 22 : 0) + mightHp + titanHp;
   const maxHp = baseHp + (bless.hpPct ? Math.round(baseHp * bless.hpPct) : 0);
 
   const chanceLayers = emptyChanceLayers();
@@ -1520,7 +1520,7 @@ function grantDodgeAction(b: BattleState) {
 
 function calcWeaponRoll(b: BattleState, mult = 1, bonusFlat = 0, opts: { skill?: boolean; forceCrit?: boolean; multi?: boolean } = {}) {
   const [lo, hi] = b.p.hit;
-  let d = randInt(lo, hi) + statDamage(b.p.stats.str) + bonusFlat;
+  let d = randInt(lo, hi) + statDamage(b.p.stats.str, b.p.passives) + bonusFlat;
 
   if (hasPassive(b, "heavy_hand")) d += 3;
   d += rarePower(b, "might", "damage");
@@ -2836,7 +2836,9 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
     case "item": {
       const def = ITEMS[a.id];
       if (!def?.use) return err("Этим нельзя воспользоваться.");
-      if (def.kind === "special" || def.kind === "reagent") return err("Этот предмет используется только на карте.");
+      if ((def.kind === "special" && def.use.type !== "special_water") || def.kind === "reagent") {
+        return err("Этот предмет используется только на карте.");
+      }
       if (!b.bag[a.id]) return err(`«${def.name}» закончился.`);
       const u = def.use;
       const req = consumableIntReq(def, b.p.intDiscount);
@@ -2967,6 +2969,15 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
             applyEnemyStatus(b, "poison", u.rounds ?? 3, dotBaseTick("poison", b.p.level));
             push(b, `${b.enemy.def.name} отравлен на ${b.enemy.statuses.poison} раунда.`, "p");
           }
+          break;
+        }
+        case "special_water": {
+          /* Бурдюк: снимает горение героя и слои Огненных недр, даёт +5 здоровья. */
+          b.p.statuses.burn = 0;
+          b.p.statuses.burning = 0;
+          const healed = healPlayer(b, 5, false);
+          flash(b, "p", "heal", healed);
+          push(b, `${def.name}: горение снято, +${healed} здоровья.`, "p");
           break;
         }
         case "smoke": {
@@ -3726,7 +3737,7 @@ function flatOf(list: Modifier[]) {
  */
 export function combatReadout(b: BattleState): CombatReadout {
   const st = b.p.stats;
-  const strFlat = statDamage(st.str);
+  const strFlat = statDamage(st.str, b.p.passives);
   const baseMin = b.p.hit[0] + strFlat;
   const baseMax = b.p.hit[1] + strFlat;
 

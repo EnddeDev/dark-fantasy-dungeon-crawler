@@ -1,3 +1,4 @@
+import { shownEventKind } from "../game/mapEvents";
 import { useMemo, useState } from "react";
 import { Backpack, Footprints, Hammer, Info, X } from "lucide-react";
 import { GEAR_BASES, ITEMS, canWear, consumableIntReq, consumablePower, gearStatReqLabel, slotsForItem, wearRequirementNote } from "../game/content";
@@ -376,7 +377,7 @@ export function Dungeon({
                 .map((i) => {
                   const { cx, cy } = center(i);
                   const spawn = m.eventSpawns?.find((sp) => sp.cell === i);
-                  const kind = spawn?.kind ?? "neutral";
+                  const kind = shownEventKind(run, spawn?.kind, i);
                   if (kind === "positive") {
                     return (
                       <g key={`e${i}`} transform={`translate(${cx} ${cy})`} className="breathe">
