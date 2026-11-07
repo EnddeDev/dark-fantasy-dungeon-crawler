@@ -166,7 +166,7 @@ export const EXTRA_GEAR: GearBaseDef[] = [
 
   /* ── БОТИНКИ ── */
   G({
-    id: "shoes", name: "Кожаные ботинки", slot: "feet",
+    id: "shoes", name: "Кожаные ботинки", slot: "feet", gearClass: "light", stat: "agi",
     hp: 8, evade: 0.04, level: 1, minFloor: 1, idIntReq: 2, idGoldCost: 30,
     desc: "Просто ботинки. Но без них подземелье дороже.",
     preferredEpic: "shadow_volley",
@@ -572,16 +572,16 @@ export const EXTRA_ITEMS: ItemDef[] = [
   /* специальные предметы */
   { id: "sapper_kit", name: "Снаряжение сапёра", kind: "special", price: 85, level: 2, minFloor: 2,
     use: { type: "special_kit" },
-    desc: "Позволяет обезвредить ловушку. Шанс растёт от Интеллекта. Тратится при попытке в любом случае." },
+    desc: "Обезвреживает ловушку: разведанную — наверняка, скрытую — в половине случаев. От Интеллекта не зависит. Тратится при удачном обезвреживании." },
   { id: "lockpicks", name: "Отмычки", kind: "special", price: 55, level: 1, minFloor: 1,
     use: { type: "special_lockpick" },
     desc: "Шанс открыть запертую дверь без ключа. Зависит от Ловкости. Тратятся при попытке в любом случае." },
   { id: "tattered_map", name: "Потрёпанная карта", kind: "special", price: 120, level: 2, minFloor: 2,
     use: { type: "special_map" },
-    desc: "Используется на карте лабиринта: показывает сундуки, босса и события до конца этажа." },
+    desc: "Используется на карте лабиринта: раскрывает ловушки и показывает сундуки, босса и события до конца этажа." },
   { id: "water_skin", name: "Бурдюк с водой", kind: "special", price: 40, level: 1, minFloor: 1,
     use: { type: "special_water" },
-    desc: "Снимает горение на карте в Огненных недрах." },
+    desc: "Снимает горение на карте и в бою и даёт +5 здоровья." },
   { id: "field_torch", name: "Факел", kind: "special", price: 35, level: 1, minFloor: 1,
     use: { type: "special_torch", rounds: 20 },
     desc: "Работает только на карте: 20 ходов, ловушки в двух шагах видны, обход и обезвреживание с преимуществом. Здесь же +1 к видимости." },

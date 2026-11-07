@@ -1,7 +1,7 @@
 /**
  * Ловушки подземелья: обычный механизм, яд, кровотечение и проклятие.
  * Проклятие держится до конца следующего боя; «Горечь полыни» снимает его заранее.
- * Ловушки скрыты, пока их не раскроет карта или факел. С факелом обход и обезвреживание
+ * Ловушки скрыты, пока их не раскроет карта, факел или разведка (ИНТ). С факелом обход и обезвреживание
  * бросаются с преимуществом: два броска, берётся лучший.
  */
 import type { StatKey } from "./types";
@@ -44,6 +44,8 @@ export interface TrapSetup {
   maxHp: number;
   /** Факел горит: обход и обезвреживание с преимуществом. */
   advantage?: boolean;
+  /** Ловушка разведана (факелом, картой или разведкой ИНТ) до шага на неё. */
+  revealed?: boolean;
 }
 
 export interface TrapState {
@@ -70,12 +72,16 @@ export function trapDamage(maxHp: number, stoneSkin = false): number {
   return Math.max(TRAP_DAMAGE_MIN, Math.round(Math.max(0, maxHp) * TRAP_DAMAGE_PCT * mult));
 }
 
-/** Обход — от Ловкости; обезвреживание набором сапёра — от Интеллекта. */
+/** Обход — от Ловкости. */
 export function trapBypassChance(stats: Record<StatKey, number>, bonus = 0): number {
   return Math.min(0.9, 0.22 + stats.agi * 0.05 + bonus);
 }
-export function trapDisarmChance(stats: Record<StatKey, number>, bonus = 0): number {
-  return Math.min(0.95, 0.3 + stats.int * 0.06 + bonus);
+
+/** Обезвреживание набором сапёра: разведанную ловушку — наверняка, скрытую — в половине случаев. От Интеллекта не зависит. */
+export const DISARM_REVEALED_CHANCE = 1;
+export const DISARM_HIDDEN_CHANCE = 0.5;
+export function trapDisarmChance(revealed: boolean): number {
+  return revealed ? DISARM_REVEALED_CHANCE : DISARM_HIDDEN_CHANCE;
 }
 
 export function makeTrap(setup: TrapSetup): TrapState {
@@ -87,7 +93,7 @@ export function makeTrap(setup: TrapSetup): TrapState {
     tick: kind === "poison" || kind === "bleed" ? trapTickFrom(kind, setup.floor) : 0,
     cursePower: kind === "curse" ? 30 : 0,
     bypassChance: trapBypassChance(setup.stats, setup.bypassBonus),
-    disarmChance: trapDisarmChance(setup.stats, setup.bypassBonus),
+    disarmChance: trapDisarmChance(!!setup.revealed),
     advantage: !!setup.advantage,
   };
 }

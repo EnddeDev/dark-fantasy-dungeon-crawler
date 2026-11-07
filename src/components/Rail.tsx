@@ -191,7 +191,6 @@ export function Rail({
   const ap = readout?.ap ?? d.ap;
   const resist = readout?.resist ?? d.tenacity;
   const trapBypass = trapBypassChance(player.stats, (player.passives.includes("light_step") ? 0.3 : 0) + d.rareAffixes.filter((id) => id === "swift").length * 0.12);
-  const trapDisarm = trapDisarmChance(player.stats, (player.passives.includes("light_step") ? 0.3 : 0) + d.rareAffixes.filter((id) => id === "swift").length * 0.12);
   const xpNeed = xpForNextLevel(player.level);
   const statuses = battle ? battle.p.statuses : player.statuses;
   const worn = equippedList(player).filter((item) => item.identified);
@@ -489,7 +488,7 @@ export function Rail({
               <SheetSection title="Исследования и ловушки">
                 <dl className="space-y-2 text-[0.97rem]">
                   <div className="flex justify-between gap-3"><dt className="text-mute">Обход ловушки</dt><dd className="font-mono tab text-verd">{Math.round(trapBypass * 100)}%</dd></div>
-                  <div className="flex justify-between gap-3"><dt className="text-mute">Обезвреживание</dt><dd className="font-mono tab text-verd">{Math.round(trapDisarm * 100)}%</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-mute">Обезвреживание</dt><dd className="font-mono tab text-verd">{Math.round(trapDisarmChance(true) * 100)}% / {Math.round(trapDisarmChance(false) * 100)}%</dd></div>
                   <div className="flex justify-between gap-3"><dt className="text-mute">Снижение требований ИНТ</dt><dd className="font-mono tab text-parch">−{d.intDiscount}</dd></div>
                   <div className="flex justify-between gap-3"><dt className="text-mute">Изучено рецептов</dt><dd className="font-mono tab text-parch">{player.knownRecipes.length}</dd></div>
                 </dl>

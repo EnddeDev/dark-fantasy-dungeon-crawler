@@ -145,6 +145,10 @@ export class DungeonController {
     /* «Не сейчас»: событие остаётся на карте и ждёт возвращения. */
     if (choice.leave) {
       this.model.setModal(null);
+      /* Герой зашёл и вышел, не использовав событие: значок на карте теперь настоящий. */
+      if (cell != null) {
+        this.model.updateRun((p) => (p ? { ...p, revealedEvents: [...new Set([...(p.revealedEvents ?? []), cell])] } : p));
+      }
       this.model.logRun(`${ev.name}: оставлено на потом.`);
       return;
     }
@@ -422,12 +426,11 @@ export class DungeonController {
       };
       msg = "Потрёпанная карта: сундуки, босс, события, монстры и ловушки отмечены до конца этажа.";
     } else if (u.type === "special_water") {
-      if (mazeBiome(run.maze) !== "fire") {
-        this.model.setModal({ kind: "note", title: "Здесь не жарко", body: "Бурдюк с водой нужен в Огненных недрах — он снимает горение перед боем." });
-        return;
-      }
-      nextRun = { ...run, burning: 0, log: [...run.log, "Бурдюк с водой смочил плащ: горение перед боем снято."] };
-      msg = "Бурдюк с водой: горение перед боем снято.";
+      /* Бурдюк: снимает горение (героя и слои Огненных недр) и даёт +5 здоровья. */
+      nextRun = { ...run, burning: 0, log: [...run.log, "Бурдюк с водой: горение снято, +5 здоровья."] };
+      hp = Math.min(d.maxHp, hp + 5);
+      statuses.burn = 0;
+      msg = "Бурдюк с водой: горение снято, +5 здоровья.";
     } else if (u.type === "special_torch") {
       /* Факел работает только на карте: раскрывает ловушки в двух шагах и даёт бросок с преимуществом. */
       const lit = u.rounds ?? 20;
@@ -525,6 +528,15 @@ export class DungeonController {
     /* Ловушки скрыты: факел раскрывает те, что в двух шагах от героя. */
     if (torchLit) {
       r = { ...r, revealedTraps: [...new Set([...(r.revealedTraps ?? []), ...trapsWithin(m, { x: nx, y: ny }, 2)])] };
+    }
+
+    /* Разведка ИНТ: каждая ловушка в соседней клетке открывается с шансом 10% за очко Интеллекта (ИНТ 10 — наверняка). */
+    const senseChance = Math.min(1, player.stats.int * 0.1);
+    const sensed = trapsWithin(m, { x: nx, y: ny }, 1).filter(
+      (i) => i !== idx && !(r.revealedTraps ?? []).includes(i) && !(r.sprungTraps ?? []).includes(i) && Math.random() < senseChance,
+    );
+    if (sensed.length) {
+      r = { ...r, revealedTraps: [...new Set([...(r.revealedTraps ?? []), ...sensed])], log: [...r.log, "Разведка: рядом открылась ловушка."] };
     }
 
     if (m.boss.x === nx && m.boss.y === ny && !m.bossDefeated) {
@@ -631,7 +643,7 @@ export class DungeonController {
       const bypassBonus = (has("light_step") ? 0.3 : 0) + swiftBonus;
       const trap = makeTrap({
         kind: rollTrapKind(), floor: r.floor, stats: player.stats, bypassBonus, stoneSkin: has("stone_skin"),
-        maxHp: d.maxHp, advantage: torchLit,
+        maxHp: d.maxHp, advantage: torchLit, revealed: (r.revealedTraps ?? []).includes(idx),
       });
       r = {
         ...r,

@@ -734,3 +734,16 @@ export function drawEventsForPlan(plan: MapEventKind[], rng: () => number = Math
   }
   return out;
 }
+
+/**
+ * Значок события на карте. До захода и выхода без выбора он нейтральный;
+ * после «оставить на потом» и на потрёпанной карте — настоящий.
+ */
+export function shownEventKind(
+  run: { mapRevealed?: boolean; revealedEvents?: number[] },
+  kind: "positive" | "neutral" | "negative" | undefined,
+  cell: number,
+): "positive" | "neutral" | "negative" {
+  if (run.mapRevealed || (run.revealedEvents ?? []).includes(cell)) return kind ?? "neutral";
+  return "neutral";
+}

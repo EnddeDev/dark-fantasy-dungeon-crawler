@@ -55,7 +55,7 @@ test("MVC: SaveRepository isolates localStorage keys and PlayerFactory migrates 
   assert.equal(repo.readShopLevel(), 3);
   const restored = PlayerFactory.restore(repo.readPlayer());
   assert.equal(restored.shopLevel, 3);
-  assert.equal(restored.armory.length, 2);
+  assert.equal(restored.armory.length, 3);
   assert.ok(restored.hp > 0);
 });
 
