@@ -761,6 +761,9 @@ export function mayHaveSeals(isBoss: boolean, threat: Threat): boolean {
 /** Нижняя граница удара обычного монстра до брони героя. Боссы не затрагиваются. */
 export const NORMAL_MIN_ATK = 10;
 
+/** Нижняя граница здоровья обычного монстра. Боссы не затрагиваются. */
+export const NORMAL_MIN_HP = 35;
+
 export function spawnEnemy(
   floor: number,
   isBoss = false,
@@ -837,7 +840,8 @@ export function spawnEnemy(
     moves,
     effects,
     effectPower: enemyEffectPower(effects, level),
-    hp: Math.max(1, Math.round(def.hp * hpMult)),
+    /* Обычные монстры держат минимум NORMAL_MIN_HP; боссы — как задано. */
+    hp: isBoss ? Math.max(1, Math.round(def.hp * hpMult)) : Math.max(NORMAL_MIN_HP, Math.round(def.hp * hpMult)),
     ap: Math.max(1, Math.min(10, apBase)),
     /* Обычные монстры бьют минимум на NORMAL_MIN_ATK (до брони героя); боссы — как задано. */
     atk: isBoss

@@ -43,3 +43,24 @@ test("боссы не затронуты: удар считается по пр�
     assert.equal(boss.atk[1], Math.max(2, Math.round(boss.def.atk[1] * mult)), `босс этаж ${floor}: максимум`);
   }
 });
+
+test("обычные монстры имеют минимум 35 ОЗ на любом этаже и угрозе", () => {
+  assert.equal(battle.NORMAL_MIN_HP, 35);
+  for (let floor = 1; floor <= 12; floor++) {
+    for (const threat of ["normal", "horror", "catastrophe"]) {
+      for (const def of content.ENEMIES.filter((d) => d.minFloor <= floor)) {
+        const s = battle.spawnEnemy(floor, false, rng, threat, def.id);
+        assert.ok(s.hp >= 35, `${def.id} этаж ${floor} ${threat}: ОЗ ${s.hp}`);
+      }
+    }
+  }
+});
+
+test("боссы по ОЗ считаются по прежней формуле без минимума 35", () => {
+  for (let floor = 1; floor <= 12; floor++) {
+    const boss = battle.spawnEnemy(floor, true, rng);
+    const typeMeta = monsters.MONSTER_TYPE_META[boss.mtype];
+    const mult = scaling.enemyLevelMult(boss.level) * content.BOSS_META.hpMult * typeMeta.hpMult;
+    assert.equal(boss.hp, Math.max(1, Math.round(boss.def.hp * mult)), `босс этаж ${floor}: ОЗ`);
+  }
+});
