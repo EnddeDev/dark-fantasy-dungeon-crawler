@@ -758,6 +758,9 @@ export function mayHaveSeals(isBoss: boolean, threat: Threat): boolean {
 }
 
 /** Спавн монстра: уровень (этаж ±1, на первом этаже возможен 0), угроза (80/15/5). */
+/** Нижняя граница удара обычного монстра до брони героя. Боссы не затрагиваются. */
+export const NORMAL_MIN_ATK = 10;
+
 export function spawnEnemy(
   floor: number,
   isBoss = false,
@@ -836,10 +839,13 @@ export function spawnEnemy(
     effectPower: enemyEffectPower(effects, level),
     hp: Math.max(1, Math.round(def.hp * hpMult)),
     ap: Math.max(1, Math.min(10, apBase)),
-    atk: [
-      Math.max(1, Math.round(def.atk[0] * atkMult)),
-      Math.max(2, Math.round(def.atk[1] * atkMult)),
-    ],
+    /* Обычные монстры бьют минимум на NORMAL_MIN_ATK (до брони героя); боссы — как задано. */
+    atk: isBoss
+      ? [Math.max(1, Math.round(def.atk[0] * atkMult)), Math.max(2, Math.round(def.atk[1] * atkMult))]
+      : [
+          Math.max(NORMAL_MIN_ATK, Math.round(def.atk[0] * atkMult)),
+          Math.max(NORMAL_MIN_ATK, Math.round(def.atk[1] * atkMult)),
+        ],
     /* Броня: уровень плюс прибавка типа (у ловких она отрицательная). */
     armor: Math.max(0, Math.round(def.armor * levelMult * armorMult * raceArmorMult(def.race)) + typeMeta.armorDelta),
     gold: [
