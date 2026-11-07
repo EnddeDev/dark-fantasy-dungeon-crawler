@@ -76,7 +76,7 @@ export function Btn({
       title={title}
       disabled={disabled}
       onClick={onClick}
-      className={`inline-flex items-center justify-center rounded-[2px] border px-4 py-2.5 font-display text-[0.92rem] uppercase leading-none tracking-[0.12em] transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flame/70 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-line disabled:hover:text-parch ${tones[tone]} ${className}`}
+      className={`inline-flex items-center justify-center rounded-[2px] border px-4 py-2.5 font-display text-[0.92rem] uppercase leading-none tracking-[0.12em] transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flame/70 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-35 disabled:shadow-none disabled:hover:border-line disabled:hover:text-parch ${tones[tone]} ${className}`}
     >
       {children}
     </button>
