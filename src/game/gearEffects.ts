@@ -172,10 +172,13 @@ export function effectCountForGear(q: {
   kind: "weapon" | "armor" | "accessory";
   rarity: "common" | "rare" | "epic" | "legendary";
   weaponType?: string | null;
+  /** Требуемая характеристика: у брони и аксессуаров на ИНТ есть одно дополнительное свойство. */
+  stat?: StatKey;
 }): number {
   const bonus = q.rarity === "rare" ? 1 : q.rarity === "epic" || q.rarity === "legendary" ? 2 : 0;
-  if (q.kind === "armor") return bonus;
-  if (q.kind === "accessory") return 1 + bonus;
+  const intBonus = q.stat === "int" && q.kind !== "weapon" ? 1 : 0;
+  if (q.kind === "armor") return bonus + intBonus;
+  if (q.kind === "accessory") return 1 + bonus + intBonus;
   const base = q.weaponType === "spear" || q.weaponType === "staff" ? 2 : 1;
   return base + bonus;
 }
