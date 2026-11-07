@@ -39,6 +39,8 @@ import { enemyEffectChips, playerEffectChips } from "../game/effects";
 import { EffectChips } from "./EffectChips";
 import { DamageTypeTag, ElementRow } from "./DamageTypeIcon";
 import { itemDamageType, raceElementRows } from "../game/damageTypes";
+import { skillReadiness } from "../game/skillReadiness";
+import { consumablePreview } from "../game/consumablePreview";
 
 /** Римская нумерация для строк инициативы. */
 function roman(n: number): string {
@@ -101,9 +103,10 @@ export function BattleView({
   const ws = b.p.weaponSkill;
   const wsReq = ws ? Math.max(1, ws.intReq - b.p.intDiscount) : 0;
   const wsIntOk = ws ? b.p.stats.int >= wsReq : false;
-  const wsReady = ws && wsIntOk && b.p.weaponCd === 0;
   /* Страх: герой уже в защите, атаки, приёмы и бегство закрыты, рюкзак открыт. */
   const feared = b.p.statuses.fear > 0;
+  /* Подсветка приёмов: светится только то, что можно применить прямо сейчас. */
+  const ready = skillReadiness(b, myTurn, feared);
 
   /* Ведомость пересчитывается каждый рендер: эффекты сразу видны в числах */
   const r = combatReadout(b);
@@ -509,9 +512,9 @@ export function BattleView({
             {menu === "main" && b.p.archetype && (
               <div className="mb-2 space-y-1">
                 <Btn
-                  tone="flame"
                   className="w-full"
-                  disabled={!myTurn || feared || b.p.concentration < MAX_CONCENTRATION || b.p.statuses.sealSkills > 0}
+                  tone={ready.special ? "flame" : "ghost"}
+                  disabled={!ready.special}
                   title={ARCHETYPES[b.p.archetype].special.desc}
                   onClick={() => act({ type: "archetype_skill" })}
                 >
@@ -523,10 +526,10 @@ export function BattleView({
 
             {menu === "main" && (
               <div className="grid grid-cols-2 gap-2">
-                <Btn tone="flame" disabled={!myTurn || feared || b.p.statuses.sealAttack > 0} onClick={() => act({ type: "attack" })}>
+                <Btn tone={ready.attack ? "flame" : "ghost"} disabled={!ready.attack} onClick={() => act({ type: "attack" })}>
                   Удар
                 </Btn>
-                <Btn tone={wsReady || b.p.epicSkills.length > 0 || b.p.armorSkills.length > 0 ? "flame" : "ghost"} disabled={!myTurn || feared || b.p.statuses.sealSkills > 0} onClick={() => setMenu("skill")}>
+                <Btn tone={ready.skills ? "flame" : "ghost"} disabled={!myTurn || feared || b.p.statuses.sealSkills > 0} onClick={() => setMenu("skill")}>
                   Приёмы
                 </Btn>
                 <Btn disabled={!myTurn || b.p.statuses.sealItems > 0} onClick={() => setMenu("item")}>
@@ -655,6 +658,7 @@ export function BattleView({
                     const poisonImmune = u.type === "poison" && isImmuneTo(e.def.race, "poison");
                     const ok = intOk && myTurn && !fearImmune;
                     const dmgType = itemDamageType(def.use);
+                    const pv = consumablePreview(b, id);
                     return (
                       <button
                         key={id}
@@ -673,6 +677,19 @@ export function BattleView({
                               )}
                             </span>
                             <span className="block text-[0.89rem] leading-snug text-mute">{def.desc}</span>
+                            {(pv.damage !== null || pv.heal !== null || pv.effects.length > 0) && (
+                              <span className="mt-1 block space-y-0.5 text-[0.85rem] leading-snug">
+                                {pv.damage !== null && (
+                                  <span className="block font-mono text-verd" title="Урон по этому противнику с учётом его защиты">
+                                    урон {pv.damage}
+                                  </span>
+                                )}
+                                {pv.heal !== null && <span className="block font-mono text-verd">+{pv.heal} здоровья</span>}
+                                {pv.effects.map((line) => (
+                                  <span key={line} className="block text-parch">{line}</span>
+                                ))}
+                              </span>
+                            )}
                           </span>
                         </span>
                         <span className={`shrink-0 font-mono text-[0.86rem] ${intOk && !fearImmune && !poisonImmune ? "text-verd" : "text-rubric"}`}>
