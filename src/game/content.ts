@@ -2875,12 +2875,11 @@ export const BOSS_META = { hpMult: 2.275, atkMult: 1.75, armorMult: 1.75 };
 
 export const THREAT_META: Record<
   Threat,
-  { name: string; desc: string; chance: number; hpMult: number; atkMult: number; armorMult: number; gearOnly: boolean }
+  { name: string; desc: string; hpMult: number; atkMult: number; armorMult: number; gearOnly: boolean }
 > = {
   normal: {
     name: "Обычный",
     desc: "Стандартная угроза своего этажа. Дроп по общим правилам.",
-    chance: 0.8,
     hpMult: 1.3,
     atkMult: 1,
     armorMult: 1,
@@ -2889,7 +2888,6 @@ export const THREAT_META: Record<
   horror: {
     name: "Ужас",
     desc: "Крепче и злее обычного, с дополнительным приёмом — но без печатей. Пустых рук не оставляет: доля «ничего» уходит в снаряжение.",
-    chance: 0.15,
     hpMult: 1.625,
     atkMult: 1.25,
     armorMult: 1.25,
@@ -2898,7 +2896,6 @@ export const THREAT_META: Record<
     catastrophe: {
     name: "Катастрофа",
     desc: "Мини-босс: не меньше двух особых приёмов, пассивный эффект и одна печать. Чаще всех оставляет снаряжение.",
-    chance: 0.05,
     hpMult: 1.95,
     atkMult: 1.5,
     armorMult: 1.5,
@@ -2940,12 +2937,41 @@ export function rollMonsterLevel(floor: number, rng: () => number = Math.random)
   return monsterLevelForRoll(floor, rng());
 }
 
-export function threatForRoll(roll: number): Threat {
-  return roll < 0.8 ? "normal" : roll < 0.95 ? "horror" : "catastrophe";
+/** С этого этажа начинается сдвиг угроз: до него действуют базовые 80 / 15 / 5. */
+export const THREAT_RAMP_FLOOR = 10;
+/** Этажей после 10-го, за которые обычные монстры исчезают (4 п.п. за этаж). */
+const THREAT_NORMAL_RAMP_STEPS = 20;
+
+export interface ThreatChances {
+  normal: number;
+  horror: number;
+  catastrophe: number;
 }
 
-export function rollThreat(rng: () => number = Math.random): Threat {
-  return threatForRoll(rng());
+/**
+ * Шансы угроз на этаже, в процентах; сумма всегда 100.
+ * После 10-го этажа: обычные −4 п.п., ужас +3 п.п., катастрофа +1 п.п. за этаж.
+ * Когда обычные исчезли (30-й этаж), каждый следующий этаж переносит 1 п.п. с ужаса на катастрофу,
+ * пока ужас не уйдёт в ноль (катастрофа станет 100% на 105-м этаже).
+ */
+export function threatChances(floor: number): ThreatChances {
+  const n = Math.max(0, Math.floor(floor) - THREAT_RAMP_FLOOR);
+  const a = Math.min(n, THREAT_NORMAL_RAMP_STEPS);
+  const k = Math.max(0, n - THREAT_NORMAL_RAMP_STEPS);
+  const normal = 80 - 4 * a;
+  const horror = Math.max(0, 15 + 3 * a - k);
+  return { normal, horror, catastrophe: 100 - normal - horror };
+}
+
+export function threatForRoll(roll: number, floor = 1): Threat {
+  const c = threatChances(floor);
+  if (roll < c.normal / 100) return "normal";
+  if (roll < (c.normal + c.horror) / 100) return "horror";
+  return "catastrophe";
+}
+
+export function rollThreat(rng: () => number = Math.random, floor = 1): Threat {
+  return threatForRoll(rng(), floor);
 }
 
 /**

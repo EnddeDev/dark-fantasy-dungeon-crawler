@@ -7,6 +7,7 @@ import {
   ENEMIES,
   THREAT_META,
   lootNoneChance,
+  threatChances,
   lootTableFor,
   rarityWeightsFor,
 } from "../game/content";
@@ -93,7 +94,7 @@ export function Bestiary() {
                       : "border-line text-mute hover:text-parch"
                   }`}
                 >
-                  {THREAT_META[t].name} · {Math.round(THREAT_META[t].chance * 100)}%
+                  {THREAT_META[t].name} · {Math.round(threatChances(floor)[t])}%
                 </button>
               ))}
             </div>
