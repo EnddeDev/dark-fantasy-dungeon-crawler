@@ -91,11 +91,11 @@ test("спец-приём без 5 концентрации отклоняетс
   assert.ok(next.log.some((l) => l.text.includes("концентрации 5")));
 });
 
-test("спец-приём блокирует страх и печать забвения, концентрация сохраняется", () => {
+test("спец-приём работает в страхе, а печать забвения его блокирует с сохранением концентрации", () => {
   const feared = fightFor({ archetype: "sage" });
   feared.p.concentration = 5;
   feared.p.statuses.fear = 1;
-  assert.equal(battle.playerAct(feared, { type: "archetype_skill" }).p.concentration, 5);
+  assert.equal(battle.playerAct(feared, { type: "archetype_skill" }).p.concentration, 0);
 
   const sealed = fightFor({ archetype: "sage" });
   sealed.p.concentration = 5;

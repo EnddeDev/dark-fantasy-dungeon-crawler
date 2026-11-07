@@ -1305,8 +1305,16 @@ function playerDotStacks(b: BattleState, kind: "poison" | "wound"): number {
  * Новое наложение яда или кровотечения на героя: срок обновляется до большего,
  * а урон за тик складывается. Больше MAX_DOT_STACKS наложений не держится.
  */
-function applyPlayerDot(b: BattleState, kind: "poison" | "wound", rounds: number, tick: number): number {
+/** Стойкость героя против негативных эффектов: режет урон за ход и длительность (ceil, минимум 1 раунд). */
+function tenacityScaled(b: BattleState, rounds: number, tick: number): { rounds: number; tick: number } {
+  const t = combatChance(b.p.chanceLayers.tenacity);
+  if (t <= 0) return { rounds, tick };
+  return { rounds: Math.max(1, Math.ceil(rounds * (1 - t))), tick: Math.max(1, Math.round(tick * (1 - t))) };
+}
+
+function applyPlayerDot(b: BattleState, kind: "poison" | "wound", rounds0: number, tick0: number): number {
   if (immuneNote(b, kind === "poison" ? "poison" : "bleed")) return 0;
+  const { rounds, tick } = tenacityScaled(b, rounds0, tick0);
   const key = kind === "poison" ? "poisonStacks" : "woundStacks";
   const tickKey = kind === "poison" ? "poisonTick" : "woundTick";
   const active = kind === "poison" ? b.p.statuses.poison > 0 : b.p.statuses.wound > 0;
@@ -1320,7 +1328,8 @@ function applyPlayerDot(b: BattleState, kind: "poison" | "wound", rounds: number
 }
 
 /** Тик героя от прямой жертвы: горение, обморожение и проклятие ставятся без стеков. */
-function setPlayerTick(b: BattleState, key: "burn" | "chill" | "curse", rounds: number, tick: number) {
+function setPlayerTick(b: BattleState, key: "burn" | "chill" | "curse", rounds0: number, tick0: number) {
+  const { rounds, tick } = tenacityScaled(b, rounds0, tick0);
   const active = b.p.statuses[key] > 0;
   const tickKey = key === "burn" ? "burnTick" : key === "chill" ? "chillTick" : "curseTick";
   b.p.statuses[tickKey] = refreshedTick(active, b.p.statuses[tickKey], tick);
@@ -1631,8 +1640,9 @@ export function damageAfterEnemyDefense(b: BattleState, raw: number, kind: "phys
        а не эффекты: истощение их не снимает. */
     if (b.enemy.passive?.id === "stone_hide") d = Math.round(d * 0.75);
     const fortify = raceFortify(b.enemy.def.race);
-    if (fortify > 0) d = Math.round(d * (1 - fortify));
-    if (!effectsDepleted(b)) d = Math.round(d * (1 - eChance(b, "fortify")));
+    /* Укрепление режет урон после брони и округляет дробь вниз: 100 − 25 при 50% даёт 37. */
+    if (fortify > 0) d = Math.floor(d * (1 - fortify));
+    if (!effectsDepleted(b)) d = Math.floor(d * (1 - eChance(b, "fortify")));
   } else if (!effectsDepleted(b)) {
     d = Math.round(d * (1 - eChance(b, "magic_resist")));
   }
@@ -1895,6 +1905,17 @@ function incoming(
     push(b, `Библиотека душ блокирует первый удар (${src}).`, "p");
     return false;
   }
+  /* Контратака: герой бьёт первым и удар врага не проходит, урона герою нет. */
+  const counterChance = Math.min(1, effectPower(b, "counter") / 100 + passivePower(b, "dance", "counter") / 100 +
+    (hasPassive(b, "arch_assassin_10") ? 0.10 : 0));
+  if (b.enemy.hp > 0 && counterChance > 0 && Math.random() < counterChance) {
+    flash(b, "p", "guard", 0);
+    push(b, `Контратака: ${src} не достигает цели.`, "p");
+    const { d: cd } = calcWeaponRoll(b, 0.6);
+    const dealt = hitEnemy(b, cd, "phys", " [Контратака]");
+    applyVamp(b, dealt, 0, "weapon");
+    return false;
+  }
   const d = damageAfterPlayerDefense(b, raw, kind, strike, ignoreDefense);
   b.p.hp -= d;
   flash(b, "p", "hit", d);
@@ -1917,16 +1938,10 @@ function incoming(
   if (thorns > 0 && b.enemy.hp > 0) {
     b.enemy.hp = Math.max(1, b.enemy.hp - thorns);
     push(b, `Шипы возвращают ${b.enemy.def.name} ${thorns} урона.`, "p");
+    /* Шипы накладывают негативные эффекты так же, как удар героя (кровотечение, яд, раскол). */
+    weaponHitEffects(b);
   }
 
-  /* Контратака / ответный выпад */
-  const counterChance = Math.min(1, effectPower(b, "counter") / 100 + passivePower(b, "dance", "counter") / 100 +
-    (hasPassive(b, "arch_assassin_10") ? 0.10 : 0));
-  if (b.p.hp > 0 && b.enemy.hp > 0 && counterChance > 0 && Math.random() < counterChance) {
-    const { d: cd } = calcWeaponRoll(b, 0.6);
-    const dealt = hitEnemy(b, cd, "phys", " [Контратака]");
-    applyVamp(b, dealt, 0, "weapon");
-  }
   /* Ответный замах: каждый физический удар, который прошёл, получает ответ. */
   if (kind === "phys" && b.p.statuses.counterTurn > 0 && b.p.hp > 0 && b.enemy.hp > 0) {
     const { d: cd } = calcWeaponRoll(b, 0.6);
@@ -2078,7 +2093,8 @@ function advance(b: BattleState) {
     const warded = b.p.statuses.invulnerable > 0;
     if (!warded && b.p.statuses.wound > 0 && !hasLeg(b, "titan_heart")) {
       const stacks = playerDotStacks(b, "wound");
-      const d = b.p.statuses.woundTick * stacks;
+      /* Укрепление режет кровотечение; яд и проклятие от него не зависят. */
+      const d = Math.max(1, Math.round(b.p.statuses.woundTick * stacks * (1 - combatChance(b.p.chanceLayers.fortify))));
       b.p.hp -= d;
       push(b, `Кровотечение отнимает ${d} здоровья${stacks > 1 ? ` (${stacks} наложения)` : ""}.`, "sys");
     }
@@ -2105,7 +2121,9 @@ function advance(b: BattleState) {
     }
     if (b.enemy.statuses.bleed > 0 && b.enemy.hp > 0) {
       const stacks = enemyDotStacks(b, "bleed");
-      const d = b.enemy.statuses.bleedTick * stacks;
+      /* Укрепление врага (порода и эффекты) режет кровотечение. */
+      const fortifyCut = 1 - (1 - raceFortify(b.enemy.def.race)) * (1 - (effectsDepleted(b) ? 0 : eChance(b, "fortify")));
+      const d = Math.max(1, Math.round(b.enemy.statuses.bleedTick * stacks * (1 - fortifyCut)));
       b.enemy.hp -= d;
       push(b, `${b.enemy.def.name} истекает кровью: −${d} ОЗ${stacks > 1 ? ` (${stacks} наложения)` : ""}.`, "p");
     }
@@ -2573,8 +2591,9 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
     return b;
   };
 
-  if (fearTurn && a.type !== "item" && a.type !== "guard" && a.type !== "flee") {
-    return err("Страх: атаковать и применять приёмы нельзя. Доступны рюкзак, защита и побег.");
+  /* Спец-приём героя работает и в страхе; обычная атака и обычные приёмы закрыты. */
+  if (fearTurn && a.type !== "item" && a.type !== "guard" && a.type !== "flee" && a.type !== "archetype_skill") {
+    return err("Страх: атаковать и применять обычные приёмы нельзя. Доступны спец-приём, рюкзак, защита и побег.");
   }
 
   const spellPowerMult =
@@ -3320,8 +3339,11 @@ const ENEMY_MOVE_SHAPE: Partial<Record<EnemyMove, { mult: number; kind: "phys" |
 };
 
 /** Ослабление/усиление удара от состояния врага (ледяное проклятие, порча). */
-function enemyChill(b: BattleState): number {
-  return (b.enemy.statuses.blight > 0 ? 0.8 : 1) * (b.enemy.statuses.curse > 0 ? 1 - (b.enemy.statuses.cursePower ?? 30) / 100 : 1);
+function enemyChill(b: BattleState, kind: "phys" | "magic" = "phys"): number {
+  /* Обморожение врага режет весь его урон на 20%. Проклятие режет только физический. */
+  const frost = b.enemy.statuses.chill > 0 ? 0.8 : 1;
+  const curse = kind === "phys" && b.enemy.statuses.curse > 0 ? 1 - (b.enemy.statuses.cursePower ?? 30) / 100 : 1;
+  return (b.enemy.statuses.blight > 0 ? 0.8 : 1) * frost * curse;
 }
 
 /** Усиления базового удара от эффектов врага, без критического броска. Истощение эффектов их отключает. */
@@ -3447,7 +3469,8 @@ export function enemyStep(b0: BattleState): BattleState {
     push(b, `${e.def.name} зовёт стаю: +${heal} ОЗ и лишний ход.`, "e");
     b.queue.splice(b.idx + 1, 0, "e");
   }
-  const chill = enemyChill(b);
+  const chill = enemyChill(b, "phys");
+  const chillM = enemyChill(b, "magic");
   /* Пророк уже объявил ход в начале раунда; остальные выбирают ход сейчас. */
   const move = e.announced ?? chooseEnemyMove(b);
   e.announced = null;
@@ -3505,7 +3528,7 @@ export function enemyStep(b0: BattleState): BattleState {
       break;
     }
     case "curse": {
-      const landed = incoming(b, Math.round(base * 0.7 * chill), "magic", `${e.def.name} шепчет анафему`);
+      const landed = incoming(b, Math.round(base * 0.7 * chillM), "magic", `${e.def.name} шепчет анафему`);
       if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0 && Math.random() > resistChance) {
         if (!immuneNote(b, "curse")) {
@@ -3519,7 +3542,7 @@ export function enemyStep(b0: BattleState): BattleState {
       break;
     }
     case "drain": {
-      const d = Math.round(base * 0.95 * chill);
+      const d = Math.round(base * 0.95 * chillM);
       if (incoming(b, d, "magic", `${e.def.name} вытягивает жизненную силу`)) {
         const heal = healEnemy(b, Math.max(2, Math.round(d * 0.5)));
         push(b, `${e.def.name} восстанавливает себе ${heal} ОЗ.`, "e");
@@ -3539,7 +3562,7 @@ export function enemyStep(b0: BattleState): BattleState {
       break;
     }
     case "bell_stun": {
-      const landed = incoming(b, Math.round(base * 1.1 * chill), "magic", `${e.def.name} бьёт в погребальный колокол`);
+      const landed = incoming(b, Math.round(base * 1.1 * chillM), "magic", `${e.def.name} бьёт в погребальный колокол`);
       if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0 && Math.random() > resistChance) {
         if (!immuneNote(b, "stun")) {
@@ -3567,7 +3590,7 @@ export function enemyStep(b0: BattleState): BattleState {
       break;
     }
     case "cold_touch": {
-      const landed = incoming(b, Math.round(base * 1.1 * chill), "magic", `${e.def.name} касается холодом`, false, true);
+      const landed = incoming(b, Math.round(base * 1.1 * chillM), "magic", `${e.def.name} касается холодом`, false, true);
       if (landed) {
         push(b, "Холодное касание проходит сквозь броню и любое сопротивление.", "e");
         if (!immuneNote(b, "noHeal")) {
@@ -3578,7 +3601,7 @@ export function enemyStep(b0: BattleState): BattleState {
       break;
     }
     case "hell_force": {
-      const landed = incoming(b, Math.round(base * 2 * chill), "magic", `${e.def.name} обрушивает силу ада`);
+      const landed = incoming(b, Math.round(base * 2 * chillM), "magic", `${e.def.name} обрушивает силу ада`);
       if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0 && Math.random() > resistChance) {
         if (!immuneNote(b, "burn")) {
@@ -3631,7 +3654,7 @@ export function enemyStep(b0: BattleState): BattleState {
       break;
     }
     case "terror": {
-      const landed = incoming(b, Math.round(base * 0.6 * chill), "magic", `${e.def.name} рычит тебе в лицо`);
+      const landed = incoming(b, Math.round(base * 0.6 * chillM), "magic", `${e.def.name} рычит тебе в лицо`);
       if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0 && Math.random() > resistChance) {
         if (!immuneNote(b, "fear")) applyHeroFear(b, "Страх на раунд: в свой ход ты сам встаёшь в защиту. Атаки и приёмы закрыты, рюкзак и побег доступны.");
@@ -3653,7 +3676,8 @@ export function enemyStep(b0: BattleState): BattleState {
   const magicMove = ["curse", "drain", "bell_stun", "terror"].includes(move);
   const eVamp = (magicMove ? eEffect(b, "magic_vamp") : eEffect(b, "vamp") + eEffect(b, "vamp_str")) / 100;
   if (eVamp > 0 && e.hp > 0 && b.p.hp > 0) {
-    const heal = healEnemy(b, Math.max(1, Math.round(base * chill * eVamp)));
+    const chillHeal = magicMove ? chillM : chill;
+    const heal = healEnemy(b, Math.max(1, Math.round(base * chillHeal * eVamp)));
     if (heal > 0) push(b, `${e.def.name} восстанавливает ${heal} ОЗ от удара.`, "e");
   }
   const eStun = eChance(b, "stun_chance");
