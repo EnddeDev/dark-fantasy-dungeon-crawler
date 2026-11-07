@@ -8,7 +8,7 @@
  * Сложный процент считается по шагам: значение каждого уровня — ceil(предыдущее × ставка).
  */
 import type { GearEffectId, GearPassiveId } from "./gearEffects";
-import type { EpicSkillId, LegendaryPassiveId, RareAffixId, Slot, WearTier } from "./types";
+import type { EpicSkillId, LegendaryPassiveId, RareAffixId, Slot, StatKey, WearTier } from "./types";
 
 /** Шаг цен: +17% от базового значения за каждый уровень (линейно). */
 export const GEAR_EFFECT_RATE = 0.17;
@@ -77,6 +77,24 @@ export function scaleIntegerByLevel(value: number, level: number): number {
 export function scaleGearStatByLevel(value: number, level: number): number {
   return Math.ceil(Math.ceil(value) * levelFactor(level, GEAR_STAT_RATE));
 }
+
+/** Коэффициент уровня относительно 1-го: (1 + 0.5 × уровень) / 1.5. На 1 уровне — 1. */
+export function statLevelRatio(level: number): number {
+  return levelFactor(level, GEAR_STAT_RATE) / levelFactor(1, GEAR_STAT_RATE);
+}
+
+/**
+ * Потолок уклонения на 1 уровне: лёгкая броня — 7%, средняя с ЛОВ и аксессуары ЛОВ — 5%.
+ * 0 — у этого предмета уклонения нет. Дальше потолок растёт тем же коэффициентом, что и статы.
+ */
+export function evadeCapLevel1(gearClass: "light" | "medium" | "heavy", stat: StatKey): number {
+  if (gearClass === "light") return 7;
+  if (stat === "agi") return 5;
+  return 0;
+}
+
+/** Здоровье предмета на СИЛ на 1 уровне; дальше растёт тем же коэффициентом. */
+export const STR_ITEM_HP_LEVEL1 = 10;
 
 /**
  * Броня предмета. Для каждого слота заданы минимум и максимум на 1 и на 10 уровне (тяжёлая броня).

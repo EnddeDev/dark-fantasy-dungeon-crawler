@@ -52,6 +52,9 @@ import {
   scaleByLevel,
   scaleMultByLevel,
   scaleGearStatByLevel,
+  statLevelRatio,
+  evadeCapLevel1,
+  STR_ITEM_HP_LEVEL1,
   rollEffectBase,
   GEAR_EFFECT_BASE,
   techniqueIntReq,
@@ -1729,8 +1732,14 @@ export function scaledGearStats(item: GearItem) {
       : kind === "armor" && ARMOR_CURVE[base.slot]
         ? armorValue(base.slot, cls, level, item.wear, item.armorQuality ?? 0.5)
         : scaleGearStatByLevel(Math.ceil(rolls.armor * m), level);
-  const hp = kind === "weapon" ? 0 : scaleGearStatByLevel(Math.ceil(rolls.hp * m), level);
-  const evadePp = kind === "weapon" ? 0 : scaleGearStatByLevel(Math.ceil((rolls.evade ?? 0) * m), level);
+  const reqStat = gearAffinity(item);
+  /* На СИЛ: +10 ОЗ на 1 уровне, дальше растёт тем же коэффициентом. */
+  const strHp = kind !== "weapon" && reqStat === "str" ? Math.floor(STR_ITEM_HP_LEVEL1 * statLevelRatio(level) + 1e-9) : 0;
+  const hp = kind === "weapon" ? 0 : scaleGearStatByLevel(Math.ceil(rolls.hp * m), level) + strHp;
+  /* Потолок уклонения: на 1 уровне 5% (средняя ЛОВ) или 7% (лёгкая); дальше растёт с уровнем. */
+  const evadeCap = kind === "weapon" ? 0 : evadeCapLevel1(cls, reqStat);
+  const evadeRaw = kind === "weapon" ? 0 : scaleGearStatByLevel(Math.ceil((rolls.evade ?? 0) * m), level);
+  const evadePp = evadeCap ? Math.min(evadeRaw, Math.floor(evadeCap * statLevelRatio(level) + 1e-9)) : evadeRaw;
   const evade = Math.min(0.5, evadePp / 100);
   return { base, kind, dmg, armor, hp, evade, evadePp, skill: weaponSkillFor(item), level, wearMult: m };
 }
@@ -1992,7 +2001,7 @@ export function createGearItem(opts: {
     archetype: base.archetype,
   }).filter((id) => id !== "ap" || canRollExtraAp(rarity, itemLevelForAp));
   const effects: GearEffectId[] = [];
-  const effectCount = Math.min(pool.length, effectCountForGear({ kind, rarity, weaponType }));
+  const effectCount = Math.min(pool.length, effectCountForGear({ kind, rarity, weaponType, stat: reqStat }));
   const rest = [...pool];
   for (let i = 0; i < effectCount && rest.length; i++) {
     effects.push(rest.splice(Math.floor(rng() * rest.length), 1)[0]);
@@ -2105,6 +2114,7 @@ export function migrateGearItem(item: GearItem): GearItem {
     kind,
     rarity: item.rarity ?? "common",
     weaponType,
+    stat: reqStat,
   });
   /* «Ускорение» на неподходящей вещи снимаем: оно больше не выпадает ниже эпики 5 уровня. */
   const allowedEffects = effects.filter((id) => id !== "ap" || canRollExtraAp(item.rarity ?? "common", item.level ?? 1));
