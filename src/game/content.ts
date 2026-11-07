@@ -2299,8 +2299,11 @@ export interface ItemDef {
       | "haste" | "terror" | "stun_enemy" | "acid" | "stone"
       | "iron_tonic" | "blood_rage" | "quickblade" | "pact_elixir" | "scroll_creation"
       | "bleed" | "blight" | "wither" | "buff_break" | "oil" | "immunity"
+      | "vamp_potion" | "regen_potion" | "resist_potion" | "weaken" | "burn_flask" | "crystal_freeze" | "seal_moves"
       | "special_kit" | "special_lockpick" | "special_map" | "special_water" | "special_torch";
     power?: number;
+    /** Сколько ударов действует эффект (для похищения жизни). */
+    hits?: number;
     scale?: number;
     /** Характеристика масштабирования: зелья без множителя, урон зелий и свитки — ИНТ, метательное — ЛОВ. */
     scaleStat?: StatKey;
@@ -2332,7 +2335,7 @@ export const ITEMS: Record<string, ItemDef> = Object.fromEntries(
     I({ id: "poison_dart", name: "Отравленный дротик", kind: "throwable", price: 48, use: { type: "poison", power: 5, scale: 1, scaleStat: "agi", rounds: 3 }, desc: "Прокалывает кожу и травит живую цель 3 раунда. Нежить, конструкты и призраки невосприимчивы." }),
     I({ id: "smoke_bomb", name: "Дымовая бомба", kind: "throwable", price: 78, use: { type: "smoke", rounds: 2 }, desc: "Густой дым не даёт врагу попасть по тебе в следующие 2 атаки. Это не побег." }),
     I({ id: "blast_bomb", name: "Взрывная бомба", kind: "throwable", price: 95, use: { type: "explosion", power: 24, scale: 1.5, scaleStat: "agi" }, desc: "Взрыв наносит 15 + 2×ЛОВ урона, игнорируя броню." }),
-    I({ id: "fear_vial", name: "Зелье ужаса", kind: "potion", price: 70, level: 2, minFloor: 2, use: { type: "fear", rounds: 2 }, desc: "Живая цель 2 хода автоматически держит защиту. Нежить, конструкты и призраки страха не знают." }),
+    I({ id: "fear_vial", name: "Зелье ужаса", kind: "potion", price: 70, use: { type: "fear", rounds: 2 }, desc: "Живая цель 2 хода автоматически держит защиту. Нежить, конструкты и призраки страха не знают." }),
     /* свитки (требуют Интеллект) */
     I({ id: "scroll_spark", name: "Свиток искры", kind: "scroll", price: 60, use: { type: "damage", power: 16, scale: 3, scaleStat: "int", intReq: 2, element: "fire" }, desc: "10 + 2×ИНТ урона. Короткая формула поджога; чтение требует ИНТ 2." }),
     I({ id: "scroll_fire", name: "Свиток огня", kind: "scroll", price: 85, use: { type: "damage", power: 24, scale: 4, scaleStat: "int", intReq: 3, element: "fire" }, desc: "10 + 2×ИНТ урона. Буквы в нём дописаны от руки, спеша; чтение требует ИНТ 3." }),
@@ -2422,16 +2425,27 @@ export const ITEMS: Record<string, ItemDef> = Object.fromEntries(
 
 /** Уровень припаса = минимальный этаж дропа. */
 export const SUPPLY_LEVELS: Record<string, number> = {
-  potion_s: 1, antidote: 1, rage: 2, throwing_knife: 1, poison_dart: 1, smoke_bomb: 2,
-  blast_bomb: 2, fear_vial: 2, scroll_spark: 1, scroll_fire: 2, scroll_heal: 2,
-  scroll_shadow: 3, scroll_frost: 3, scroll_bolt: 4, potion_l: 3, potion_haste: 3,
-  potion_stone: 3, scroll_terror: 3, scroll_snare: 4, acid_vial: 2, holy_water: 3,
-  bomb_flash: 3, iron_tonic: 4, blood_rage: 4, quickblade_oil: 4,
-  oil_fire: 2, oil_poison: 2, oil_ice: 3, oil_acid: 3, oil_magic: 4, oil_light: 4,
-  immune_bleed: 2, immune_poison: 2, immune_burn: 3, immune_curse: 3, immune_fear: 3, immune_stun: 4, immune_sunder: 4, immune_noHeal: 3, immune_darkness: 3, immune_sealItems: 4, immune_sealSkills: 4, immune_sealAttack: 4,
-  pact_elixir: 5, scroll_creation: 5, serrated_knife: 2, frost_bomb: 3,
-  scroll_dispel: 3, dispel_powder: 2,
-  blight_powder: 4, wither_dust: 5,
+  /* Общие расходники: по четыре на уровень, уровни 1–10 (как у лавки). */
+  potion_s: 1, antidote: 1, throwing_knife: 1, poison_dart: 1,
+  rage: 2, acid_vial: 2, serrated_knife: 2, dispel_powder: 2,
+  potion_l: 3, blast_bomb: 3, oil_fire: 3, fear_vial: 3,
+  smoke_bomb: 4, frost_bomb: 4, oil_poison: 4, potion_stone: 4,
+  holy_water: 5, bomb_flash: 5, oil_ice: 5, heal_elixir: 5,
+  oil_acid: 6, blight_powder: 6, regen_potion: 6, shard_bomb: 6,
+  potion_haste: 7, wither_dust: 7, oil_magic: 7, nectar: 7,
+  oil_light: 8, resist_potion: 8, ice_gust: 8, vine_net: 8,
+  weaken: 9, salt: 9, vamp_potion: 9, dragon_powder: 9,
+  phoenix: 10, hell_var: 10, frost_crystal: 10, seal_silence: 10,
+  /* архетипные зелья (вне сетки по четыре) */
+  iron_tonic: 4, blood_rage: 4, quickblade_oil: 4, pact_elixir: 5,
+  /* зелья от состояний (вне сетки) */
+  immune_bleed: 2, immune_poison: 2, immune_burn: 3, immune_curse: 3, immune_fear: 3,
+  immune_stun: 4, immune_sunder: 4, immune_noHeal: 3, immune_darkness: 3,
+  immune_sealItems: 4, immune_sealSkills: 4, immune_sealAttack: 4,
+  /* свитки (не менялись) */
+  scroll_spark: 1, scroll_fire: 2, scroll_heal: 2, scroll_shadow: 3, scroll_frost: 3,
+  scroll_bolt: 4, scroll_terror: 3, scroll_snare: 4, scroll_creation: 5, scroll_dispel: 3,
+  /* реагенты и особые предметы (не менялись) */
   sapper_kit: 2, lockpicks: 1, tattered_map: 2, water_skin: 1, field_torch: 1,
   parchment: 1, magic_ink: 2, scrap_metal: 1, vial: 1,
   moss: 1, bone: 1, fire: 1, tear: 3, powder: 2, cloth: 2, root: 1, herb: 1,
@@ -2462,7 +2476,7 @@ export function consumableIntReq(def: ItemDef, intDiscount = 0): number {
   return Math.max(0, (def.use?.intReq ?? 0) - intDiscount);
 }
 
-const DAMAGE_CONSUMABLE_TYPES = new Set(["damage", "chill", "sunder_damage", "throw", "poison", "explosion", "acid", "bleed", "blight", "wither"]);
+const DAMAGE_CONSUMABLE_TYPES = new Set(["damage", "chill", "sunder_damage", "throw", "poison", "explosion", "acid", "bleed", "blight", "wither", "burn_flask", "crystal_freeze"]);
 
 export function consumableScaleStat(def: ItemDef): StatKey | null {
   const u = def.use;
@@ -2473,12 +2487,17 @@ export function consumableScaleStat(def: ItemDef): StatKey | null {
 }
 
 /** Расходники: 15 + 2×ЛОВ; свитки и приёмы: 10 + 2×ИНТ. Лечебные/вспомогательные зелья без множителя. */
+/** Метательные и взрывные расходники растут с уровнем: +10% за каждый уровень выше первого (на 10-м ×1,9). */
+export function consumableLevelMult(level: number): number {
+  return 1 + 0.1 * (Math.max(1, Math.floor(level)) - 1);
+}
+
 export function consumablePower(def: ItemDef, stats: Record<StatKey, number>): number {
   const u = def.use;
   if (!u) return 0;
   const stat = consumableScaleStat(def);
   if (stat === "int") return statTechniqueDamage(stats.int);
-  if (stat === "agi") return statConsumableDamage(stats.agi);
+  if (stat === "agi") return Math.round(statConsumableDamage(stats.agi) * consumableLevelMult(def.level ?? 1));
   return u.power ?? 0;
 }
 
@@ -3079,6 +3098,21 @@ export function rollDungeonWear(rng: () => number = Math.random): WearTier {
 const SUPPLY_POOL = [
   "potion_s",
   "potion_l",
+  "heal_elixir",
+  "regen_potion",
+  "shard_bomb",
+  "nectar",
+  "resist_potion",
+  "ice_gust",
+  "vine_net",
+  "weaken",
+  "salt",
+  "vamp_potion",
+  "dragon_powder",
+  "phoenix",
+  "hell_var",
+  "frost_crystal",
+  "seal_silence",
   "antidote",
   "rage",
   "potion_haste",

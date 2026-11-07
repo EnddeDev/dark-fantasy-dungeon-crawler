@@ -233,6 +233,18 @@ const GLYPHS: Record<EffectIconId, ReactElement> = {
       <path d="M6 15.8l-1.8 2.2M12 17.8v2.4M18 15.8l1.8 2.2" />
     </>
   ),
+  resist: (
+    <>
+      <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z" />
+      <path d="M9.5 12l2 2 3.5-3.5" />
+    </>
+  ),
+  vamp_hits: (
+    <>
+      <path d="M12 3.2c0 0-6 6.6-6 10.6a6 6 0 0 0 12 0c0-4-6-10.6-6-10.6z" />
+      <path d="M9 14.5a3 3 0 0 0 3 3" />
+    </>
+  ),
   unknown: (
     <>
       <circle cx="12" cy="12" r="8.4" />

@@ -2672,7 +2672,7 @@ test("multi-hit technique deals normal attacks without the flat technique bonus"
 
 test("supplies have levels tied to minimum drop floor and new statuses work", () => {
   assert.equal(content.supplyLevel("throwing_knife"), 1);
-  assert.equal(content.supplyLevel("wither_dust"), 5);
+  assert.equal(content.supplyLevel("wither_dust"), 7);
   for (let i = 0; i < 200; i++) {
     const loot = battle.rollConsumableLoot(1, 3);
     for (const id of loot) {

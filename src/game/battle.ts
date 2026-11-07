@@ -214,6 +214,8 @@ export interface BattleState {
       bleedTick: number; poisonTick: number; burnTick: number; chillTick: number; curseTick: number; blightTick: number;
       /** Тик масла: 10% от удара, которым масло наложено. */
       oilTick: number;
+      /** Печать тишины: враг применяет только атаку и стойку. */
+      sealMoves: number;
       cursePower: number; sundered: number;
       /** Наложения кровотечения и яда: урон за тик складывается. */
       bleedStacks?: number;
@@ -311,6 +313,12 @@ export interface BattleState {
       stone: number;
       /** Бастион: тоник железной кожи. */
       ironTonic: number;
+      /** Зелье регенерации: +5 здоровья за раунд. */
+      regenPotion: number;
+      /** Зелье стойкости: +25% к сопротивлению эффектам. */
+      resistPotion: number;
+      /** Вампирская кровь: сколько ударов ещё похищают жизнь. */
+      vampHits: number;
       /** Зелья иммунитета: сколько ходов защищает от каждого эффекта. */
       immune: Partial<Record<ImmunityEffect, number>>;
       /** Варвар: кровавая ярость (вампиризм оружием). */
@@ -1015,7 +1023,7 @@ export function newBattle(
         chill: 0, bleed: 0, poison: 0, fear: 0, stunAp: 0, blight: 0, wither: 0, burning: 0,
         burn: 0, curse: 0, cursePower: 30, sundered: 0, bleedStacks: 0, poisonStacks: 0,
         bleedTick: 0, poisonTick: 0, burnTick: 0, chillTick: 0, curseTick: 0, blightTick: 0, oilTick: 0,
-        oilType: null, oilRounds: 0,
+        oilType: null, oilRounds: 0, sealMoves: 0,
       },
       guard: false,
       forceGuard: 0,
@@ -1079,6 +1087,9 @@ export function newBattle(
         haste: 0,
         stone: 0,
         ironTonic: 0,
+        regenPotion: 0,
+        resistPotion: 0,
+        vampHits: 0,
         bloodRage: 0,
         quickblade: 0,
         oilType: null,
@@ -1225,8 +1236,12 @@ function statusRounds(b: BattleState, base: number) {
   return base + effectPower(b, "status_duration") + passivePower(b, "time_warp", "duration") +
     (hasPassive(b, "arch_warlock_10") ? 2 : 0);
 }
-function playerResistChance(b: BattleState) {
-  return combatChance(b.p.chanceLayers.tenacity, hasPassive(b, "stone_skin") ? [0.15] : []);
+export function playerResistChance(b: BattleState) {
+  const extra = [
+    ...(hasPassive(b, "stone_skin") ? [0.15] : []),
+    ...(b.p.statuses.resistPotion > 0 ? [0.25] : []),
+  ];
+  return combatChance(b.p.chanceLayers.tenacity, extra);
 }
 function tryResist(b: BattleState, label: string) {
   if (Math.random() < playerResistChance(b)) {
@@ -1560,7 +1575,7 @@ function calcWeaponRoll(b: BattleState, mult = 1, bonusFlat = 0, opts: { skill?:
   return { d: Math.max(1, Math.round(d * mult * biomeStrikeMult(b.biome))), crit };
 }
 
-function applyVamp(b: BattleState, dealt: number, extraRatio = 0, source: "weapon" | "skill" | "consumable" | "scroll" | "any" = "any", kind: "phys" | "magic" = "phys") {
+export function applyVamp(b: BattleState, dealt: number, extraRatio = 0, source: "weapon" | "skill" | "consumable" | "scroll" | "any" = "any", kind: "phys" | "magic" = "phys") {
   let ratio = rarePower(b, "vamp", "ratio") / 100 + extraRatio;
   if (kind === "phys") ratio += effectPower(b, "vamp") / 100;
   else ratio += effectPower(b, "magic_vamp") / 100;
@@ -1583,6 +1598,10 @@ function applyVamp(b: BattleState, dealt: number, extraRatio = 0, source: "weapo
   if (source === "scroll") {
     ratio += effectPower(b, "scroll_vamp") / 100;
     if (hasPassive(b, "arch_sage_5")) ratio += 0.08;
+  }
+  if (dealt > 0 && b.p.statuses.vampHits > 0 && (source === "weapon" || source === "skill")) {
+    ratio += 0.25;
+    b.p.statuses.vampHits--;
   }
   if (ratio <= 0 || dealt <= 0) return;
   const heal = healPlayer(b, Math.max(1, Math.round(dealt * ratio)));
@@ -2111,7 +2130,7 @@ function advance(b: BattleState) {
       b.enemy.hp -= d;
       push(b, `Проклятие выжигает ${d} ОЗ у ${b.enemy.def.name}.`, "p");
     }
-    if (b.enemy.statuses.blight > 0 && b.enemy.hp > 0) {
+    if (b.enemy.statuses.blight > 0 && b.enemy.hp > 0 && b.enemy.statuses.blightTick > 0) {
       const d = b.enemy.statuses.blightTick;
       b.enemy.hp -= d;
       push(b, `Порча разъедает ${b.enemy.def.name}: −${d} ОЗ.`, "p");
@@ -2151,7 +2170,8 @@ function advance(b: BattleState) {
       (hasPassive(b, "arch_bulwark_5") ? 3 + Math.floor(playerArmorNow(b) / 10) : 0) +
       passivePower(b, "bulwark_wall", "regen") +
       (hasPassive(b, "arch_barbarian_10") ? Math.round(b.p.maxHp * 0.01 * Math.min(10, Math.floor(missingHpRatio(b) * 10))) : 0) +
-      (b.p.statuses.ironTonic > 0 ? 4 : 0);
+      (b.p.statuses.ironTonic > 0 ? 4 : 0) +
+      (b.p.statuses.regenPotion > 0 ? 5 : 0);
     if (regen > 0 && b.p.hp > 0) {
       const healed = healPlayer(b, regen);
       if (healed > 0) push(b, `Регенерация: +${healed} здоровья.`, "p");
@@ -2189,6 +2209,8 @@ function advance(b: BattleState) {
     b.p.statuses.wither = Math.max(0, b.p.statuses.wither - 1);
     b.p.statuses.rage = Math.max(0, b.p.statuses.rage - 1);
     b.p.statuses.ironTonic = Math.max(0, b.p.statuses.ironTonic - 1);
+    b.p.statuses.regenPotion = Math.max(0, b.p.statuses.regenPotion - 1);
+    b.p.statuses.resistPotion = Math.max(0, b.p.statuses.resistPotion - 1);
     b.p.statuses.bloodRage = Math.max(0, b.p.statuses.bloodRage - 1);
     b.p.statuses.noHeal = Math.max(0, b.p.statuses.noHeal - 1);
     b.p.statuses.darkness = Math.max(0, b.p.statuses.darkness - 1);
@@ -2235,6 +2257,7 @@ function advance(b: BattleState) {
     b.enemy.statuses.blight = Math.max(0, b.enemy.statuses.blight - 1);
     b.enemy.statuses.wither = Math.max(0, b.enemy.statuses.wither - 1);
     b.enemy.statuses.burn = Math.max(0, b.enemy.statuses.burn - 1);
+    b.enemy.statuses.sealMoves = Math.max(0, b.enemy.statuses.sealMoves - 1);
     b.enemy.statuses.curse = Math.max(0, b.enemy.statuses.curse - 1);
     if (b.enemy.depleted > 0) {
       b.enemy.depleted -= 1;
@@ -2844,6 +2867,52 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
           applyVamp(b, dealt, 0, def.kind === "scroll" ? "scroll" : "consumable", def.kind === "scroll" ? "magic" : "phys");
           break;
         }
+        case "vamp_potion": {
+          b.p.statuses.vampHits = Math.max(b.p.statuses.vampHits, u.hits ?? 3);
+          push(b, `${def.name}: следующие ${b.p.statuses.vampHits} удара возвращают 25% урона здоровьем.`, "p");
+          break;
+        }
+        case "regen_potion": {
+          b.p.statuses.regenPotion = statusRounds(b, u.rounds ?? 4);
+          push(b, `${def.name}: +5 здоровья за раунд на ${b.p.statuses.regenPotion} раунда.`, "p");
+          break;
+        }
+        case "resist_potion": {
+          b.p.statuses.resistPotion = statusRounds(b, u.rounds ?? 3);
+          push(b, `${def.name}: +25% стойкости к эффектам врага на ${b.p.statuses.resistPotion} раунда.`, "p");
+          break;
+        }
+        case "weaken": {
+          /* Порча без периодического урона: только −20% урона врага. */
+          if (b.enemy.statuses.blight === 0) b.enemy.statuses.blightTick = 0;
+          b.enemy.statuses.blight = Math.max(b.enemy.statuses.blight, u.rounds ?? 3);
+          push(b, `${def.name}: ${b.enemy.def.name} наносит −20% урона на ${b.enemy.statuses.blight} раунда.`, "p");
+          break;
+        }
+        case "seal_moves": {
+          if (!bossResists(b)) {
+            b.enemy.statuses.sealMoves = Math.max(b.enemy.statuses.sealMoves, u.rounds ?? 2);
+            push(b, `${b.enemy.def.name} не применяет приёмы ${b.enemy.statuses.sealMoves} раунда.`, "p");
+          }
+          break;
+        }
+        case "burn_flask": {
+          const dmg = Math.round(itemPower * scrollMult);
+          const dealt = elementalHit(b, dmg, ` [${def.name}]`, u.element ?? "fire");
+          applyVamp(b, dealt, 0, "consumable", "phys");
+          if (b.enemy.hp > 0) applyEnemyStatus(b, "burn", u.rounds ?? 4, dotBaseTick("burn", b.p.level));
+          break;
+        }
+        case "crystal_freeze": {
+          const dmg = Math.round(itemPower * scrollMult);
+          const dealt = elementalHit(b, dmg, ` [${def.name}]`, u.element ?? "ice");
+          applyVamp(b, dealt, 0, "consumable", "phys");
+          if (b.enemy.hp > 0) {
+            applyEnemyStatus(b, "chill", u.rounds ?? 3, dotBaseTick("chill", b.p.level));
+            if (!bossResists(b)) b.enemy.statuses.stunAp = Math.min(2, b.enemy.statuses.stunAp + 1);
+          }
+          break;
+        }
         case "chill": {
           const dmg = Math.round(itemPower * scrollMult);
           const dealt = elementalHit(b, dmg, ` [${def.name}]`, u.element ?? "ice");
@@ -3313,7 +3382,9 @@ export function enemyExpectedMoveDamage(b: BattleState, move: EnemyMove): number
  */
 export function chooseEnemyMove(b: BattleState): EnemyMove {
   const e = b.enemy;
-  const moves = (e.moves.length ? e.moves : e.def.moves).filter((m) => enemyMoveReady(b, m));
+  let moves = (e.moves.length ? e.moves : e.def.moves).filter((m) => enemyMoveReady(b, m));
+  /* Печать тишины: только базовые атака и стойка, без приёмов. */
+  if (e.statuses.sealMoves > 0) moves = moves.filter((m) => m === "attack" || m === "guard");
   let best = 0;
   let top: EnemyMove[] = [];
   for (const m of moves) {
@@ -3879,6 +3950,8 @@ export function combatReadout(b: BattleState): CombatReadout {
     enemyMods.push({ id: "eburn", label: "Горение врага", good: true, rounds: b.enemy.statuses.burn, detail: `−${b.enemy.statuses.burnTick} ОЗ врагу в конце раунда.` });
   if (b.enemy.statuses.curse > 0)
     enemyMods.push({ id: "ecurse", label: "Проклятие врага", mult: 0.7, good: true, rounds: b.enemy.statuses.curse, detail: "Урон врага −30% и периодический магический урон." });
+  if (b.enemy.statuses.sealMoves > 0)
+    enemyMods.push({ id: "seal", label: "Печать тишины", mult: 1, good: true, rounds: b.enemy.statuses.sealMoves, detail: "Враг применяет только атаку и стойку." });
   if (b.enemy.statuses.blight > 0)
     enemyMods.push({ id: "blight", label: "Порча", mult: 0.8, good: true, rounds: b.enemy.statuses.blight, detail: "Урон врага −20% и потеря ОЗ за раунд." });
   if (b.enemy.statuses.wither > 0)
