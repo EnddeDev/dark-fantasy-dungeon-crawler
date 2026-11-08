@@ -75,8 +75,7 @@ test("конструкт: броня считается с множителем 
 
 /* ───────── Нежить: −1 ход и воскрешение ───────── */
 
-test("нежить: −1 ход поверх типа, ход не ниже 1", () => {
-  assert.equal(monsters.raceApDelta("undead"), -1);
+test("ходы монстра: 1 всегда, +1 у ловкого, плюс ловкость; род ходов не меняет", () => {
   let seed = 3;
   const rng = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
   let seen = 0;
@@ -86,7 +85,7 @@ test("нежить: −1 ход поверх типа, ход не ниже 1", 
     seen++;
     const frenzy = s.passive?.id === "frenzy" ? 1 : 0;
     /* ЛОВ врага добавляет ходы поверх типа и рода. */
-    const expected = Math.max(1, Math.min(10, s.def.ap + monsters.MONSTER_TYPE_META[s.mtype].apDelta - 1 + frenzy)) + s.stats.agi;
+    const expected = Math.max(1, Math.min(10, 1 + monsters.MONSTER_TYPE_META[s.mtype].apDelta + frenzy)) + s.stats.agi;
     assert.equal(s.ap, expected, `${s.def.name}: ходов ${s.ap}, ожидалось ${expected}`);
   }
   assert.ok(seen > 0, "нежить попадается");
@@ -201,7 +200,6 @@ test("без рода, умный: один лишний приём сверх �
 test("свойства рода показываются в бестиарии с учётом типа", () => {
   assert.ok(monsters.raceTraits("construct").includes("броня ×2"));
   assert.ok(monsters.raceTraits("undead").some((t) => t.includes("воскресает")));
-  assert.ok(monsters.raceTraits("undead").some((t) => t.includes("ходов −1")));
   assert.ok(monsters.raceTraits("vampire").some((t) => t.includes("слабость")));
   assert.ok(monsters.raceTraits("none", "agile").some((t) => t.includes("контратак")));
   assert.ok(monsters.raceTraits("none", "strong").some((t) => t.includes("регенерация")));

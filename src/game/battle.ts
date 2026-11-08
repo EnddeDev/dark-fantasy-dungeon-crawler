@@ -63,7 +63,6 @@ import {
   NONE_SMART_MOVE,
   REVIVE_DEBUFF,
   WEAKNESS_STEP,
-  raceApDelta,
   raceArmorMult,
   raceBonusMoves,
   raceCannotHeal,
@@ -854,8 +853,8 @@ export function spawnEnemy(
     }
   }
 
-  const apBase = def.ap + apBonus + (effects.includes("ap") ? effectMagnitude("ap", level) : 0) +
-    typeMeta.apDelta + raceApDelta(def.race);
+  /* Ходы: 1 всегда, у ловкого типа +1; ловкость добавляет ходы сверху. Видовые и родовые поправки сняты. */
+  const apBase = 1 + typeMeta.apDelta + apBonus + (effects.includes("ap") ? effectMagnitude("ap", level) : 0);
 
   return {
     def,

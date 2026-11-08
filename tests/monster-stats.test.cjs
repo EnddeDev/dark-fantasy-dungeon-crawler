@@ -227,3 +227,19 @@ test("старый бой без характеристик считается �
   assert.ok(Number.isFinite(battle.enemyMoveBreakdown(b, "attack").expected));
 });
 
+
+test("ходы монстра: 1 всегда, +1 у ловкого типа, плюс ЛОВ; видовые поправки не действуют", () => {
+  const content = load("content");
+  let checked = 0;
+  for (let floor = 1; floor <= 10; floor++) {
+    for (let i = 0; i < 300; i++) {
+      const s = battle.spawnEnemy(floor, false, lcg(floor * 1000 + i));
+      if (s.effects.includes("ap") || s.passive?.id === "frenzy") continue;
+      const typeBonus = s.mtype === "agile" ? 1 : 0;
+      assert.equal(s.ap, 1 + typeBonus + s.stats.agi, `${s.def.id} ${s.mtype} ур. ${s.level}: ходов ${s.ap}, статы ${JSON.stringify(s.stats)}`);
+      checked++;
+    }
+  }
+  assert.ok(checked > 1000, `проверено ${checked}`);
+  assert.ok(content.ENEMIES.length > 0);
+});
