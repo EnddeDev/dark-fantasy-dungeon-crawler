@@ -35,7 +35,7 @@ import { Btn, Meter, Tag } from "./ui";
 import { BiomeRule, BiomeTag, biomeStyle } from "./BiomeLabel";
 import { isBattleCurse } from "../game/traps";
 import { statDamage } from "../game/statFormulas";
-import { EFFECT_COLORS, enemyEffectChips, playerEffectChips, type EffectIconId } from "../game/effects";
+import { EFFECT_COLORS, durationLabel, enemyEffectChips, playerEffectChips, type EffectChip, type EffectIconId } from "../game/effects";
 import { EffectChips } from "./EffectChips";
 import { EffectGlyph } from "./EffectIcon";
 import { DamageTypeTag, ElementRow } from "./DamageTypeIcon";
@@ -157,6 +157,9 @@ export function BattleView({
 }) {
   const [menu, setMenu] = useState<"main" | "skill" | "item">("main");
   const [codex, setCodex] = useState(false);
+  /* Табы в сводках: характеристики или эффекты — отдельно для героя и монстра. */
+  const [heroTab, setHeroTab] = useState<SummaryTab>("stats");
+  const [foeTab, setFoeTab] = useState<SummaryTab>("stats");
   const b = battle;
   const myTurn = !b.over && b.queue[b.idx] === "p";
   const e = b.enemy;
@@ -463,24 +466,25 @@ export function BattleView({
               <span className="font-mono text-sm tab text-parch">{b.p.concentration}/{MAX_CONCENTRATION}</span>
             </div>
 
-            {playerChips.length > 0 && (
-              <div className="relative z-20 mt-2">
-                <EffectChips chips={playerChips} label="эффекты героя" />
-              </div>
-            )}
-
             <div className="mt-3 border-t border-line/70 pt-3">
               <span className="sc">Сводка боя</span>
-              <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1.5 text-[0.94rem] sm:grid-cols-3">
-                {rows.map((row, i) => (
-                  <SummaryRow
-                    key={row.label}
-                    row={{ ...row, metric: ROW_METRIC[row.label], boon: highlightedRows[row.label] }}
-                    live={changed(row.base, row.now)}
-                    align={i % 2 === 1 ? "right" : "left"}
-                  />
-                ))}
+              <div className="mt-2">
+                <SummaryTabs value={heroTab} onChange={setHeroTab} effectsCount={playerChips.length} />
               </div>
+              {heroTab === "stats" ? (
+                <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1.5 text-[0.94rem] sm:grid-cols-3">
+                  {rows.map((row, i) => (
+                    <SummaryRow
+                      key={row.label}
+                      row={{ ...row, metric: ROW_METRIC[row.label], boon: highlightedRows[row.label] }}
+                      live={changed(row.base, row.now)}
+                      align={i % 2 === 1 ? "right" : "left"}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <EffectsTab chips={playerChips} label="эффекты героя" />
+              )}
             </div>
 
             {b.flash && b.flash.target === "p" && (
@@ -782,22 +786,29 @@ export function BattleView({
               </div>
             </div>
 
-            {/* Сводка врага: те же строки и стиль, что у героя */}
+            {/* Сводка врага: характеристики и эффекты в табах */}
             <div className="border-b border-line bg-slab/80 px-4 py-3">
               <div className="flex items-center justify-between">
                 <span className="sc">Сводка врага</span>
                 {e.forceGuard > 0 && <Tag tone="verd">вынужден держать оборону</Tag>}
               </div>
-              <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1.5 text-[0.94rem] sm:grid-cols-3">
-                {enemyRows.map((row, i) => (
-                  <SummaryRow
-                    key={row.label}
-                    row={row}
-                    live={changed(row.base, row.now)}
-                    align={i % 2 === 1 ? "right" : "left"}
-                  />
-                ))}
+              <div className="mt-2">
+                <SummaryTabs value={foeTab} onChange={setFoeTab} effectsCount={enemyChips.length} />
               </div>
+              {foeTab === "stats" ? (
+                <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1.5 text-[0.94rem] sm:grid-cols-3">
+                  {enemyRows.map((row, i) => (
+                    <SummaryRow
+                      key={row.label}
+                      row={row}
+                      live={changed(row.base, row.now)}
+                      align={i % 2 === 1 ? "right" : "left"}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <EffectsTab chips={enemyChips} label="эффекты врага" />
+              )}
             </div>
 
             {/* Приёмы врага: сколько нанесёт и какие наложит */}
@@ -1114,6 +1125,66 @@ export function BattleView({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+export type SummaryTab = "stats" | "effects";
+
+/** Два таба сводки: «Характеристики» и «Эффекты». Активный помечен aria-selected. */
+export function SummaryTabs({
+  value,
+  onChange,
+  effectsCount,
+}: {
+  value: SummaryTab;
+  onChange: (tab: SummaryTab) => void;
+  effectsCount: number;
+}) {
+  const tabs: { id: SummaryTab; label: string; count?: number }[] = [
+    { id: "stats", label: "Характеристики" },
+    { id: "effects", label: "Эффекты", count: effectsCount },
+  ];
+  return (
+    <div role="tablist" className="flex gap-1.5">
+      {tabs.map((t) => {
+        const on = value === t.id;
+        return (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={on}
+            onClick={() => onChange(t.id)}
+            className={`sc border px-2.5 py-1 text-[0.8rem] transition-colors ${
+              on ? "border-flame bg-flame/15 text-flamehi" : "border-line text-mute hover:text-parch"
+            }`}
+          >
+            {t.label}
+            {t.count !== undefined && t.count > 0 && (
+              <span className="ml-1.5 font-mono text-[0.72rem] text-flame">{t.count}</span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Вкладка «Эффекты»: иконки крупнее и текстовый список со сроком. */
+export function EffectsTab({ chips, label }: { chips: EffectChip[]; label: string }) {
+  if (chips.length === 0) return <p className="mt-2 text-sm italic text-mute">Эффектов нет.</p>;
+  return (
+    <div className="relative z-20 mt-2 space-y-2">
+      <EffectChips chips={chips} label={label} size={36} />
+      <ul className="space-y-1">
+        {chips.map((c, i) => (
+          <li key={i} className="flex items-baseline justify-between gap-3 border-b border-line/40 pb-1 text-[0.9rem]">
+            <span className="min-w-0 truncate text-parch">{c.badge ? `${c.name} ${c.badge}` : c.name}</span>
+            <span className="shrink-0 font-mono text-[0.78rem] text-mute">{c.immune ? "иммунитет" : durationLabel(c)}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
