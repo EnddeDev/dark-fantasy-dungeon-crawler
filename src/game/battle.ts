@@ -44,6 +44,7 @@ import {
   MONSTER_RULES,
   MOVE_LABELS,
   RAT_CALL_HEAL_SHARE,
+  ROT_MAX_STACKS,
   ROT_ROUNDS,
   SEER_REPEAT_DODGE,
   boneShieldUp,
@@ -74,7 +75,6 @@ import {
   raceRevives,
   raceWeakens,
   type DamageElement,
-  type MonsterRace,
   type MonsterType,
 } from "./monsters";
 import { SLOT_ORDER } from "./types";
@@ -116,6 +116,8 @@ import {
   bossDotTick,
   dotBaseTick,
   dotSkillTick,
+  dotTickSpan,
+  type DotKind,
   skillDotTick,
   magicTickFrom,
   oilAcidArmorCut,
@@ -1795,6 +1797,85 @@ export function playerArmorNow(b: BattleState): number {
 }
 
 /** false означает, что враг промахнулся: побочные эффекты атаки тоже не срабатывают. */
+/** Строка подсчёта урона: значение после шага. note — множитель или поправка, видны в подсказке. */
+export interface DamageLine {
+  label: string;
+  value: number;
+  note?: string;
+}
+
+/** Проценты для подсказок: 0.25 → «25%». */
+export function pctText(v: number): string {
+  return `${Math.round(v * 100)}%`;
+}
+
+/**
+ * Защиты героя по шагам: броня, укрепление, сопротивления, стойка.
+ * Последняя строка — урон после всех защит. Без бросков и побочных эффектов.
+ */
+function playerDefenseLines(
+  b: BattleState,
+  raw: number,
+  kind: "phys" | "magic",
+  strike: boolean,
+  ignoreDefense: boolean,
+): DamageLine[] {
+  const lines: DamageLine[] = [];
+  let d = raw;
+  if (strike) {
+    const mult = biomeStrikeMult(b.biome);
+    d = Math.round(d * mult);
+    if (mult !== 1) lines.push({ label: "Ледяной биом", value: d, note: `×${mult}` });
+  }
+  const effArmor = playerArmorNow(b);
+  if (kind === "phys") {
+    if (!ignoreDefense) {
+      const cut = b.piercing ? piercingArmorCap(d, effArmor) : effArmor;
+      d -= cut;
+      if (cut !== 0) {
+        lines.push({
+          label: b.piercing ? "Броня (пробита: не больше половины удара)" : "Броня героя",
+          value: d,
+          note: `−${cut}`,
+        });
+      }
+      const fortify = combatChance(b.p.chanceLayers.fortify);
+      d = Math.round(d * (1 - fortify));
+      if (fortify > 0) lines.push({ label: "Укрепление героя", value: d, note: `−${pctText(fortify)}` });
+    }
+  } else if (!ignoreDefense) {
+    const magic = combatChance(b.p.chanceLayers.magicResist);
+    d = Math.round(d * (1 - magic));
+    if (magic > 0) lines.push({ label: "Сопротивление магии", value: d, note: `−${pctText(magic)}` });
+  }
+  if (!ignoreDefense) {
+    const flat = effectPower(b, "damage_resist");
+    d -= flat;
+    if (flat > 0) lines.push({ label: "Сопротивление урону", value: d, note: `−${flat}` });
+  }
+  if (b.p.statuses.stone > 0) {
+    d = Math.round(d * 0.7);
+    lines.push({ label: "Каменная кожа", value: d, note: "×0.7" });
+  }
+  let guardMult = 1;
+  if (b.p.guard) {
+    guardMult -= effectPower(b, "guard_bonus") / 100;
+    if (hasPassive(b, "arch_bulwark_5")) guardMult -= 0.15;
+    if (hasGearPassive(b, "bulwark_wall")) guardMult -= passivePower(b, "bulwark_wall", "guard") / 100;
+  }
+  const guardFactor = Math.max(0.2, guardMult);
+  d = Math.round(d * guardFactor);
+  if (b.p.guard && guardFactor !== 1) lines.push({ label: "Защита героя", value: d, note: `×${guardFactor.toFixed(2)}` });
+  if (hasGearPassive(b, "fortress")) {
+    const resist = passivePower(b, "fortress", "resist");
+    d = Math.round(d * (1 - resist / 100));
+    lines.push({ label: "Крепость", value: d, note: `−${resist}%` });
+  }
+  d = Math.max(1, d);
+  lines.push({ label: "Итог после защит", value: d });
+  return lines;
+}
+
 /** Урон по герою после всех защит: броня, укрепление, сопротивления, стойка. Без бросков и побочных эффектов. */
 function damageAfterPlayerDefense(
   b: BattleState,
@@ -1803,41 +1884,43 @@ function damageAfterPlayerDefense(
   strike: boolean,
   ignoreDefense: boolean,
 ): number {
-  let d = raw;
-  if (strike) d = Math.round(d * biomeStrikeMult(b.biome));
-  const effArmor = playerArmorNow(b);
-  if (kind === "phys") {
-    if (!ignoreDefense) {
-      d -= b.piercing ? piercingArmorCap(d, effArmor) : effArmor;
-      d = Math.round(d * (1 - combatChance(b.p.chanceLayers.fortify)));
-    }
-  } else if (!ignoreDefense) {
-    d = Math.round(d * (1 - combatChance(b.p.chanceLayers.magicResist)));
-  }
-  if (!ignoreDefense) d -= effectPower(b, "damage_resist");
-  if (b.p.statuses.stone > 0) d = Math.round(d * 0.7);
-  let guardMult = 1;
-  if (b.p.guard) {
-    guardMult -= effectPower(b, "guard_bonus") / 100;
-    if (hasPassive(b, "arch_bulwark_5")) guardMult -= 0.15;
-    if (hasGearPassive(b, "bulwark_wall")) guardMult -= passivePower(b, "bulwark_wall", "guard") / 100;
-  }
-  d = Math.round(d * Math.max(0.2, guardMult));
-  if (hasGearPassive(b, "fortress")) d = Math.round(d * (1 - passivePower(b, "fortress", "resist") / 100));
-  d = Math.max(1, d);
-  return d;
+  const lines = playerDefenseLines(b, raw, kind, strike, ignoreDefense);
+  return lines[lines.length - 1].value;
 }
 
-/** Шанс, что удар по герою вообще попадёт (промахи мрака, ослепления, уклонения). Блокировки, которые срабатывают всегда, дают 0. */
-function playerHitChance(b: BattleState, kind: "phys" | "magic", strike: boolean, ignoreDefense: boolean): number {
-  if (b.p.statuses.fullGuard > 0 || b.p.statuses.invulnerable > 0 || b.p.statuses.dodgeNext > 0 || b.p.statuses.smoke > 0) return 0;
-  if (!ignoreDefense && kind === "phys" && b.p.statuses.evadeTurn > 0) return 0;
-  let p = 1;
+/** Шанс попасть и причины промаха: мрак, ослепление светом, уклонение. blocked — блокировка, которая срабатывает всегда. */
+export interface HitParts {
+  chance: number;
+  blocked: string | null;
+  misses: { label: string; chance: number }[];
+}
+
+function playerHitParts(b: BattleState, kind: "phys" | "magic", strike: boolean, ignoreDefense: boolean): HitParts {
+  if (b.p.statuses.fullGuard > 0 || b.p.statuses.invulnerable > 0 || b.p.statuses.dodgeNext > 0 || b.p.statuses.smoke > 0) {
+    return { chance: 0, blocked: "защита героя поглощает удар", misses: [] };
+  }
+  if (!ignoreDefense && kind === "phys" && b.p.statuses.evadeTurn > 0) {
+    return { chance: 0, blocked: "герой уклоняется в этом ходу", misses: [] };
+  }
+  let chance = 1;
+  const misses: { label: string; chance: number }[] = [];
   const darkMiss = (b.torchTurns ?? 0) > 0 ? 0 : biomeMissChance(b.biome);
-  if (!ignoreDefense && strike) p *= 1 - darkMiss;
-  if (enemyOil(b, "light")) p *= 1 - OIL_BLIND_MISS;
-  if (!ignoreDefense && kind === "phys") p *= 1 - combatChance(b.p.chanceLayers.evade);
-  return p;
+  if (!ignoreDefense && strike && darkMiss > 0) {
+    chance *= 1 - darkMiss;
+    misses.push({ label: "мрак", chance: darkMiss });
+  }
+  if (enemyOil(b, "light")) {
+    chance *= 1 - OIL_BLIND_MISS;
+    misses.push({ label: "враг ослеплён светом", chance: OIL_BLIND_MISS });
+  }
+  if (!ignoreDefense && kind === "phys") {
+    const evade = combatChance(b.p.chanceLayers.evade);
+    if (evade > 0) {
+      chance *= 1 - evade;
+      misses.push({ label: "уклонение героя", chance: evade });
+    }
+  }
+  return { chance, blocked: null, misses };
 }
 
 /** Первый удар героя в бою оглушает врага на ход (Ассасин 10). Босс устойчив, как и к другим оглушениям. */
@@ -2003,7 +2086,7 @@ function gainLoot(b: BattleState) {
  * переходит на следующий раунд целиком (2 раунда счётчика), иначе — на текущий.
  */
 /** После страха герой ещё столько раундов не боится (иммунитет тает по одному в конце раунда). */
-const FEAR_IMMUNE_ROUNDS = 3;
+export const FEAR_IMMUNE_ROUNDS = 3;
 
 function applyHeroFear(b: BattleState, note: string) {
   if (b.p.statuses.fear > 0) return;
@@ -3339,67 +3422,138 @@ function enemyChill(b: BattleState): number {
   return (b.enemy.statuses.blight > 0 ? 0.8 : 1) * (b.enemy.statuses.curse > 0 ? 1 - (b.enemy.statuses.cursePower ?? 30) / 100 : 1);
 }
 
-/** Усиления базового удара от эффектов врага, без критического броска. Истощение эффектов их отключает. */
-function enemyEffectDamage(b: BattleState, base0: number): number {
-  if (effectsDepleted(b)) return base0;
+/** Усиления базового удара от эффектов врага, по шагам. Истощение эффектов их отключает. */
+function enemyEffectSteps(b: BattleState, base0: number): { value: number; lines: DamageLine[] } {
+  if (effectsDepleted(b)) return { value: base0, lines: [] };
   const e = b.enemy;
+  const lines: DamageLine[] = [];
   let base = base0;
-  base = Math.round(base * (1 + (eEffect(b, "rage") / 100) * Math.min(10, Math.floor(enemyMissingRatio(b) * 10))));
-  base = Math.round(base * (1 + (e.level * eEffect(b, "might")) / 100));
-  base = Math.round(base * (1 + eEffect(b, "missing_hp_damage") / 100 * Math.min(10, Math.floor(enemyMissingRatio(b) * 10))));
-  base = Math.round(base * (1 + eEffect(b, "enemy_missing_damage") / 100 * Math.min(10, Math.floor(missingHpRatio(b) * 10))));
-  if (b.round <= 2) base = Math.round(base * (1 + eEffect(b, "first_strike") / 100));
-  base += Math.round(e.armor * eEffect(b, "armor_damage") / 100);
-  return base;
+  const scale = (factor: number, label: string) => {
+    base = Math.round(base * factor);
+    if (factor !== 1) lines.push({ label, value: base, note: `×${factor.toFixed(2)}` });
+  };
+  scale(1 + (eEffect(b, "rage") / 100) * Math.min(10, Math.floor(enemyMissingRatio(b) * 10)), "Ярость врага");
+  scale(1 + (e.level * eEffect(b, "might")) / 100, "Мощь врага");
+  scale(1 + eEffect(b, "missing_hp_damage") / 100 * Math.min(10, Math.floor(enemyMissingRatio(b) * 10)), "Урон растёт от потерь ОЗ врага");
+  scale(1 + eEffect(b, "enemy_missing_damage") / 100 * Math.min(10, Math.floor(missingHpRatio(b) * 10)), "Урон растёт от твоих потерь ОЗ");
+  if (b.round <= 2) scale(1 + eEffect(b, "first_strike") / 100, "Первые раунды");
+  const armorAdd = Math.round(e.armor * eEffect(b, "armor_damage") / 100);
+  base += armorAdd;
+  if (armorAdd !== 0) lines.push({ label: "Броня врага", value: base, note: `+${armorAdd}` });
+  return { value: base, lines };
 }
 
-/** Множители хода: тип монстра, агрессия зверя, масло, ярость дракона. */
-function enemyMoveDamage(b: BattleState, move: EnemyMove, isStrikeMove: boolean, base0: number): number {
+/** Усиления базового удара от эффектов врага, без критического броска. */
+function enemyEffectDamage(b: BattleState, base0: number): number {
+  return enemyEffectSteps(b, base0).value;
+}
+
+/** Множители хода: тип монстра, агрессия зверя, масло, ярость дракона, воскрешение. По шагам. */
+function enemyMoveSteps(b: BattleState, move: EnemyMove, isStrikeMove: boolean, base0: number): { value: number; lines: DamageLine[] } {
   const e = b.enemy;
   let base = base0;
+  const lines: DamageLine[] = [];
   /* Тип задаёт, на чём держится урон: у умных приёмы бьют в 1.45× сильнее. */
   const typeMeta = MONSTER_TYPE_META[e.mtype] ?? MONSTER_TYPE_META.strong;
-  if (!isStrikeMove && move !== "guard") base = Math.round(base * typeMeta.movePower);
+  if (!isStrikeMove && move !== "guard") {
+    base = Math.round(base * typeMeta.movePower);
+    if (typeMeta.movePower !== 1) lines.push({ label: `Тип монстра: ${typeMeta.name}`, value: base, note: `×${typeMeta.movePower}` });
+  }
   /* Агрессия зверя: ниже половины здоровья бьёт вдвое. */
-  if (e.def.race === "beast" && e.hp > 0 && e.hp <= e.maxHp * 0.5 && isStrikeMove) base = Math.round(base * 2);
+  if (e.def.race === "beast" && e.hp > 0 && e.hp <= e.maxHp * 0.5 && isStrikeMove) {
+    base = Math.round(base * 2);
+    lines.push({ label: "Зверь ниже половины ОЗ", value: base, note: "×2" });
+  }
   /* Лёд под маслом режет силу атаки и физических приёмов врага. */
-  if (PHYS_ENEMY_MOVES.includes(move)) base = Math.round(base * enemyOilAttackMult(b));
+  if (PHYS_ENEMY_MOVES.includes(move)) {
+    const oil = enemyOilAttackMult(b);
+    base = Math.round(base * oil);
+    if (oil !== 1) lines.push({ label: "Лёд под маслом", value: base, note: `×${oil.toFixed(2)}` });
+  }
   /* Ярость дракона: двойной урон, пока держится. */
-  if (e.def.race === "dragon" && e.fury > 0 && !effectsDepleted(b)) base = Math.round(base * 2);
+  if (e.def.race === "dragon" && e.fury > 0 && !effectsDepleted(b)) {
+    base = Math.round(base * 2);
+    lines.push({ label: "Ярость дракона", value: base, note: "×2" });
+  }
   /* Воскресшая нежить бьёт вполсилы. */
-  if (e.revived) base = Math.round(base * (1 - REVIVE_DEBUFF));
-  return base;
+  if (e.revived) {
+    base = Math.round(base * (1 - REVIVE_DEBUFF));
+    lines.push({ label: "Воскресшая нежить", value: base, note: `×${1 - REVIVE_DEBUFF}` });
+  }
+  return { value: base, lines };
+}
+
+/** Множители хода: тип монстра, агрессия зверя, масло, ярость дракона, воскрешение. */
+function enemyMoveDamage(b: BattleState, move: EnemyMove, isStrikeMove: boolean, base0: number): number {
+  return enemyMoveSteps(b, move, isStrikeMove, base0).value;
+}
+
+/** Подсчёт ожидаемого урона приёма по шагам. Тот же расчёт, что выбирает приём и показывает список. */
+export interface EnemyMoveBreakdown {
+  /** Ударов в приёме: второй приходит, только если первый попал. */
+  hits: number;
+  /** Шанс, что один удар попадёт по герою. */
+  hitChance: number;
+  hitMisses: { label: string; chance: number }[];
+  /** Почему удар не попадёт совсем (защита героя). null — блокировки нет. */
+  blocked: string | null;
+  /** Строки урона: от базового удара до итога после защит героя. */
+  lines: DamageLine[];
+  /** Ожидаемый урон приёма по герою сейчас. */
+  expected: number;
 }
 
 /**
  * Ожидаемый урон приёма врага по герою прямо сейчас: среднее от броска, ожидание крита,
  * шанс попасть и все защиты героя. Без бросков и побочных эффектов.
  */
-export function enemyExpectedMoveDamage(b: BattleState, move: EnemyMove): number {
+export function enemyMoveBreakdown(b: BattleState, move: EnemyMove): EnemyMoveBreakdown {
   const shape = ENEMY_MOVE_SHAPE[move];
-  if (!shape) return 0;
+  if (!shape) return { hits: 0, hitChance: 0, hitMisses: [], blocked: null, lines: [], expected: 0 };
   const e = b.enemy;
-  const isStrikeMove = STRIKE_MOVES.includes(move);
-  let base = enemyEffectDamage(b, Math.round((e.atk[0] + e.atk[1]) / 2));
-  if (!effectsDepleted(b)) {
-    const c = eChance(b, "crit_chance");
-    if (c > 0) base = base * (1 - c) + base * (2 + eEffect(b, "crit_mult") / 100) * c;
-  }
-  base = enemyMoveDamage(b, move, isStrikeMove, base);
-  const raw = Math.round(base * shape.mult * enemyChill(b));
+  const isStrike = STRIKE_MOVES.includes(move);
   const strike = shape.kind === "phys";
   const ignore = !!shape.ignoreDefense;
-  const p = playerHitChance(b, shape.kind, strike, ignore);
-  if (p <= 0) return 0;
-  const d = damageAfterPlayerDefense(b, raw, shape.kind, strike, ignore);
-  /* Второй удар приходит, только если первый попал. */
-  let total = 0;
-  let reach = 1;
-  for (let i = 0; i < (shape.hits ?? 1); i++) {
-    reach *= p;
-    total += reach * d;
+  const hits = shape.hits ?? 1;
+  const avg = Math.round((e.atk[0] + e.atk[1]) / 2);
+  const lines: DamageLine[] = [{ label: "Базовый удар врага", value: avg, note: `${e.atk[0]}–${e.atk[1]}` }];
+  const effects = enemyEffectSteps(b, avg);
+  lines.push(...effects.lines);
+  let base = effects.value;
+  if (!effectsDepleted(b)) {
+    const c = eChance(b, "crit_chance");
+    if (c > 0) {
+      const critMult = 2 + eEffect(b, "crit_mult") / 100;
+      base = base * (1 - c) + base * critMult * c;
+      lines.push({ label: "Критический удар (среднее)", value: base, note: `${pctText(c)} ×${critMult.toFixed(2)}` });
+    }
   }
-  return total;
+  const moveSteps = enemyMoveSteps(b, move, isStrike, base);
+  lines.push(...moveSteps.lines);
+  base = moveSteps.value;
+  if (shape.mult !== 1) lines.push({ label: "Сила приёма", value: base * shape.mult, note: `×${shape.mult}` });
+  const chill = enemyChill(b);
+  const raw = Math.round(base * shape.mult * chill);
+  if (chill !== 1) lines.push({ label: "Ослаблен врагом, удар до защит", value: raw, note: `×${chill.toFixed(2)}` });
+  else lines.push({ label: "Удар до защит", value: raw });
+  const hit = playerHitParts(b, shape.kind, strike, ignore);
+  const defense = playerDefenseLines(b, raw, shape.kind, strike, ignore);
+  lines.push(...defense);
+  const d = defense[defense.length - 1].value;
+  let expected = 0;
+  if (hit.chance > 0) {
+    /* Второй удар приходит, только если первый попал. */
+    let reach = 1;
+    for (let i = 0; i < hits; i++) {
+      reach *= hit.chance;
+      expected += reach * d;
+    }
+  }
+  return { hits, hitChance: hit.chance, hitMisses: hit.misses, blocked: hit.blocked, lines, expected };
+}
+
+export function enemyExpectedMoveDamage(b: BattleState, move: EnemyMove): number {
+  return enemyMoveBreakdown(b, move).expected;
 }
 
 /**
@@ -3435,41 +3589,157 @@ export interface EnemyMoveEffect {
   half: boolean;
 }
 
-/** Родовые наложения удара (как в applyRaceStrike): только у ударов оружием и когтями. */
-function raceStrikeEffects(race: MonsterRace): EnemyMoveEffect[] {
-  if (race === "vampire") return [{ id: "bleed", half: false }];
-  if (race === "ghost") return [{ id: "fear", half: false }];
-  if (race === "beast") return [{ id: "bleed", half: true }, { id: "poison", half: true }];
-  if (race === "demon") return [{ id: "burn", half: true }, { id: "fear", half: true }];
-  return [];
+/** Подробности наложения: шанс за приём и что именно делает, с числами. */
+export interface EnemyMoveEffectDetail extends EnemyMoveEffect {
+  /** Шанс за приём: попадание, стойкость героя и доля наложения. 0 — не накладывается. */
+  chance: number;
+  lines: string[];
 }
 
-/** Какие эффекты приём накладывает на героя. Повторяет ветки хода врага, чтобы подсказка совпадала с боем. */
-export function enemyMoveEffects(b: BattleState, move: EnemyMove): EnemyMoveEffect[] {
+/** Склонение слова «раунд» для числа. */
+function roundsText(n: number): string {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  let word = "раундов";
+  if (m10 === 1 && m100 !== 11) word = "раунд";
+  else if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) word = "раунда";
+  return `${n} ${word}`;
+}
+
+/** Какие эффекты приём накладывает на героя, с шансом и числами. Повторяет ветки хода врага, чтобы подсказка совпадала с боем. */
+export function enemyMoveEffectDetails(b: BattleState, move: EnemyMove): EnemyMoveEffectDetail[] {
   const e = b.enemy;
-  const strike = STRIKE_MOVES.includes(move) ? raceStrikeEffects(e.def.race) : [];
-  const one = (id: EnemyMoveEffectId): EnemyMoveEffect[] => [{ id, half: false }];
-  switch (move) {
-    case "attack":
-    case "multi":
-      return strike;
-    case "heavy":
-      return [...strike, ...(e.def.id === "husk" ? one("sunder") : [])];
-    case "wound": return one("bleed");
-    case "poison": return one("poison");
-    case "sunder": return one("sunder");
-    case "curse": return one("curse");
-    case "terror": return one("fear");
-    case "bell_stun": return one("stun");
-    case "intimidate": return [{ id: "sealAttack", half: false }, { id: "sealSkills", half: false }];
-    case "darkness": return one("darkness");
-    case "cold_touch": return one("noHeal");
-    case "hell_force": return one("burn");
-    case "seal_items": return one("sealItems");
-    case "seal_skills": return one("sealSkills");
-    case "seal_attack": return one("sealAttack");
-    default: return [];
+  const out: EnemyMoveEffectDetail[] = [];
+  const isStrike = STRIKE_MOVES.includes(move);
+  const landP = enemyMoveLandChance(b, move);
+  const resisted = landP * (1 - playerResistChance(b));
+  const span = (kind: DotKind, skill: boolean) => dotTickSpan(kind, e.level, skill);
+  const add = (id: EnemyMoveEffectId, half: boolean, chance: number, lines: string[], immune?: ImmunityEffect) => {
+    if (immune && playerImmune(b, immune)) {
+      out.push({ id, half, chance: 0, lines: [`Иммунитет: ${IMMUNITY_NAMES[immune]} не накладывается.`] });
+      return;
+    }
+    out.push({ id, half, chance, lines });
+  };
+  const dotLine = (name: string, rounds: number, [lo, hi]: [number, number]) =>
+    `${name}: ${roundsText(rounds)}; −${lo}–${hi} ОЗ в раунд за каждое наложение, до ${MAX_DOT_STACKS} наложений.`;
+  const burnLine = (rounds: number, [lo, hi]: [number, number]) =>
+    `Горение: ${roundsText(rounds)}; −${lo}–${hi} ОЗ в раунд, наложения не складываются.`;
+  const fearLine =
+    `Страх: ${roundsText(1)} (${roundsText(2)}, если твой ход в этом раунде уже прошёл). В свой ход ты в защите: атаки и приёмы закрыты. После приступа ${roundsText(FEAR_IMMUNE_ROUNDS)} без страха.`;
+
+  /* Родовые наложения удара (как в applyRaceStrike): только при попадании обычным ударом. */
+  if (isStrike) {
+    const race = e.def.race;
+    if (race === "vampire") {
+      add("bleed", false, resisted, [dotLine("Кровотечение", 3, span("bleed", false))], "bleed");
+    } else if (race === "ghost") {
+      add("fear", false, resisted, [fearLine], "fear");
+    } else if (race === "beast") {
+      add("bleed", true, resisted * 0.5, [dotLine("Кровотечение", 3, span("bleed", false))], "bleed");
+      add("poison", true, resisted * 0.5, [dotLine("Яд", 3, span("poison", false))], "poison");
+    } else if (race === "demon") {
+      add("burn", true, resisted * 0.5, [burnLine(statusRounds(b, 3), span("burn", false))], "burn");
+      add("fear", true, resisted * 0.5, [fearLine], "fear");
+    }
   }
+
+  switch (move) {
+    case "heavy":
+      if (e.def.id === "husk") {
+        const cur = b.p.statuses.rot ?? 0;
+        add("sunder", false, landP, [
+          `Гниение: броня −${nextRotStacks(cur)} на ${roundsText(ROT_ROUNDS)}; сейчас −${cur}; каждый удар добавляет слой, не больше ${ROT_MAX_STACKS}.`,
+        ]);
+      }
+      break;
+    case "wound":
+      if (hasLeg(b, "titan_heart")) {
+        out.push({ id: "bleed", half: false, chance: 0, lines: ["Не действует: «Сердце титана» не даёт кровотечению закрепиться."] });
+      } else {
+        add("bleed", false, resisted, [dotLine("Кровотечение", 3, span("bleed", true))], "bleed");
+      }
+      break;
+    case "poison":
+      if (hasLeg(b, "titan_heart")) {
+        out.push({ id: "poison", half: false, chance: 0, lines: ["Не действует: «Сердце титана» выжигает яд на лету."] });
+      } else {
+        add("poison", false, resisted, [dotLine("Яд", 3, span("poison", true))], "poison");
+      }
+      break;
+    case "sunder":
+      add("sunder", false, landP, [`Раскол брони: броня −${enemySunderBreak(e.level)} до конца боя; всего не больше −8.`], "sunder");
+      break;
+    case "curse": {
+      const magic = combatChance(b.p.chanceLayers.magicResist);
+      const [lo, hi] = span("curse", true);
+      const power = Math.max(b.p.statuses.cursePower ?? 0, 30);
+      add("curse", false, resisted, [
+        `Проклятие: ${roundsText(3)}; твой урон снижен на ${power}%; −${magicTickFrom(lo, magic)}–${magicTickFrom(hi, magic)} ОЗ в раунд с учётом сопротивления магии.`,
+      ], "curse");
+      break;
+    }
+    case "bell_stun":
+      add("stun", false, resisted, ["Оглушение: −1 ход в следующем раунде."], "stun");
+      break;
+    case "terror":
+      add("fear", false, resisted, [fearLine], "fear");
+      break;
+    case "hell_force":
+      add("burn", false, resisted, [burnLine(statusRounds(b, 4), span("burn", true))], "burn");
+      break;
+    case "cold_touch":
+      add("noHeal", false, landP, [`Запрет лечения: ${roundsText(2)}; зелья и приёмы лечения не работают. Пробивает броню и сопротивление.`], "noHeal");
+      break;
+    case "intimidate":
+      add("sealAttack", false, 1, ["Печать оков: обычная атака запрещена в твой следующий ход."], "sealAttack");
+      add("sealSkills", false, 1, ["Печать забвения: приёмы запрещены в твой следующий ход."], "sealSkills");
+      break;
+    case "darkness":
+      add("darkness", false, 1, [`Мрак: ${roundsText(1)}; половина твоих атак уходит в пустоту.`], "darkness");
+      break;
+    case "seal_items":
+      add("sealItems", false, 1, ["Печать немоты: расходники запрещены в твой следующий ход."], "sealItems");
+      break;
+    case "seal_skills":
+      add("sealSkills", false, 1, ["Печать забвения: приёмы запрещены в твой следующий ход."], "sealSkills");
+      break;
+    case "seal_attack":
+      add("sealAttack", false, 1, ["Печать оков: обычная атака запрещена в твой следующий ход."], "sealAttack");
+      break;
+    default:
+      break;
+  }
+  return out;
+}
+
+/** Шанс, что приём вообще доходит до наложения: все удары приёма попали. Приёмы без удара — 1. */
+function enemyMoveLandChance(b: BattleState, move: EnemyMove): number {
+  const shape = ENEMY_MOVE_SHAPE[move];
+  if (!shape) return 1;
+  return playerHitParts(b, shape.kind, shape.kind === "phys", !!shape.ignoreDefense).chance ** (shape.hits ?? 1);
+}
+
+/** Наложения приёма врага без подробностей: id и половина шанса для значка. */
+export function enemyMoveEffects(b: BattleState, move: EnemyMove): EnemyMoveEffect[] {
+  return enemyMoveEffectDetails(b, move).map(({ id, half }) => ({ id, half }));
+}
+
+/** Особенности приёма, которые не являются значками: слабость, вампиризм, оглушение от свойств врага. */
+export function enemyMoveNotes(b: BattleState, move: EnemyMove): string[] {
+  const e = b.enemy;
+  const notes: string[] = [];
+  const landP = enemyMoveLandChance(b, move);
+  const race = e.def.race;
+  if (STRIKE_MOVES.includes(move) && raceWeakens(race)) {
+    notes.push(`Слабость (${pctText(landP)}): +1 слой за попадание, твой урон от атак −${Math.round(WEAKNESS_STEP * 100)}% за слой до конца боя.`);
+  }
+  if (race === "vampire" && ENEMY_MOVE_SHAPE[move]) {
+    notes.push(`Вампиризм (${pctText(landP)}): при попадании враг восстанавливает четверть своего удара.`);
+  }
+  const eStun = eChance(b, "stun_chance");
+  if (eStun > 0) notes.push(`Оглушение от свойства врага (${pctText(eStun)}): −1 ход в следующем раунде.`);
+  return notes;
 }
 
 export interface EnemyMoveView {
@@ -3479,6 +3749,12 @@ export interface EnemyMoveView {
   effects: EnemyMoveEffect[];
   /** Раунды до снятия перезарядки; 0 — приём доступен. */
   cooldown: number;
+  /** Подсчёт урона по шагам. */
+  breakdown: EnemyMoveBreakdown;
+  /** Наложения с шансом и числами. */
+  details: EnemyMoveEffectDetail[];
+  /** Особенности приёма. */
+  notes: string[];
 }
 
 /** Параметры врага для сводки и списка приёмов: всё считается теми же функциями, что и бой. */
@@ -3514,12 +3790,19 @@ export function enemyReadout(b: BattleState): EnemyReadout {
     fortify,
     magicResist,
     ap: e.ap,
-    moves: list.map((move) => ({
-      move,
-      damage: Math.round(enemyExpectedMoveDamage(b, move)),
-      effects: enemyMoveEffects(b, move),
-      cooldown: enemyMoveCooldownLeft(b, move),
-    })),
+    moves: list.map((move) => {
+      const breakdown = enemyMoveBreakdown(b, move);
+      const details = enemyMoveEffectDetails(b, move);
+      return {
+        move,
+        damage: Math.round(breakdown.expected),
+        effects: details.map(({ id, half }) => ({ id, half })),
+        cooldown: enemyMoveCooldownLeft(b, move),
+        breakdown,
+        details,
+        notes: enemyMoveNotes(b, move),
+      };
+    }),
   };
 }
 
