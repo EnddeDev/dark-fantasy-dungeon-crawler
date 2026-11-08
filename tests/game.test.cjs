@@ -2335,6 +2335,8 @@ test("в бою дебаффы монстра идут не чаще раза в
     b.enemy.hp = 99999;
     b.enemy.maxHp = 99999;
     b.enemy.moves = ["attack", "curse", "terror", "wound"];
+    /* Удар фиксирован: у случайного вида минимум удара зависит от правила обычных монстров. */
+    b.enemy.atk = [5, 8];
     b.enemy.def = { ...b.enemy.def, id: "fixture", moves: ["attack", "curse", "terror", "wound"] };
     return b;
   };
@@ -3920,12 +3922,18 @@ test("угрозы: обычный монстр +30% ОЗ, ужас ×1.25, ка
     const lm = scaling.enemyLevelMult(n.level);
     const typeMeta = monsters.MONSTER_TYPE_META[n.mtype];
     /* Обычный: ОЗ ×1.3 к базе. */
-    assert.ok(Math.abs(n.hp - Math.round(n.def.hp * lm * 1.3 * typeMeta.hpMult)) <= 1, `обычный ОЗ ${n.hp}`);
-    /* Ужас ×1.25, катастрофа ×1.5 — относительно обычного, по ОЗ и атаке. */
-    assert.ok(Math.abs(h.hp - 1.25 * n.hp) <= 2, `ужас ОЗ ${h.hp} при обычном ${n.hp}`);
-    assert.ok(Math.abs(c.hp - 1.5 * n.hp) <= 2, `катастрофа ОЗ ${c.hp} при обычном ${n.hp}`);
-    assert.ok(Math.abs(h.atk[0] - 1.25 * n.atk[0]) <= 2, `ужас атака ${h.atk[0]} при обычной ${n.atk[0]}`);
-    assert.ok(Math.abs(c.atk[0] - 1.5 * n.atk[0]) <= 2, `катастрофа атака ${c.atk[0]} при обычной ${n.atk[0]}`);
+    /* Минимум ОЗ у обычных монстров (NORMAL_MIN_HP) — поверх формулы. */
+    assert.ok(Math.abs(n.hp - Math.max(battle.NORMAL_MIN_HP, Math.round(n.def.hp * lm * 1.3 * typeMeta.hpMult))) <= 1, `обычный ОЗ ${n.hp}`);
+    /* Ужас ×1.25, катастрофа ×1.5 — относительно обычного, по ОЗ и атаке; минимум не даёт множителю работать ниже себя. */
+    if (n.hp > battle.NORMAL_MIN_HP) {
+      assert.ok(Math.abs(h.hp - 1.25 * n.hp) <= 2, `ужас ОЗ ${h.hp} при обычном ${n.hp}`);
+      assert.ok(Math.abs(c.hp - 1.5 * n.hp) <= 2, `катастрофа ОЗ ${c.hp} при обычном ${n.hp}`);
+    }
+    /* Минимум 10 у обычных монстров: множитель проверяем, пока удар выше минимума. */
+    if (n.atk[0] > battle.NORMAL_MIN_ATK) {
+      assert.ok(Math.abs(h.atk[0] - 1.25 * n.atk[0]) <= 2, `ужас атака ${h.atk[0]} при обычной ${n.atk[0]}`);
+      assert.ok(Math.abs(c.atk[0] - 1.5 * n.atk[0]) <= 2, `катастрофа атака ${c.atk[0]} при обычной ${n.atk[0]}`);
+    }
     /* Броня масштабируется вместе с остальными параметрами, у прибавки типа своя поправка. */
     if (n.def.armor * lm >= 2) {
       const d = typeMeta.armorDelta;

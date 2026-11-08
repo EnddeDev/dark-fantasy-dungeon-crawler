@@ -1,10 +1,8 @@
 import { useEffect, useState } from "react";
-import { BookOpen, ChevronDown, Shield, Skull, Swords, X } from "lucide-react";
+import { BookOpen, X } from "lucide-react";
 import {
   ENEMY_MOVE_META,
   ITEMS,
-  LEGENDARY_PASSIVES,
-  RARE_AFFIXES,
   THREAT_META,
   WEAR_META,
   isImmuneTo,
@@ -12,8 +10,8 @@ import {
   consumableIntReq,
   consumableScaleLabel,
 } from "../game/content";
-import { GEAR_EFFECTS, GEAR_PASSIVES, effectDetail } from "../game/gearEffects";
-import { MONSTER_RACE_META, MONSTER_TYPE_META, WEAKNESS_STEP, monsterEvade, raceTraits } from "../game/monsters";
+import { GEAR_EFFECTS, effectDetail } from "../game/gearEffects";
+import { MONSTER_RACE_META, MONSTER_TYPE_META, WEAKNESS_STEP, raceTraits } from "../game/monsters";
 import { STAT_META, armorSkillDesc, epicSkillDesc } from "../game/content";
 import { ARCHETYPES } from "../game/archetypes";
 import {
@@ -23,20 +21,23 @@ import {
   combatReadout,
   enemyArmorNow,
   enemyMoveCooldownLeft,
+  enemyReadout,
   queuePreview,
   type BattleState,
+  type EnemyMoveEffect,
   type PlayerAction,
 } from "../game/battle";
 import { FoePortrait } from "./FoeArt";
 import { ItemArt } from "./ItemArt";
-import { SummaryRow } from "./SummaryRow";
+import { SummaryRow, type SummaryRowData } from "./SummaryRow";
 import type { MetricKey } from "./MetricBadge";
 import { Btn, Meter, Tag } from "./ui";
 import { BiomeRule, BiomeTag, biomeStyle } from "./BiomeLabel";
 import { isBattleCurse } from "../game/traps";
 import { statDamage } from "../game/statFormulas";
-import { enemyEffectChips, playerEffectChips } from "../game/effects";
+import { EFFECT_COLORS, enemyEffectChips, playerEffectChips, type EffectIconId } from "../game/effects";
 import { EffectChips } from "./EffectChips";
+import { EffectGlyph } from "./EffectIcon";
 import { DamageTypeTag, ElementRow } from "./DamageTypeIcon";
 import { itemDamageType, raceElementRows } from "../game/damageTypes";
 import { skillReadiness } from "../game/skillReadiness";
@@ -56,6 +57,90 @@ function roman(n: number): string {
 /** Пауза перед ходом монстра и перед пропуском оглушённого героя: 0.5 секунды. */
 const TURN_PAUSE_MS = 500;
 
+/** Подписи наложений для подсказок у иконок приёмов врага. */
+const ENEMY_EFFECT_TITLE: Record<string, string> = {
+  bleed: "Кровотечение",
+  poison: "Яд",
+  burn: "Горение",
+  curse: "Проклятие",
+  fear: "Страх",
+  stun: "Оглушение: −1 ход",
+  sunder: "Раскол брони",
+  darkness: "Мрак",
+  noHeal: "Запрет лечения",
+  sealItems: "Печать немоты: рюкзак",
+  sealSkills: "Печать забвения: приёмы",
+  sealAttack: "Печать оков: атака",
+};
+
+/** Процент для строк сводки. */
+const pct = (v: number) => `${Math.round(v * 100)}%`;
+
+/** Иконка наложения приёма врага. Пунктир-«½» — наложение с шансом около половины. */
+function EnemyEffectIcon({ effect }: { effect: EnemyMoveEffect }) {
+  const color = (EFFECT_COLORS as Record<string, string>)[effect.id] ?? "#c9b58a";
+  const title = `${ENEMY_EFFECT_TITLE[effect.id] ?? effect.id}${effect.half ? " — примерно в половине попаданий" : ""}`;
+  return (
+    <span
+      title={title}
+      aria-label={title}
+      className="relative flex h-6 w-6 shrink-0 items-center justify-center border"
+      style={{ borderColor: color, color, background: "rgba(12,10,9,0.72)" }}
+    >
+      <EffectGlyph id={effect.id as EffectIconId} size={15} />
+      {effect.half && (
+        <span className="absolute -bottom-1 -right-1 border border-line bg-soot px-0.5 font-mono text-[0.6rem] leading-[1.1] text-parch">
+          ½
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** Тег с подсказкой: при наводке или фокусе показывает, что даёт род, тип, угроза или особенность. */
+function InfoTag({
+  label,
+  title,
+  lines,
+  tone,
+}: {
+  label: string;
+  title: string;
+  lines: string[];
+  tone: "mute" | "flame" | "verd" | "rubric";
+}) {
+  const [open, setOpen] = useState(false);
+  const items = lines.filter(Boolean);
+  return (
+    <span
+      tabIndex={0}
+      className="relative inline-flex outline-none focus-visible:ring-1 focus-visible:ring-flame"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onFocus={() => setOpen(true)}
+      onBlur={() => setOpen(false)}
+    >
+      <Tag tone={tone}>{label}</Tag>
+      {open && items.length > 0 && (
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute left-0 top-full z-50 mt-1.5 block w-[min(19rem,72vw)] border border-flamedim bg-black/95 p-2.5 text-left shadow-[0_10px_30px_rgba(0,0,0,0.75)]"
+        >
+          <span className="block font-display text-[0.92rem] uppercase tracking-[0.06em] text-flamehi">{title}</span>
+          <ul className="mt-1.5 space-y-0.5 text-[0.84rem] leading-snug text-parch/90">
+            {items.map((line) => (
+              <li key={line} className="flex gap-1.5">
+                <span className="shrink-0 text-flame">·</span>
+                <span>{line}</span>
+              </li>
+            ))}
+          </ul>
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function BattleView({
   battle,
   onAct,
@@ -71,7 +156,6 @@ export function BattleView({
 }) {
   const [menu, setMenu] = useState<"main" | "skill" | "item">("main");
   const [codex, setCodex] = useState(false);
-  const [full, setFull] = useState(false);
   const b = battle;
   const myTurn = !b.over && b.queue[b.idx] === "p";
   const e = b.enemy;
@@ -110,11 +194,11 @@ export function BattleView({
 
   /* Ведомость пересчитывается каждый рендер: эффекты сразу видны в числах */
   const r = combatReadout(b);
-  const effArmor = r.armor;
+  /* Параметры врага для сводки и списка приёмов: те же функции, что и в бою. */
+  const er = enemyReadout(b);
   const changed = (base: string, now: string) => base !== now;
 
-  /* Иконки эффектов: у героя — под здоровьем, у монстра — поверх портрета.
-     Строки сводки, которые временно усилены, подсвечиваются синим. */
+  /* Иконки эффектов: у героя — под здоровьем, у монстра — поверх портрета. */
   const playerChips = playerEffectChips(b);
   const enemyChips = enemyEffectChips(b);
   const highlight = new Set(playerChips.map((c) => c.highlight).filter(Boolean));
@@ -127,7 +211,7 @@ export function BattleView({
     "Критический удар": highlight.has("crit"),
   };
 
-  /* Иконка и подсказка каждой строки сводки */
+  /* Иконка и подсказка каждой строки сводки героя */
   const ROW_METRIC: Record<string, MetricKey> = {
     "Урон оружием": "damage",
     "По противнику": "enemyDamage",
@@ -222,12 +306,65 @@ export function BattleView({
     { label: "Характеристики", base: `${b.p.stats.str}/${b.p.stats.agi}/${b.p.stats.int}`, now: `${b.p.stats.str}/${b.p.stats.agi}/${b.p.stats.int}`, hint: "СИЛ / ЛОВ / ИНТ" },
   ];
 
-  const effects = [
-    ...r.dmgMods.map((m) => ({ ...m, group: "урон" as const })),
-    ...r.defMods.map((m) => ({ ...m, group: "защита" as const })),
-    ...r.enemyMods.map((m) => ({ ...m, group: "враг" as const })),
+  /* Сводка врага: только то, что важно в бою. Строки тех же видов, что у героя. */
+  const enemyRows: (SummaryRowData & { base: string; now: string })[] = [
+    {
+      metric: "incomingDamage",
+      label: "Урон по тебе",
+      base: `${e.atk[0]}–${e.atk[1]}`,
+      now: `${r.inMin}–${r.inMax}`,
+      hint: `обычный удар врага после твоей брони ${r.armor}`,
+    },
+    {
+      metric: "guard",
+      label: "Защита",
+      base: "—",
+      now: er.guard ? "+25%" : "—",
+      hint: "глухая защита врага: броня +25%, пока он в обороне",
+    },
+    {
+      metric: "evade",
+      label: "Уклонение",
+      base: pct(er.evade),
+      now: pct(er.evade),
+      hint: "шанс полностью уйти от твоего удара: тип и род",
+    },
+    {
+      metric: "armor",
+      label: "Броня",
+      base: `${er.armorBase}`,
+      now: `${er.armor}`,
+      hint: "вычитается из твоего физического урона",
+    },
+    {
+      metric: "resist",
+      label: "Стойкость",
+      base: pct(er.resist),
+      now: pct(er.resist),
+      hint: "шанс, что негативный эффект на него не ляжет: род, босс, снаряжение",
+    },
+    {
+      metric: "fortify",
+      label: "Укрепление",
+      base: pct(er.fortify),
+      now: pct(er.fortify),
+      hint: "срез физического урона по нему",
+    },
+    {
+      metric: "magicResist",
+      label: "Маг. сопротивление",
+      base: pct(er.magicResist),
+      now: pct(er.magicResist),
+      hint: "срез магического урона по нему",
+    },
+    {
+      metric: "ap",
+      label: "Ходов в раунде",
+      base: `${er.ap}`,
+      now: `${er.ap}`,
+      hint: "у кого больше — тот всегда раньше",
+    },
   ];
-  const activeEffects = effects.filter((m) => m.id !== "immortal" || !b.p.immortalUsed);
 
   return (
     <div className="biome-surface flex min-h-screen flex-col bg-soot" data-biome={b.biome} style={biomeStyle(b.biome)}>
@@ -293,19 +430,15 @@ export function BattleView({
         </div>
       )}
 
-      <div className="grid flex-1 items-start xl:grid-cols-[minmax(260px,0.9fr)_minmax(320px,1.05fr)_minmax(300px,0.9fr)]">
-        {/* ПЕРСОНАЖ */}
-        <div className="order-3 min-w-0 border-b border-line p-4 sm:p-6 xl:order-1 xl:col-start-1 xl:border-b-0">
-          <div className="border border-line bg-slab/80 p-4">
-            <div className="flex flex-wrap items-baseline justify-between gap-3">
-              <div>
-                <h3 className="font-display text-lg uppercase tracking-[0.14em] text-flamehi">Покоритель</h3>
-                <span className="font-mono text-[0.84rem] text-mute">
-                  оружие: <b className="text-parch">{b.p.weaponName}</b>
-                </span>
-              </div>
+      <div className="grid flex-1 items-start xl:grid-cols-[minmax(320px,0.95fr)_minmax(340px,1fr)]">
+        {/* ДЕЙСТВИЯ — левая колонка: герой и кнопки */}
+        <div className="order-2 min-w-0 border-b border-line p-4 sm:p-6 xl:order-1 xl:col-start-1 xl:border-b-0">
+          {/* ГЕРОЙ: здоровье, концентрация, эффекты и сводка боя */}
+          <div className="relative border border-line bg-slab/80 p-4">
+            <div>
+              <h3 className="font-display text-lg uppercase tracking-[0.14em] text-flamehi">Покоритель</h3>
               <span className="font-mono text-[0.84rem] text-mute">
-                броня {effArmor} · уклон {Math.round(b.p.evade * 100)}%
+                оружие: <b className="text-parch">{b.p.weaponName}</b>
               </span>
             </div>
 
@@ -329,27 +462,14 @@ export function BattleView({
               <span className="font-mono text-sm tab text-parch">{b.p.concentration}/{MAX_CONCENTRATION}</span>
             </div>
 
-            {/* Эффекты героя: под здоровьем, как и положено по раскладке панели */}
             {playerChips.length > 0 && (
               <div className="relative z-20 mt-2">
                 <EffectChips chips={playerChips} label="эффекты героя" />
               </div>
             )}
 
-            {/* ВЕДОМОСТЬ: сколько наношу и сколько защищаюсь */}
             <div className="mt-3 border-t border-line/70 pt-3">
-              <div className="flex items-center justify-between">
-                <span className="sc">Сводка боя</span>
-                <button
-                  onClick={() => setFull((v) => !v)}
-                  className="sc flex items-center gap-1 hover:text-flame"
-                  aria-expanded={full}
-                >
-                  {full ? "свернуть" : "полный разбор"}
-                  <ChevronDown size={12} className={full ? "rotate-180" : ""} aria-hidden />
-                </button>
-              </div>
-
+              <span className="sc">Сводка боя</span>
               <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1.5 text-[0.94rem] sm:grid-cols-3">
                 {rows.map((row, i) => (
                   <SummaryRow
@@ -360,140 +480,17 @@ export function BattleView({
                   />
                 ))}
               </div>
-
-              <div className="mt-2 grid grid-cols-3 gap-2 border border-flamedim/40 bg-black/35 p-2 text-center">
-                <div>
-                  <div key={`mn${r.effMin}`} className="value-pop font-mono text-lg tab leading-none text-flame">{r.effMin}</div>
-                  <div className="sc mt-1 text-[0.68rem]">мин. по врагу</div>
-                </div>
-                <div>
-                  <div key={`av${r.dmgAvg}`} className="value-pop font-mono text-lg tab leading-none text-flamehi">
-                    {Math.round((r.effMin + r.effMax) / 2)}
-                  </div>
-                  <div className="sc mt-1 text-[0.68rem]">средн.</div>
-                </div>
-                <div>
-                  <div key={`mx${r.effMax}`} className="value-pop font-mono text-lg tab leading-none text-flame">{r.effMax}</div>
-                  <div className="sc mt-1 text-[0.68rem]">макс. по врагу</div>
-                </div>
-              </div>
-
-              {full && (
-                <div className="mt-3 space-y-1.5 border-t border-line/70 pt-2.5 text-[0.92rem] leading-snug">
-                  <p className="text-mute">
-                    Расчёт удара: <b className="text-parch">{b.p.hit[0]}–{b.p.hit[1]}</b> по оружию +{" "}
-                    <b className="text-parch">{statDamage(b.p.stats.str, b.p.passives)}</b> от СИЛ (2 + {statDamage(b.p.stats.str, b.p.passives) - 2})
-                    {r.dmgMods.filter((m) => m.mult && m.mult !== 1).length
-                      ? `, затем множители ${r.dmgMods
-                          .filter((m) => m.mult && m.mult !== 1)
-                          .map((m) => `×${m.mult}`)
-                          .join(" ")}`
-                      : ""}
-                    .
-                  </p>
-                  <p className="text-mute">
-                    Защита: броня <b className="text-parch">{r.armorBase}</b> вычитается из физического урона
-                    {r.armor !== r.armorBase ? ` (сейчас ${r.armor})` : ""}, Защита даёт +25% к броне до твоего хода, каменная кожа —
-                    на 30%, уклон <b className="text-parch">{Math.round(r.evade * 100)}%</b> отменяет удар целиком.
-                  </p>
-                  <p className="text-mute">
-                    Очередь: твои ходы <b className="text-parch">{r.ap}</b> против{" "}
-                    <b className="text-parch">{e.ap}</b> у {e.def.name}; ходы в ленте вверху — числа ходов, а не урон.
-                  </p>
-                  {(b.p.rareAffixes.length > 0 || b.p.legendaryPassives.length > 0 || b.p.gearEffects.length > 0 || b.p.gearPassives.length > 0) && (
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {b.p.rareAffixes.map((ra, i) => (
-                        <Tag key={ra + i} tone="verd">
-                          {RARE_AFFIXES[ra]?.name ?? ra}
-                        </Tag>
-                      ))}
-                      {b.p.legendaryPassives.map((lp, i) => (
-                        <Tag key={lp + i} tone="rubric">
-                          ★ {LEGENDARY_PASSIVES[lp]?.name ?? lp}
-                        </Tag>
-                      ))}
-                      {b.p.gearEffects.map((ef, i) => (
-                        <Tag key={`ef-${i}`} tone="flame">{GEAR_EFFECTS[ef].name}</Tag>
-                      ))}
-                      {b.p.gearPassives.map((gp, i) => (
-                        <Tag key={`gp-${i}`} tone="flame">{GEAR_PASSIVES[gp].name}</Tag>
-                      ))}
-                    </div>
-                  )}
-                  <p className="font-mono text-[0.84rem] text-mute">
-                    статусы:{" "}
-                    {b.p.statuses.rage > 0 ? `ярость ${b.p.statuses.rage} · ` : ""}
-                    {b.p.statuses.curse > 0 ? `проклятие ${isBattleCurse(b.p.statuses.curse) ? "до конца боя" : b.p.statuses.curse} · ` : ""}
-                    {b.p.statuses.wound > 0 ? `рана ${b.p.statuses.wound} · ` : ""}
-                    {b.p.statuses.poison > 0 ? `яд ${b.p.statuses.poison} · ` : ""}
-                    {b.p.statuses.haste > 0 ? `скорость ${b.p.statuses.haste} · ` : ""}
-                    {b.p.statuses.stone > 0 ? `каменная кожа ${b.p.statuses.stone} · ` : ""}
-                    {b.p.statuses.noHeal > 0 ? `лечение перекрыто ${b.p.statuses.noHeal} · ` : ""}
-                    {b.p.statuses.darkness > 0 ? `мрак ${b.p.statuses.darkness} · ` : ""}
-                    {b.p.statuses.sealAttack > 0 || b.p.statuses.sealSkills > 0 ? "запуган · " : ""}
-                    {!b.p.statuses.rage && !b.p.statuses.curse && !b.p.statuses.wound && !b.p.statuses.poison && !b.p.statuses.haste &&
-                    !b.p.statuses.stone && !b.p.statuses.noHeal && !b.p.statuses.darkness && !b.p.statuses.sealAttack && !b.p.statuses.sealSkills
-                      ? "чисто"
-                      : ""}
-                  </p>
-                </div>
-              )}
             </div>
 
-            {/* Действующие эффекты: что именно они меняют в характеристиках */}
-            <div className="mt-3 border-t-2 border-line/80 bg-black/40 p-3">
-              <div className="flex items-baseline justify-between">
-                <span className="sc text-flamedim">Эффекты в бою</span>
-                <span className="font-mono text-[0.78rem] text-mute">{activeEffects.length} активных</span>
-              </div>
-              {activeEffects.length === 0 ? (
-                <p className="mt-1.5 text-[0.92rem] italic text-mute">
-                  Все характеристики стандартные: нет действующих проклятий и усилений.
-                </p>
-              ) : (
-                <ul className="mt-2 space-y-1.5">
-                  {activeEffects.map((m) => (
-                    <li
-                      key={m.group + m.id}
-                      className={`rise flex items-start gap-2 border-l-2 bg-black/50 px-2.5 py-1.5 ${
-                        m.good ? "border-verd" : "border-rubric"
-                      }`}
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="flex flex-wrap items-baseline gap-x-2">
-                          <b
-                            className={`font-display text-[0.98rem] uppercase tracking-[0.08em] ${
-                              m.good ? "text-verd" : "text-rubric"
-                            }`}
-                          >
-                            {m.label}
-                          </b>
-                          {typeof m.rounds === "number" && (
-                            <span className="ml-auto shrink-0 font-mono text-[0.82rem] tab text-flamehi">
-                              осталось: {m.rounds} {m.rounds === 1 ? "раунд" : m.rounds < 5 ? "раунда" : "раундов"}
-                            </span>
-                          )}
-                        </span>
-                        <span className="mt-0.5 block text-[0.9rem] leading-snug text-parch/85">{m.detail}</span>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {b.flash && b.flash.target === "p" && (
-                <span key={b.flash.id} className="hitflash pointer-events-none mt-1 block font-mono text-lg text-rubric">
-                  {b.flash.kind === "heal" ? `+${b.flash.amount}` : b.flash.kind === "miss" ? "мимо" : `−${b.flash.amount}`}
-                </span>
-              )}
-            </div>
+            {b.flash && b.flash.target === "p" && (
+              <span key={b.flash.id} className="hitflash pointer-events-none mt-1 block font-mono text-lg text-rubric">
+                {b.flash.kind === "heal" ? `+${b.flash.amount}` : b.flash.kind === "miss" ? "мимо" : `−${b.flash.amount}`}
+              </span>
+            )}
           </div>
-        </div>
 
-
-        {/* ДЕЙСТВИЯ — центральная колонка */}
-        <div className="order-2 min-w-0 border-b border-line p-4 sm:p-6 xl:order-2 xl:col-start-2 xl:border-b-0">
-          <div className="xl:sticky xl:top-4">
-          <div className="border border-line bg-slab/95 p-4">
+          {/* ДЕЙСТВИЯ */}
+          <div className="mt-4 border border-line bg-slab/95 p-4">
             <h3 className="sc mb-3 text-flamedim">Действия</h3>
             {!b.over && !myTurn && (
               <div className="mb-3 h-2 w-full overflow-hidden bg-black/50">
@@ -509,7 +506,7 @@ export function BattleView({
                 {b.p.statuses.sealItems > 0 && <Tag tone="rubric">Печать немоты: расходники запрещены</Tag>}
               </div>
             )}
-            {menu === "main" && b.p.archetype && (
+            {(menu === "main" || menu === "item") && b.p.archetype && (
               <div className="mb-2 space-y-1">
                 <Btn
                   className="w-full"
@@ -524,7 +521,7 @@ export function BattleView({
               </div>
             )}
 
-            {menu === "main" && (
+            {(menu === "main" || menu === "item") && (
               <div className="grid grid-cols-2 gap-2">
                 <Btn tone={ready.attack ? "flame" : "ghost"} disabled={!ready.attack} onClick={() => act({ type: "attack" })}>
                   Удар
@@ -636,169 +633,135 @@ export function BattleView({
                 </div>
               </div>
             )}
-
-            {menu === "item" && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="sc">Свитки, зелья и метательное оружие</span>
-                  <button className="sc hover:text-flame" onClick={() => setMenu("main")}>
-                    ← назад
-                  </button>
-                </div>
-                <div className="grid max-h-56 gap-2 overflow-y-auto pr-1">
-                  {Object.entries(b.bag).filter(([id]) => ITEMS[id]?.use && (ITEMS[id]?.kind !== "special" || ITEMS[id]?.use?.type === "special_water") && ITEMS[id]?.kind !== "reagent").length === 0 && (
-                    <p className="text-sm italic text-mute">Рюкзак пуст: зелья, свитки и метательное оружие продаются в магазине.</p>
-                  )}
-                  {Object.entries(b.bag).filter(([id]) => ITEMS[id]?.use && (ITEMS[id]?.kind !== "special" || ITEMS[id]?.use?.type === "special_water") && ITEMS[id]?.kind !== "reagent").map(([id, n]) => {
-                    const def = ITEMS[id];
-                    const u = def.use!;
-                    const req = consumableIntReq(def, b.p.intDiscount);
-                    const intOk = b.p.stats.int >= req;
-                    const fearImmune = u.type === "fear" && isImmuneTo(e.def.race, "fear");
-                    const poisonImmune = u.type === "poison" && isImmuneTo(e.def.race, "poison");
-                    const ok = intOk && myTurn && !fearImmune;
-                    const dmgType = itemDamageType(def.use);
-                    const pv = consumablePreview(b, id);
-                    return (
-                      <button
-                        key={id}
-                        disabled={!ok}
-                        onClick={() => act({ type: "item", id })}
-                        className="flex items-center justify-between gap-3 border border-line bg-slab2 px-3 py-2 text-left transition-colors enabled:hover:border-flame enabled:hover:bg-flame/10 disabled:opacity-40"
-                      >
-                        <span className="flex items-start gap-2">
-                          <ItemArt id={id} name={def.name} size={34} framed={false} className="mt-0.5" />
-                          <span>
-                            <span className="block font-display text-[1.02rem] uppercase tracking-[0.1em] text-flamehi">
-                              {def.name} <span className="font-mono text-[0.84rem] text-flame">×{n}</span>
-                              {dmgType && <DamageTypeTag id={dmgType} size={14} className="ml-2" />}
-                              {def.kind === "potion" && b.pouch.includes(id) && b.p.turnPouch < 1 && (
-                                <span className="ml-2 font-mono text-[0.78rem] text-verd">из сумки · без хода</span>
-                              )}
-                            </span>
-                            <span className="block text-[0.89rem] leading-snug text-mute">{def.desc}</span>
-                            {(pv.damage !== null || pv.heal !== null || pv.effects.length > 0) && (
-                              <span className="mt-1 block space-y-0.5 text-[0.85rem] leading-snug">
-                                {pv.damage !== null && (
-                                  <span className="block font-mono text-verd" title="Урон по этому противнику с учётом его защиты">
-                                    урон {pv.damage}
-                                  </span>
-                                )}
-                                {pv.heal !== null && <span className="block font-mono text-verd">+{pv.heal} здоровья</span>}
-                                {pv.effects.map((line) => (
-                                  <span key={line} className="block text-parch">{line}</span>
-                                ))}
-                              </span>
-                            )}
-                          </span>
-                        </span>
-                        <span className={`shrink-0 font-mono text-[0.86rem] ${intOk && !fearImmune && !poisonImmune ? "text-verd" : "text-rubric"}`}>
-                          {fearImmune
-                            ? "иммунитет к страху"
-                            : poisonImmune
-                              ? "яд не действует"
-                              : intOk
-                                ? req > 0
-                                  ? `ИНТ ${req} · готово`
-                                  : consumableScaleLabel(def)
-                                    ? `${consumableScaleLabel(def).replace(" + ", "+")} · готово`
-                                    : "готово"
-                                : `нужен ИНТ ${req}`}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
           </div>
         </div>
 
         {/* ПРОТИВНИК И ХРОНИКА — правая колонка */}
-        <div className="order-1 min-w-0 xl:order-3 xl:col-start-3 xl:border-l xl:border-line">
-        {/* ПРОТИВНИК */}
-        <div className="relative flex flex-col border-line bg-black/30">
-          {/* Эффекты монстра — поверх портрета в левом верхнем углу.
-              Слой вынесен из overflow-hidden, иначе подсказка обрезалась бы. */}
-          {enemyChips.length > 0 && (
-            <div className="absolute left-3 top-3 z-30 max-w-[76%]">
-              <EffectChips chips={enemyChips} size={34} label="эффекты врага" />
-            </div>
-          )}
-          <div className="relative aspect-[5/4] w-full overflow-hidden border-b border-line bg-soot">
-            <FoePortrait id={e.def.id} art={e.def.art} name={e.def.name} />
-            <div className="absolute inset-0 bg-gradient-to-t from-soot via-soot/10 to-transparent" />
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,transparent_40%,rgba(0,0,0,0.65)_100%)]" />
-            {b.flash && b.flash.target === "e" && (
-              <div
-                key={b.flash.id}
-                className={`hitflash pointer-events-none absolute inset-0 flex items-center justify-center ${
-                  b.flash.kind === "guard" ? "bg-verd/25" : "bg-rubric/30"
-                }`}
-              >
-                <span className="font-mono text-4xl text-parch drop-shadow-[0_2px_6px_#000]">
-                  {b.flash.kind === "miss" ? "мимо" : b.flash.kind === "guard" ? "−" : `−${b.flash.amount}`}
-                </span>
+        <div className="order-1 min-w-0 xl:order-2 xl:col-start-2 xl:border-l xl:border-line">
+          <div className="relative flex flex-col border-line bg-black/30">
+            {/* Эффекты монстра — поверх портрета в левом верхнем углу. */}
+            {enemyChips.length > 0 && (
+              <div className="absolute left-3 top-3 z-30 max-w-[76%]">
+                <EffectChips chips={enemyChips} size={34} label="эффекты врага" />
               </div>
             )}
-            <div className="absolute right-3 top-14 flex flex-wrap justify-end gap-1.5">
-              {b.isBoss && <Tag tone="rubric">БОСС ЭТАЖА</Tag>}
-              <Tag tone="mute">ур. {e.level}</Tag>
-            </div>
-            <button
-              onClick={() => setCodex(true)}
-              className="absolute right-3 top-3 flex items-center gap-1.5 border border-flamedim bg-black/70 px-2.5 py-1.5 font-display text-[0.82rem] uppercase tracking-[0.14em] text-flame transition-colors hover:bg-flame hover:text-ink"
-            >
-              <BookOpen size={13} aria-hidden />
-              Способности
-            </button>
-            <div className="absolute inset-x-0 bottom-0 p-4">
-              {e.def.title && <div className="sc mb-0.5 text-rubric">{e.def.title}</div>}
-              <div className="mb-1 flex items-baseline justify-between gap-2">
-                <h3 className="font-display text-xl uppercase tracking-[0.12em] text-flamehi">{e.def.name}</h3>
-                <span className="font-mono text-sm tab text-parch">{e.hp}/{e.maxHp}</span>
+            <div className="relative aspect-[5/4] w-full border-b border-line bg-soot">
+              <div className="absolute inset-0 overflow-hidden">
+                <FoePortrait id={e.def.id} art={e.def.art} name={e.def.name} />
+                <div className="absolute inset-0 bg-gradient-to-t from-soot via-soot/10 to-transparent" />
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,transparent_40%,rgba(0,0,0,0.65)_100%)]" />
+                {b.flash && b.flash.target === "e" && (
+                  <div
+                    key={b.flash.id}
+                    className={`hitflash pointer-events-none absolute inset-0 flex items-center justify-center ${
+                      b.flash.kind === "guard" ? "bg-verd/25" : "bg-rubric/30"
+                    }`}
+                  >
+                    <span className="font-mono text-4xl text-parch drop-shadow-[0_2px_6px_#000]">
+                      {b.flash.kind === "miss" ? "мимо" : b.flash.kind === "guard" ? "−" : `−${b.flash.amount}`}
+                    </span>
+                  </div>
+                )}
               </div>
-              <Meter value={e.hp} max={e.maxHp} tone="rubric" />
+              <div className="absolute right-3 top-14 flex flex-wrap justify-end gap-1.5">
+                {b.isBoss && <Tag tone="rubric">БОСС ЭТАЖА</Tag>}
+                <Tag tone="mute">ур. {e.level}</Tag>
+              </div>
+              <button
+                onClick={() => setCodex(true)}
+                className="absolute right-3 top-3 flex items-center gap-1.5 border border-flamedim bg-black/70 px-2.5 py-1.5 font-display text-[0.82rem] uppercase tracking-[0.14em] text-flame transition-colors hover:bg-flame hover:text-ink"
+              >
+                <BookOpen size={13} aria-hidden />
+                Способности
+              </button>
+              <div className="absolute inset-x-0 bottom-0 p-4">
+                {e.def.title && <div className="sc mb-1 text-rubric">{e.def.title}</div>}
+                {/* Род и тип — над именем; подсказка по наведению */}
+                <div className="mb-1.5 flex flex-wrap gap-1.5">
+                  <InfoTag
+                    tone="verd"
+                    label={MONSTER_RACE_META[e.def.race].name}
+                    title={`Род: ${MONSTER_RACE_META[e.def.race].name}`}
+                    lines={[MONSTER_RACE_META[e.def.race].note, ...raceTraits(e.def.race, e.mtype)]}
+                  />
+                  <InfoTag
+                    tone="flame"
+                    label={MONSTER_TYPE_META[e.mtype].name}
+                    title={`Тип: ${MONSTER_TYPE_META[e.mtype].name}`}
+                    lines={[MONSTER_TYPE_META[e.mtype].note]}
+                  />
+                  {!b.isBoss && (
+                    <InfoTag
+                      tone={e.threat === "catastrophe" ? "rubric" : e.threat === "horror" ? "flame" : "verd"}
+                      label={THREAT_META[e.threat].name}
+                      title={`Угроза: ${THREAT_META[e.threat].name}`}
+                      lines={[THREAT_META[e.threat].desc]}
+                    />
+                  )}
+                  {e.passive && (
+                    <InfoTag tone="rubric" label={e.passive.name} title="Пассивная способность" lines={[e.passive.desc]} />
+                  )}
+                </div>
+                <div className="mb-1 flex items-baseline justify-between gap-2">
+                  <h3 className="font-display text-xl uppercase tracking-[0.12em] text-flamehi">{e.def.name}</h3>
+                  <span className="font-mono text-sm tab text-parch">{e.hp}/{e.maxHp}</span>
+                </div>
+                <Meter value={e.hp} max={e.maxHp} tone="rubric" />
+              </div>
+            </div>
+
+            {/* Сводка врага: те же строки и стиль, что у героя */}
+            <div className="border-b border-line bg-slab/80 px-4 py-3">
+              <div className="flex items-center justify-between">
+                <span className="sc">Сводка врага</span>
+                {e.forceGuard > 0 && <Tag tone="verd">вынужден держать оборону</Tag>}
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1.5 text-[0.94rem] sm:grid-cols-3">
+                {enemyRows.map((row, i) => (
+                  <SummaryRow
+                    key={row.label}
+                    row={row}
+                    live={changed(row.base, row.now)}
+                    align={i % 2 === 1 ? "right" : "left"}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Приёмы врага: сколько нанесёт и какие наложит */}
+            <div className="border-b border-line bg-black/25 px-4 py-3">
+              <div className="flex items-baseline justify-between">
+                <span className="sc">Приёмы врага</span>
+                <span className="font-mono text-[0.76rem] text-mute" title="Ожидаемый урон по тебе после твоей брони и защит">≈ урон по тебе</span>
+              </div>
+              <ul className="mt-1.5 divide-y divide-line/40">
+                {er.moves.map((mv) => {
+                  const meta = ENEMY_MOVE_META[mv.move];
+                  return (
+                    <li key={mv.move} className="flex items-center gap-2 py-1.5" title={meta?.desc}>
+                      <span
+                        className={`min-w-0 flex-1 truncate font-display text-[0.9rem] uppercase tracking-[0.06em] ${
+                          mv.cooldown > 0 ? "text-mute" : "text-flamehi"
+                        }`}
+                      >
+                        {meta?.name ?? mv.move}
+                      </span>
+                      {mv.cooldown > 0 && <span className="shrink-0 font-mono text-[0.72rem] text-mute">перез. {mv.cooldown}</span>}
+                      <span className="w-14 shrink-0 text-right font-mono text-[1rem] tab text-rubric">
+                        {mv.damage > 0 ? `≈${mv.damage}` : "—"}
+                      </span>
+                      <span className="flex min-w-[2.5rem] shrink-0 justify-end gap-1">
+                        {mv.effects.map((ef) => (
+                          <EnemyEffectIcon key={ef.id + (ef.half ? "h" : "")} effect={ef} />
+                        ))}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
           </div>
 
-          <div className="space-y-2 border-b border-line bg-slab/80 px-4 py-3">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[0.84rem] text-mute">
-              <span className="flex items-center gap-1.5 text-verd">
-                <Skull size={13} aria-hidden />
-                {MONSTER_TYPE_META[e.mtype].name} · {MONSTER_RACE_META[e.def.race].name.toLowerCase()}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Shield size={13} aria-hidden />
-                уклонение {Math.round(monsterEvade(e.def.race, e.mtype) * 100)}%
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Shield size={13} aria-hidden />
-                броня {enemyArmorNow(e)}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Swords size={13} aria-hidden />
-                ходов {e.ap}
-              </span>
-              <span>урон {e.atk[0]}–{e.atk[1]}</span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              <Tag tone={b.isBoss ? "rubric" : e.threat === "catastrophe" ? "rubric" : e.threat === "horror" ? "flame" : "verd"}>
-                {b.isBoss ? "Босс" : THREAT_META[e.threat].name}
-              </Tag>
-              {e.passive && <Tag tone="rubric">{e.passive.name}</Tag>}
-              {e.forceGuard > 0 && <Tag tone="verd">вынужден держать оборону</Tag>}
-              {enemyChips.length > 0 && (
-                <span className="font-mono text-[0.78rem] text-mute">
-                  эффектов: {enemyChips.length} — наведи на иконки у портрета
-                </span>
-              )}
-            </div>
-            <p className="text-[0.92rem] italic leading-snug text-mute">{e.def.flavor}</p>
-          </div>
-
-        </div>
           <div className="border-t border-line p-4">
             <div className="border border-line bg-black/45 p-4">
               <div className="sc mb-2">Хроника боя</div>
@@ -819,6 +782,91 @@ export function BattleView({
           </div>
         </div>
       </div>
+
+      {/* ── РЮКЗАК: на всю высоту экрана, слева ── */}
+      {menu === "item" && (
+        <div className="fixed inset-0 z-40 flex justify-start">
+          <button className="absolute inset-0 bg-black/70" onClick={() => setMenu("main")} aria-label="Закрыть рюкзак" />
+          <aside className="rise relative flex h-full w-[min(30rem,100vw)] flex-col border-r-2 border-flamedim bg-slab shadow-[30px_0_60px_-30px_#000]">
+            <header className="flex items-start justify-between gap-3 border-b border-line bg-slab2/95 px-4 py-3">
+              <div>
+                <span className="sc text-flamedim">Рюкзак</span>
+                <h3 className="font-display text-xl uppercase tracking-[0.1em] text-flamehi">Свитки и зелья</h3>
+                <p className="font-mono text-[0.84rem] text-mute">
+                  {feared ? "страх: рюкзак открыт" : myTurn ? "твой ход: расходник тратит ход" : "ход врага или ожидание"}
+                </p>
+              </div>
+              <button onClick={() => setMenu("main")} className="mt-1 text-mute hover:text-rubric" aria-label="Закрыть рюкзак">
+                <X size={18} />
+              </button>
+            </header>
+            <div className="flex-1 space-y-2 overflow-y-auto px-4 py-4">
+              {Object.entries(b.bag).filter(([id]) => ITEMS[id]?.use && (ITEMS[id]?.kind !== "special" || ITEMS[id]?.use?.type === "special_water") && ITEMS[id]?.kind !== "reagent").length === 0 && (
+                <p className="text-sm italic text-mute">Рюкзак пуст: зелья, свитки и метательное оружие продаются в магазине.</p>
+              )}
+              {Object.entries(b.bag).filter(([id]) => ITEMS[id]?.use && (ITEMS[id]?.kind !== "special" || ITEMS[id]?.use?.type === "special_water") && ITEMS[id]?.kind !== "reagent").map(([id, n]) => {
+                const def = ITEMS[id];
+                const u = def.use!;
+                const req = consumableIntReq(def, b.p.intDiscount);
+                const intOk = b.p.stats.int >= req;
+                const fearImmune = u.type === "fear" && isImmuneTo(e.def.race, "fear");
+                const poisonImmune = u.type === "poison" && isImmuneTo(e.def.race, "poison");
+                const ok = intOk && myTurn && !fearImmune;
+                const dmgType = itemDamageType(def.use);
+                const pv = consumablePreview(b, id);
+                return (
+                  <button
+                    key={id}
+                    disabled={!ok}
+                    onClick={() => act({ type: "item", id })}
+                    className="flex w-full items-center justify-between gap-3 border border-line bg-slab2 px-3 py-2 text-left transition-colors enabled:hover:border-flame enabled:hover:bg-flame/10 disabled:opacity-40"
+                  >
+                    <span className="flex items-start gap-2">
+                      <ItemArt id={id} name={def.name} size={34} framed={false} className="mt-0.5" />
+                      <span>
+                        <span className="block font-display text-[1.02rem] uppercase tracking-[0.1em] text-flamehi">
+                          {def.name} <span className="font-mono text-[0.84rem] text-flame">×{n}</span>
+                          {dmgType && <DamageTypeTag id={dmgType} size={14} className="ml-2" />}
+                          {def.kind === "potion" && b.pouch.includes(id) && b.p.turnPouch < 1 && (
+                            <span className="ml-2 font-mono text-[0.78rem] text-verd">из сумки · без хода</span>
+                          )}
+                        </span>
+                        <span className="block text-[0.89rem] leading-snug text-mute">{def.desc}</span>
+                        {(pv.damage !== null || pv.heal !== null || pv.effects.length > 0) && (
+                          <span className="mt-1 block space-y-0.5 text-[0.85rem] leading-snug">
+                            {pv.damage !== null && (
+                              <span className="block font-mono text-verd" title="Урон по этому противнику с учётом его защиты">
+                                урон {pv.damage}
+                              </span>
+                            )}
+                            {pv.heal !== null && <span className="block font-mono text-verd">+{pv.heal} здоровья</span>}
+                            {pv.effects.map((line) => (
+                              <span key={line} className="block text-parch">{line}</span>
+                            ))}
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                    <span className={`shrink-0 font-mono text-[0.86rem] ${intOk && !fearImmune && !poisonImmune ? "text-verd" : "text-rubric"}`}>
+                      {fearImmune
+                        ? "иммунитет к страху"
+                        : poisonImmune
+                          ? "яд не действует"
+                          : intOk
+                            ? req > 0
+                              ? `ИНТ ${req} · готово`
+                              : consumableScaleLabel(def)
+                                ? `${consumableScaleLabel(def).replace(" + ", "+")} · готово`
+                                : "готово"
+                            : `нужен ИНТ ${req}`}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </aside>
+        </div>
+      )}
 
       {/* ── КОДЕКС ПРОТИВНИКА: поля рукописи справа ── */}
       {codex && (
