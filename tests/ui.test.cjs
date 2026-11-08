@@ -191,16 +191,17 @@ test("dungeon header hides maze counts and corridor healing shows fixed/INT form
   assert.ok(html.includes("+32 здоровья")); // свиток лечения больше не масштабируется от ИНТ
 });
 
-test("battle: hero and actions in the center, monster and log on the right, no left panel", () => {
+test("battle: actions in the centre, narrow monster column on the right, no left panel", () => {
   const weapon = content.createGearItem({ baseId: "sword", level: 1, wear: "worn", rarity: "common", identified: true });
   const p = makePlayer({ armory: [weapon], equip: { ...makePlayer().equip, mainHand: weapon.uid } });
   const b = freshBattle(p, 1);
   const html = renderToStaticMarkup(React.createElement(BattleView, {
     battle: b, onAct: noop, onEnemyTurn: noop, onContinue: noop,
   }));
-  assert.ok(html.includes("xl:grid-cols-[minmax(320px,0.95fr)_minmax(340px,1fr)]"), "две колонки вместо трёх");
-  assert.ok(!html.includes("xl:col-start-3"), "левой панели нет");
-  assert.ok(!html.includes("Эффекты в бою"), "список эффектов героя убран: иконки и подсказки остались");
+  assert.ok(html.includes("xl:grid-cols-[minmax(0,1fr)_minmax(0,34rem)_minmax(0,1fr)]"), "действия в центральной колонке");
+  assert.ok(html.includes("xl:col-start-2"), "действия стоят во второй колонке, то есть по центру");
+  assert.ok(html.includes("xl:col-start-3") && html.includes("xl:w-[22rem]"), "монстр справа, узкая колонка");
+  assert.ok(!html.includes("Эффекты в бою"), "список эффектов героя убран");
   assert.ok(!html.includes("полный разбор"), "полный разбор героя убран");
   const at = (s) => html.indexOf(s);
   assert.ok(at("Покоритель") > 0 && at("Действия</h3>") > at("Покоритель"), "герой над действиями");
