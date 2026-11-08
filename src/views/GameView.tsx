@@ -1,6 +1,8 @@
 import { Users } from "lucide-react";
+import { useEffect, useState } from "react";
 import { BattleView } from "../components/BattleView";
 import { Dungeon } from "../components/Dungeon";
+import { HeroBar } from "../components/HeroBar";
 import { Lobby } from "../components/Lobby";
 import { Rail } from "../components/Rail";
 import type { GameController } from "../controllers/GameController";
@@ -24,11 +26,22 @@ export function GameView({
   useDungeonInput(game, state);
   const { screen, player, run, battle, shopStock, best, unlockedFloor, lobbyEntry, path, pathPaused } = state;
   const d = derived(player);
+  /* Лист персонажа открывается поверх экрана по кнопке в верхней полосе. */
+  const [sheetOpen, setSheetOpen] = useState(false);
+  useEffect(() => {
+    if (!sheetOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSheetOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sheetOpen]);
 
   return (
-    <div className="flex min-h-screen flex-col bg-soot lg:flex-row">
-      <Rail player={player} run={run} battle={battle} onLeaveRun={() => game.leaveRun()} onRename={(name) => game.renameHero(name)} />
-      <main className="order-2 min-w-0 flex-1">
+    <div className="flex min-h-screen flex-col bg-soot">
+      {/* В бою полосы и листа нет: здоровье, эффекты и сводка героя уже в карточке боя. */}
+      {screen !== "battle" && <HeroBar player={player} run={run} battle={battle} onOpenSheet={() => setSheetOpen(true)} />}
+      <main className="min-w-0 flex-1">
         {screen === "lobby" && (
           <Lobby
             player={player}
@@ -71,6 +84,22 @@ export function GameView({
           />
         )}
       </main>
+      {sheetOpen && screen !== "battle" && (
+        <div className="fixed inset-0 z-40 flex justify-start" role="dialog" aria-modal="true" aria-label="Лист персонажа">
+          <button type="button" className="absolute inset-0 bg-black/70" onClick={() => setSheetOpen(false)} aria-label="Закрыть лист персонажа" />
+          <Rail
+            player={player}
+            run={run}
+            battle={battle}
+            onLeaveRun={() => {
+              setSheetOpen(false);
+              game.leaveRun();
+            }}
+            onRename={(name) => game.renameHero(name)}
+            onClose={() => setSheetOpen(false)}
+          />
+        </div>
+      )}
       <ModalView game={game} state={state} />
       {(onOpenCommunity || onOpenAuth) && (
         <button
