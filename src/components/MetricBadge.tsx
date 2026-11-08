@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useFitInViewport } from "./useFitInViewport";
 import {
   ArrowLeftRight,
   Crosshair,
@@ -146,6 +147,8 @@ export function MetricBadge({
   align?: TipAlign;
 }) {
   const [open, setOpen] = useState(false);
+  const tipRef = useRef<HTMLDivElement>(null);
+  useFitInViewport(tipRef, open);
   const info = METRIC_INFO[metric];
   const Icon = info.icon;
   const tipId = `metric-tip-${metric}`;
@@ -169,7 +172,7 @@ export function MetricBadge({
       </button>
       {open && (
         <div
-          role="tooltip"
+          ref={tipRef} role="tooltip"
           id={tipId}
           className={`pointer-events-none absolute top-full z-50 mt-2 w-[min(19rem,72vw)] border border-flamedim bg-black/95 p-2.5 text-left shadow-[0_10px_30px_rgba(0,0,0,0.75)] ${tipAlignClass(align)}`}
         >

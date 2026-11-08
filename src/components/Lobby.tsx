@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useFitInViewport } from "./useFitInViewport";
 import { createPortal } from "react-dom";
 import {
   ArrowDownUp,
@@ -120,6 +121,8 @@ function ReagentNeedTag({
 }) {
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const ref = useRef<HTMLSpanElement>(null);
+  const tipRef = useRef<HTMLDivElement>(null);
+  useFitInViewport(tipRef, pos !== null);
   const full = required > 0 && total >= required;
   const open = () => {
     const rect = ref.current?.getBoundingClientRect();
@@ -145,6 +148,7 @@ function ReagentNeedTag({
       {pos &&
         createPortal(
           <div
+            ref={tipRef}
             role="tooltip"
             className="pointer-events-none fixed z-[60] border border-line bg-black/95 p-2 text-left shadow-[0_10px_30px_rgba(0,0,0,0.8)]"
             style={{ left, top: pos.y, width }}
