@@ -430,7 +430,7 @@ export function BattleView({
         </div>
       )}
 
-      <div className="grid flex-1 items-start xl:grid-cols-[minmax(0,1fr)_minmax(0,34rem)_minmax(0,1fr)]">
+      <div className="grid flex-1 items-start xl:grid-cols-3">
         {/* ГЕРОЙ — левая колонка боя: здоровье, концентрация, эффекты и сводка */}
         <div className="order-2 min-w-0 border-b border-line p-4 sm:p-6 xl:order-1 xl:col-start-1 xl:border-b-0">
           {/* ГЕРОЙ: здоровье, концентрация, эффекты и сводка боя */}
@@ -641,8 +641,8 @@ export function BattleView({
         </div>
 
         {/* ПРОТИВНИК И ХРОНИКА — правая колонка */}
-        {/* ПРОТИВНИК — узкая колонка справа, чтобы не занимать половину экрана */}
-        <div className="order-1 min-w-0 xl:order-3 xl:col-start-3 xl:w-[22rem] xl:justify-self-end xl:border-l xl:border-line">
+        {/* ПРОТИВНИК — правая колонка боя: занимает свою треть экрана */}
+        <div className="order-1 min-w-0 xl:order-3 xl:col-start-3 xl:border-l xl:border-line">
           <div className="relative flex flex-col border-line bg-black/30">
             {/* Эффекты монстра — поверх портрета в левом верхнем углу. */}
             {enemyChips.length > 0 && (
