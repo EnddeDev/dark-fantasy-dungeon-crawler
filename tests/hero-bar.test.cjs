@@ -73,6 +73,8 @@ test("левая колонка убрана: лист открывается п
   assert.equal((view.match(/<Rail\b/g) || []).length, 1, "лист персонажа — единственный вызов Rail");
   assert.match(view, /aria-modal="true"[^>]*aria-label="Лист персонажа"|role="dialog" aria-modal="true"/);
   assert.match(view, /Escape/, "лист закрывается клавишей Esc");
+  assert.match(view, /screen !== "battle" && <HeroBar/, "в бою полоса не показывается");
+  assert.match(view, /sheetOpen && screen !== "battle"/, "в бою лист не открывается");
   const rail = fs.readFileSync("src/components/Rail.tsx", "utf8");
   assert.ok(!rail.includes("lg:w-[350px]"), "старой боковой ширины нет");
   assert.match(rail, /onClose/, "у листа есть кнопка закрытия");

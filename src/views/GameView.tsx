@@ -39,7 +39,8 @@ export function GameView({
 
   return (
     <div className="flex min-h-screen flex-col bg-soot">
-      <HeroBar player={player} run={run} battle={battle} onOpenSheet={() => setSheetOpen(true)} />
+      {/* В бою полосы и листа нет: здоровье, эффекты и сводка героя уже в карточке боя. */}
+      {screen !== "battle" && <HeroBar player={player} run={run} battle={battle} onOpenSheet={() => setSheetOpen(true)} />}
       <main className="min-w-0 flex-1">
         {screen === "lobby" && (
           <Lobby
@@ -83,7 +84,7 @@ export function GameView({
           />
         )}
       </main>
-      {sheetOpen && (
+      {sheetOpen && screen !== "battle" && (
         <div className="fixed inset-0 z-40 flex justify-start" role="dialog" aria-modal="true" aria-label="Лист персонажа">
           <button type="button" className="absolute inset-0 bg-black/70" onClick={() => setSheetOpen(false)} aria-label="Закрыть лист персонажа" />
           <Rail
