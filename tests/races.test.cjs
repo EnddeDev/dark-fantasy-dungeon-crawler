@@ -37,6 +37,7 @@ function fight(race, mtype = "strong", extra = {}) {
   b.enemy.mtype = mtype;
   b.enemy.hp = 500; b.enemy.maxHp = 500; b.enemy.armor = 0;
   b.enemy.moves = ["attack"]; b.enemy.passive = null; b.enemy.effects = []; b.enemy.effectPower = {};
+  b.enemy.stats = { str: 0, agi: 0, int: 0 };
   b.enemy.statuses.chill = 0; b.enemy.statuses.curse = 0;
   b.p.hp = 500; b.p.maxHp = 500; b.p.armor = 0; b.p.evade = 0;
   b.queue = ["p", "e"]; b.idx = 0;
@@ -84,7 +85,8 @@ test("нежить: −1 ход поверх типа, ход не ниже 1", 
     if (s.def.race !== "undead" || s.effects.includes("ap")) continue;
     seen++;
     const frenzy = s.passive?.id === "frenzy" ? 1 : 0;
-    const expected = Math.max(1, Math.min(10, s.def.ap + monsters.MONSTER_TYPE_META[s.mtype].apDelta - 1 + frenzy));
+    /* ЛОВ врага добавляет ходы поверх типа и рода. */
+    const expected = Math.max(1, Math.min(10, s.def.ap + monsters.MONSTER_TYPE_META[s.mtype].apDelta - 1 + frenzy)) + s.stats.agi;
     assert.equal(s.ap, expected, `${s.def.name}: ходов ${s.ap}, ожидалось ${expected}`);
   }
   assert.ok(seen > 0, "нежить попадается");

@@ -18,6 +18,7 @@ const battle = load("battle");
 const content = load("content");
 const monsters = load("monsters");
 const scaling = load("enemyScaling");
+const monsterStats = load("monsterStats");
 
 const rng = () => 0.5; // уровень = этаж
 
@@ -34,13 +35,14 @@ test("обычные монстры бьют минимум на 10 на люб�
   }
 });
 
-test("боссы не затронуты: удар считается по прежней формуле без минимума 10", () => {
+test("боссы не затронуты: удар считается по прежней формуле без минимума 10 (плюс СИЛ)", () => {
   for (let floor = 1; floor <= 12; floor++) {
     const boss = battle.spawnEnemy(floor, true, rng);
     const typeMeta = monsters.MONSTER_TYPE_META[boss.mtype];
     const mult = scaling.enemyLevelMult(boss.level) * content.BOSS_META.atkMult * typeMeta.atkMult;
-    assert.equal(boss.atk[0], Math.max(1, Math.round(boss.def.atk[0] * mult)), `босс этаж ${floor}: минимум`);
-    assert.equal(boss.atk[1], Math.max(2, Math.round(boss.def.atk[1] * mult)), `босс этаж ${floor}: максимум`);
+    const bonus = monsterStats.monsterDamageBonus(boss.stats.str);
+    assert.equal(boss.atk[0], Math.max(1, Math.round(boss.def.atk[0] * mult)) + bonus, `босс этаж ${floor}: минимум`);
+    assert.equal(boss.atk[1], Math.max(2, Math.round(boss.def.atk[1] * mult)) + bonus, `босс этаж ${floor}: максимум`);
   }
 });
 
@@ -61,6 +63,6 @@ test("боссы по ОЗ считаются по прежней формуле
     const boss = battle.spawnEnemy(floor, true, rng);
     const typeMeta = monsters.MONSTER_TYPE_META[boss.mtype];
     const mult = scaling.enemyLevelMult(boss.level) * content.BOSS_META.hpMult * typeMeta.hpMult;
-    assert.equal(boss.hp, Math.max(1, Math.round(boss.def.hp * mult)), `босс этаж ${floor}: ОЗ`);
+    assert.equal(boss.hp, Math.max(1, Math.round(boss.def.hp * mult)) + monsterStats.monsterHealthBonus(boss.stats.str), `босс этаж ${floor}: ОЗ`);
   }
 });
