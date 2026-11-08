@@ -27,7 +27,7 @@ const { Lobby } = load("src/components/Lobby.tsx", "lobby");
 const { Rail, EffectTip, EffectList, summedEffectEntries } = load("src/components/Rail.tsx", "rail");
 const { gearEffectTotals } = load("src/game/gearEffectTotals.ts", "gear-effect-totals");
 const { Dungeon } = load("src/components/Dungeon.tsx", "dungeon");
-const { BattleView, SummaryTabs, EffectsTab, chipEntries } = load("src/components/BattleView.tsx", "battle-view");
+const { BattleView, SummaryTabs, EffectsTab, chipEntries, ENEMY_EFFECT_DESC, ENEMY_EFFECT_TITLE } = load("src/components/BattleView.tsx", "battle-view");
 const { playerEffectChips } = load("src/game/effects.ts", "effects-chips");
 const { heroItemEffects, learnedEffects, enemyEffects } = load("src/game/effectEntries.ts", "effect-entries");
 const battle = load("src/game/battle.ts", "battle");
@@ -217,6 +217,19 @@ test("battle summary: effects tab lists effects with duration, empty state when 
   const tabs = renderToStaticMarkup(React.createElement(SummaryTabs, { value: "effects", onChange: noop, effectsCount: 2 }));
   assert.match(tabs, /aria-selected="true"[^>]*>Эффекты/, "активен таб эффектов");
   assert.ok(tabs.includes(">2<") || tabs.includes(">2</span>"), "счётчик эффектов в табе");
+});
+
+test("battle: every enemy move effect has a title and a description for the hover tip", () => {
+  const ids = ["bleed", "poison", "burn", "curse", "fear", "stun", "sunder", "darkness", "noHeal", "sealItems", "sealSkills", "sealAttack"];
+  for (const id of ids) {
+    assert.ok(ENEMY_EFFECT_TITLE[id], `название у «${id}»`);
+    assert.ok(ENEMY_EFFECT_DESC[id] && ENEMY_EFFECT_DESC[id].length > 10, `описание у «${id}»`);
+  }
+  const b = freshBattle(makePlayer(), 3, false);
+  const html = renderToStaticMarkup(React.createElement(BattleView, {
+    battle: b, onAct: noop, onEnemyTurn: noop, onContinue: noop,
+  }));
+  assert.ok(!html.includes(' title="Кровотечение'), "нативная подсказка с одним названием убрана");
 });
 
 test("battle effects: thorns, rage and other gear effects reach the list", () => {

@@ -60,7 +60,7 @@ function roman(n: number): string {
 const TURN_PAUSE_MS = 500;
 
 /** Подписи наложений для подсказок у иконок приёмов врага. */
-const ENEMY_EFFECT_TITLE: Record<string, string> = {
+export const ENEMY_EFFECT_TITLE: Record<string, string> = {
   bleed: "Кровотечение",
   poison: "Яд",
   burn: "Горение",
@@ -75,24 +75,75 @@ const ENEMY_EFFECT_TITLE: Record<string, string> = {
   sealAttack: "Печать оков: атака",
 };
 
+/** Что эффект делает с героем: подсказка у иконки приёма врага. Описание совпадает с подсказками статусов. */
+export const ENEMY_EFFECT_DESC: Record<string, string> = {
+  bleed: "Рана не затягивается: кровь идёт каждый раунд.",
+  poison: "Яд в крови разъедает изнутри каждый раунд.",
+  burn: "Огонь держится на тебе и жжёт каждый раунд.",
+  curse: "Твой урон снижен на силу проклятия.",
+  fear: "В свой ход ты в защите: атаки и приёмы закрыты, рюкзак доступен.",
+  stun: "Пропускаешь ходы: очередь короче на число ходов оглушения.",
+  sunder: "Броня снижена до конца боя.",
+  darkness: "Половина твоих атак уходит в пустоту.",
+  noHeal: "Зелья и приёмы лечения не работают.",
+  sealItems: "Припасы недоступны.",
+  sealSkills: "Приёмы оружия недоступны.",
+  sealAttack: "Обычная атака недоступна.",
+};
+
 /** Процент для строк сводки. */
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 
 /** Иконка наложения приёма врага. Пунктир-«½» — наложение с шансом около половины. */
+/** Иконка эффекта приёма врага: при наводке или фокусе показывает, что эффект делает. */
 function EnemyEffectIcon({ effect }: { effect: EnemyMoveEffect }) {
+  const [open, setOpen] = useState(false);
   const color = (EFFECT_COLORS as Record<string, string>)[effect.id] ?? "#c9b58a";
-  const title = `${ENEMY_EFFECT_TITLE[effect.id] ?? effect.id}${effect.half ? " — примерно в половине попаданий" : ""}`;
+  const name = ENEMY_EFFECT_TITLE[effect.id] ?? effect.id;
+  const lines = [
+    ENEMY_EFFECT_DESC[effect.id] ?? "",
+    effect.half ? "Накладывается примерно в половине попаданий." : "",
+  ].filter(Boolean);
   return (
     <span
-      title={title}
-      aria-label={title}
-      className="relative flex h-6 w-6 shrink-0 items-center justify-center border"
-      style={{ borderColor: color, color, background: "rgba(12,10,9,0.72)" }}
+      tabIndex={0}
+      aria-label={`${name}${effect.half ? " — примерно в половине попаданий" : ""}`}
+      className="relative inline-flex outline-none focus-visible:ring-1 focus-visible:ring-flame"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onFocus={() => setOpen(true)}
+      onBlur={() => setOpen(false)}
     >
-      <EffectGlyph id={effect.id as EffectIconId} size={15} />
-      {effect.half && (
-        <span className="absolute -bottom-1 -right-1 border border-line bg-soot px-0.5 font-mono text-[0.6rem] leading-[1.1] text-parch">
-          ½
+      <span
+        className="relative flex h-6 w-6 shrink-0 items-center justify-center border"
+        style={{ borderColor: color, color, background: "rgba(12,10,9,0.72)" }}
+      >
+        <EffectGlyph id={effect.id as EffectIconId} size={15} />
+        {effect.half && (
+          <span className="absolute -bottom-1 -right-1 border border-line bg-soot px-0.5 font-mono text-[0.6rem] leading-[1.1] text-parch">
+            ½
+          </span>
+        )}
+      </span>
+      {open && (
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute right-0 top-full z-50 mt-1.5 block w-[min(19rem,72vw)] border bg-black/95 p-2.5 text-left shadow-[0_10px_30px_rgba(0,0,0,0.75)]"
+          style={{ borderColor: color }}
+        >
+          <span className="block font-display text-[0.92rem] uppercase tracking-[0.06em]" style={{ color }}>
+            {name}
+          </span>
+          {lines.length > 0 && (
+            <ul className="mt-1.5 space-y-0.5 text-[0.84rem] leading-snug text-parch/90">
+              {lines.map((line) => (
+                <li key={line} className="flex gap-1.5">
+                  <span className="shrink-0 text-flame">·</span>
+                  <span>{line}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </span>
       )}
     </span>
