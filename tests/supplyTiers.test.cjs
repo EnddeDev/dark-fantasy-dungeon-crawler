@@ -49,6 +49,7 @@ function dummyFight(pl, id, floor = 5) {
   b.enemy.effects = []; b.enemy.effectPower = {};
   b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none", type: "agile", moves: ["attack"] };
   b.enemy.moves = ["attack"];
+  b.enemy.stats = { str: 0, agi: 0, int: 0 };
   return b;
 }
 

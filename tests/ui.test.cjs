@@ -306,7 +306,7 @@ test("battle: three columns — hero info, actions, monster; no sidebar", () => 
   assert.ok(html.includes("Способности"), "кнопка кодекса на месте");
 });
 
-test("battle: enemy summary keeps only the key parameters, no strength/agility/intellect", () => {
+test("battle: enemy summary keeps the key parameters and shows the monster's СИЛ/ЛОВ/ИНТ", () => {
   const b = freshBattle(makePlayer(), 3, false);
   const html = renderToStaticMarkup(React.createElement(BattleView, {
     battle: b, onAct: noop, onEnemyTurn: noop, onContinue: noop,
@@ -316,7 +316,10 @@ test("battle: enemy summary keeps only the key parameters, no strength/agility/i
   for (const label of ["Урон по тебе", "Защита", "Уклонение", "Броня", "Стойкость", "Укрепление", "Маг. сопротивление", "Ходов в раунде"]) {
     assert.ok(sum.includes(`aria-label="${label}: `), `строка «${label}» есть`);
   }
-  assert.ok(!sum.includes('aria-label="Характеристики: '), "у монстра нет строки характеристик героя (таб «Характеристики» — его собственный)");
+  /* Характеристики врага — СИЛ/ЛОВ/ИНТ монстра, а не героя. */
+  const es = b.enemy.stats;
+  assert.ok(sum.includes(`aria-label="Характеристики: ${es.str}/${es.agi}/${es.int}`), "строка СИЛ/ЛОВ/ИНТ монстра");
+  assert.ok(!sum.includes(`aria-label="Характеристики: ${b.p.stats.str}/${b.p.stats.agi}/${b.p.stats.int}`) || (es.str === b.p.stats.str && es.agi === b.p.stats.agi && es.int === b.p.stats.int), "не строка героя");
   assert.ok(!sum.includes("role=\"tooltip\""), "подсказки открываются только по наведению");
 });
 

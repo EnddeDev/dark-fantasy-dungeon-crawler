@@ -92,7 +92,21 @@ import {
 } from "./biomes";
 import { blessingEffect } from "./blessings";
 import { BOSS_EFFECT_RESIST, enemyChance, enemyEffectPower, rollEnemyEffects } from "./enemyEffects";
-import { combatChance, emptyChanceLayers, staticChance, type ChanceKey, type ChanceLayers } from "./chances";
+import { combatChance, combineChances, emptyChanceLayers, staticChance, type ChanceKey, type ChanceLayers } from "./chances";
+import {
+  NO_MONSTER_STATS,
+  monsterActionsBonus,
+  monsterCritChance,
+  monsterCritDamageBonus,
+  monsterDamageBonus,
+  monsterEvasionBonus,
+  monsterHealthBonus,
+  monsterMagicResist,
+  monsterTechniqueBonus,
+  monsterTenacity,
+  rollMonsterStats,
+  type MonsterStats,
+} from "./monsterStats";
 import {
   statActions,
   statCritChance,
@@ -183,6 +197,8 @@ export interface BattleState {
     passive: EnemyPassive | null;
     /** Итоговый боевой тип (с учётом ограничений рода). */
     mtype: MonsterType;
+    /** Характеристики СИЛ/ЛОВ/ИНТ: дают ОЗ, урон, ходы, уклонение, крит и сопротивления. */
+    stats: MonsterStats;
     /** Сколько твоих попаданий выдержал дракон (для «залпа»). */
     hitsTaken: number;
     /** Ярость дракона приходит один раз за бой. */
@@ -751,6 +767,8 @@ export interface SpawnedEnemy {
   armor: number;
   gold: [number, number];
   xp: number;
+  /** Характеристики СИЛ/ЛОВ/ИНТ. */
+  stats: MonsterStats;
 }
 
 const SPECIAL_MOVES: EnemyMove[] = ["wound", "curse", "drain", "sunder", "bell_stun"];
@@ -789,6 +807,8 @@ export function spawnEnemy(
      конструкт бывает только сильным. */
   const mtype = coerceMonsterType(def.race, def.type);
   const typeMeta = MONSTER_TYPE_META[mtype];
+  /* Характеристики кидаются сразу после вида и уровня: угроза не меняет раскладку, у одной твари она одна. */
+  const stats = rollMonsterStats(mtype, level, rng);
 
   // Шаг усиления падает на 0.05 за уровень, но не ниже ×1.05 (кроме ходов).
   const levelMult = enemyLevelMult(level);
@@ -839,6 +859,7 @@ export function spawnEnemy(
 
   return {
     def,
+    stats,
     level,
     threat,
     mtype,
@@ -847,15 +868,16 @@ export function spawnEnemy(
     effects,
     effectPower: enemyEffectPower(effects, level),
     /* Обычные монстры держат минимум NORMAL_MIN_HP; боссы — как задано. */
-    hp: isBoss ? Math.max(1, Math.round(def.hp * hpMult)) : Math.max(NORMAL_MIN_HP, Math.round(def.hp * hpMult)),
-    ap: Math.max(1, Math.min(10, apBase)),
+    hp: (isBoss ? Math.max(1, Math.round(def.hp * hpMult)) : Math.max(NORMAL_MIN_HP, Math.round(def.hp * hpMult))) +
+      monsterHealthBonus(stats.str),
+    ap: Math.max(1, Math.min(10, apBase)) + monsterActionsBonus(stats.agi),
     /* Обычные монстры бьют минимум на NORMAL_MIN_ATK (до брони героя); боссы — как задано. */
-    atk: isBoss
+    atk: (isBoss
       ? [Math.max(1, Math.round(def.atk[0] * atkMult)), Math.max(2, Math.round(def.atk[1] * atkMult))]
       : [
           Math.max(NORMAL_MIN_ATK, Math.round(def.atk[0] * atkMult)),
           Math.max(NORMAL_MIN_ATK, Math.round(def.atk[1] * atkMult)),
-        ],
+        ]).map((v) => v + monsterDamageBonus(stats.str)) as [number, number],
     /* Броня: уровень плюс прибавка типа (у ловких она отрицательная). */
     armor: Math.max(0, Math.round(def.armor * levelMult * armorMult * raceArmorMult(def.race)) + typeMeta.armorDelta),
     gold: [
@@ -1028,6 +1050,7 @@ export function newBattle(
       moves: s.moves,
       effects: s.effects,
       effectPower: s.effectPower,
+      stats: s.stats,
       hp: s.hp,
       maxHp: s.hp,
       ap: s.ap,
@@ -1284,7 +1307,33 @@ function effectsDepleted(b: BattleState): boolean {
 
 /** Уклонение твари: тип плюс род, всегда от текущего определения. */
 function enemyEvade(b: BattleState): number {
-  return monsterEvade(b.enemy.def.race, b.enemy.mtype);
+  return combineChances([monsterEvade(b.enemy.def.race, b.enemy.mtype), monsterEvasionBonus(enemyStats(b).agi)]);
+}
+
+/* Характеристики врага. Старый бой без раскладки считается нулевым. */
+function enemyStats(b: BattleState): MonsterStats {
+  return b.enemy.stats ?? NO_MONSTER_STATS;
+}
+
+/* Крит врага: ЛОВ плюс эффекты; эффекты при истощении не работают, характеристики — работают. */
+function enemyCritChance(b: BattleState): number {
+  return combineChances([monsterCritChance(enemyStats(b).agi), effectsDepleted(b) ? 0 : eChance(b, "crit_chance")]);
+}
+
+function enemyCritMult(b: BattleState): number {
+  const effectPct = effectsDepleted(b) ? 0 : eEffect(b, "crit_mult");
+  return 2 + effectPct / 100 + monsterCritDamageBonus(enemyStats(b).agi);
+}
+
+/* Магическое сопротивление врага: ИНТ плюс эффекты. gated — эффекты при истощении не работают. */
+function enemyMagicResist(b: BattleState, gated = false): number {
+  const effect = gated && effectsDepleted(b) ? 0 : eChance(b, "magic_resist");
+  return combineChances([monsterMagicResist(enemyStats(b).int), effect]);
+}
+
+/* Ум врага: прибавка к урону приёмов за очко ИНТ (обычный удар — без прибавки). */
+function enemyTechniqueBonus(b: BattleState, move: EnemyMove): number {
+  return move === "attack" ? 0 : monsterTechniqueBonus(enemyStats(b).int);
 }
 
 function bossResists(b: BattleState): boolean {
@@ -1395,7 +1444,7 @@ function applyEnemyStatus(
     return;
   }
   if (bossResists(b)) return;
-  const resist = effectsDepleted(b) ? 0 : eChance(b, "resist");
+  const resist = combineChances([monsterTenacity(enemyStats(b).str), effectsDepleted(b) ? 0 : eChance(b, "resist")]);
   if (resist > 0 && Math.random() < resist) {
     push(b, `${b.enemy.def.name} сопротивляется эффекту.`, "e");
     return;
@@ -1493,7 +1542,7 @@ function healEnemy(b: BattleState, amount: number): number {
     return 0;
   }
   if (b.enemy.statuses.wither > 0) {
-    const dmg = Math.max(1, Math.round(amount * (1 - eChance(b, "magic_resist"))));
+    const dmg = Math.max(1, Math.round(amount * (1 - enemyMagicResist(b))));
     b.enemy.hp = Math.max(0, b.enemy.hp - dmg);
     push(b, `Увядание обращает лечение ${b.enemy.def.name} в ${dmg} магического урона.`, "p");
     return 0;
@@ -1650,8 +1699,8 @@ export function damageAfterEnemyDefense(b: BattleState, raw: number, kind: "phys
     const fortify = raceFortify(b.enemy.def.race);
     if (fortify > 0) d = Math.round(d * (1 - fortify));
     if (!effectsDepleted(b)) d = Math.round(d * (1 - eChance(b, "fortify")));
-  } else if (!effectsDepleted(b)) {
-    d = Math.round(d * (1 - eChance(b, "magic_resist")));
+  } else {
+    d = Math.round(d * (1 - enemyMagicResist(b, true)));
   }
   if (!effectsDepleted(b)) d -= eEffect(b, "damage_resist");
   d = Math.max(1, d);
@@ -2219,12 +2268,12 @@ function advance(b: BattleState) {
       push(b, `${b.enemy.def.name} горит: −${d} ОЗ.`, "p");
     }
     if (b.enemy.statuses.chill > 0 && b.enemy.hp > 0) {
-      const d = magicTickFrom(b.enemy.statuses.chillTick, eChance(b, "magic_resist"));
+      const d = magicTickFrom(b.enemy.statuses.chillTick, enemyMagicResist(b));
       b.enemy.hp -= d;
       push(b, `Обморожение отнимает ${d} ОЗ у ${b.enemy.def.name}.`, "p");
     }
     if (b.enemy.statuses.curse > 0 && b.enemy.hp > 0) {
-      const d = magicTickFrom(b.enemy.statuses.curseTick, eChance(b, "magic_resist"));
+      const d = magicTickFrom(b.enemy.statuses.curseTick, enemyMagicResist(b));
       b.enemy.hp -= d;
       push(b, `Проклятие выжигает ${d} ОЗ у ${b.enemy.def.name}.`, "p");
     }
@@ -2237,7 +2286,7 @@ function advance(b: BattleState) {
       const kind = b.enemy.statuses.oilType;
       const element = isDamageElement(kind) ? kind : undefined;
       const mult = element ? enemyElementMult(b, element) : 1;
-      const raw = oilTickDamage(kind, b.enemy.statuses.oilTick, eChance(b, "magic_resist"));
+      const raw = oilTickDamage(kind, b.enemy.statuses.oilTick, enemyMagicResist(b));
       if (raw > 0 && mult > 0) {
         const d = Math.max(1, Math.round(raw * mult));
         b.enemy.hp -= d;
@@ -3520,13 +3569,16 @@ export function enemyMoveBreakdown(b: BattleState, move: EnemyMove): EnemyMoveBr
   const effects = enemyEffectSteps(b, avg);
   lines.push(...effects.lines);
   let base = effects.value;
-  if (!effectsDepleted(b)) {
-    const c = eChance(b, "crit_chance");
-    if (c > 0) {
-      const critMult = 2 + eEffect(b, "crit_mult") / 100;
-      base = base * (1 - c) + base * critMult * c;
-      lines.push({ label: "Критический удар (среднее)", value: base, note: `${pctText(c)} ×${critMult.toFixed(2)}` });
-    }
+  const tech = enemyTechniqueBonus(b, move);
+  if (tech > 0) {
+    base += tech;
+    lines.push({ label: "Ум врага", value: base, note: `+${tech}` });
+  }
+  const c = enemyCritChance(b);
+  if (c > 0) {
+    const critMult = enemyCritMult(b);
+    base = base * (1 - c) + base * critMult * c;
+    lines.push({ label: "Критический удар (среднее)", value: base, note: `${pctText(c)} ×${critMult.toFixed(2)}` });
   }
   const moveSteps = enemyMoveSteps(b, move, isStrike, base);
   lines.push(...moveSteps.lines);
@@ -3759,6 +3811,8 @@ export interface EnemyMoveView {
 
 /** Параметры врага для сводки и списка приёмов: всё считается теми же функциями, что и бой. */
 export interface EnemyReadout {
+  /** Характеристики СИЛ/ЛОВ/ИНТ врага. */
+  stats: MonsterStats;
   /** Броня без защиты и с защитой врага. */
   armorBase: number;
   armor: number;
@@ -3775,17 +3829,18 @@ export interface EnemyReadout {
 export function enemyReadout(b: BattleState): EnemyReadout {
   const e = b.enemy;
   const depleted = effectsDepleted(b);
-  const effectResist = depleted ? 0 : eChance(b, "resist");
+  const effectResist = combineChances([monsterTenacity(enemyStats(b).str), depleted ? 0 : eChance(b, "resist")]);
   const resist = 1 - (1 - raceEffectResist(e.def.race)) * (1 - (b.isBoss ? BOSS_EFFECT_RESIST : 0)) * (1 - effectResist);
   const effectFortify = depleted ? 0 : eChance(b, "fortify");
   const fortify = 1 - (1 - raceFortify(e.def.race)) * (1 - effectFortify);
-  const magicResist = depleted ? 0 : eChance(b, "magic_resist");
+  const magicResist = enemyMagicResist(b, true);
   const list = [...new Set(e.moves.length ? e.moves : e.def.moves)];
   return {
     armorBase: enemyArmorNow({ ...e, guard: false }),
     armor: enemyArmorNow(e),
     guard: e.guard,
     evade: enemyEvade(b),
+    stats: enemyStats(b),
     resist,
     fortify,
     magicResist,
@@ -3852,12 +3907,11 @@ export function enemyStep(b0: BattleState): BattleState {
   e.lastMiss = false;
   /* Базовый удар — обычный параметр; усиления от эффектов при истощении не работают. */
   let base = enemyEffectDamage(b, randInt(e.atk[0], e.atk[1]));
-  if (!effectsDepleted(b)) {
-    const eCritChance = eChance(b, "crit_chance");
-    if (eCritChance > 0 && Math.random() < eCritChance) {
-      base = Math.round(base * (2 + eEffect(b, "crit_mult") / 100));
-      push(b, `${e.def.name} наносит критический удар!`, "e");
-    }
+  base += enemyTechniqueBonus(b, move);
+  const eCritChance = enemyCritChance(b);
+  if (eCritChance > 0 && Math.random() < eCritChance) {
+    base = Math.round(base * enemyCritMult(b));
+    push(b, `${e.def.name} наносит критический удар!`, "e");
   }
   base = enemyMoveDamage(b, move, isStrikeMove, base);
   /* Огр-мясник звереет, когда герой ранен. */

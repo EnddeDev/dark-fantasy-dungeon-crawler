@@ -46,6 +46,7 @@ import { itemDamageType, raceElementRows } from "../game/damageTypes";
 import { skillReadiness } from "../game/skillReadiness";
 import { consumablePreview } from "../game/consumablePreview";
 import { POUCH_SLOTS } from "../game/pouch";
+import { monsterActionsBonus, monsterDamageBonus, monsterEvasionBonus, monsterHealthBonus, monsterTechniqueBonus } from "../game/monsterStats";
 
 /** Римская нумерация для строк инициативы. */
 function roman(n: number): string {
@@ -495,6 +496,14 @@ export function BattleView({
       base: `${er.ap}`,
       now: `${er.ap}`,
       hint: "у кого больше — тот всегда раньше",
+    },
+    /* Характеристики врага: та же шкала, что у героя; подсказка показывает, что каждая даёт. */
+    {
+      metric: "stats",
+      label: "Характеристики",
+      base: `${er.stats.str}/${er.stats.agi}/${er.stats.int}`,
+      now: `${er.stats.str}/${er.stats.agi}/${er.stats.int}`,
+      hint: `СИЛ: +${monsterHealthBonus(er.stats.str)} ОЗ, +${monsterDamageBonus(er.stats.str)} к удару · ЛОВ: +${monsterActionsBonus(er.stats.agi)} хода, +${Math.round(monsterEvasionBonus(er.stats.agi) * 100)}% уклонения · ИНТ: +${monsterTechniqueBonus(er.stats.int)} к урону приёмов`,
     },
   ];
 
