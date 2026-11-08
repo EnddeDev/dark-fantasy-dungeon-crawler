@@ -221,7 +221,8 @@ test("эффекты: боевая панель показывает иконк�
   const view = fs.readFileSync("src/components/BattleView.tsx", "utf8");
   assert.match(view, /playerEffectChips\(b\)/, "эффекты героя считаются в бою");
   assert.match(view, /enemyEffectChips\(b\)/, "эффекты монстра считаются в бою");
-  assert.match(view, /EffectsTab chips=\{playerChips\}/, "эффекты героя во вкладке «Эффекты» сводки");
+  assert.match(view, /EffectsTab entries=\{heroEffects\}/, "эффекты героя во вкладке «Эффекты» сводки");
+  assert.match(view, /EffectChips chips=\{playerChips\} label="эффекты героя"/, "иконки наложенных эффектов героя стоят под здоровьем");
   assert.match(view, /EffectChips chips=\{enemyChips\}/, "иконки монстра вставлены");
   const row = fs.readFileSync("src/components/SummaryRow.tsx", "utf8");
   assert.match(row, /boon-row/, "усиленная характеристика подсвечивается");

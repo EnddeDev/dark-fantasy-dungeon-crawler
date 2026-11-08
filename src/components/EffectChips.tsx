@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useFitInViewport } from "./useFitInViewport";
 import {
   EFFECT_CHIPS_VISIBLE,
   durationLabel,
@@ -54,11 +55,13 @@ function ChipFace({ chip, size }: { chip: EffectChip; size: number }) {
 }
 
 function ChipTip({ chip }: { chip: EffectChip }) {
+  const tipRef = useRef<HTMLDivElement>(null);
+  useFitInViewport(tipRef, true);
   const buff = chip.polarity === "good";
   const accent = buff ? "#8fb8ec" : chip.color;
   return (
     <div
-      role="tooltip"
+      ref={tipRef} role="tooltip"
       className="pointer-events-none absolute left-0 top-full z-50 mt-2 w-[min(19rem,72vw)] border bg-black/95 p-2.5 text-left shadow-[0_10px_30px_rgba(0,0,0,0.75)]"
       style={{ borderColor: accent }}
     >
@@ -138,6 +141,8 @@ export function EffectChips({
   label: string;
 }) {
   const [open, setOpen] = useState<string | null>(null);
+  const restTipRef = useRef<HTMLDivElement>(null);
+  useFitInViewport(restTipRef, open === "rest");
   if (chips.length === 0) return null;
   const shown = chips.slice(0, max);
   const rest = chips.length - shown.length;
@@ -184,7 +189,7 @@ export function EffectChips({
           </button>
           {open === "rest" && (
             <div
-              role="tooltip"
+              ref={restTipRef} role="tooltip"
               className="absolute left-0 top-full z-50 mt-2 w-[min(17rem,72vw)] border border-line bg-black/95 p-2 text-left shadow-[0_10px_30px_rgba(0,0,0,0.75)]"
             >
               <div className="sc mb-1 text-flamedim">ещё эффекты</div>

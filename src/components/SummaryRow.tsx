@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useFitInViewport } from "./useFitInViewport";
 import { METRIC_INFO, type MetricKey } from "./MetricBadge";
 
 /**
@@ -24,6 +25,8 @@ const BADGE_TONE = {
 
 export function SummaryRow({ row, live, align = "left" }: { row: SummaryRowData; live: boolean; align?: "left" | "right" }) {
   const [open, setOpen] = useState(false);
+  const tipRef = useRef<HTMLDivElement>(null);
+  useFitInViewport(tipRef, open);
   const info = METRIC_INFO[row.metric];
   const Icon = info.icon;
   const tipId = `summary-tip-${row.metric}`;
@@ -67,6 +70,7 @@ export function SummaryRow({ row, live, align = "left" }: { row: SummaryRowData;
 
       {open && (
         <div
+          ref={tipRef}
           role="tooltip"
           id={tipId}
           className={`pointer-events-none absolute top-full z-50 mt-1 w-[min(19rem,72vw)] border border-flamedim bg-black/95 p-2.5 text-left shadow-[0_10px_30px_rgba(0,0,0,0.75)] ${

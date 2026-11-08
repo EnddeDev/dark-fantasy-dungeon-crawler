@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useFitInViewport } from "./useFitInViewport";
 import { Brain, Dumbbell, Wind, type LucideIcon } from "lucide-react";
 import { STAT_META } from "../game/content";
 import type { StatKey } from "../game/types";
@@ -17,6 +18,8 @@ const STAT_ICON: Record<StatKey, LucideIcon> = {
 
 export function StatBadge({ stat, value, align = "left" }: { stat: StatKey; value: number; align?: TipAlign }) {
   const [open, setOpen] = useState(false);
+  const tipRef = useRef<HTMLDivElement>(null);
+  useFitInViewport(tipRef, open);
   const meta = STAT_META[stat];
   const Icon = STAT_ICON[stat];
   const tipId = `stat-tip-${stat}`;
@@ -40,7 +43,7 @@ export function StatBadge({ stat, value, align = "left" }: { stat: StatKey; valu
       </button>
       {open && (
         <div
-          role="tooltip"
+          ref={tipRef} role="tooltip"
           id={tipId}
           className={`pointer-events-none absolute top-full z-50 mt-2 w-[min(19rem,72vw)] border border-flamedim bg-black/95 p-2.5 text-left shadow-[0_10px_30px_rgba(0,0,0,0.75)] ${tipAlignClass(align)}`}
         >

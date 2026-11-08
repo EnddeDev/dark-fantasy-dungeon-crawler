@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
+import { useFitInViewport } from "./useFitInViewport";
 import { createPortal } from "react-dom";
 import { DAMAGE_TYPES, isDamageElement, type DamageTypeId, type DamageTypeInfo } from "../game/damageTypes";
 import type { DamageElement } from "../game/monsters";
@@ -118,8 +119,11 @@ function placeTip(rect: DOMRect): TipPlace {
 
 function DamageTip({ info, place }: { info: DamageTypeInfo; place: TipPlace }) {
   const color = DAMAGE_COLOR[info.id];
+  const tipRef = useRef<HTMLDivElement>(null);
+  useFitInViewport(tipRef, true);
   return createPortal(
     <div
+      ref={tipRef}
       role="tooltip"
       className="pointer-events-none fixed z-[100] border bg-black/95 p-2.5 text-left shadow-[0_10px_30px_rgba(0,0,0,0.75)]"
       style={{

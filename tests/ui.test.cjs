@@ -206,12 +206,12 @@ test("battle summary: two tabs for hero and monster — stats and effects", () =
 });
 
 test("battle summary: effects tab lists effects with duration, empty state when none", () => {
-  const empty = renderToStaticMarkup(React.createElement(EffectsTab, { chips: [], entries: [], label: "x" }));
+  const empty = renderToStaticMarkup(React.createElement(EffectsTab, { entries: [], label: "x" }));
   assert.ok(empty.includes("Эффектов нет."), "пустая вкладка эффектов");
   const b = freshBattle(makePlayer(), 3, false);
   b.p.statuses.burn = 3;
   const chips = playerEffectChips(b);
-  const html = renderToStaticMarkup(React.createElement(EffectsTab, { chips, entries: chipEntries(chips), label: "эффекты героя" }));
+  const html = renderToStaticMarkup(React.createElement(EffectsTab, { entries: chipEntries(chips), label: "эффекты героя" }));
   assert.ok(html.includes("Горение"), "эффект виден по названию");
   assert.ok(html.includes("<ul"), "список эффектов");
   const tabs = renderToStaticMarkup(React.createElement(SummaryTabs, { value: "effects", onChange: noop, effectsCount: 2 }));
@@ -241,7 +241,7 @@ test("battle effects: thorns, rage and other gear effects reach the list", () =>
   assert.ok(names.includes("Шипы"), "шипы от снаряжения попадают в список");
   assert.ok(names.includes("Ярость"), "ярость от снаряжения попадает в список");
   assert.ok(entries.every((en) => en.meta === "снаряжение" || en.meta), "у каждой строки есть пометка");
-  const html = renderToStaticMarkup(React.createElement(EffectsTab, { chips: [], entries, label: "эффекты героя" }));
+  const html = renderToStaticMarkup(React.createElement(EffectsTab, { entries, label: "эффекты героя" }));
   assert.ok(html.includes("Шипы") && html.includes("Ярость"), "вкладка показывает эффекты снаряжения");
 });
 
@@ -441,9 +441,9 @@ test("battle view shows the biome rule and live burning stacks", () => {
   }));
   assert.ok(html.includes('data-biome="fire"'));
   assert.ok(html.includes("Огненные недра"));
-  assert.ok(!html.includes("Горение ×2"), "эффекты героя по умолчанию во вкладке, не в сводке");
+  assert.ok(html.includes("Горение ×2"), "горение героя под здоровьем, без открытия вкладки");
   const fireChips = playerEffectChips(fire);
-  const heroTab = renderToStaticMarkup(React.createElement(EffectsTab, { chips: fireChips, entries: chipEntries(fireChips), label: "эффекты героя" }));
+  const heroTab = renderToStaticMarkup(React.createElement(EffectsTab, { entries: chipEntries(fireChips), label: "эффекты героя" }));
   assert.ok(heroTab.includes("Горение ×2"), "горение героя видно во вкладке «Эффекты»");
   assert.ok(html.includes("Горение ×3"), "горение врага видно иконкой с множителем");
 

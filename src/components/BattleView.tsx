@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useFitInViewport } from "./useFitInViewport";
 import { BookOpen, X } from "lucide-react";
 import {
   ENEMY_MOVE_META,
@@ -98,6 +99,8 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
 /** Иконка эффекта приёма врага: при наводке или фокусе показывает, что эффект делает. */
 function EnemyEffectIcon({ effect }: { effect: EnemyMoveEffect }) {
   const [open, setOpen] = useState(false);
+  const moveTipRef = useRef<HTMLSpanElement>(null);
+  useFitInViewport(moveTipRef, open);
   const color = (EFFECT_COLORS as Record<string, string>)[effect.id] ?? "#c9b58a";
   const name = ENEMY_EFFECT_TITLE[effect.id] ?? effect.id;
   const lines = [
@@ -127,7 +130,7 @@ function EnemyEffectIcon({ effect }: { effect: EnemyMoveEffect }) {
       </span>
       {open && (
         <span
-          role="tooltip"
+          ref={moveTipRef} role="tooltip"
           className="pointer-events-none absolute right-0 top-full z-50 mt-1.5 block w-[min(19rem,72vw)] border bg-black/95 p-2.5 text-left shadow-[0_10px_30px_rgba(0,0,0,0.75)]"
           style={{ borderColor: color }}
         >
@@ -163,6 +166,8 @@ function InfoTag({
   tone: "mute" | "flame" | "verd" | "rubric";
 }) {
   const [open, setOpen] = useState(false);
+  const tipRef = useRef<HTMLSpanElement>(null);
+  useFitInViewport(tipRef, open);
   const items = lines.filter(Boolean);
   return (
     <span
@@ -176,7 +181,7 @@ function InfoTag({
       <Tag tone={tone}>{label}</Tag>
       {open && items.length > 0 && (
         <span
-          role="tooltip"
+          ref={tipRef} role="tooltip"
           className="pointer-events-none absolute left-0 top-full z-50 mt-1.5 block w-[min(19rem,72vw)] border border-flamedim bg-black/95 p-2.5 text-left shadow-[0_10px_30px_rgba(0,0,0,0.75)]"
         >
           <span className="block font-display text-[0.92rem] uppercase tracking-[0.06em] text-flamehi">{title}</span>
@@ -507,6 +512,13 @@ export function BattleView({
               <span className="font-mono text-sm tab text-parch">{b.p.hp}/{b.p.maxHp}</span>
             </div>
 
+            {/* Наложенные эффекты героя — сразу под здоровьем */}
+            {playerChips.length > 0 && (
+              <div className="relative z-20 mt-2">
+                <EffectChips chips={playerChips} label="эффекты героя" />
+              </div>
+            )}
+
             {/* Концентрация: атака +1, приём −1, расходник +1, защита +2; при 5 открывается спец-приём */}
             <div
               className="mt-2 grid grid-cols-[auto_1fr_auto] items-center gap-x-3"
@@ -538,7 +550,7 @@ export function BattleView({
                   ))}
                 </div>
               ) : (
-                <EffectsTab chips={playerChips} entries={heroEffects} label="эффекты героя" />
+                <EffectsTab entries={heroEffects} label="эффекты героя" />
               )}
             </div>
 
@@ -862,7 +874,7 @@ export function BattleView({
                   ))}
                 </div>
               ) : (
-                <EffectsTab chips={enemyChips} entries={foeEffects} label="эффекты врага" />
+                <EffectsTab entries={foeEffects} label="эффекты врага" />
               )}
             </div>
 
@@ -1238,19 +1250,10 @@ export function chipEntries(chips: EffectChip[]): TabEffect[] {
 }
 
 /** Вкладка «Эффекты»: иконки статусов сверху и полный список всех эффектов. */
-export function EffectsTab({
-  chips,
-  entries,
-  label,
-}: {
-  chips: EffectChip[];
-  entries: TabEffect[];
-  label: string;
-}) {
+export function EffectsTab({ entries }: { entries: TabEffect[]; label?: string }) {
   if (entries.length === 0) return <p className="mt-2 text-sm italic text-mute">Эффектов нет.</p>;
   return (
-    <div className="relative z-20 mt-2 space-y-2">
-      {chips.length > 0 && <EffectChips chips={chips} label={label} size={36} />}
+    <div className="mt-2">
       <ul className="space-y-1.5">
         {entries.map((en) => (
           <li key={en.id} className="border-l-2 border-line/70 pl-2">

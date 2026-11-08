@@ -1,4 +1,5 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useFitInViewport } from "./useFitInViewport";
 import { Activity, Coins, LogOut, Pencil, Sparkles } from "lucide-react";
 import {
   ARCHETYPES,
@@ -39,9 +40,12 @@ type EffectEntry = {
 
 /** Всплывающее окно записи: итог и вклад каждого предмета. */
 export function EffectTip({ id, entry }: { id: string; entry: EffectEntry }) {
+  const tipRef = useRef<HTMLDivElement>(null);
+  useFitInViewport(tipRef, true);
   if (!entry.breakdown) return null;
   return (
     <div
+      ref={tipRef}
       role="tooltip"
       id={id}
       className="pointer-events-none absolute left-0 top-full z-50 mt-2 w-[min(19rem,72vw)] border border-flamedim bg-black/95 p-2.5 text-left shadow-[0_10px_30px_rgba(0,0,0,0.75)]"
