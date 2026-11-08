@@ -26,6 +26,7 @@ import {
   queuePreview,
   type BattleState,
   type EnemyMoveEffect,
+  type EnemyMoveView,
   type PlayerAction,
 } from "../game/battle";
 import { FoePortrait } from "./FoeArt";
@@ -84,7 +85,7 @@ export const ENEMY_EFFECT_DESC: Record<string, string> = {
   curse: "Твой урон снижен на силу проклятия.",
   fear: "В свой ход ты в защите: атаки и приёмы закрыты, рюкзак доступен.",
   stun: "Пропускаешь ходы: очередь короче на число ходов оглушения.",
-  sunder: "Броня снижена до конца боя.",
+  sunder: "Броня героя снижается: раскол — до конца боя, гниение ходока — на два раунда.",
   darkness: "Половина твоих атак уходит в пустоту.",
   noHeal: "Зелья и приёмы лечения не работают.",
   sealItems: "Припасы недоступны.",
@@ -95,61 +96,128 @@ export const ENEMY_EFFECT_DESC: Record<string, string> = {
 /** Процент для строк сводки. */
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 
-/** Иконка наложения приёма врага. Пунктир-«½» — наложение с шансом около половины. */
-/** Иконка эффекта приёма врага: при наводке или фокусе показывает, что эффект делает. */
+/** Иконка наложения приёма врага. Пунктир-«½» — наложение с шансом около половины. Подробности — в подсказке строки приёма. */
 function EnemyEffectIcon({ effect }: { effect: EnemyMoveEffect }) {
-  const [open, setOpen] = useState(false);
-  const moveTipRef = useRef<HTMLSpanElement>(null);
-  useFitInViewport(moveTipRef, open);
   const color = (EFFECT_COLORS as Record<string, string>)[effect.id] ?? "#c9b58a";
   const name = ENEMY_EFFECT_TITLE[effect.id] ?? effect.id;
-  const lines = [
-    ENEMY_EFFECT_DESC[effect.id] ?? "",
-    effect.half ? "Накладывается примерно в половине попаданий." : "",
-  ].filter(Boolean);
   return (
     <span
-      tabIndex={0}
+      className="relative flex h-6 w-6 shrink-0 items-center justify-center border"
+      style={{ borderColor: color, color, background: "rgba(12,10,9,0.72)" }}
       aria-label={`${name}${effect.half ? " — примерно в половине попаданий" : ""}`}
-      className="relative inline-flex outline-none focus-visible:ring-1 focus-visible:ring-flame"
+    >
+      <EffectGlyph id={effect.id as EffectIconId} size={15} />
+      {effect.half && (
+        <span className="absolute -bottom-1 -right-1 border border-line bg-soot px-0.5 font-mono text-[0.6rem] leading-[1.1] text-parch">
+          ½
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** Содержимое подсказки приёма врага: описание, расчёт урона по шагам, наложения с шансом и числами. */
+export function EnemyMoveTip({ mv, meta }: { mv: EnemyMoveView; meta?: { name: string; desc: string } }) {
+  const bd = mv.breakdown;
+  const fmt = (v: number) => String(Math.round(v));
+  return (
+    <div className="text-[0.84rem] leading-snug text-parch/90">
+      <div className="font-display text-[0.95rem] uppercase tracking-[0.06em] text-flamehi">{meta?.name ?? mv.move}</div>
+      {meta?.desc && <p className="mt-1 text-mute">{meta.desc}</p>}
+      {mv.cooldown > 0 && <p className="mt-1 text-mute">Перезарядка: ещё {mv.cooldown}. Приём сейчас недоступен.</p>}
+
+      <div className="sc mt-2">Урон по тебе</div>
+      {bd.lines.length === 0 ? (
+        <p className="mt-1">Приём урона не наносит.</p>
+      ) : (
+        <>
+          <ul className="mt-1 space-y-0.5">
+            {bd.lines.map((ln, i) => (
+              <li key={`${ln.label}${i}`} className="flex justify-between gap-3">
+                <span className="min-w-0">
+                  {ln.label}
+                  {ln.note && <span className="ml-1 text-mute">{ln.note}</span>}
+                </span>
+                <span className="shrink-0 font-mono tab">{fmt(ln.value)}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1">
+            Шанс попасть: <b className="font-mono">{pct(bd.hitChance)}</b>
+            {bd.hitMisses.length > 0 && (
+              <span className="text-mute"> ({bd.hitMisses.map((m) => `${m.label} −${pct(m.chance)}`).join(", ")})</span>
+            )}
+          </p>
+          {bd.blocked && <p className="text-mute">Удар не пройдёт: {bd.blocked}.</p>}
+          {bd.hits > 1 && <p className="text-mute">Два удара: второй приходит, только если первый попал.</p>}
+          <p className="mt-1 flex justify-between gap-3 border-t border-line/50 pt-1">
+            <span>Ожидаемый урон приёма</span>
+            <span className="font-mono text-rubric">≈ {fmt(bd.expected)}</span>
+          </p>
+        </>
+      )}
+
+      <div className="sc mt-2">Наложения</div>
+      {mv.details.length === 0 && <p className="mt-1">Наложений нет.</p>}
+      {mv.details.map((d, i) => (
+        <div key={`${d.id}${i}`} className="mt-1.5">
+          <div className="flex justify-between gap-3">
+            <span className="font-display uppercase tracking-[0.04em] text-parch">{ENEMY_EFFECT_TITLE[d.id] ?? d.id}</span>
+            <span className="shrink-0 font-mono text-flamehi">{d.chance > 0 ? `шанс ${pct(d.chance)}` : "не сработает"}</span>
+          </div>
+          {ENEMY_EFFECT_DESC[d.id] && <p className="text-mute">{ENEMY_EFFECT_DESC[d.id]}</p>}
+          {d.lines.map((l) => (
+            <p key={l}>{l}</p>
+          ))}
+        </div>
+      ))}
+      {mv.notes.map((n) => (
+        <p key={n} className="mt-1.5">{n}</p>
+      ))}
+    </div>
+  );
+}
+
+/** Строка приёма врага. При наводке или фокусе показывает подсказку: расчёт урона и наложения с числами. */
+function EnemyMoveRow({ mv, meta }: { mv: EnemyMoveView; meta?: { name: string; desc: string } }) {
+  const [open, setOpen] = useState(false);
+  const tipRef = useRef<HTMLDivElement>(null);
+  useFitInViewport(tipRef, open);
+  return (
+    <li
+      tabIndex={0}
+      className="relative flex items-center gap-2 py-1.5 outline-none focus-visible:ring-1 focus-visible:ring-flame"
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
       onFocus={() => setOpen(true)}
       onBlur={() => setOpen(false)}
     >
       <span
-        className="relative flex h-6 w-6 shrink-0 items-center justify-center border"
-        style={{ borderColor: color, color, background: "rgba(12,10,9,0.72)" }}
+        className={`min-w-0 flex-1 truncate font-display text-[0.9rem] uppercase tracking-[0.06em] ${
+          mv.cooldown > 0 ? "text-mute" : "text-flamehi"
+        }`}
       >
-        <EffectGlyph id={effect.id as EffectIconId} size={15} />
-        {effect.half && (
-          <span className="absolute -bottom-1 -right-1 border border-line bg-soot px-0.5 font-mono text-[0.6rem] leading-[1.1] text-parch">
-            ½
-          </span>
-        )}
+        {meta?.name ?? mv.move}
+      </span>
+      {mv.cooldown > 0 && <span className="shrink-0 font-mono text-[0.72rem] text-mute">перез. {mv.cooldown}</span>}
+      <span className="w-14 shrink-0 text-right font-mono text-[1rem] tab text-rubric">
+        {mv.damage > 0 ? `≈${mv.damage}` : "—"}
+      </span>
+      <span className="flex min-w-[2.5rem] shrink-0 justify-end gap-1">
+        {mv.effects.map((ef, i) => (
+          <EnemyEffectIcon key={`${ef.id}${ef.half ? "h" : ""}${i}`} effect={ef} />
+        ))}
       </span>
       {open && (
-        <span
-          ref={moveTipRef} role="tooltip"
-          className="pointer-events-none absolute right-0 top-full z-50 mt-1.5 block w-[min(19rem,72vw)] border bg-black/95 p-2.5 text-left shadow-[0_10px_30px_rgba(0,0,0,0.75)]"
-          style={{ borderColor: color }}
+        <div
+          ref={tipRef}
+          role="tooltip"
+          className="pointer-events-none absolute right-0 top-full z-50 mt-1.5 block w-[min(26rem,80vw)] border border-line bg-black/95 p-3 text-left shadow-[0_10px_30px_rgba(0,0,0,0.75)]"
         >
-          <span className="block font-display text-[0.92rem] uppercase tracking-[0.06em]" style={{ color }}>
-            {name}
-          </span>
-          {lines.length > 0 && (
-            <ul className="mt-1.5 space-y-0.5 text-[0.84rem] leading-snug text-parch/90">
-              {lines.map((line) => (
-                <li key={line} className="flex gap-1.5">
-                  <span className="shrink-0 text-flame">·</span>
-                  <span>{line}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </span>
+          <EnemyMoveTip mv={mv} meta={meta} />
+        </div>
       )}
-    </span>
+    </li>
   );
 }
 
@@ -885,29 +953,9 @@ export function BattleView({
                 <span className="font-mono text-[0.76rem] text-mute" title="Ожидаемый урон по тебе после твоей брони и защит">≈ урон по тебе</span>
               </div>
               <ul className="mt-1.5 divide-y divide-line/40">
-                {er.moves.map((mv) => {
-                  const meta = ENEMY_MOVE_META[mv.move];
-                  return (
-                    <li key={mv.move} className="flex items-center gap-2 py-1.5" title={meta?.desc}>
-                      <span
-                        className={`min-w-0 flex-1 truncate font-display text-[0.9rem] uppercase tracking-[0.06em] ${
-                          mv.cooldown > 0 ? "text-mute" : "text-flamehi"
-                        }`}
-                      >
-                        {meta?.name ?? mv.move}
-                      </span>
-                      {mv.cooldown > 0 && <span className="shrink-0 font-mono text-[0.72rem] text-mute">перез. {mv.cooldown}</span>}
-                      <span className="w-14 shrink-0 text-right font-mono text-[1rem] tab text-rubric">
-                        {mv.damage > 0 ? `≈${mv.damage}` : "—"}
-                      </span>
-                      <span className="flex min-w-[2.5rem] shrink-0 justify-end gap-1">
-                        {mv.effects.map((ef) => (
-                          <EnemyEffectIcon key={ef.id + (ef.half ? "h" : "")} effect={ef} />
-                        ))}
-                      </span>
-                    </li>
-                  );
-                })}
+                {er.moves.map((mv) => (
+                  <EnemyMoveRow key={mv.move} mv={mv} meta={ENEMY_MOVE_META[mv.move]} />
+                ))}
               </ul>
             </div>
           </div>

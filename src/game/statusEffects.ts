@@ -21,10 +21,20 @@ export const BOSS_DOT_PCT: Record<DotKind, number> = {
 /** Приём монстра берёт базовую формулу атаки и умножает на это. */
 export const DOT_SKILL_MULT = 2;
 
+/** Разброс тика: к базовому значению прибавляется от 0 до этого числа. */
+export const DOT_TICK_SPREAD = 3;
+
 /** Базовая формула: случайно от значение × уровень до значение × уровень + 3. */
 export function dotBaseTick(kind: DotKind, level: number, rng: () => number = Math.random): number {
   const lo = DOT_VALUE[kind] * Math.max(1, Math.floor(level));
-  return lo + Math.floor(rng() * 4);
+  return lo + Math.floor(rng() * (DOT_TICK_SPREAD + 1));
+}
+
+/** Диапазон тика, который может выпасть у dotBaseTick / dotSkillTick: для подсказок. */
+export function dotTickSpan(kind: DotKind, level: number, skill: boolean): [number, number] {
+  const lo = DOT_VALUE[kind] * Math.max(1, Math.floor(level));
+  const mult = skill ? DOT_SKILL_MULT : 1;
+  return [lo * mult, (lo + DOT_TICK_SPREAD) * mult];
 }
 
 /** Тик от приёма монстра: базовая формула × 2. */
