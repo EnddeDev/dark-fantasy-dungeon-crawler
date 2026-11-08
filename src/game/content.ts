@@ -3067,6 +3067,13 @@ export function dungeonGold(value: number): number {
   return Math.max(1, Math.floor(value * DUNGEON_GOLD_SHARE));
 }
 
+/** Золото с монстров и боссов: сумма удвоена поверх доли подземелья. Сундуки и находки не затрагивает. */
+export const MONSTER_GOLD_MULT = 2;
+
+export function monsterGold(value: number): number {
+  return dungeonGold(value) * MONSTER_GOLD_MULT;
+}
+
 /**
  * Качество добычи с монстров: шансы на ступень при условии, что предмет вообще выпал.
  * Легендарного у обычных тварей нет вовсе, эпическое — только у ужаса и катастрофы.
@@ -3197,7 +3204,7 @@ export function rollEnemyLoot(
   const out: { gold: number; items: string[]; gear: GearItem[] } = { gold: 0, items: [], gear: [] };
 
   if (lootHit(table.gold, rng)) {
-    out.gold = dungeonGold(randInt(6 + level * 3, 14 + level * 6, rng));
+    out.gold = monsterGold(randInt(6 + level * 3, 14 + level * 6, rng));
   }
   if (lootHit(table.reagents, rng)) {
     const pool = reagentPoolForFloor(floor);
