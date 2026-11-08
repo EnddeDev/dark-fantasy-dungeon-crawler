@@ -42,6 +42,7 @@ import { DamageTypeTag, ElementRow } from "./DamageTypeIcon";
 import { itemDamageType, raceElementRows } from "../game/damageTypes";
 import { skillReadiness } from "../game/skillReadiness";
 import { consumablePreview } from "../game/consumablePreview";
+import { POUCH_SLOTS } from "../game/pouch";
 
 /** Римская нумерация для строк инициативы. */
 function roman(n: number): string {
@@ -430,7 +431,7 @@ export function BattleView({
         </div>
       )}
 
-      <div className="grid flex-1 items-start xl:grid-cols-[minmax(0,1fr)_minmax(0,34rem)_minmax(0,1fr)]">
+      <div className="grid flex-1 items-start xl:grid-cols-3">
         {/* ГЕРОЙ — левая колонка боя: здоровье, концентрация, эффекты и сводка */}
         <div className="order-2 min-w-0 border-b border-line p-4 sm:p-6 xl:order-1 xl:col-start-1 xl:border-b-0">
           {/* ГЕРОЙ: здоровье, концентрация, эффекты и сводка боя */}
@@ -545,6 +546,72 @@ export function BattleView({
               </div>
             )}
 
+            {/* СУМКА: три слота зелий прямо в действиях. Зелье из сумки первым за ход не тратит ход. */}
+            {(menu === "main" || menu === "item") && (
+              <div className="mt-3 border-t border-line/70 pt-3">
+                <div className="mb-2 flex items-baseline justify-between gap-2">
+                  <span className="sc text-flamedim">Сумка</span>
+                  <span className="font-mono text-[0.78rem] text-mute">
+                    {b.p.turnPouch < 1 ? "первое зелье за ход без хода" : "ход уже потрачен на зелье"}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {Array.from({ length: POUCH_SLOTS }, (_, i) => b.pouch[i] ?? null).map((id, i) => {
+                    if (!id) {
+                      return (
+                        <div key={`empty-${i}`} className="border border-dashed border-line/70 px-3 py-2 text-[0.85rem] italic text-mute">
+                          Слот {i + 1} пуст: зелье ставится в сумку вне боя.
+                        </div>
+                      );
+                    }
+                    const def = ITEMS[id];
+                    const n = b.bag[id] ?? 0;
+                    const req = def ? consumableIntReq(def, b.p.intDiscount) : 0;
+                    const intOk = b.p.stats.int >= req;
+                    const fearImmune = def?.use?.type === "fear" && isImmuneTo(e.def.race, "fear");
+                    const ok = !!def && n > 0 && intOk && myTurn && !fearImmune && b.p.statuses.sealItems < 1;
+                    const pv = consumablePreview(b, id);
+                    const freeUse = b.p.turnPouch < 1;
+                    return (
+                      <button
+                        key={id}
+                        disabled={!ok}
+                        onClick={() => act({ type: "item", id })}
+                        className="flex w-full items-center justify-between gap-3 border border-line bg-slab2 px-3 py-2 text-left transition-colors enabled:hover:border-flame enabled:hover:bg-flame/10 disabled:opacity-40"
+                      >
+                        <span className="flex min-w-0 items-center gap-2">
+                          <ItemArt id={id} name={def?.name ?? id} size={30} framed={false} />
+                          <span className="min-w-0">
+                            <span className="block truncate font-display text-[0.98rem] uppercase tracking-[0.1em] text-flamehi">
+                              {def?.name ?? id} <span className="font-mono text-[0.82rem] text-flame">×{n}</span>
+                            </span>
+                            {(pv.damage !== null || pv.heal !== null) && (
+                              <span className="block font-mono text-[0.82rem] text-verd">
+                                {pv.damage !== null ? `урон ${pv.damage}` : `+${pv.heal} здоровья`}
+                              </span>
+                            )}
+                          </span>
+                        </span>
+                        <span className={`shrink-0 font-mono text-[0.8rem] ${ok ? "text-verd" : "text-rubric"}`}>
+                          {n < 1
+                            ? "нет в рюкзаке"
+                            : fearImmune
+                              ? "иммунитет"
+                              : !intOk
+                                ? `нужен ИНТ ${req}`
+                                : !myTurn
+                                  ? "не твой ход"
+                                  : freeUse
+                                    ? "без хода"
+                                    : "тратит ход"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {menu === "skill" && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -641,8 +708,8 @@ export function BattleView({
         </div>
 
         {/* ПРОТИВНИК И ХРОНИКА — правая колонка */}
-        {/* ПРОТИВНИК — узкая колонка справа, чтобы не занимать половину экрана */}
-        <div className="order-1 min-w-0 xl:order-3 xl:col-start-3 xl:w-[22rem] xl:justify-self-end xl:border-l xl:border-line">
+        {/* ПРОТИВНИК — правая колонка боя: занимает свою треть экрана */}
+        <div className="order-1 min-w-0 xl:order-3 xl:col-start-3 xl:border-l xl:border-line">
           <div className="relative flex flex-col border-line bg-black/30">
             {/* Эффекты монстра — поверх портрета в левом верхнем углу. */}
             {enemyChips.length > 0 && (

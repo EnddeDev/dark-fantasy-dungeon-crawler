@@ -191,6 +191,25 @@ test("dungeon header hides maze counts and corridor healing shows fixed/INT form
   assert.ok(html.includes("+32 здоровья")); // свиток лечения больше не масштабируется от ИНТ
 });
 
+test("battle: bag pouch shows its three potion slots inside the actions column", () => {
+  const b = freshBattle(makePlayer(), 3, false);
+  b.pouch = ["potion_s"];
+  b.bag = { ...b.bag, potion_s: 2 };
+  b.p.turnPouch = 0;
+  b.queue = ["p", "e"]; b.idx = 0;
+  const html = renderToStaticMarkup(React.createElement(BattleView, {
+    battle: b, onAct: noop, onEnemyTurn: noop, onContinue: noop,
+  }));
+  assert.ok(html.includes("Сумка"), "блок сумки в действиях");
+  assert.ok(html.includes("Малое зелье лечения"), "зелье из сумки видно в действиях");
+  assert.ok(html.includes("×2"), "количество в рюкзаке");
+  assert.ok(html.includes("без хода"), "первое зелье помечено как без хода");
+  assert.equal((html.match(/Слот \d пуст/g) || []).length, 2, "два пустых слота показаны");
+  const at = (x) => html.indexOf(x);
+  assert.ok(at("Сумка") > at("Сбежать"), "сумка под основными кнопками");
+  assert.ok(at("Сумка") < at("Сводка врага"), "сумка в центральной колонке, до монстра");
+});
+
 test("battle: three columns — hero info, actions, monster; no sidebar", () => {
   const weapon = content.createGearItem({ baseId: "sword", level: 1, wear: "worn", rarity: "common", identified: true });
   const p = makePlayer({ armory: [weapon], equip: { ...makePlayer().equip, mainHand: weapon.uid } });
@@ -198,10 +217,11 @@ test("battle: three columns — hero info, actions, monster; no sidebar", () => 
   const html = renderToStaticMarkup(React.createElement(BattleView, {
     battle: b, onAct: noop, onEnemyTurn: noop, onContinue: noop,
   }));
-  assert.ok(html.includes("xl:grid-cols-[minmax(0,1fr)_minmax(0,34rem)_minmax(0,1fr)]"), "действия в центральной колонке");
+  assert.ok(html.includes("xl:grid-cols-3"), "три равные колонки на всю ширину");
   assert.ok(html.includes("xl:col-start-1"), "герой стоит в первой (левой) колонке");
   assert.ok(html.includes("xl:col-start-2"), "действия стоят во второй (центральной) колонке");
-  assert.ok(html.includes("xl:col-start-3") && html.includes("xl:w-[22rem]"), "монстр справа, узкая колонка");
+  assert.ok(html.includes("xl:col-start-3"), "монстр справа, в своей колонке");
+  assert.ok(!html.includes("xl:w-[22rem]"), "монстр не сжат в узкую полоску");
   assert.ok(!html.includes("Эффекты в бою"), "список эффектов героя убран");
   assert.ok(!html.includes("полный разбор"), "полный разбор героя убран");
   const at = (s) => html.indexOf(s);
