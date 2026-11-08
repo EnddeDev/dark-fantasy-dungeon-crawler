@@ -27,7 +27,8 @@ const { Lobby } = load("src/components/Lobby.tsx", "lobby");
 const { Rail, EffectTip, EffectList, summedEffectEntries } = load("src/components/Rail.tsx", "rail");
 const { gearEffectTotals } = load("src/game/gearEffectTotals.ts", "gear-effect-totals");
 const { Dungeon } = load("src/components/Dungeon.tsx", "dungeon");
-const { BattleView } = load("src/components/BattleView.tsx", "battle-view");
+const { BattleView, SummaryTabs, EffectsTab } = load("src/components/BattleView.tsx", "battle-view");
+const { playerEffectChips } = load("src/game/effects.ts", "effects-chips");
 const battle = load("src/game/battle.ts", "battle");
 const monsters = load("src/game/monsters.ts", "monsters");
 
@@ -191,6 +192,32 @@ test("dungeon header hides maze counts and corridor healing shows fixed/INT form
   assert.ok(html.includes("+32 здоровья")); // свиток лечения больше не масштабируется от ИНТ
 });
 
+test("battle summary: two tabs for hero and monster — stats and effects", () => {
+  const b = freshBattle(makePlayer(), 3, false);
+  const html = renderToStaticMarkup(React.createElement(BattleView, {
+    battle: b, onAct: noop, onEnemyTurn: noop, onContinue: noop,
+  }));
+  assert.equal((html.match(/role="tablist"/g) || []).length, 2, "по одной паре табов у героя и монстра");
+  assert.equal((html.match(/role="tab"/g) || []).length, 4, "четыре таба: два у героя, два у монстра");
+  assert.ok(html.includes("Характеристики") && html.includes("Эффекты"), "подписи табов");
+  assert.ok(html.includes("Урон по тебе"), "по умолчанию у монстра видны характеристики");
+  assert.ok(html.includes('aria-selected="true"'), "активный таб помечен");
+});
+
+test("battle summary: effects tab lists effects with duration, empty state when none", () => {
+  const empty = renderToStaticMarkup(React.createElement(EffectsTab, { chips: [], label: "x" }));
+  assert.ok(empty.includes("Эффектов нет."), "пустая вкладка эффектов");
+  const b = freshBattle(makePlayer(), 3, false);
+  b.p.statuses.burn = 3;
+  const chips = playerEffectChips(b);
+  const html = renderToStaticMarkup(React.createElement(EffectsTab, { chips, label: "эффекты героя" }));
+  assert.ok(html.includes("Горение"), "эффект виден по названию");
+  assert.ok(html.includes("<ul"), "список эффектов");
+  const tabs = renderToStaticMarkup(React.createElement(SummaryTabs, { value: "effects", onChange: noop, effectsCount: 2 }));
+  assert.match(tabs, /aria-selected="true"[^>]*>Эффекты/, "активен таб эффектов");
+  assert.ok(tabs.includes(">2<") || tabs.includes(">2</span>"), "счётчик эффектов в табе");
+});
+
 test("battle: bag pouch shows its three potion slots inside the actions column", () => {
   const b = freshBattle(makePlayer(), 3, false);
   b.pouch = ["potion_s"];
@@ -242,7 +269,7 @@ test("battle: enemy summary keeps only the key parameters, no strength/agility/i
   for (const label of ["Урон по тебе", "Защита", "Уклонение", "Броня", "Стойкость", "Укрепление", "Маг. сопротивление", "Ходов в раунде"]) {
     assert.ok(sum.includes(`aria-label="${label}: `), `строка «${label}» есть`);
   }
-  assert.ok(!sum.includes("Характеристики"), "у монстра нет характеристик героя");
+  assert.ok(!sum.includes('aria-label="Характеристики: '), "у монстра нет строки характеристик героя (таб «Характеристики» — его собственный)");
   assert.ok(!sum.includes("role=\"tooltip\""), "подсказки открываются только по наведению");
 });
 
@@ -367,7 +394,9 @@ test("battle view shows the biome rule and live burning stacks", () => {
   }));
   assert.ok(html.includes('data-biome="fire"'));
   assert.ok(html.includes("Огненные недра"));
-  assert.ok(html.includes("Горение ×2"));
+  assert.ok(!html.includes("Горение ×2"), "эффекты героя по умолчанию во вкладке, не в сводке");
+  const heroTab = renderToStaticMarkup(React.createElement(EffectsTab, { chips: playerEffectChips(fire), label: "эффекты героя" }));
+  assert.ok(heroTab.includes("Горение ×2"), "горение героя видно во вкладке «Эффекты»");
   assert.ok(html.includes("Горение ×3"), "горение врага видно иконкой с множителем");
 
   const dark = freshBattle(makePlayer(), 3, false, "dark");
