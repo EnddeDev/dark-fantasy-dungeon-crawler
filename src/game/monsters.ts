@@ -48,7 +48,7 @@ export interface MonsterTypeMeta {
   armorDelta: number;
   /** Множитель урона обычной атаки. */
   atkMult: number;
-  /** Прибавка к числу ходов (минимум 1 ход остаётся всегда). */
+  /** Ходы вида поверх базового хода: 1 всегда, у ловкого +1, у остальных 0. Ловкость добавляет ходы сверху. */
   apDelta: number;
   /** Врождённое уклонение. */
   evade: number;
@@ -64,7 +64,7 @@ export const MONSTER_TYPE_META: Record<MonsterType, MonsterTypeMeta> = {
     hpMult: 1.15,
     armorDelta: 1,
     atkMult: 1.2,
-    apDelta: -1,
+    apDelta: 0,
     evade: 0,
     movePower: 0.9,
   },
@@ -110,8 +110,6 @@ export interface MonsterRaceMeta {
   evade?: number;
   /** Шанс проигнорировать любой наложенный эффект (дракон). */
   effectResist?: number;
-  /** Поправка к числу ходов поверх типа (призрак медлительнее обычного). */
-  apDelta?: number;
   /** Постоянное «Укрепление»: доля, на которую режется физический урон. */
   fortify?: number;
   /** Нельзя восстанавливать здоровье (конструкт). */
@@ -144,11 +142,10 @@ export const MONSTER_RACE_META: Record<MonsterRace, MonsterRaceMeta> = {
   undead: {
     id: "undead",
     name: "Нежить",
-    note: "Иммунитет к яду, кровотечению и страху. Умеет запугивать: лишает тебя атаки и приёма на ход. Ходов на −1 (минимум 1). Падая до 0 ОЗ, поднимается полностью, но после этого урон и броня −50% (один раз за бой).",
+    note: "Иммунитет к яду, кровотечению и страху. Умеет запугивать: лишает тебя атаки и приёма на ход. Падая до 0 ОЗ, поднимается полностью, но после этого урон и броня −50% (один раз за бой).",
     immune: ["poison", "bleed", "fear"],
     allowedTypes: ["strong", "agile", "smart"],
     bonusMoves: ["intimidate"],
-    apDelta: -1,
     revive: true,
   },
   construct: {
@@ -181,8 +178,7 @@ export const MONSTER_RACE_META: Record<MonsterRace, MonsterRaceMeta> = {
     allowedTypes: ["agile", "smart"],
     bonusMoves: ["cold_touch"],
     evade: 0.2,
-    /* У призрака мало здоровья, защиты и ходов — он почти не успевает действовать. */
-    apDelta: -1,
+    /* У призрака мало здоровья и защиты: он слаб в лобовом обмене. */
   },
   beast: {
     id: "beast",
@@ -268,10 +264,6 @@ export function raceFortify(race: MonsterRace): number {
   return raceMeta(race).fortify ?? 0;
 }
 
-/** Поправка рода к числу ходов. */
-export function raceApDelta(race: MonsterRace): number {
-  return raceMeta(race).apDelta ?? 0;
-}
 
 /** Врождённое уклонение рода (без уклонения типа). */
 export function raceEvade(race: MonsterRace): number {
@@ -323,7 +315,6 @@ export function raceTraits(race: MonsterRace, type?: MonsterType): string[] {
   const meta = raceMeta(race);
   const traits: string[] = [];
   if (meta.armorMult && meta.armorMult !== 1) traits.push(`броня ×${meta.armorMult}`);
-  if (meta.apDelta) traits.push(`ходов ${meta.apDelta > 0 ? "+" : "−"}${Math.abs(meta.apDelta)} (минимум 1)`);
   if (meta.revive) traits.push("воскресает один раз за бой: полное ОЗ, затем урон и броня −50%");
   if (meta.weakens) traits.push(`слабость: твой урон от атак −${Math.round(WEAKNESS_STEP * 100)}% за каждое попадание, складывается`);
   if (race === "none" && type) traits.push(NONE_TYPE_TRAIT[type]);

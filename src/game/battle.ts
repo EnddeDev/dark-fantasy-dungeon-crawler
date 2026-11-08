@@ -15,7 +15,7 @@ import {
   CHEST_RARITY_WEIGHTS,
   THREAT_META,
   BOSS_META,
-  dungeonGold,
+  monsterGold,
   consumableIntReq,
   consumablePower,
   canRollExtraAp,
@@ -63,7 +63,6 @@ import {
   NONE_SMART_MOVE,
   REVIVE_DEBUFF,
   WEAKNESS_STEP,
-  raceApDelta,
   raceArmorMult,
   raceBonusMoves,
   raceCannotHeal,
@@ -854,8 +853,8 @@ export function spawnEnemy(
     }
   }
 
-  const apBase = def.ap + apBonus + (effects.includes("ap") ? effectMagnitude("ap", level) : 0) +
-    typeMeta.apDelta + raceApDelta(def.race);
+  /* Ходы: 1 всегда, у ловкого типа +1; ловкость добавляет ходы сверху. Видовые и родовые поправки сняты. */
+  const apBase = 1 + typeMeta.apDelta + apBonus + (effects.includes("ap") ? effectMagnitude("ap", level) : 0);
 
   return {
     def,
@@ -2115,7 +2114,7 @@ function gainLoot(b: BattleState) {
   const e = b.enemy;
   if (b.isBoss) {
     // Боссы сохраняют прежний щедрый дроп: золото, припасы и гарантированный трофей.
-    const gold = dungeonGold(randInt(e.gold[0], e.gold[1]));
+    const gold = monsterGold(randInt(e.gold[0], e.gold[1]));
     const items = rollConsumableLoot(b.floor, 2);
     // Босс — единственный, кто может оставить легендарное: 50/10/1.
     const gear: GearItem[] = [rollGearDrop(b.floor, BOSS_RARITY_WEIGHTS, e.level)];

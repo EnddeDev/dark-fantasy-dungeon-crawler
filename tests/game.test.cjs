@@ -413,6 +413,28 @@ test("награды с монстра выпадают независимо: з
   near(none, content.lootNoneChance(content.lootTableFor(1, 1, "normal")) / 100, "ничего");
 });
 
+test("награда босса: золото удвоено поверх доли подземелья", () => {
+  const b = battle.newBattle(player({ hp: 500 }), 10, true, "classic");
+  b.queue = ["p", "e"]; b.idx = 0;
+  b.enemy.hp = 1; b.enemy.maxHp = 1; b.enemy.armor = 0;
+  const [lo, hi] = b.enemy.gold;
+  const rnd = Math.random;
+  Math.random = () => 0.99; // попадание без уклонения и крита
+  let after;
+  try { after = battle.playerAct(b, { type: "attack" }); } finally { Math.random = rnd; }
+  assert.equal(after.over, "win");
+  assert.ok(after.loot.gold >= 2 * content.dungeonGold(lo) && after.loot.gold <= 2 * content.dungeonGold(hi), `золото босса ${after.loot.gold}`);
+  assert.equal(after.loot.gold % 2, 0, "золото босса кратно множителю");
+});
+
+test("золото с монстров удвоено, у сундуков и находок доля остаётся вполовину", () => {
+  assert.equal(content.MONSTER_GOLD_MULT, 2);
+  assert.equal(content.monsterGold(30), 30, "30 → 15 долей → 30 монет");
+  assert.equal(content.monsterGold(41), 40, "41 → 20 долей → 40 монет");
+  assert.equal(content.monsterGold(0), 2, "минимум — две монеты");
+  assert.equal(content.dungeonGold(30), 15, "доля подземелья для прочих источников не менялась");
+});
+
 test("золото подземелья приходит вполовину", () => {
   assert.equal(content.DUNGEON_GOLD_SHARE, 0.5);
   assert.equal(content.dungeonGold(30), 15);
@@ -420,7 +442,7 @@ test("золото подземелья приходит вполовину", ()
   assert.equal(content.dungeonGold(1), 1);
   assert.equal(content.dungeonGold(0), 1, "минимум одна монета");
 
-  /* С монстра: прежний потолок 14 + 6 × уровень урезан вдвое. */
+  /* С монстра: прежний потолок 14 + 6 × уровень урезан вдвое, затем удвоен (множитель монстров). */
   const rng = lcg(77);
   let seen = 0;
   for (let level = 1; level <= 10; level++) {
@@ -428,8 +450,9 @@ test("золото подземелья приходит вполовину", ()
       const drop = content.rollEnemyLoot(level, level, "normal", rng);
       if (!drop.gold) continue;
       seen++;
-      assert.ok(drop.gold >= 1, `золото ${drop.gold} меньше монеты`);
-      assert.ok(drop.gold <= Math.floor((14 + level * 6) / 2), `золото ${drop.gold} выше половины при уровне ${level}`);
+      assert.ok(drop.gold >= 2, `золото ${drop.gold} меньше двух монет`);
+      assert.ok(drop.gold % content.MONSTER_GOLD_MULT === 0, `золото ${drop.gold} не кратно множителю`);
+      assert.ok(drop.gold <= Math.floor((14 + level * 6) / 2) * content.MONSTER_GOLD_MULT, `золото ${drop.gold} выше удвоенной половины при уровне ${level}`);
     }
   }
   assert.ok(seen > 200, `золото должно выпадать, найдено ${seen}`);
