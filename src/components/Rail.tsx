@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from "react";
-import { Activity, Coins, LogOut, Pencil, Sparkles, X } from "lucide-react";
+import { Activity, Coins, LogOut, Pencil, Sparkles } from "lucide-react";
 import {
   ARCHETYPES,
   GEAR_BASES,
@@ -146,18 +146,16 @@ export function Rail({
   battle,
   onLeaveRun,
   onRename,
-  onClose,
 }: {
   player: Player;
   run: Run | null;
   battle: BattleState | null;
   onLeaveRun?: () => void;
-  /** Закрывает лист персонажа; без него кнопки закрытия нет. */
-  onClose?: () => void;
   /** Возвращает текст ошибки или null, если имя принято. */
   onRename?: (name: string) => string | null;
 }) {
   const [section, setSection] = useState<"stats" | "effects">("stats");
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [draftName, setDraftName] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
@@ -300,20 +298,13 @@ export function Rail({
   const activeEffects = activeCount + learned.length + gearEntries.length;
 
   return (
-    <aside className="relative flex h-full w-[min(400px,100vw)] flex-col border-r-2 border-flamedim bg-slab shadow-[30px_0_60px_-30px_#000]" aria-label="Персонаж">
-      <div className="flex h-full min-h-0 flex-col">
+    <aside className="order-1 min-w-0 shrink-0 border-b border-line bg-slab lg:sticky lg:top-0 lg:h-dvh lg:w-[350px] lg:border-b-0 lg:border-r xl:w-[380px]" aria-label="Персонаж">
+      <div className="lg:flex lg:h-full lg:flex-col">
         {/* Кошелёк не уезжает при прокрутке характеристик и эффектов. */}
         <div className="sticky top-0 z-20 shrink-0 border-b border-flamedim/40 bg-slab px-4 py-3 shadow-[0_6px_18px_-12px_#000]" aria-label="Кошель персонажа">
           <div className="flex items-center justify-between gap-3">
             <span className="flex items-center gap-2 text-sm text-mute"><Coins size={18} className="text-flame" aria-hidden /> Кошель</span>
-            <span className="flex items-center gap-3">
-              <span className="font-mono text-2xl leading-none tab text-flamehi">{player.gold}<span className="ml-1.5 text-xs text-mute">зол.</span></span>
-              {onClose && (
-                <button type="button" onClick={onClose} aria-label="Закрыть лист персонажа" className="text-mute hover:text-rubric">
-                  <X size={18} aria-hidden />
-                </button>
-              )}
-            </span>
+            <span className="font-mono text-2xl leading-none tab text-flamehi">{player.gold}<span className="ml-1.5 text-xs text-mute">зол.</span></span>
           </div>
           {run && (
             <div className="mt-2 flex items-center justify-between gap-2 border-t border-line pt-2 text-[0.92rem]">
@@ -323,7 +314,16 @@ export function Rail({
           )}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <button
+          type="button"
+          aria-expanded={mobileOpen}
+          onClick={() => setMobileOpen((open) => !open)}
+          className="flex w-full items-center justify-between border-b border-line px-4 py-2.5 text-left font-display text-[1rem] uppercase tracking-[0.08em] text-flamehi lg:hidden"
+        >
+          Персонаж <span className="font-mono text-[0.86rem] normal-case tracking-normal text-mute">{mobileOpen ? "Свернуть" : "Развернуть"}</span>
+        </button>
+
+        <div className={`${mobileOpen ? "block" : "hidden"} min-h-0 flex-1 lg:block lg:overflow-y-auto`}>
           <header className="border-b border-line px-4 py-4">
             <div className="flex items-baseline justify-end gap-2">
               <span className="font-mono text-[0.88rem] text-mute">Побед: {player.kills}</span>
