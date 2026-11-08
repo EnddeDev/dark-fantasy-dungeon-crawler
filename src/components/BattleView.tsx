@@ -431,8 +431,8 @@ export function BattleView({
       )}
 
       <div className="grid flex-1 items-start xl:grid-cols-[minmax(0,1fr)_minmax(0,34rem)_minmax(0,1fr)]">
-        {/* ДЕЙСТВИЯ — по центру экрана: герой и кнопки. Левой панели в бою нет. */}
-        <div className="order-2 min-w-0 border-b border-line p-4 sm:p-6 xl:order-2 xl:col-start-2 xl:border-b-0">
+        {/* ГЕРОЙ — левая колонка боя: здоровье, концентрация, эффекты и сводка */}
+        <div className="order-2 min-w-0 border-b border-line p-4 sm:p-6 xl:order-1 xl:col-start-1 xl:border-b-0">
           {/* ГЕРОЙ: здоровье, концентрация, эффекты и сводка боя */}
           <div className="relative border border-line bg-slab/80 p-4">
             <div>
@@ -489,8 +489,12 @@ export function BattleView({
             )}
           </div>
 
+        </div>
+
+        {/* ДЕЙСТВИЯ — центральная колонка боя: кнопки, приёмы, рюкзак */}
+        <div className="order-3 min-w-0 border-b border-line p-4 sm:p-6 xl:order-2 xl:col-start-2 xl:border-b-0">
           {/* ДЕЙСТВИЯ */}
-          <div className="mt-4 border border-line bg-slab/95 p-4">
+          <div className="border border-line bg-slab/95 p-4">
             <h3 className="sc mb-3 text-flamedim">Действия</h3>
             {!b.over && !myTurn && (
               <div className="mb-3 h-2 w-full overflow-hidden bg-black/50">
