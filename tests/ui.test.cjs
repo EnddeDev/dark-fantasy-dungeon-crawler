@@ -27,8 +27,9 @@ const { Lobby } = load("src/components/Lobby.tsx", "lobby");
 const { Rail, EffectTip, EffectList, summedEffectEntries } = load("src/components/Rail.tsx", "rail");
 const { gearEffectTotals } = load("src/game/gearEffectTotals.ts", "gear-effect-totals");
 const { Dungeon } = load("src/components/Dungeon.tsx", "dungeon");
-const { BattleView, SummaryTabs, EffectsTab } = load("src/components/BattleView.tsx", "battle-view");
+const { BattleView, SummaryTabs, EffectsTab, chipEntries } = load("src/components/BattleView.tsx", "battle-view");
 const { playerEffectChips } = load("src/game/effects.ts", "effects-chips");
+const { heroItemEffects, learnedEffects, enemyEffects } = load("src/game/effectEntries.ts", "effect-entries");
 const battle = load("src/game/battle.ts", "battle");
 const monsters = load("src/game/monsters.ts", "monsters");
 
@@ -205,17 +206,50 @@ test("battle summary: two tabs for hero and monster — stats and effects", () =
 });
 
 test("battle summary: effects tab lists effects with duration, empty state when none", () => {
-  const empty = renderToStaticMarkup(React.createElement(EffectsTab, { chips: [], label: "x" }));
+  const empty = renderToStaticMarkup(React.createElement(EffectsTab, { chips: [], entries: [], label: "x" }));
   assert.ok(empty.includes("Эффектов нет."), "пустая вкладка эффектов");
   const b = freshBattle(makePlayer(), 3, false);
   b.p.statuses.burn = 3;
   const chips = playerEffectChips(b);
-  const html = renderToStaticMarkup(React.createElement(EffectsTab, { chips, label: "эффекты героя" }));
+  const html = renderToStaticMarkup(React.createElement(EffectsTab, { chips, entries: chipEntries(chips), label: "эффекты героя" }));
   assert.ok(html.includes("Горение"), "эффект виден по названию");
   assert.ok(html.includes("<ul"), "список эффектов");
   const tabs = renderToStaticMarkup(React.createElement(SummaryTabs, { value: "effects", onChange: noop, effectsCount: 2 }));
   assert.match(tabs, /aria-selected="true"[^>]*>Эффекты/, "активен таб эффектов");
   assert.ok(tabs.includes(">2<") || tabs.includes(">2</span>"), "счётчик эффектов в табе");
+});
+
+test("battle effects: thorns, rage and other gear effects reach the list", () => {
+  const item = content.createGearItem({ baseId: "sword", level: 3, wear: "worn", rarity: "common", identified: true });
+  item.effects = ["thorns", "rage"];
+  item.effectRolls = {};
+  const entries = heroItemEffects([item]);
+  const names = entries.map((en) => en.name);
+  assert.ok(names.includes("Шипы"), "шипы от снаряжения попадают в список");
+  assert.ok(names.includes("Ярость"), "ярость от снаряжения попадает в список");
+  assert.ok(entries.every((en) => en.meta === "снаряжение" || en.meta), "у каждой строки есть пометка");
+  const html = renderToStaticMarkup(React.createElement(EffectsTab, { chips: [], entries, label: "эффекты героя" }));
+  assert.ok(html.includes("Шипы") && html.includes("Ярость"), "вкладка показывает эффекты снаряжения");
+});
+
+test("battle effects: enemy list has its own effects and passive, not regen/thorns twice", () => {
+  const list = enemyEffects({
+    effects: ["vamp", "thorns", "regen"],
+    effectPower: { vamp: 25, thorns: 4, regen: 4 },
+    passive: { id: "stone_hide", name: "Каменная шкура", desc: "Физический урон по нему снижен на 25%." },
+  });
+  const names = list.map((en) => en.name);
+  assert.ok(names.includes("Вампиризм"), "врождённый эффект монстра виден");
+  assert.ok(names.includes("Каменная шкура"), "пассив монстра виден");
+  assert.ok(!names.includes("Шипы") && !names.includes("Регенерация"), "шипы и регенерация уже в иконках статусов");
+  const vamp = list.find((en) => en.name === "Вампиризм");
+  assert.equal(vamp.detail, "+25% лечения от физического урона");
+});
+
+test("battle effects: learned abilities from the hero's passives are listed", () => {
+  const list = learnedEffects(["arch_bulwark_10"]);
+  assert.equal(list.length, 1, "изученная способность попадает в список");
+  assert.ok(list[0].name && list[0].detail, "у способности есть название и описание");
 });
 
 test("battle: bag pouch shows its three potion slots inside the actions column", () => {
@@ -395,7 +429,8 @@ test("battle view shows the biome rule and live burning stacks", () => {
   assert.ok(html.includes('data-biome="fire"'));
   assert.ok(html.includes("Огненные недра"));
   assert.ok(!html.includes("Горение ×2"), "эффекты героя по умолчанию во вкладке, не в сводке");
-  const heroTab = renderToStaticMarkup(React.createElement(EffectsTab, { chips: playerEffectChips(fire), label: "эффекты героя" }));
+  const fireChips = playerEffectChips(fire);
+  const heroTab = renderToStaticMarkup(React.createElement(EffectsTab, { chips: fireChips, entries: chipEntries(fireChips), label: "эффекты героя" }));
   assert.ok(heroTab.includes("Горение ×2"), "горение героя видно во вкладке «Эффекты»");
   assert.ok(html.includes("Горение ×3"), "горение врага видно иконкой с множителем");
 

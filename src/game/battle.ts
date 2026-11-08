@@ -130,6 +130,7 @@ import { damageTypeName, isDamageElement } from "./damageTypes";
 import { ARCHETYPES, type ArchetypeId } from "./archetypes";
 import type { GearEffectId, GearPassiveId } from "./gearEffects";
 import { pouchIds } from "./pouch";
+import { heroItemEffects, type TabEffect } from "./effectEntries";
 import {
   GEAR_PASSIVE_BASE,
   MAX_EXTRA_AP,
@@ -245,6 +246,8 @@ export interface BattleState {
   p: {
     hp: number;
     maxHp: number;
+    /** Эффекты надетых исследованных вещей для вкладки «Эффекты». Не меняются в бою. */
+    itemEffects?: TabEffect[];
     /** Уровень героя: от него зависит множитель опыта за монстра. */
     level: number;
     armor: number;
@@ -1051,6 +1054,7 @@ export function newBattle(
       firstRoundApBonus: d.firstRoundApBonus,
       stats: { ...pl.stats },
       passives: [...pl.passives],
+      itemEffects: heroItemEffects(equippedList(pl).filter((item) => item.identified)),
       hit: d.hit,
       critChance: d.critChance,
       critDamage: d.critDamage,

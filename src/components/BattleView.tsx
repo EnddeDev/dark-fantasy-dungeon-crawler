@@ -36,6 +36,7 @@ import { BiomeRule, BiomeTag, biomeStyle } from "./BiomeLabel";
 import { isBattleCurse } from "../game/traps";
 import { statDamage } from "../game/statFormulas";
 import { EFFECT_COLORS, durationLabel, enemyEffectChips, playerEffectChips, type EffectChip, type EffectIconId } from "../game/effects";
+import { enemyEffects, learnedEffects, type TabEffect } from "../game/effectEntries";
 import { EffectChips } from "./EffectChips";
 import { EffectGlyph } from "./EffectIcon";
 import { DamageTypeTag, ElementRow } from "./DamageTypeIcon";
@@ -205,6 +206,9 @@ export function BattleView({
   /* Иконки эффектов: у героя — под здоровьем, у монстра — поверх портрета. */
   const playerChips = playerEffectChips(b);
   const enemyChips = enemyEffectChips(b);
+  /* Полный список для вкладок «Эффекты»: статусы, свойства вещей, способности и врождённые свойства монстра. */
+  const heroEffects: TabEffect[] = [...chipEntries(playerChips), ...(b.p.itemEffects ?? []), ...learnedEffects(b.p.passives)];
+  const foeEffects: TabEffect[] = [...chipEntries(enemyChips), ...enemyEffects(e)];
   const highlight = new Set(playerChips.map((c) => c.highlight).filter(Boolean));
   const highlightedRows: Record<string, boolean> = {
     "Урон оружием": highlight.has("dmg"),
@@ -469,7 +473,7 @@ export function BattleView({
             <div className="mt-3 border-t border-line/70 pt-3">
               <span className="sc">Сводка боя</span>
               <div className="mt-2">
-                <SummaryTabs value={heroTab} onChange={setHeroTab} effectsCount={playerChips.length} />
+                <SummaryTabs value={heroTab} onChange={setHeroTab} effectsCount={heroEffects.length} />
               </div>
               {heroTab === "stats" ? (
                 <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1.5 text-[0.94rem] sm:grid-cols-3">
@@ -483,7 +487,7 @@ export function BattleView({
                   ))}
                 </div>
               ) : (
-                <EffectsTab chips={playerChips} label="эффекты героя" />
+                <EffectsTab chips={playerChips} entries={heroEffects} label="эффекты героя" />
               )}
             </div>
 
@@ -793,7 +797,7 @@ export function BattleView({
                 {e.forceGuard > 0 && <Tag tone="verd">вынужден держать оборону</Tag>}
               </div>
               <div className="mt-2">
-                <SummaryTabs value={foeTab} onChange={setFoeTab} effectsCount={enemyChips.length} />
+                <SummaryTabs value={foeTab} onChange={setFoeTab} effectsCount={foeEffects.length} />
               </div>
               {foeTab === "stats" ? (
                 <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1.5 text-[0.94rem] sm:grid-cols-3">
@@ -807,7 +811,7 @@ export function BattleView({
                   ))}
                 </div>
               ) : (
-                <EffectsTab chips={enemyChips} label="эффекты врага" />
+                <EffectsTab chips={enemyChips} entries={foeEffects} label="эффекты врага" />
               )}
             </div>
 
@@ -1171,17 +1175,45 @@ export function SummaryTabs({
   );
 }
 
-/** Вкладка «Эффекты»: иконки крупнее и текстовый список со сроком. */
-export function EffectsTab({ chips, label }: { chips: EffectChip[]; label: string }) {
-  if (chips.length === 0) return <p className="mt-2 text-sm italic text-mute">Эффектов нет.</p>;
+/** Статусы как строки вкладки: название со стаками, что делает, срок или иммунитет. */
+export function chipEntries(chips: EffectChip[]): TabEffect[] {
+  return chips.map((c, i) => ({
+    id: `chip-${i}-${c.id}`,
+    name: c.badge && !c.name.includes(c.badge) ? `${c.name} ${c.badge}` : c.name,
+    detail: c.details[0] ?? "",
+    meta: c.immune ? "иммунитет" : durationLabel(c),
+    negative: c.polarity === "bad",
+  }));
+}
+
+/** Вкладка «Эффекты»: иконки статусов сверху и полный список всех эффектов. */
+export function EffectsTab({
+  chips,
+  entries,
+  label,
+}: {
+  chips: EffectChip[];
+  entries: TabEffect[];
+  label: string;
+}) {
+  if (entries.length === 0) return <p className="mt-2 text-sm italic text-mute">Эффектов нет.</p>;
   return (
     <div className="relative z-20 mt-2 space-y-2">
-      <EffectChips chips={chips} label={label} size={36} />
-      <ul className="space-y-1">
-        {chips.map((c, i) => (
-          <li key={i} className="flex items-baseline justify-between gap-3 border-b border-line/40 pb-1 text-[0.9rem]">
-            <span className="min-w-0 truncate text-parch">{c.badge ? `${c.name} ${c.badge}` : c.name}</span>
-            <span className="shrink-0 font-mono text-[0.78rem] text-mute">{c.immune ? "иммунитет" : durationLabel(c)}</span>
+      {chips.length > 0 && <EffectChips chips={chips} label={label} size={36} />}
+      <ul className="space-y-1.5">
+        {entries.map((en) => (
+          <li key={en.id} className="border-l-2 border-line/70 pl-2">
+            <div className="flex items-baseline justify-between gap-3">
+              <span
+                className={`min-w-0 truncate font-display text-[0.92rem] uppercase tracking-[0.05em] ${
+                  en.negative ? "text-rubric" : "text-flamehi"
+                }`}
+              >
+                {en.name}
+              </span>
+              {en.meta && <span className="shrink-0 font-mono text-[0.74rem] text-mute">{en.meta}</span>}
+            </div>
+            {en.detail && <p className="text-[0.86rem] leading-snug text-parch/85">{en.detail}</p>}
           </li>
         ))}
       </ul>
