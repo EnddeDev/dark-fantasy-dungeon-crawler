@@ -29,6 +29,7 @@ const { gearEffectTotals } = load("src/game/gearEffectTotals.ts", "gear-effect-t
 const { Dungeon } = load("src/components/Dungeon.tsx", "dungeon");
 const { BattleView } = load("src/components/BattleView.tsx", "battle-view");
 const battle = load("src/game/battle.ts", "battle");
+const monsters = load("src/game/monsters.ts", "monsters");
 
 /** Бой с нейтральным врагом: род «никакой» и тип «сильный» не дают ни уклонения, ни иммунитетов. */
 function freshBattle(pl, floor, isBoss, biome, torchTurns, burning) {
@@ -190,24 +191,93 @@ test("dungeon header hides maze counts and corridor healing shows fixed/INT form
   assert.ok(html.includes("+32 здоровья")); // свиток лечения больше не масштабируется от ИНТ
 });
 
-test("battle puts actions in the center and the log under the enemy on the right", () => {
+test("battle: hero and actions in the center, monster and log on the right, no left panel", () => {
   const weapon = content.createGearItem({ baseId: "sword", level: 1, wear: "worn", rarity: "common", identified: true });
   const p = makePlayer({ armory: [weapon], equip: { ...makePlayer().equip, mainHand: weapon.uid } });
   const b = freshBattle(p, 1);
   const html = renderToStaticMarkup(React.createElement(BattleView, {
     battle: b, onAct: noop, onEnemyTurn: noop, onContinue: noop,
   }));
-  assert.ok(html.includes("xl:grid-cols-[minmax(260px,0.9fr)_minmax(320px,1.05fr)_minmax(300px,0.9fr)]"));
-  const actions = html.indexOf("Действия</h3>");
-  const enemy = html.indexOf("Способности");
-  const log = html.indexOf("Хроника боя");
-  assert.ok(actions > 0 && enemy > actions && log > enemy);
-  assert.ok(html.includes("xl:col-start-2"));
-  assert.ok(html.includes("xl:col-start-3"));
-  const effectsStart = html.indexOf("Эффекты в бою");
-  const effectsEnd = html.indexOf("Действия</h3>", effectsStart);
-  const effects = html.slice(effectsStart, effectsEnd);
-  assert.ok(!/при[её]м/i.test(effects), "effects panel should not describe techniques");
+  assert.ok(html.includes("xl:grid-cols-[minmax(320px,0.95fr)_minmax(340px,1fr)]"), "две колонки вместо трёх");
+  assert.ok(!html.includes("xl:col-start-3"), "левой панели нет");
+  assert.ok(!html.includes("Эффекты в бою"), "список эффектов героя убран: иконки и подсказки остались");
+  assert.ok(!html.includes("полный разбор"), "полный разбор героя убран");
+  const at = (s) => html.indexOf(s);
+  assert.ok(at("Покоритель") > 0 && at("Действия</h3>") > at("Покоритель"), "герой над действиями");
+  assert.ok(at("Сводка врага") > at("Действия</h3>"), "сводка врага справа");
+  assert.ok(at("Приёмы врага") > at("Сводка врага"), "приёмы врага под сводкой");
+  assert.ok(at("Хроника боя") > at("Приёмы врага"), "хроника под приёмами");
+  assert.ok(html.includes("Способности"), "кнопка кодекса на месте");
+});
+
+test("battle: enemy summary keeps only the key parameters, no strength/agility/intellect", () => {
+  const b = freshBattle(makePlayer(), 3, false);
+  const html = renderToStaticMarkup(React.createElement(BattleView, {
+    battle: b, onAct: noop, onEnemyTurn: noop, onContinue: noop,
+  }));
+  const start = html.indexOf("Сводка врага");
+  const sum = html.slice(start, html.indexOf("Приёмы врага", start));
+  for (const label of ["Урон по тебе", "Защита", "Уклонение", "Броня", "Стойкость", "Укрепление", "Маг. сопротивление", "Ходов в раунде"]) {
+    assert.ok(sum.includes(`aria-label="${label}: `), `строка «${label}» есть`);
+  }
+  assert.ok(!sum.includes("Характеристики"), "у монстра нет характеристик героя");
+  assert.ok(!sum.includes("role=\"tooltip\""), "подсказки открываются только по наведению");
+});
+
+test("battle: race and type sit above the monster name as hover tags", () => {
+  const b = freshBattle(makePlayer(), 3, false);
+  b.enemy.def = { ...b.enemy.def, name: "Тестовый зверь", race: "beast" };
+  b.enemy.mtype = "agile";
+  const html = renderToStaticMarkup(React.createElement(BattleView, {
+    battle: b, onAct: noop, onEnemyTurn: noop, onContinue: noop,
+  }));
+  const raceAt = html.indexOf(`>${monsters.MONSTER_RACE_META.beast.name}</span>`);
+  const typeAt = html.indexOf(`>${monsters.MONSTER_TYPE_META.agile.name}</span>`);
+  const nameAt = html.indexOf("Тестовый зверь</h3>");
+  assert.ok(raceAt > 0 && typeAt > 0, "род и тип выведены тегами");
+  assert.ok(raceAt < nameAt && typeAt < nameAt, "теги над именем");
+  assert.ok(html.indexOf("Тестовый зверь</h3>") > html.indexOf(`>${monsters.MONSTER_TYPE_META.agile.name}</span>`));
+  assert.ok(html.includes('tabindex="0"'), "теги открывают подсказку с фокусом и наведением");
+});
+
+test("battle: enemy moves list damage and effect icons from the turn rules", () => {
+  const b = freshBattle(makePlayer(), 3, false);
+  b.enemy.def = { ...b.enemy.def, race: "beast" };
+  b.enemy.moves = ["attack", "wound", "darkness"];
+  b.enemy.atk = [5, 8];
+  const er = battle.enemyReadout(b);
+  const byMove = Object.fromEntries(er.moves.map((m) => [m.move, m]));
+  assert.ok(byMove.attack.damage > 0, "обычный удар наносит урон");
+  assert.deepEqual(byMove.attack.effects.map((x) => x.id).sort(), ["bleed", "poison"]);
+  assert.ok(byMove.attack.effects.every((x) => x.half), "зверь накладывает кровь или яд примерно в половине ударов");
+  assert.deepEqual(byMove.wound.effects, [{ id: "bleed", half: false }]);
+  assert.equal(byMove.darkness.damage, 0, "мрак урона не наносит");
+  assert.deepEqual(byMove.darkness.effects, [{ id: "darkness", half: false }]);
+  const html = renderToStaticMarkup(React.createElement(BattleView, {
+    battle: b, onAct: noop, onEnemyTurn: noop, onContinue: noop,
+  }));
+  const start = html.indexOf("Приёмы врага");
+  const list = html.slice(start, html.indexOf("Хроника боя", start));
+  assert.ok(list.includes("≈"), "урон приёма показан приблизительно");
+  assert.ok(list.includes("Кровотечение"), "иконка кровотечения с подписью");
+});
+
+test("battle: enemy guard raises its armor, the summary shows both values", () => {
+  const b = freshBattle(makePlayer(), 3, false);
+  /* Броня фиксируется: у случайного монстра она может быть 0, и защита ничего не меняет. */
+  b.enemy.armor = 10;
+  b.enemy.guard = false;
+  const base = battle.enemyReadout(b).armor;
+  b.enemy.guard = true;
+  const er = battle.enemyReadout(b);
+  assert.ok(er.armor > base, "в защите броня выше");
+  assert.equal(er.armorBase, base, "базовая броня без защиты та же");
+});
+
+test("battle: backpack is a full-height panel", () => {
+  const view = fs.readFileSync("src/components/BattleView.tsx", "utf8");
+  assert.match(view, /menu === "item" && \(\s*<div className="fixed inset-0 z-40 flex justify-start">/, "рюкзак открывается слева поверх экрана");
+  assert.match(view, /<aside className="rise relative flex h-full w-\[min\(30rem,100vw\)\]/, "панель на всю высоту экрана");
 });
 
 
@@ -276,7 +346,7 @@ test("battle view shows the biome rule and live burning stacks", () => {
   assert.ok(html.includes('data-biome="fire"'));
   assert.ok(html.includes("Огненные недра"));
   assert.ok(html.includes("Горение ×2"));
-  assert.ok(html.includes("Горение врага ×3"));
+  assert.ok(html.includes("Горение ×3"), "горение врага видно иконкой с множителем");
 
   const dark = freshBattle(makePlayer(), 3, false, "dark");
   const darkHtml = renderToStaticMarkup(React.createElement(BattleView, {

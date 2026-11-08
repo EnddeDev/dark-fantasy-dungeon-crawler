@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 
 /**
- * Боевой параметр в левой панели: иконка и значение.
+ * Боевой параметр в сводке боя: иконка и значение.
  * Наведение (фокус или тап) открывает подсказку: что это за параметр и что он даёт.
  */
 
@@ -34,6 +34,7 @@ export type MetricKey =
   | "enemyDamage"
   | "incomingDamage"
   | "missChance"
+  | "guard"
   | "stats";
 
 interface MetricInfo {
@@ -102,6 +103,11 @@ export const METRIC_INFO: Record<MetricKey, MetricInfo> = {
     label: "Промах в мраке",
     icon: EyeOff,
     what: "В тёмном подземелье физический удар может промахнуться. Проверка идёт и для вас, и для врага.",
+  },
+  guard: {
+    label: "Защита",
+    icon: ShieldPlus,
+    what: "Глухая защита: броня +25%, пока враг в обороне.",
   },
   stats: {
     label: "Характеристики",

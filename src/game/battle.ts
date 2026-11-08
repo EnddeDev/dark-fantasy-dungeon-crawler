@@ -74,6 +74,7 @@ import {
   raceRevives,
   raceWeakens,
   type DamageElement,
+  type MonsterRace,
   type MonsterType,
 } from "./monsters";
 import { SLOT_ORDER } from "./types";
@@ -3419,6 +3420,103 @@ export function chooseEnemyMove(b: BattleState): EnemyMove {
   }
   if (!top.length) return moves.includes("attack") ? "attack" : (moves[0] ?? "attack");
   return pick(top);
+}
+
+/** Эффект, который приём накладывает на героя. half — с шансом около половины (разные наложения рода). */
+export type EnemyMoveEffectId =
+  | "bleed" | "poison" | "burn" | "curse" | "fear" | "stun" | "sunder" | "darkness"
+  | "noHeal" | "sealItems" | "sealSkills" | "sealAttack";
+export interface EnemyMoveEffect {
+  id: EnemyMoveEffectId;
+  half: boolean;
+}
+
+/** Родовые наложения удара (как в applyRaceStrike): только у ударов оружием и когтями. */
+function raceStrikeEffects(race: MonsterRace): EnemyMoveEffect[] {
+  if (race === "vampire") return [{ id: "bleed", half: false }];
+  if (race === "ghost") return [{ id: "fear", half: false }];
+  if (race === "beast") return [{ id: "bleed", half: true }, { id: "poison", half: true }];
+  if (race === "demon") return [{ id: "burn", half: true }, { id: "fear", half: true }];
+  return [];
+}
+
+/** Какие эффекты приём накладывает на героя. Повторяет ветки хода врага, чтобы подсказка совпадала с боем. */
+export function enemyMoveEffects(b: BattleState, move: EnemyMove): EnemyMoveEffect[] {
+  const e = b.enemy;
+  const strike = STRIKE_MOVES.includes(move) ? raceStrikeEffects(e.def.race) : [];
+  const one = (id: EnemyMoveEffectId): EnemyMoveEffect[] => [{ id, half: false }];
+  switch (move) {
+    case "attack":
+    case "multi":
+      return strike;
+    case "heavy":
+      return [...strike, ...(e.def.id === "husk" ? one("sunder") : [])];
+    case "wound": return one("bleed");
+    case "poison": return one("poison");
+    case "sunder": return one("sunder");
+    case "curse": return one("curse");
+    case "terror": return one("fear");
+    case "bell_stun": return one("stun");
+    case "intimidate": return [{ id: "sealAttack", half: false }, { id: "sealSkills", half: false }];
+    case "darkness": return one("darkness");
+    case "cold_touch": return one("noHeal");
+    case "hell_force": return one("burn");
+    case "seal_items": return one("sealItems");
+    case "seal_skills": return one("sealSkills");
+    case "seal_attack": return one("sealAttack");
+    default: return [];
+  }
+}
+
+export interface EnemyMoveView {
+  move: EnemyMove;
+  /** Ожидаемый урон приёма по герою сейчас; 0 — приём без урона. */
+  damage: number;
+  effects: EnemyMoveEffect[];
+  /** Раунды до снятия перезарядки; 0 — приём доступен. */
+  cooldown: number;
+}
+
+/** Параметры врага для сводки и списка приёмов: всё считается теми же функциями, что и бой. */
+export interface EnemyReadout {
+  /** Броня без защиты и с защитой врага. */
+  armorBase: number;
+  armor: number;
+  guard: boolean;
+  evade: number;
+  /** Стойкость к негативным эффектам: род, босс, эффекты снаряжения. */
+  resist: number;
+  fortify: number;
+  magicResist: number;
+  ap: number;
+  moves: EnemyMoveView[];
+}
+
+export function enemyReadout(b: BattleState): EnemyReadout {
+  const e = b.enemy;
+  const depleted = effectsDepleted(b);
+  const effectResist = depleted ? 0 : eChance(b, "resist");
+  const resist = 1 - (1 - raceEffectResist(e.def.race)) * (1 - (b.isBoss ? BOSS_EFFECT_RESIST : 0)) * (1 - effectResist);
+  const effectFortify = depleted ? 0 : eChance(b, "fortify");
+  const fortify = 1 - (1 - raceFortify(e.def.race)) * (1 - effectFortify);
+  const magicResist = depleted ? 0 : eChance(b, "magic_resist");
+  const list = [...new Set(e.moves.length ? e.moves : e.def.moves)];
+  return {
+    armorBase: enemyArmorNow({ ...e, guard: false }),
+    armor: enemyArmorNow(e),
+    guard: e.guard,
+    evade: enemyEvade(b),
+    resist,
+    fortify,
+    magicResist,
+    ap: e.ap,
+    moves: list.map((move) => ({
+      move,
+      damage: Math.round(enemyExpectedMoveDamage(b, move)),
+      effects: enemyMoveEffects(b, move),
+      cooldown: enemyMoveCooldownLeft(b, move),
+    })),
+  };
 }
 
 export function enemyStep(b0: BattleState): BattleState {
