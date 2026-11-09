@@ -54,29 +54,31 @@ test("сумка: очистка слота и сохранение поля п�
   assert.deepEqual(pouch.pouchOf(restored), ["potion_s", null, null], "сумка переживает загрузку");
 });
 
-test("в бою первое зелье из сумки за ход не тратит ход, второе тратит", () => {
+test("в бою зелья из сумки не тратят выносливость, из рюкзака — 5", () => {
   const pl = hero({ bag: { potion_s: 2 }, pouch: ["potion_s", null, null] });
   const b = battle.newBattle(pl, 1, false, "classic", 0, 0);
   b.queue = ["p", "e"];
   b.idx = 0;
   b.p.hp = b.p.maxHp - 40;
   const first = battle.playerAct(b, { type: "item", id: "potion_s" });
-  assert.equal(first.idx, 0, "первое из сумки: ход героя остаётся");
+  assert.equal(first.idx, 0, "из сумки: ход героя остаётся");
   assert.equal(first.bag.potion_s, 1, "зелье потрачено");
-  assert.ok(first.log.some((l) => l.text.includes("не тратит ход")));
+  assert.equal(first.p.stamina, b.p.stamina, "из сумки бесплатно");
+  assert.ok(first.log.some((l) => l.text.includes("не тратит выносливость")));
   const second = battle.playerAct(first, { type: "item", id: "potion_s" });
-  assert.equal(second.idx, 1, "второе за ход тратит ход");
+  assert.equal(second.p.stamina, first.p.stamina, "и второе из сумки бесплатно");
   assert.equal(second.bag.potion_s, undefined, "зелья больше нет");
 });
 
-test("зелье не из сумки тратит ход", () => {
+test("зелье не из сумки тратит 5 выносливости", () => {
   const pl = hero({ bag: { potion_s: 1 }, pouch: [null, null, null] });
   const b = battle.newBattle(pl, 1, false, "classic", 0, 0);
   b.queue = ["p", "e"];
   b.idx = 0;
   b.p.hp = b.p.maxHp - 40;
   const used = battle.playerAct(b, { type: "item", id: "potion_s" });
-  assert.equal(used.idx, 1, "обычное зелье тратит ход");
+  assert.equal(used.p.stamina, b.p.stamina - 5, "обычное зелье тратит 5 выносливости");
+  assert.equal(used.idx, 0, "ход героя продолжается");
 });
 
 test("сумка: в бою поменять слот нельзя, вне боя — можно", () => {

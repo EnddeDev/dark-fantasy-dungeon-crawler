@@ -57,7 +57,7 @@ function fight(race, moves, bag = {}) {
 
 const endRound = (st) => withRandom(() => battle.playerAct({ ...st, queue: ["p"], idx: 0 }, { type: "guard" }));
 
-test("зелье иммунитета тратит ход и защищает ровно от одного эффекта на 3 хода", () => {
+test("зелье иммунитета из рюкзака тратит 5 выносливости и защищает ровно от одного эффекта на 3 хода", () => {
   const b = fight("none", ["guard"], { immune_bleed: 1 });
   b.queue = ["p", "e"];
   b.idx = 0;
@@ -65,7 +65,8 @@ test("зелье иммунитета тратит ход и защищает р
   assert.equal(after.p.statuses.immune.bleed, 3, "кровотечение: 3 хода");
   assert.equal(after.p.statuses.immune.poison ?? 0, 0, "другие эффекты не защищены");
   assert.equal(after.bag.immune_bleed ?? 0, 0, "зелье израсходовано");
-  assert.equal(after.queue[after.idx], "e", "ход потрачен: очередь дошла до врага");
+  assert.equal(after.p.stamina, b.p.stamina - 5, "из рюкзака — 5 выносливости");
+  assert.equal(after.queue[after.idx], "p", "ход героя продолжается, пока есть выносливость");
 });
 
 test("иммунитет к кровотечению: удар вампира не накладывает рану", () => {

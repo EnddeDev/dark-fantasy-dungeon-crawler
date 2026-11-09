@@ -74,7 +74,8 @@ test("stat formulas count the full characteristic value including the starting p
   const d = battle.derived(mkP());
   /* СИЛ 5: базовые 10 + 5 × 10 ОЗ. */
   assert.equal(d.maxHp, 60);
-  assert.equal(d.ap, 5);
+  assert.equal(d.ap, 5, "ловкость даёт ходы: 1 за очко");
+  assert.equal(d.staminaMax, 90 + 10 * mkP().stats.agi + 5 * mkP().stats.str, "выносливость: 90 + 10·ЛОВ + 5·СИЛ");
   assert.equal(d.strFlat, 7);
   assert.equal(d.evade, 0.25);
   assert.ok(Math.abs(d.critChance - 0.07) < 1e-9);
@@ -191,8 +192,7 @@ test("stun skips a turn, fear auto-guards, wither turns healing into damage, chi
   assert.equal(afterStun.p.statuses.stunAp, 0);
   assert.equal(afterStun.idx, 1);
 
-  /* Страх: защиту герой занимает сам в начале своего хода; удар и бегство закрыты,
-     рюкзак открыт, страх тратится, когда ход заканчивается. */
+  /* Страх: защиту герой выбирает сам; удар закрыт, бегство и рюкзак открыты, страх тратится в конце раунда. */
   const fearStart = (bag = {}, fear = 1) => {
     const b = mk(bag);
     b.queue = ["e", "p", "e", "p"];
@@ -203,7 +203,7 @@ test("stun skips a turn, fear auto-guards, wither turns healing into damage, chi
   };
   const turnStart = fearStart();
   assert.equal(turnStart.idx, 1, "ход героя");
-  assert.equal(turnStart.p.guard, true, "страх сам ставит защиту в начале хода");
+  assert.equal(turnStart.p.guard, false, "страх не ставит защиту сам: герой выбирает");
   assert.equal(turnStart.p.statuses.fear, 1, "страх не тратится до конца хода героя");
   const attacked = battle.playerAct(turnStart, { type: "attack" });
   assert.equal(attacked.enemy.hp, 5000, "в страхе удар не проходит");
@@ -215,8 +215,9 @@ test("stun skips a turn, fear auto-guards, wither turns healing into damage, chi
   const itemStart = fearStart({ potion_s: 1 });
   const usedItem = battle.playerAct(itemStart, { type: "item", id: "potion_s" });
   assert.equal(usedItem.bag.potion_s, undefined, "рюкзак в страхе работает");
-  assert.equal(usedItem.idx, 2, "предмет тратит ход");
-  assert.equal(usedItem.p.guard, true, "защита держится весь ход страха");
+  assert.equal(usedItem.idx, 1, "предмет из рюкзака не заканчивает ход");
+  assert.equal(usedItem.p.stamina, itemStart.p.stamina - 5, "предмет тратит 5 выносливости");
+  assert.equal(usedItem.p.guard, false, "без авто-защиты");
   assert.equal(usedItem.p.statuses.fear, 1, "страх держится весь раунд");
 
   const withered = mk({ potion_s: 1 });

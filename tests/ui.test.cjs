@@ -277,7 +277,7 @@ test("battle: bag pouch shows its three potion slots inside the actions column",
   assert.ok(html.includes("Сумка"), "блок сумки в действиях");
   assert.ok(html.includes("Малое зелье лечения"), "зелье из сумки видно в действиях");
   assert.ok(html.includes("×2"), "количество в рюкзаке");
-  assert.ok(html.includes("без хода"), "первое зелье помечено как без хода");
+  assert.ok(html.includes("без выносливости"), "первое зелье помечено как бесплатное");
   assert.equal((html.match(/Слот \d пуст/g) || []).length, 2, "два пустых слота показаны");
   const at = (x) => html.indexOf(x);
   assert.ok(at("Сумка") > at("Сбежать"), "сумка под основными кнопками");

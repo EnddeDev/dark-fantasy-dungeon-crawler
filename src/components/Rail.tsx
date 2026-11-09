@@ -193,6 +193,7 @@ export function Rail({
     : techniqueSkillScale(d.effectPower, player.passives);
   const armor = readout?.armor ?? d.armor;
   const ap = readout?.ap ?? d.ap;
+  const stamina = readout?.staminaMax ?? d.staminaMax;
   const resist = readout?.resist ?? d.tenacity;
   const trapBypass = trapBypassChance(player.stats, (player.passives.includes("light_step") ? 0.3 : 0) + d.rareAffixes.filter((id) => id === "swift").length * 0.12);
   const xpNeed = xpForNextLevel(player.level);
@@ -478,13 +479,14 @@ export function Rail({
                   <MetricBadge metric="armor" align={tipAlignForColumn(2)} value={String(armor)} note={`Снаряжение: +${d.armorBonus}`} />
                   <MetricBadge metric="evade" align={tipAlignForColumn(3)} value={percent(readout?.evade ?? d.evade)} note="Предел — 99%" />
                   <MetricBadge metric="crit" align={tipAlignForColumn(4)} value={percent(readout?.crit ?? d.critChance)} note={`Множитель ×${(readout?.critDamage ?? d.critDamage).toFixed(2)}`} />
-                  <MetricBadge metric="ap" align={tipAlignForColumn(5)} value={String(ap)} note="Ловкость + ускорение предметов" />
-                  <MetricBadge metric="resist" align={tipAlignForColumn(6)} value={percent(resist)} note="Сопротивление эффектам, предел 99%" />
-                  <MetricBadge metric="magicResist" align={tipAlignForColumn(7)} value={percent(readout?.magicResist ?? d.magicResist)} note="Снижение магического урона" />
-                  <MetricBadge metric="fortify" align={tipAlignForColumn(8)} value={percent(readout?.fortify ?? d.fortify)} note="Снижение физического урона" />
+                  <MetricBadge metric="ap" align={tipAlignForColumn(5)} value={String(ap)} note="Ходы героя за раунд: 1 + ловкость + ускорение предметов" />
+                  <MetricBadge metric="stamina" align={tipAlignForColumn(6)} value={String(stamina)} note="90 + ловкость ×10 + сила ×5" />
+                  <MetricBadge metric="resist" align={tipAlignForColumn(7)} value={percent(resist)} note="Сопротивление эффектам, предел 99%" />
+                  <MetricBadge metric="magicResist" align={tipAlignForColumn(8)} value={percent(readout?.magicResist ?? d.magicResist)} note="Снижение магического урона" />
+                  <MetricBadge metric="fortify" align={tipAlignForColumn(9)} value={percent(readout?.fortify ?? d.fortify)} note="Снижение физического урона" />
                   {readout && <>
-                    <MetricBadge metric="enemyDamage" align={tipAlignForColumn(9)} value={`${readout.effMin}–${readout.effMax}`} note="После его брони и защиты" />
-                    <MetricBadge metric="incomingDamage" align={tipAlignForColumn(10)} value={`${readout.inMin}–${readout.inMax}`} note="После вашей брони и эффектов" />
+                    <MetricBadge metric="enemyDamage" align={tipAlignForColumn(10)} value={`${readout.effMin}–${readout.effMax}`} note="После его брони и защиты" />
+                    <MetricBadge metric="incomingDamage" align={tipAlignForColumn(11)} value={`${readout.inMin}–${readout.inMax}`} note="После вашей брони и эффектов" />
                   </>}
                 </div>
               </SheetSection>

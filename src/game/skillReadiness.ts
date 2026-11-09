@@ -1,4 +1,5 @@
-import { MAX_CONCENTRATION, type BattleState } from "./battle";
+import { MAX_CONCENTRATION, attackStaminaCost, techniqueStaminaCost, type BattleState } from "./battle";
+import { STAMINA_BY_WEIGHT, STAMINA_TECHNIQUE_EXTRA } from "./stamina";
 
 /**
  * Готовность приёмов героя прямо сейчас. Подсветка кнопок берётся отсюда:
@@ -33,11 +34,14 @@ export function skillReadiness(b: BattleState, myTurn: boolean, feared: boolean)
   const armorReady = b.p.armorSkills.some((sk) => {
     const req = sk.intReq <= 0 ? 0 : Math.max(1, sk.intReq - (sk.scaleStat === "int" ? b.p.intDiscount : 0));
     const statOk = req === 0 || b.p.stats[sk.scaleStat] >= req;
-    return statOk && (b.p.armorCds[sk.id] ?? 0) === 0;
+    const cost = STAMINA_BY_WEIGHT[sk.gearClass] + STAMINA_TECHNIQUE_EXTRA;
+    return statOk && (b.p.armorCds[sk.id] ?? 0) === 0 && b.p.stamina >= cost;
   });
-  const skills = canAct && !sealed && conc >= 1 && (wsReady || epicReady || armorReady);
+  /* Приём оружия или эпический стоит вес сильнейшего оружия + добавка; приём брони — свою стоимость. */
+  const techOk = (wsReady || epicReady) && b.p.stamina >= techniqueStaminaCost(b);
+  const skills = canAct && !sealed && conc >= 1 && (techOk || armorReady);
 
-  const attack = canAct && b.p.statuses.sealAttack === 0;
+  const attack = canAct && b.p.statuses.sealAttack === 0 && b.p.stamina >= attackStaminaCost(b);
 
   return { special, skills, attack };
 }

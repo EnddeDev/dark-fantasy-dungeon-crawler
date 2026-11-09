@@ -50,7 +50,8 @@ function newChips(before: EffectChip[], after: EffectChip[]): EffectChip[] {
  */
 export function consumablePreview(b: BattleState, id: string): ConsumablePreview {
   /* Предпросмотр нужен и вне очереди героя: показываем, что будет, когда до него дойдёт. */
-  const probe: BattleState = { ...b, over: null, queue: ["p", "e"], idx: 0 };
+  /* Выносливость восстановлена: предпросмотр показывает то, что будет в начале раунда героя. */
+  const probe: BattleState = { ...b, over: null, queue: ["p", "e"], idx: 0, p: { ...b.p, stamina: b.p.staminaMax } };
   const after = withNoMissRandom(() => playerAct(probe, { type: "item", id }));
 
   const spent = (after.bag[id] ?? 0) < (b.bag[id] ?? 0);

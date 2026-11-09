@@ -3,6 +3,7 @@
  * Считается полное значение СИЛ/ЛОВ/ИНТ, включая стартовую единицу.
  */
 import type { StatKey } from "./types";
+import { STAMINA_PER_AGI } from "./stamina";
 
 export const STAT_FORMULAS = {
   str: {
@@ -72,6 +73,6 @@ export function statTechniqueDamage(int: number): number {
 
 export function statSummary(stat: StatKey, value: number): string {
   if (stat === "str") return `${statHealth(value)} ОЗ · +${statDamage(value)} урона · ${Math.round(statTenacity(value) * 100)}% стойкости`;
-  if (stat === "agi") return `${statActions(value)} ход. · ${Math.round(statEvasion(value) * 100)}% уклонения · ${statConsumableDamage(value)} урон расходников`;
+  if (stat === "agi") return `${statActions(value)} ход. · +${STAMINA_PER_AGI * Math.max(0, value)} выносливости · ${Math.round(statEvasion(value) * 100)}% уклонения · ${statConsumableDamage(value)} урон расходников`;
   return `${Math.round(statMagicResist(value) * 100)}% маг. сопротивления · ${statTechniqueDamage(value)} урон приёмов/свитков`;
 }

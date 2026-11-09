@@ -14,6 +14,7 @@ import {
 import { GEAR_EFFECTS, effectDetail } from "../game/gearEffects";
 import { MONSTER_RACE_META, MONSTER_TYPE_META, WEAKNESS_STEP, raceTraits } from "../game/monsters";
 import { STAT_META, armorSkillDesc, epicSkillDesc } from "../game/content";
+import { STAMINA_BACKPACK, STAMINA_GUARD } from "../game/stamina";
 import { ARCHETYPES } from "../game/archetypes";
 import {
   ENEMY_COOLDOWN_MOVES,
@@ -28,6 +29,9 @@ import {
   type EnemyMoveEffect,
   type EnemyMoveView,
   type PlayerAction,
+  actionStaminaCost,
+  attackStaminaCost,
+  techniqueStaminaCost,
 } from "../game/battle";
 import { FoePortrait } from "./FoeArt";
 import { ItemArt } from "./ItemArt";
@@ -339,7 +343,7 @@ export function BattleView({
     "Урон оружием": highlight.has("dmg"),
     "Броня": highlight.has("armor"),
     "Входящий урон": highlight.has("armor"),
-    "Ходов в раунде": highlight.has("ap"),
+    "Выносливость": highlight.has("ap"),
     "Уклонение": highlight.has("evade"),
     "Критический удар": highlight.has("crit"),
   };
@@ -350,7 +354,7 @@ export function BattleView({
     "По противнику": "enemyDamage",
     "Броня": "armor",
     "Входящий урон": "incomingDamage",
-    "Ходов в раунде": "ap",
+    "Выносливость": "stamina",
     "Уклонение": "evade",
     "Промах в мраке": "missChance",
     "Критический удар": "crit",
@@ -417,9 +421,9 @@ export function BattleView({
       hint: `после брони ${r.armor}${b.p.guard ? " (в защите +25%)" : ""}`,
     },
     {
-      label: "Ходов в раунде",
-      base: `${r.apBase}`,
-      now: `${r.ap}`,
+      label: "Выносливость",
+      base: `${r.staminaMax}`,
+      now: `${r.stamina}`,
       badge:
         b.p.statuses.haste > 0
           ? { text: `+1 Скорость (${b.p.statuses.haste} р.)`, tone: "flame" }
@@ -556,7 +560,7 @@ export function BattleView({
           })}
           <span className="ml-auto flex shrink-0 flex-col justify-center border border-line bg-black/40 px-3 py-1.5 text-right font-mono text-[0.84rem] leading-tight text-mute">
             <span>
-              ходов у тебя: <b className="text-flame">{b.p.ap}</b>
+              выносливость: <b className="text-flame">{b.p.stamina}/{b.p.staminaMax}</b>
             </span>
             <span>
               у врага: <b className="text-rubric">{e.ap}</b>
@@ -587,6 +591,9 @@ export function BattleView({
               <span className="sc text-rubric">Здоровье</span>
               <Meter value={b.p.hp} max={b.p.maxHp} tone="rubric" />
               <span className="font-mono text-sm tab text-parch">{b.p.hp}/{b.p.maxHp}</span>
+              <span className="sc text-flamedim">Выносливость</span>
+              <Meter value={b.p.stamina} max={b.p.staminaMax} tone="flame" />
+              <span className="font-mono text-sm tab text-parch">{b.p.stamina}/{b.p.staminaMax}</span>
             </div>
 
             {/* Наложенные эффекты героя — сразу под здоровьем */}
@@ -653,7 +660,7 @@ export function BattleView({
 
             {(feared || b.p.statuses.sealAttack > 0 || b.p.statuses.sealSkills > 0 || b.p.statuses.sealItems > 0) && (
               <div className="mb-2 flex flex-wrap gap-1.5">
-                {feared && <Tag tone="rubric">Страх: рюкзак, защита и побег</Tag>}
+                {feared && <Tag tone="rubric">Страх: рюкзак, защита, побег, конец хода</Tag>}
                 {b.p.statuses.sealAttack > 0 && <Tag tone="rubric">Печать оков: удар запрещён</Tag>}
                 {b.p.statuses.sealSkills > 0 && <Tag tone="rubric">Печать забвения: приёмы запрещены</Tag>}
                 {b.p.statuses.sealItems > 0 && <Tag tone="rubric">Печать немоты: расходники запрещены</Tag>}
@@ -677,30 +684,37 @@ export function BattleView({
             {(menu === "main" || menu === "item") && (
               <div className="grid grid-cols-2 gap-2">
                 <Btn tone={ready.attack ? "flame" : "ghost"} disabled={!ready.attack} onClick={() => act({ type: "attack" })}>
-                  Удар
+                  Удар · {attackStaminaCost(b)}
                 </Btn>
-                <Btn tone={ready.skills ? "flame" : "ghost"} disabled={!myTurn || feared || b.p.statuses.sealSkills > 0} onClick={() => setMenu("skill")}>
-                  Приёмы
+                <Btn tone={ready.skills ? "flame" : "ghost"} disabled={!myTurn || feared || b.p.statuses.sealSkills > 0 || b.p.stamina < techniqueStaminaCost(b)} onClick={() => setMenu("skill")}>
+                  Приёмы · {techniqueStaminaCost(b)}
                 </Btn>
                 <Btn disabled={!myTurn || b.p.statuses.sealItems > 0} onClick={() => setMenu("item")}>
-                  Рюкзак
+                  Рюкзак · {STAMINA_BACKPACK}
                 </Btn>
-                <Btn tone="verd" disabled={!myTurn} onClick={() => act({ type: "guard" })}>
-                  Защита
+                <Btn tone="verd" disabled={!myTurn || b.p.stamina < STAMINA_GUARD} onClick={() => act({ type: "guard" })}>
+                  Защита · {STAMINA_GUARD}
                 </Btn>
                 <Btn tone="danger" disabled={!myTurn} onClick={() => act({ type: "flee" })}>
                   Сбежать
                 </Btn>
               </div>
             )}
+            {(menu === "main" || menu === "item") && (
+              <div className="mt-2">
+                <Btn className="w-full" disabled={!myTurn} onClick={() => act({ type: "end_turn" })}>
+                  Закончить ход
+                </Btn>
+              </div>
+            )}
 
-            {/* СУМКА: три слота зелий прямо в действиях. Зелье из сумки первым за ход не тратит ход. */}
+            {/* СУМКА: три слота зелий прямо в действиях. Зелье из сумки не тратит выносливость. */}
             {(menu === "main" || menu === "item") && (
               <div className="mt-3 border-t border-line/70 pt-3">
                 <div className="mb-2 flex items-baseline justify-between gap-2">
                   <span className="sc text-flamedim">Сумка</span>
                   <span className="font-mono text-[0.78rem] text-mute">
-                    {b.p.turnPouch < 1 ? "первое зелье за ход без хода" : "ход уже потрачен на зелье"}
+                    зелья без выносливости
                   </span>
                 </div>
                 <div className="space-y-2">
@@ -719,7 +733,7 @@ export function BattleView({
                     const fearImmune = def?.use?.type === "fear" && isImmuneTo(e.def.race, "fear");
                     const ok = !!def && n > 0 && intOk && myTurn && !fearImmune && b.p.statuses.sealItems < 1;
                     const pv = consumablePreview(b, id);
-                    const freeUse = b.p.turnPouch < 1;
+                    const freeUse = true;
                     return (
                       <button
                         key={id}
@@ -750,8 +764,8 @@ export function BattleView({
                                 : !myTurn
                                   ? "не твой ход"
                                   : freeUse
-                                    ? "без хода"
-                                    : "тратит ход"}
+                                    ? "без выносливости"
+                                    : `тратит ${STAMINA_BACKPACK} выносливости`}
                         </span>
                       </button>
                     );
@@ -775,7 +789,7 @@ export function BattleView({
                 <div className="grid max-h-56 gap-2 overflow-y-auto pr-1">
                   {ws ? (
                     <button
-                      disabled={!myTurn || !wsIntOk || b.p.weaponCd > 0 || b.p.concentration < 1}
+                      disabled={!myTurn || !wsIntOk || b.p.weaponCd > 0 || b.p.concentration < 1 || b.p.stamina < techniqueStaminaCost(b)}
                       onClick={() => act({ type: "weapon_skill" })}
                       className="flex items-center justify-between gap-3 border border-line bg-slab2 px-3 py-2 text-left transition-colors enabled:hover:border-flame enabled:hover:bg-flame/10 disabled:opacity-45"
                     >
@@ -809,7 +823,7 @@ export function BattleView({
                     return (
                       <button
                         key={sk.id}
-                        disabled={!myTurn || !intOk || cd > 0 || b.p.concentration < 1}
+                        disabled={!myTurn || !intOk || cd > 0 || b.p.concentration < 1 || b.p.stamina < techniqueStaminaCost(b)}
                         onClick={() => act({ type: "epic_skill", id: sk.id })}
                         className="flex items-center justify-between gap-3 border border-flamedim/70 bg-slab2 px-3 py-2 text-left transition-colors enabled:hover:border-flame enabled:hover:bg-flame/10 disabled:opacity-45"
                       >
@@ -833,7 +847,7 @@ export function BattleView({
                     return (
                       <button
                         key={sk.id}
-                        disabled={!myTurn || !statOk || cd > 0 || b.p.statuses.sealSkills > 0 || b.p.concentration < 1}
+                        disabled={!myTurn || !statOk || cd > 0 || b.p.statuses.sealSkills > 0 || b.p.concentration < 1 || b.p.stamina < actionStaminaCost(b, { type: "armor_skill", id: sk.id })}
                         onClick={() => act({ type: "armor_skill", id: sk.id })}
                         className="flex items-center justify-between gap-3 border border-flamedim/70 bg-slab2 px-3 py-2 text-left transition-colors enabled:hover:border-flame enabled:hover:bg-flame/10 disabled:opacity-45"
                       >
@@ -1000,7 +1014,7 @@ export function BattleView({
                 <span className="sc text-flamedim">Рюкзак</span>
                 <h3 className="font-display text-xl uppercase tracking-[0.1em] text-flamehi">Свитки и зелья</h3>
                 <p className="font-mono text-[0.84rem] text-mute">
-                  {feared ? "страх: рюкзак открыт" : myTurn ? "твой ход: расходник тратит ход" : "ход врага или ожидание"}
+                  {feared ? "страх: рюкзак открыт" : myTurn ? `твой ход: расходник тратит ${STAMINA_BACKPACK} выносливости` : "ход врага или ожидание"}
                 </p>
               </div>
               <button onClick={() => setMenu("main")} className="mt-1 text-mute hover:text-rubric" aria-label="Закрыть рюкзак">
@@ -1018,7 +1032,7 @@ export function BattleView({
                 const intOk = b.p.stats.int >= req;
                 const fearImmune = u.type === "fear" && isImmuneTo(e.def.race, "fear");
                 const poisonImmune = u.type === "poison" && isImmuneTo(e.def.race, "poison");
-                const ok = intOk && myTurn && !fearImmune;
+                const ok = intOk && myTurn && !fearImmune && (b.pouch.includes(id) || b.p.stamina >= STAMINA_BACKPACK);
                 const dmgType = itemDamageType(def.use);
                 const pv = consumablePreview(b, id);
                 return (
@@ -1034,8 +1048,8 @@ export function BattleView({
                         <span className="block font-display text-[1.02rem] uppercase tracking-[0.1em] text-flamehi">
                           {def.name} <span className="font-mono text-[0.84rem] text-flame">×{n}</span>
                           {dmgType && <DamageTypeTag id={dmgType} size={14} className="ml-2" />}
-                          {def.kind === "potion" && b.pouch.includes(id) && b.p.turnPouch < 1 && (
-                            <span className="ml-2 font-mono text-[0.78rem] text-verd">из сумки · без хода</span>
+                          {def.kind === "potion" && b.pouch.includes(id) && (
+                            <span className="ml-2 font-mono text-[0.78rem] text-verd">из сумки · без выносливости</span>
                           )}
                         </span>
                         <span className="block text-[0.89rem] leading-snug text-mute">{def.desc}</span>

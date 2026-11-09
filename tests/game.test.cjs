@@ -33,6 +33,8 @@ function freshBattle(pl, floor, isBoss, biome, torchTurns, burning) {
   b.enemy.mtype = "strong";
   /* Механика боя проверяется без характеристик врага; сами характеристики — в tests/monster-stats.test.cjs. */
   b.enemy.stats = { str: 0, agi: 0, int: 0 };
+  /* Тесты ждут, что герой ходит первым: враг с большим числом ходов иначе может начать бой. */
+  if (b.queue[b.idx] !== "p") b.queue = ["p", ...b.queue];
   return b;
 }
 const gearEffects = loadGameModule("gearEffects");
@@ -797,6 +799,7 @@ test("undead resist poison and fear, smoke negates attacks and their debuffs", (
 
   let smoky = battle.playerAct(undead, { type: "item", id: "smoke_bomb" });
   assert.equal(smoky.p.statuses.smoke, 2);
+  smoky = battle.playerAct(smoky, { type: "end_turn" });
   // Детерминированность: после дыма удар должен попасть, поэтому убираем случайное уклонение.
   smoky.p.chanceLayers.evade = { stats: [], items: [], effects: [] };
   smoky = battle.enemyStep(smoky);
@@ -860,6 +863,7 @@ test("throwing weapons are consumable, explosions pierce armor and living target
 
   let afraid = battle.playerAct(fresh(), { type: "item", id: "fear_vial" });
   assert.equal(afraid.enemy.statuses.fear, 2);
+  afraid = battle.playerAct(afraid, { type: "end_turn" });
   afraid = battle.enemyStep(afraid);
   afraid = battle.enemyStep(afraid);
   assert.equal(afraid.p.hp, 300);
@@ -1044,6 +1048,7 @@ test("haste, terror, stone skin and acid change the fight as described", () => {
   // зелье скорости: +1 ход в раунде
   let hasted = battle.playerAct(mk({ potion_haste: 1 }), { type: "item", id: "potion_haste" });
   assert.equal(hasted.p.statuses.haste, 3);
+  hasted = battle.playerAct(hasted, { type: "end_turn" });
   while (hasted.queue[hasted.idx] !== "p" || hasted.round < 2) {
     hasted = hasted.queue[hasted.idx] === "e" ? battle.enemyStep(hasted) : battle.playerAct(hasted, { type: "guard" });
     if (hasted.round >= 2) break;
@@ -1054,6 +1059,7 @@ test("haste, terror, stone skin and acid change the fight as described", () => {
   // свиток ужаса: враг держит защиту и не бьёт
   let terrified = battle.playerAct(mk({ scroll_terror: 1 }), { type: "item", id: "scroll_terror" });
   assert.equal(terrified.enemy.forceGuard, 2);
+  terrified = battle.playerAct(terrified, { type: "end_turn" });
   const hpBefore = terrified.p.hp;
   terrified = battle.enemyStep(terrified);
   assert.equal(terrified.p.hp, hpBefore, "в ужасе враг не атакует");
@@ -1832,10 +1838,11 @@ test("ninja 10: первый расходник за ход не тратит х
   b.enemy.hp = 9999;
   b.enemy.maxHp = 9999;
   const first = withRandom(() => battle.playerAct({ ...b, queue: ["p", "e"], idx: 0 }, { type: "item", id: "throwing_knife" }), 0.99);
-  assert.equal(first.idx, 0, "первый расходник не тратит ход");
+  assert.equal(first.idx, 0, "первый расходник не заканчивает ход");
   assert.equal(first.bag.throwing_knife, 1);
+  assert.equal(first.p.stamina, b.p.stamina, "первый расходник бесплатный");
   const second = withRandom(() => battle.playerAct({ ...first, queue: ["p", "e"], idx: 0 }, { type: "item", id: "throwing_knife" }), 0.99);
-  assert.equal(second.idx, 1, "второй расходник тратит ход");
+  assert.equal(second.p.stamina, first.p.stamina - 5, "второй расходник тратит 5 выносливости");
 });
 
 test("sage 10: первый удар по герою в бою полностью блокируется, второй проходит", () => {
@@ -1858,8 +1865,9 @@ test("бастион 5: регенерация 3 + защита / 10; колду
   b.p.armor = 25;
   b.p.hp = b.p.maxHp - 20;
   const hp0 = b.p.hp;
-  const after = withRandom(() => battle.playerAct({ ...b, queue: ["p"], idx: 0 }, { type: "attack" }), 0.99);
-  assert.equal(after.p.hp, Math.min(after.p.maxHp, hp0 + 3 + 2), "3 + 25 / 10 = 5 за раунд");
+  const attacked = withRandom(() => battle.playerAct({ ...b, queue: ["p"], idx: 0 }, { type: "attack" }), 0.99);
+  const after = battle.playerAct(attacked, { type: "end_turn" });
+  assert.equal(after.p.hp, Math.min(after.p.maxHp, hp0 + 3 + 2), "3 + 25 / 10 = 5 за ход героя (регенерация идёт при его окончании)");
   assert.equal(battle.techniqueSkillScale({}, ["arch_warlock_10"]), 0.5, "колдун 10: +0.5 к множителю");
 });
 
@@ -1883,6 +1891,7 @@ test("ninja: consumables scale with AGI bonuses and grant lifesteal", () => {
   const { p } = withGear("ninja_kusarigama", { archetype: "ninja", passives: ["arch_ninja_5", "arch_ninja_10"] });
   p.bag = { throwing_knife: 2, smoke_bomb: 1 };
   const b = freshBattle(p, 5, true);
+  b.queue = ["p", "e"]; b.idx = 0;
   b.p.gearEffects.push("consumable_damage", "consumable_scale", "consumable_vamp");
   b.p.hp = Math.floor(b.p.maxHp * 0.5);
   const rnd = Math.random; Math.random = () => 0.99;
@@ -1891,6 +1900,7 @@ test("ninja: consumables scale with AGI bonuses and grant lifesteal", () => {
   assert.ok(after.enemy.hp < b.enemy.hp);
   assert.ok(after.log.some((l) => l.text.includes("Похищение жизни")));
   const b2 = freshBattle(p, 5, true);
+  b2.queue = ["p", "e"]; b2.idx = 0;
   const smoke = battle.playerAct(b2, { type: "item", id: "smoke_bomb" });
   assert.ok(smoke.p.statuses.smoke > 0);
 });
@@ -1898,6 +1908,7 @@ test("ninja: consumables scale with AGI bonuses and grant lifesteal", () => {
 test("warlock: skill damage, cooldown reduction and lifesteal", () => {
   const { p } = withGear("warlock_scepter", { archetype: "warlock", passives: ["arch_warlock_5", "arch_warlock_10"] });
   const b = freshBattle(p, 1);
+  b.queue = ["p", "e"]; b.idx = 0;
   b.p.gearEffects.push("skill_damage", "skill_cd", "skill_vamp", "skill_scale");
   b.p.hp = Math.floor(b.p.maxHp * 0.5);
   const rnd = Math.random; Math.random = () => 0.99;
@@ -1913,6 +1924,7 @@ test("sage: scroll creation, scroll damage and scroll save", () => {
   const { p } = withGear("sage_censer", { archetype: "sage", passives: ["arch_sage_5", "arch_sage_10"] });
   p.bag = { scroll_creation: 1, scroll_bolt: 1 };
   const b = freshBattle(p, 5, true);
+  b.queue = ["p", "e"]; b.idx = 0;
   b.p.gearEffects.push("scroll_damage", "scroll_scale", "scroll_vamp", "scroll_save", "scroll_create");
   const rnd = Math.random; Math.random = () => 0.0;
   const after = battle.playerAct(b, { type: "item", id: "scroll_creation" });
@@ -2248,7 +2260,7 @@ test("acceleration gear gives 0/1/2/3 extra actions by level 1/5/7/10 every roun
   const p = { ...mkP({ level: 10, stats: { str: 5, agi: 5, int: 5 } }), armory: [g], equip: { ...mkP().equip, ring1: g.uid } };
   const d = battle.derived(p);
   assert.equal(d.firstRoundApBonus, 0);
-  assert.equal(d.ap, 5 + 3);
+  assert.equal(d.ap, 5 + 3, "ловкость даёт ходы, ускорение добавляет блоки сверху");
   const b = freshBattle(p, 1);
   const r1 = battle.combatReadout(b);
   b.round = 2;
@@ -3394,6 +3406,7 @@ function withTechnique(skillId, baseId = "sword") {
   p.equip = { ...p.equip, mainHand: g.uid };
   p.hp = battle.derived(p).maxHp;
   const b = battle.newBattle(p, 1, false, undefined, 20, false);
+  b.queue = ["p", "e"]; b.idx = 0;
   b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none", type: "strong" };
   b.enemy.mtype = "strong";
   b.enemy.passive = null;

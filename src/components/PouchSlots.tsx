@@ -20,7 +20,7 @@ export function PouchSlots({
     <section aria-label="Сумка с зельями" className="border border-line bg-black/20 p-3">
       <div className="sc text-[0.86rem] text-flamedim">Сумка с зельями · 3 слота</div>
       <p className="mt-1 text-xs text-mute">
-        Первое зелье из сумки за ход в бою не тратит ход. В бою менять нельзя.
+        Зелья из сумки в бою не тратят выносливость. В бою менять нельзя.
       </p>
       <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
         {pouch.map((id, i) => (
