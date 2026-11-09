@@ -156,6 +156,8 @@ import { pouchIds } from "./pouch";
 import {
   STAMINA_GUARD,
   STAMINA_MIN_PAID,
+  STAMINA_TURN_RECOVERY,
+  STAMINA_ROUND_RECOVERY,
   STAMINA_BACKPACK,
   STAMINA_TECHNIQUE_EXTRA,
   STAMINA_UNARMED,
@@ -338,6 +340,8 @@ export interface BattleState {
     concentration: number;
     /** Библиотека душ: первый удар по герою в бою уже заблокирован. */
     sageWardUsed: boolean;
+    /** Регенерация за ход героя из снаряжения (срабатывает в начале каждого хода). */
+    regenTurn?: number;
     statuses: {
       wound: number;
       /** Наложения кровотечения: урон за тик складывается. */
@@ -546,6 +550,8 @@ export interface DerivedStats {
   fortify: number;
   chanceLayers: Record<ChanceKey, ChanceLayers>;
   hpBonus: number;
+  /** Регенерация снаряжения за ход героя (сумма параметров брони и аксессуаров). */
+  regenPerTurn: number;
   armorBonus: number;
   evadeBonus: number;
   strFlat: number;
@@ -572,6 +578,7 @@ export function derived(pl: Player): DerivedStats {
   const gearNames: Partial<Record<Slot, string>> = {};
 
   let hpBonus = 0;
+  let regenPerTurn = 0;
   let armorBonus = 0;
   let evadeBonus = 0;
   let hitLo = 0;
@@ -590,6 +597,7 @@ export function derived(pl: Player): DerivedStats {
     hpBonus += st.hp ?? 0;
     armorBonus += st.armor ?? 0;
     evadeBonus += st.evade ?? 0;
+    regenPerTurn += st.regen ?? 0;
 
     /* Урон считают обе руки: двуручник один, в паре — правая + левая.
      * Оружие в левой руке наносит вдвое меньше: его вклад делится пополам. */
@@ -774,6 +782,7 @@ export function derived(pl: Player): DerivedStats {
     fortify,
     chanceLayers,
     hpBonus,
+    regenPerTurn,
     armorBonus,
     evadeBonus,
     strFlat,
@@ -1212,6 +1221,7 @@ export function newBattle(
       gearArchetype: d.gearArchetype,
       intDiscount: d.intDiscount,
       immortalUsed: false,
+      regenTurn: d.regenPerTurn,
       turnConsumables: 0,
       turnScrolls: 0,
       turnPouch: 0,
@@ -2326,6 +2336,17 @@ function beginTurn(b: BattleState) {
     push(b, "Страх сковывает волю: атаки и приёмы закрыты. Доступны рюкзак, защита, побег или конец хода.", "e");
   }
 
+  /* Регенерация снаряжения: срабатывает в начале каждого хода героя, полным значением. */
+  if (side === "p" && (b.p.regenTurn ?? 0) > 0 && b.p.hp > 0 && b.p.hp < b.p.maxHp) {
+    const heal = healPlayer(b, b.p.regenTurn ?? 0);
+    if (heal > 0) push(b, `Регенерация снаряжения: +${heal} здоровья.`, "p");
+  }
+  /* Выносливость: каждый ход героя восстанавливает STAMINA_TURN_RECOVERY, не больше максимума. */
+  if (side === "p" && b.p.hp > 0 && b.p.stamina < b.p.staminaMax) {
+    const gain = Math.min(STAMINA_TURN_RECOVERY, b.p.staminaMax - b.p.stamina);
+    b.p.stamina += gain;
+    push(b, `Передышка: +${gain} выносливости.`, "p");
+  }
   /* Непреклонность (ранг 3): ниже 30% ОЗ — лечение 5% макс. ОЗ в начале хода героя. */
   if (side === "p" && hasPassive(b, "skill_fortitude_a") && b.p.hp > 0 && b.p.hp < b.p.maxHp * 0.3) {
     const heal = healPlayer(b, Math.round(b.p.maxHp * 0.05));
@@ -2597,8 +2618,8 @@ function advance(b: BattleState) {
 
     b.round += 1;
     b.idx = 0;
-    /* Выносливость восстанавливается в начале раунда. */
-    b.p.stamina = b.p.staminaMax;
+    /* Выносливость восстанавливается в начале раунда наполовину от максимума, не выше максимума. */
+    b.p.stamina = Math.min(b.p.staminaMax, b.p.stamina + Math.floor(b.p.staminaMax * STAMINA_ROUND_RECOVERY));
     const hasteBonus = b.p.statuses.haste > 0 ? 1 : 0;
     const sageAp = hasPassive(b, "arch_sage_10") ? 1 : 0;
     const shadowAp = b.p.statuses.shadowStep;

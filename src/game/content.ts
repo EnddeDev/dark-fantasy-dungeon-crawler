@@ -1719,6 +1719,16 @@ export function rollItemStatRolls(
   return { hp: at(roll(9, 5), 2), armor: 0, evade: roll(6, 6) };
 }
 
+/** Регенерация предмета: доля за уровень (1 + 0,2 × уровень) и шанс выпадения у брони и аксессуаров СИЛ/ИНТ. */
+export const GEAR_REGEN_PER_LEVEL = 0.2;
+export const GEAR_REGEN_CHANCE = 0.35;
+
+/** Регенерация за ход героя: (1 + 0,2 × уровень) × износ × разброс/100, не меньше 1. Нет параметра — 0. */
+export function gearRegenValue(level: number, wearMult: number, roll: number | undefined): number {
+  if (!roll) return 0;
+  return Math.max(1, Math.round((1 + GEAR_REGEN_PER_LEVEL * clampGearLevel(level)) * wearMult * (roll / 100)));
+}
+
 export function scaledGearStats(item: GearItem) {
   const base = GEAR_BASES[item.baseId] ?? GEAR_BASES.knife;
   const kind = gearKindOfBase(base);
@@ -1755,7 +1765,9 @@ export function scaledGearStats(item: GearItem) {
   const evadeRaw = kind === "weapon" ? 0 : scaleGearStatByLevel(Math.ceil((rolls.evade ?? 0) * m), level);
   const evadePp = evadeCap ? Math.min(evadeRaw, Math.floor(evadeCap * statLevelRatio(level) + 1e-9)) : evadeRaw;
   const evade = Math.min(0.5, evadePp / 100);
-  return { base, kind, dmg, armor, hp, evade, evadePp, skill: weaponSkillFor(item), level, wearMult: m };
+  /* Регенерация: только броня и аксессуары; параметр выпадает при создании. */
+  const regen = kind === "armor" || kind === "accessory" ? gearRegenValue(level, m, item.statRolls?.regen) : 0;
+  return { base, kind, dmg, armor, hp, evade, evadePp, regen, skill: weaponSkillFor(item), level, wearMult: m };
 }
 
 /** Золото за исследование: 20 за каждый уровень предмета. */
@@ -1979,7 +1991,7 @@ export function createGearItem(opts: {
   const wearMult = rollWearMult(wear, rng);
   /* Множитель урона R: только у оружия, от 1 до 1.5. */
   const dmgMult = base.dmg ? Number((WEAPON_DMG_MULT_MIN + rng() * (WEAPON_DMG_MULT_MAX - WEAPON_DMG_MULT_MIN)).toFixed(3)) : undefined;
-  const statRolls = rollItemStatRolls(base, gearClass, rng);
+  const statRolls: { hp: number; armor: number; evade?: number; regen?: number } = rollItemStatRolls(base, gearClass, rng);
 
   /* Свойства по типу предмета: оружие — пул вида клинка, броня — пул веса,
      аксессуары — пул требуемой характеристики (и всегда хотя бы одно свойство).
@@ -2028,6 +2040,11 @@ export function createGearItem(opts: {
 
   const effectRolls: Partial<Record<GearEffectId, number>> = {};
   for (const id of effects) effectRolls[id] = rollEffectBase(id, rng);
+
+  /* Регенерация: броня и аксессуары СИЛ/ИНТ получают параметр с шансом GEAR_REGEN_CHANCE. */
+  const regenEligible = (kind === "armor" || kind === "accessory") && (reqStat === "str" || reqStat === "int");
+  const regenRoll = regenEligible && rng() < GEAR_REGEN_CHANCE ? 90 + Math.floor(rng() * 21) : undefined;
+  if (regenRoll !== undefined) statRolls.regen = regenRoll;
 
   /* Последний бросок: остальные выпадения не меняются. */
   const armorQuality = rng();

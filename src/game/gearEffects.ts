@@ -87,7 +87,7 @@ export const GEAR_EFFECTS: Record<GearEffectId, GearEffectDef> = {
 
 /** Только эти свойства выпадают на новых предметах. Остальные id — совместимость старых сохранений. */
 export const ACTIVE_GEAR_EFFECTS: GearEffectId[] = [
-  "vamp", "magic_vamp", "crit_chance", "crit_mult", "regen", "fortify", "magic_resist",
+  "vamp", "magic_vamp", "crit_chance", "crit_mult", "fortify", "magic_resist",
   "armor_damage", "rage", "ap", "wisdom", "might", "precision", "thorns",
   "evade", "counter", "resist", "poison_damage", "bleed", "sunder",
 ];
@@ -105,30 +105,30 @@ export const WEAPON_EFFECT_POOLS: Record<string, GearEffectId[]> = {
   sword: ["counter", "sunder", "might", "precision", "armor_damage"],
   axe: ["bleed", "rage", "vamp", "might"],
   hammer: ["might", "armor_damage", "fortify", "resist"],
-  greatsword: ["might", "armor_damage", "fortify", "resist", "rage", "regen"],
-  greataxe: ["rage", "vamp", "might", "sunder", "regen", "fortify", "crit_chance"],
-  warhammer: ["rage", "might", "sunder", "regen", "fortify", "crit_chance", "armor_damage"],
-  staff: ["magic_vamp", "regen", "magic_resist", "wisdom"],
-  wand: ["magic_vamp", "regen", "magic_resist", "wisdom"],
+  greatsword: ["might", "armor_damage", "fortify", "resist", "rage"],
+  greataxe: ["rage", "vamp", "might", "sunder", "fortify", "crit_chance"],
+  warhammer: ["rage", "might", "sunder", "fortify", "crit_chance", "armor_damage"],
+  staff: ["magic_vamp", "magic_resist", "wisdom"],
+  wand: ["magic_vamp", "magic_resist", "wisdom"],
 };
 
 /** Пул свойств брони по весу и требуемой характеристике. */
 export const ARMOR_EFFECT_POOLS: Record<"heavy" | "medium" | "light", Record<string, GearEffectId[]>> = {
   heavy: {
-    str: ["fortify", "thorns", "resist", "regen", "rage"],
+    str: ["fortify", "thorns", "resist", "rage"],
     agi: ["fortify", "thorns", "resist"],
     int: ["fortify", "thorns", "resist"],
   },
   medium: {
     str: ["fortify", "armor_damage", "might", "thorns"],
     agi: ["evade", "counter", "precision", "crit_chance"],
-    int: ["regen", "wisdom", "magic_resist"],
+    int: ["wisdom", "magic_resist"],
   },
   light: {
-    str: ["regen", "thorns", "resist"],
+    str: ["thorns", "resist"],
     agi: ["evade", "counter", "precision"],
-    int: ["regen", "wisdom", "magic_resist", "magic_vamp"],
-    none: ["regen", "thorns", "resist", "fortify"],
+    int: ["wisdom", "magic_resist", "magic_vamp"],
+    none: ["thorns", "resist", "fortify"],
   },
 };
 
@@ -136,7 +136,7 @@ export const ARMOR_EFFECT_POOLS: Record<"heavy" | "medium" | "light", Record<str
 export const ACCESSORY_EFFECT_POOLS: Record<StatKey, GearEffectId[]> = {
   str: ["fortify", "might", "thorns", "armor_damage", "resist"],
   agi: ["evade", "precision", "crit_chance", "counter", "vamp"],
-  int: ["regen", "wisdom", "magic_resist", "magic_vamp", "ap"],
+  int: ["wisdom", "magic_resist", "magic_vamp", "ap"],
 };
 
 export interface GearPoolQuery {
@@ -283,12 +283,12 @@ export function passiveDetail(id: GearPassiveId, level = 1): string {
 }
 
 const ARCHETYPE_EFFECTS: Record<ArchetypeId, GearEffectId[]> = {
-  bulwark: ["fortify", "thorns", "regen", "armor_damage", "might", "magic_resist"],
-  barbarian: ["rage", "vamp", "might", "thorns", "regen", "fortify"],
+  bulwark: ["fortify", "thorns", "armor_damage", "might", "magic_resist"],
+  barbarian: ["rage", "vamp", "might", "thorns", "fortify"],
   assassin: ["crit_chance", "crit_mult", "vamp", "ap", "precision", "might"],
   ninja: ["ap", "precision", "crit_chance", "vamp", "magic_vamp", "thorns"],
-  warlock: ["wisdom", "magic_vamp", "magic_resist", "rage", "might", "regen"],
-  sage: ["wisdom", "magic_resist", "regen", "magic_vamp", "ap", "fortify"],
+  warlock: ["wisdom", "magic_vamp", "magic_resist", "rage", "might"],
+  sage: ["wisdom", "magic_resist", "magic_vamp", "ap", "fortify"],
 };
 
 const ARCHETYPE_PASSIVES: Record<ArchetypeId, GearPassiveId> = {
