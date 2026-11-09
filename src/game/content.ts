@@ -1159,7 +1159,7 @@ function normalizeGearBases(list: LegacyGear[]): Record<string, GearBaseDef> {
       armor: kind === "weapon" ? 0 : accessoryStats ? accessoryStats.armor : defense ? defense.armor : raw.armor,
       hp: kind === "weapon" ? 0 : accessoryStats ? accessoryStats.hp : defense ? defense.hp : raw.hp,
       evade: kind === "weapon" ? 0 : accessoryStats ? accessoryStats.evade : defense ? defense.evade : raw.evade,
-      /* Урон оружия по формуле 9 + ХАР + вес (одно число, без своего разброса). */
+      /* Урон оружия по формуле 5 + ХАР + вес (одно число, без своего разброса). */
       dmg: kind === "weapon" ? [weaponBaseDamage(stat, gearClass), weaponBaseDamage(stat, gearClass)] : undefined,
       altSlots: raw.altSlots ?? ALT_FIX[raw.id],
       minFloor: raw.minFloor ?? level,
