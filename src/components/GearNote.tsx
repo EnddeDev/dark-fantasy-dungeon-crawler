@@ -96,6 +96,7 @@ export function GearNote({
     { label: "Броня", value: st.armor - other.armor },
     { label: "Здоровье", value: st.hp - other.hp },
     { label: "Уклонение, п.п.", value: Math.round((st.evade - other.evade) * 100) },
+    { label: "Регенерация", value: st.regen - other.regen },
   ].filter((entry) => entry.value !== 0) : [];
 
   return (
@@ -144,6 +145,7 @@ export function GearNote({
             {st.armor > 0 && <Row label="Броня" value={`+${st.armor}`} />}
             {st.hp > 0 && <Row label="Здоровье" value={`+${st.hp}`} />}
             {st.evade > 0 && <Row label="Уклонение" value={`+${Math.round(st.evade * 100)}%`} />}
+            {st.regen > 0 && <Row label="Регенерация" value={`+${st.regen} за ход`} />}
             <Row label="Хват" value={gripNote} />
             <Row label="Состояние" value={`${WEAR_META[item.wear].name} · ×${st.wearMult.toFixed(3)}`} />
             <Row label="Диапазон состояния" value={`×${range.lo}–${range.hi}, базовый ×${range.base}`} />

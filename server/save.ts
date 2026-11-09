@@ -155,6 +155,7 @@ function sanitizeGear(raw: unknown, index: number): GearItem {
         hp: optionalInt(statRollsRaw.hp, 0, 9999) ?? 0,
         armor: optionalInt(statRollsRaw.armor, 0, 9999) ?? 0,
         evade: optionalInt(statRollsRaw.evade, 0, 1),
+        regen: optionalInt(statRollsRaw.regen, 0, 200),
       }
     : undefined;
   const effectRollsRaw = item.effectRolls === undefined || item.effectRolls === null ? null : asObject(item.effectRolls, "броски свойств");

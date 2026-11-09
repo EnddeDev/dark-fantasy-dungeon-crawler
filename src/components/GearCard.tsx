@@ -121,7 +121,8 @@ export function GearCard({
         {st.armor > 0 && <span>Броня <b className="font-mono text-verd">+{st.armor}</b></span>}
         {st.hp > 0 && <span>ОЗ <b className="font-mono text-parch">+{st.hp}</b></span>}
         {st.evade > 0 && <span>Уклонение <b className="font-mono text-verd">+{Math.round(st.evade * 100)}%</b></span>}
-        {!st.dmg && !st.armor && !st.hp && !st.evade && <span className="text-mute">Без базовых бонусов</span>}
+        {st.regen > 0 && <span>Регенерация <b className="font-mono text-verd">+{st.regen} за ход</b></span>}
+        {!st.dmg && !st.armor && !st.hp && !st.evade && !st.regen && <span className="text-mute">Без базовых бонусов</span>}
       </div>
 
       {!wearable && mode === "inventory" && (

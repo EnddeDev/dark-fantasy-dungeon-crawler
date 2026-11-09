@@ -37,6 +37,8 @@ function withRandom(value, fn) {
 function fight(id, { hp = 200, atk, armor = 0, heroHp } = {}) {
   const pl = PlayerFactory.createInitial();
   const b = battle.newBattle(pl, 1, false, "classic", 0, 0);
+  /* Регенерация снаряжения срабатывает в начале хода героя; случайный предмет не должен менять удар. */
+  b.p.regenTurn = 0;
   const def = content.ENEMIES.find((e) => e.id === id);
   b.enemy.def = { ...def };
   b.enemy.moves = [...def.moves];

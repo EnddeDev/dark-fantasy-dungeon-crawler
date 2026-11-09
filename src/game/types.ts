@@ -148,7 +148,8 @@ export interface GearItem {
   /** Разброс параметров брони и украшений: 0.9 … 1.1 (только совместимость). */
   statMult: number;
   /** Базовые броски ОЗ/брони/уклонения до изношенности и уровня. Броню теперь задаёт armorQuality. */
-  statRolls?: { hp: number; armor: number; evade?: number };
+  /** Регенерация снаряжения: разброс 90–110 (сотые); значение за ход считает scaledGearStats. Есть у брони и аксессуаров СИЛ/ИНТ. */
+  statRolls?: { hp: number; armor: number; evade?: number; regen?: number };
   /** Качество брони 0…1: положение защиты внутри диапазона слота (см. armorValue). */
   armorQuality?: number;
   /** Базовые значения свойств этого экземпляра до уровня. */
