@@ -311,7 +311,7 @@ export const BASE_HP = 35;
 /** Множитель здоровья рода R: при спавне выбирается случайное значение из диапазона. */
 export const RACE_HP_RANGE: Record<MonsterRace, [number, number]> = {
   undead: [0.75, 1.25],
-  construct: [2, 3],
+  construct: [1.75, 2.25],
   vampire: [1, 1.25],
   ghost: [0.7, 1],
   beast: [1.25, 1.75],
@@ -345,6 +345,23 @@ export const RACE_ATK_RANGE: Record<MonsterRace, [number, number]> = {
 export function rollRaceAtkMult(race: MonsterRace, rng: () => number = Math.random): number {
   const [lo, hi] = RACE_ATK_RANGE[race] ?? RACE_ATK_RANGE.none;
   return lo + rng() * (hi - lo);
+}
+
+/** Здоровье выше медианы рода (R выше середины диапазона). Бросок R уже сделан, это только сравнение. */
+export function raceHpIsHigh(race: MonsterRace, raceHp: number): boolean {
+  const [lo, hi] = RACE_HP_RANGE[race] ?? RACE_HP_RANGE.none;
+  return raceHp > (lo + hi) / 2;
+}
+
+/**
+ * R для удара при правиле «ОЗ выше медианы → удар ниже медианы»: при высоком здоровье
+ * удар берётся из нижней половины диапазона рода, при низком — из верхней. Внутри половины бросок равномерный.
+ */
+export function rollRaceAtkMultOpposite(race: MonsterRace, hpHigh: boolean, rng: () => number = Math.random): number {
+  const [lo, hi] = RACE_ATK_RANGE[race] ?? RACE_ATK_RANGE.none;
+  const u = rng();
+  const t = hpHigh ? u * 0.5 : 0.5 + u * 0.5;
+  return lo + t * (hi - lo);
 }
 
 /** Разброс удара: итоговый диапазон = центр × (1 ± разброс). */

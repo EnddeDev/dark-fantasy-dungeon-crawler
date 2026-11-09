@@ -248,7 +248,7 @@ test("здоровье: H = 35 × T × R + 10 × СИЛ, ОЗ = max(35, H × L �
   const monsters = load("monsters");
   const scaling = load("enemyScaling");
   const content = load("content");
-  const RANGES = { undead: [0.75, 1.25], construct: [2, 3], vampire: [1, 1.25], ghost: [0.7, 1], beast: [1.25, 1.75], demon: [1.5, 1.75], dragon: [1.5, 2], none: [0.9, 1.1] };
+  const RANGES = { undead: [0.75, 1.25], construct: [1.75, 2.25], vampire: [1, 1.25], ghost: [0.7, 1], beast: [1.25, 1.75], demon: [1.5, 1.75], dragon: [1.5, 2], none: [0.9, 1.1] };
   for (const [race, range] of Object.entries(RANGES)) {
     assert.deepEqual(monsters.RACE_HP_RANGE[race], range, `диапазон рода ${race}`);
   }
