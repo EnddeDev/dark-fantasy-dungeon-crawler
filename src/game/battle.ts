@@ -157,6 +157,7 @@ import {
   STAMINA_GUARD,
   STAMINA_MIN_PAID,
   STAMINA_TURN_RECOVERY,
+  STAMINA_ROUND_RECOVERY,
   STAMINA_BACKPACK,
   STAMINA_TECHNIQUE_EXTRA,
   STAMINA_UNARMED,
@@ -2617,8 +2618,8 @@ function advance(b: BattleState) {
 
     b.round += 1;
     b.idx = 0;
-    /* Выносливость восстанавливается в начале раунда. */
-    b.p.stamina = b.p.staminaMax;
+    /* Выносливость восстанавливается в начале раунда наполовину от максимума, не выше максимума. */
+    b.p.stamina = Math.min(b.p.staminaMax, b.p.stamina + Math.floor(b.p.staminaMax * STAMINA_ROUND_RECOVERY));
     const hasteBonus = b.p.statuses.haste > 0 ? 1 : 0;
     const sageAp = hasPassive(b, "arch_sage_10") ? 1 : 0;
     const shadowAp = b.p.statuses.shadowStep;

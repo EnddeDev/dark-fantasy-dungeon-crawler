@@ -176,16 +176,26 @@ test("не хватает на действие: действие отклоня
   assert.ok(after.log.some((l) => l.text.includes("Не хватает выносливости")));
 });
 
-test("в начале каждого раунда выносливость восстанавливается полностью", () => {
+test("в начале раунда выносливость восстанавливается на половину максимума, не выше максимума", () => {
   const b = fight(hero());
-  b.p.stamina = 3;
+  b.queue = ["p", "e"];
+  b.idx = 0;
+  b.p.stamina = 0;
   let s = battle.playerAct(b, { type: "end_turn" });
-  let guard = 0;
-  while (s.round === 1 && !s.over && guard++ < 50) {
-    s = s.queue[s.idx] === "p" ? battle.playerAct(s, { type: "end_turn" }) : battle.enemyStep(s);
-  }
-  assert.equal(s.round, 2);
-  assert.equal(s.p.stamina, s.p.staminaMax);
+  s = battle.enemyStep(s);
+  assert.equal(s.round, 2, "переход в новый раунд");
+  const half = Math.floor(s.p.staminaMax / 2);
+  const bonus = s.queue[s.idx] === "p" ? 20 : 0;
+  assert.equal(s.p.stamina, Math.min(s.p.staminaMax, half + bonus), "половина максимума (и +20, если ход героя первый)");
+  assert.ok(s.p.stamina < s.p.staminaMax || s.p.staminaMax <= half + bonus, "не полная, если не досталось");
+
+  const c = fight(hero());
+  c.queue = ["p", "e"];
+  c.idx = 0;
+  c.p.stamina = c.p.staminaMax - 3;
+  let t = battle.playerAct(c, { type: "end_turn" });
+  t = battle.enemyStep(t);
+  assert.equal(t.p.stamina, t.p.staminaMax, "не выше максимума");
 });
 
 test("каждый ход героя восстанавливает 20 выносливости, но не больше максимума", () => {
