@@ -716,18 +716,19 @@ test("level 0 monsters are weaker than level 1 monsters", () => {
   assert.ok(zero.xp <= one.xp);
 });
 
-test("gear instances vary in damage spread, stat multiplier and weapon technique", () => {
+test("gear instances vary in damage multiplier R, stat multiplier and weapon technique", () => {
   const seen = new Set();
   const skills = new Set();
   for (let i = 0; i < 300; i++) {
     const item = content.createGearItem({ baseId: "rapier", identified: true });
-    assert.ok(item.dmgRoll);
-    assert.ok(item.dmgRoll[1] > item.dmgRoll[0]);
+    assert.ok(item.dmgMult >= 1 && item.dmgMult <= 1.5, `R вне 1–1.5: ${item.dmgMult}`);
+    const dmg = content.scaledGearStats(item).dmg;
+    assert.ok(dmg[1] > dmg[0]);
     assert.ok(item.statMult >= 0.9 && item.statMult <= 1.1);
     assert.ok(item.skillId);
     assert.ok(content.TECHNIQUE_POOL.rapier.includes(item.skillId));
     assert.equal(content.weaponSkillFor(item).id, item.skillId);
-    seen.add(`${item.dmgRoll[0]}-${item.dmgRoll[1]}`);
+    seen.add(`${dmg[0]}-${dmg[1]}`);
     skills.add(item.skillId);
   }
   assert.ok(seen.size > 3);
@@ -1788,9 +1789,12 @@ test("bulwark: armor damage, thorns and guard reduction are applied", () => {
 test("barbarian: two-handed damage and missing-health scaling", () => {
   const { p, g } = withGear("barbarian_greataxe", { archetype: "barbarian", passives: ["arch_barbarian_5", "arch_barbarian_10"] });
   assert.equal(content.GEAR_BASES[g.baseId].hands, 2);
-  const one = content.GEAR_BASES.axe.dmg;
-  const two = content.GEAR_BASES[g.baseId].dmg;
-  assert.ok(two[0] >= one[0] * 2.8 && two[1] >= one[1] * 2.8, "двуручник должен быть примерно втрое сильнее");
+  /* База: 9 + СИЛ 2 + тяжёлое 9 = 20; двуручное ×2 применяется к итогу. */
+  assert.equal(content.GEAR_BASES[g.baseId].dmg[0], 20);
+  const scaled = content.scaledGearStats(g).dmg;
+  const v = 20 * g.wearMult * (1 + 0.5 * g.level) * (g.dmgMult ?? 1) * 2;
+  assert.equal(scaled[0], Math.round(v * 0.9));
+  assert.equal(scaled[1], Math.round(v * 1.1));
   const b = freshBattle(p, 1);
   b.p.hp = Math.floor(b.p.maxHp * 0.3);
   b.enemy.hp = Math.floor(b.enemy.maxHp * 0.4);
@@ -2144,20 +2148,21 @@ test("уровень предмета: параметры линейно +50%, �
   assert.ok(ws2.scaleMult > ws1.scaleMult);
 });
 
-test("medium weapons can be gripped two-handed for ceil(1.5x) damage and occupy the off-hand", () => {
+test("medium weapons can be gripped two-handed for 1.5x damage (spread last) and occupy the off-hand", () => {
   const base = { ...mkP(), level: 10, stats: { str: 10, agi: 10, int: 10 } };
   const sword = content.createGearItem({ baseId: "sword", level: 1, wear: "worn", rarity: "common", identified: true });
   sword.wearMult = 1;
   const shield = content.createGearItem({ baseId: "shield_round", level: 1, wear: "worn", rarity: "common", identified: true });
   let p = { ...base, armory: [sword, shield], equip: { ...base.equip, offHand: shield.uid } };
+  const v = content.GEAR_BASES.sword.dmg[0] * 1 * 1.5 * (sword.dmgMult ?? 1);
   const one = content.scaledGearStats(sword).dmg;
+  assert.deepEqual(one, [Math.round(v * 0.9), Math.round(v * 1.1)]);
   const res = content.equipItem(p, sword.uid, "mainHand", "two");
   p = res.player;
   assert.equal(p.equip.offHand, null);
   assert.equal(p.armory.find((g) => g.uid === sword.uid).grip, "two");
   const two = content.scaledGearStats(p.armory.find((g) => g.uid === sword.uid)).dmg;
-  assert.equal(two[0], Math.ceil(one[0] * 1.5));
-  assert.equal(two[1], Math.ceil(one[1] * 1.5));
+  assert.deepEqual(two, [Math.round(v * 1.5 * 0.9), Math.round(v * 1.5 * 1.1)]);
   assert.equal(battle.derived(p).gearHands, 2);
   // Нельзя занять левую руку, пока среднее оружие держат двумя руками
   const blocked = content.equipItem(p, shield.uid, "offHand");
@@ -2290,7 +2295,7 @@ test("starter gear has no stat or level requirements", () => {
   }
 });
 
-test("hero starts at full health with three stat points, two-handers hit twice as hard", () => {
+test("hero starts at full health with three stat points, two-handers double their base", () => {
   const initial = PlayerFactory.createInitial();
   /* Стартовый герой приходит с полным здоровьем и тремя свободными очками. */
   assert.equal(initial.statPoints, 3);
@@ -2301,9 +2306,10 @@ test("hero starts at full health with three stat points, two-handers hit twice a
   const twoHand = content.createGearItem({ baseId: "greatsword", level: 1, wear: "new", rarity: "common", identified: true, rng: () => 0.5 });
   const a = content.scaledGearStats(oneHand).dmg;
   const b = content.scaledGearStats(twoHand).dmg;
-  /* Двуручный меч ровно вдвое сильнее меча-аналога (было втрое). */
-  assert.ok(Math.abs(b[0] / a[0] - 2) < 0.2, `мин: ${b[0]} против ${a[0]}`);
-  assert.ok(Math.abs(b[1] / a[1] - 2) < 0.2, `макс: ${b[1]} против ${a[1]}`);
+  /* Клеймор: база 9+2+9 = 20 ×2; меч: база 9+2+4 = 15. Отношение 40/15 ≈ 2.67. */
+  const expected = (20 * 2) / 15;
+  assert.ok(Math.abs(b[0] / a[0] - expected) < 0.2, `мин: ${b[0]} против ${a[0]}`);
+  assert.ok(Math.abs(b[1] / a[1] - expected) < 0.2, `макс: ${b[1]} против ${a[1]}`);
 });
 
 test("кнопка «Исследовать все»: бесплатно то, что открывает Интеллект, остальное за 20 × уровень", () => {
@@ -2684,7 +2690,6 @@ test("migration gives accessories and spears their minimum effects", () => {
 
 test("multi-hit technique deals normal attacks without the flat technique bonus", () => {
   const g = content.createGearItem({ baseId: "barbarian_greataxe", skillId: "rage_sweep", level: 1, wear: "new", rarity: "common", identified: true });
-  g.dmgRoll = [10, 10];
   /* Свойства оружия здесь не проверяются: убираем их, чтобы считать только удары. */
   g.effects = [];
   g.effectRolls = {};
@@ -2699,7 +2704,7 @@ test("multi-hit technique deals normal attacks without the flat technique bonus"
   Math.random = old;
   const dealt = 5000 - after.enemy.hp;
   // Два обычных удара: бросок оружия + (2 + СИЛ), без бонуса приёма.
-  const normal = b.p.hit[0] + 2 + b.p.stats.str;
+  const normal = b.p.hit[1] + 2 + b.p.stats.str;
   assert.equal(dealt, normal * 2, `ожидалось два обычных удара без бонуса, получено ${dealt}`);
 });
 

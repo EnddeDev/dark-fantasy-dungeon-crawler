@@ -18,13 +18,24 @@ export const GEAR_EFFECT_GROWTH_MAIN = 1.17;
 export const GEAR_STAT_RATE = 0.5;
 /** Прежнее имя шага эффектов. */
 export const GEAR_LEVEL_GROWTH = GEAR_EFFECT_RATE;
+/** Двуручное оружие и копьё: урон ×2 после всех остальных множителей. */
+export const TWO_HAND_DAMAGE_SCALE = 2;
 /**
- * Двуручное оружие бьёт вдвое сильнее одноручного аналога.
- * Раньше коэффициент был ×3 — теперь базовый урон двуручников пересчитан на ×2.
+ * База урона оружия: 9 + ХАР + вес.
+ * ХАР: ИНТ −1, ЛОВ +1, СИЛ +2. Вес: лёгкое 1, среднее 4, тяжёлое 9.
  */
-export const TWO_HAND_VS_ONE_HAND = 2;
-export const TWO_HAND_LEGACY_FACTOR = 3;
-export const TWO_HAND_DAMAGE_SCALE = TWO_HAND_VS_ONE_HAND / TWO_HAND_LEGACY_FACTOR;
+export const WEAPON_BASE_DAMAGE = 9;
+export const WEAPON_STAT_DAMAGE_MOD: Record<"str" | "agi" | "int", number> = { str: 2, agi: 1, int: -1 };
+export const WEAPON_WEIGHT_DAMAGE: Record<"light" | "medium" | "heavy", number> = { light: 1, medium: 4, heavy: 9 };
+/** Множитель R при создании экземпляра: от 1 до 1,5. */
+export const WEAPON_DMG_MULT_MIN = 1;
+export const WEAPON_DMG_MULT_MAX = 1.5;
+/** Разброс урона экземпляра: ±10% от итогового значения. */
+export const WEAPON_DMG_SPREAD = 0.1;
+
+export function weaponBaseDamage(stat: "str" | "agi" | "int", gearClass: "light" | "medium" | "heavy"): number {
+  return WEAPON_BASE_DAMAGE + WEAPON_STAT_DAMAGE_MOD[stat] + WEAPON_WEIGHT_DAMAGE[gearClass];
+}
 /** Дополнительных ходов от снаряжения не бывает больше трёх. */
 export const MAX_EXTRA_AP = 3;
 /** Уровень предмета, с которого может выпасть свойство дополнительного хода. */
