@@ -30,6 +30,7 @@ import {
   scaledGearStats,
   effectiveHands,
   gearAffinity,
+  gearClassFor,
   supplyLevel,
 
   type EnemyDef,
@@ -68,6 +69,8 @@ import {
   BASE_HP,
   raceArmorMult,
   rollRaceAtkMult,
+  rollRaceAtkMultOpposite,
+  raceHpIsHigh,
   rollRaceHpMult,
   raceBonusMoves,
   raceCannotHeal,
@@ -287,6 +290,8 @@ export interface BattleState {
     fortify: number;
     chanceLayers: Record<ChanceKey, ChanceLayers>;
     weaponName: string;
+    /** Основное оружие лёгкое и с ЛОВ: ЛОВ идёт в плоский урон оружия. */
+    weaponAgi: boolean;
     weaponSkill: WeaponSkillDef | null;
     weaponCd: number;
     epicSkills: EpicSkillDef[];
@@ -485,6 +490,8 @@ export interface DerivedStats {
   armorBonus: number;
   evadeBonus: number;
   strFlat: number;
+  /** Основное оружие лёгкое и с ЛОВ: ЛОВ идёт в плоский урон оружия. */
+  weaponAgi: boolean;
 }
 
 export function derived(pl: Player): DerivedStats {
@@ -512,6 +519,8 @@ export function derived(pl: Player): DerivedStats {
   let hitHi = 0;
   let mainName = "Кулаки";
   let weaponSkill: WeaponSkillDef | null = null;
+  /* Основное оружие лёгкое и требует ЛОВ: тогда его урон получает +1 за очко ЛОВ (как СИЛ). */
+  let mainAgiWeapon = false;
 
   for (const slot of SLOT_ORDER) {
     const g = eq[slot];
@@ -532,6 +541,7 @@ export function derived(pl: Player): DerivedStats {
       if (slot === "mainHand") {
         mainName = st.base.name;
         weaponSkill = st.skill;
+        mainAgiWeapon = gearClassFor(g) === "light" && gearAffinity(g) === "agi";
       } else if (!weaponSkill) {
         weaponSkill = st.skill;
       }
@@ -593,7 +603,8 @@ export function derived(pl: Player): DerivedStats {
   const swiftEvade = (rareAffixPower.swift?.evade ?? 0) / 100;
   const titanHp = legendaryPower.titan_heart?.hp ?? 0;
   const titanArmor = legendaryPower.titan_heart?.armor ?? 0;
-  const strFlat = statDamage(pl.stats.str, pl.passives);
+  /* Плоский бонус оружия: СИЛ всегда, ЛОВ — если основное оружие лёгкое и с ЛОВ. */
+  const strFlat = statDamage(pl.stats.str, pl.passives) + (mainAgiWeapon ? pl.stats.agi : 0);
   /* Благословение священника на поход: здоровье, броня и шансы из blessingEffect. */
   const bless = blessingEffect(pl.blessing);
   const baseHp = statHealth(pl.stats.str, pl.passives) + hpBonus + (hasPassive("iron_will") ? 22 : 0) + mightHp + titanHp;
@@ -692,6 +703,7 @@ export function derived(pl: Player): DerivedStats {
     armorBonus,
     evadeBonus,
     strFlat,
+    weaponAgi: mainAgiWeapon,
     firstRoundApBonus,
   };
 }
@@ -819,7 +831,10 @@ export function spawnEnemy(
   const raceHp = rollRaceHpMult(def.race, rng);
   const baseHp = BASE_HP * typeMeta.hpMult * raceHp + monsterHealthBonus(stats.str);
   /* Удар: def.atk = 10 × T × R + 1 × СИЛ; дальше × L × Угр. R — свой случайный множитель рода для удара. */
-  const raceAtk = rollRaceAtkMult(def.race, rng);
+  /* Обычные: ОЗ выше медианы рода → удар ниже медианы, и наоборот (ОЗ уже брошено выше). Боссы — как прежде. */
+  const raceAtk = isBoss
+    ? rollRaceAtkMult(def.race, rng)
+    : rollRaceAtkMultOpposite(def.race, raceHpIsHigh(def.race, raceHp), rng);
   const baseAtk = BASE_ATK * typeMeta.hpMult * raceAtk + monsterDamageBonus(stats.str);
 
   // Шаг усиления падает на 0.05 за уровень, но не ниже ×1.05 (кроме ходов).
@@ -1091,6 +1106,7 @@ export function newBattle(
       passives: [...pl.passives],
       itemEffects: heroItemEffects(equippedList(pl).filter((item) => item.identified)),
       hit: d.hit,
+      weaponAgi: d.weaponAgi,
       critChance: d.critChance,
       critDamage: d.critDamage,
       tenacity: d.tenacity,
@@ -1596,7 +1612,7 @@ function grantDodgeAction(b: BattleState) {
 
 function calcWeaponRoll(b: BattleState, mult = 1, bonusFlat = 0, opts: { skill?: boolean; forceCrit?: boolean; multi?: boolean } = {}) {
   const [lo, hi] = b.p.hit;
-  let d = randInt(lo, hi) + statDamage(b.p.stats.str, b.p.passives) + bonusFlat;
+  let d = randInt(lo, hi) + statDamage(b.p.stats.str, b.p.passives) + (b.p.weaponAgi ? b.p.stats.agi : 0) + bonusFlat;
 
   if (hasPassive(b, "heavy_hand")) d += 3;
   d += rarePower(b, "might", "damage");
@@ -4196,7 +4212,7 @@ function flatOf(list: Modifier[]) {
  */
 export function combatReadout(b: BattleState): CombatReadout {
   const st = b.p.stats;
-  const strFlat = statDamage(st.str, b.p.passives);
+  const strFlat = statDamage(st.str, b.p.passives) + (b.p.weaponAgi ? st.agi : 0);
   const baseMin = b.p.hit[0] + strFlat;
   const baseMax = b.p.hit[1] + strFlat;
 
