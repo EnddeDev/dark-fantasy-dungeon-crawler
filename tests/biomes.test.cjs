@@ -180,7 +180,13 @@ test("darkness adds a separate 25% miss check to physical attacks", () => {
 });
 
 test("fire burns both sides only on the hero's turn", () => {
-  const b = freshBattle(player({ hp: 100, stats: { str: 1, agi: 10, int: 1 } }), 3, false, "fire");
+  /* Первый ход в бою у героя не всегда: враг с большим числом ходов может сходить раньше.
+     Берём бой, где герой ходит первым, — иначе горение первого хода не начнётся. */
+  let b = null;
+  for (let tries = 0; tries < 2000 && (!b || b.queue[b.idx] !== "p"); tries++) {
+    b = freshBattle(player({ hp: 100, stats: { str: 1, agi: 10, int: 1 } }), 3, false, "fire");
+  }
+  assert.equal(b.queue[b.idx], "p", "нашли бой с ходом героя первым");
   assert.equal(b.p.statuses.burning, 1); // первый ход игрока уже начался
   b.p.hp = 100; b.p.armor = 999;
   b.enemy.hp = 1000; b.enemy.maxHp = 1000; b.enemy.statuses.burning = 1;

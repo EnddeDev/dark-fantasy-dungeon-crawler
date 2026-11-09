@@ -153,6 +153,16 @@ import { damageTypeName, isDamageElement } from "./damageTypes";
 import { ARCHETYPES, type ArchetypeId } from "./archetypes";
 import type { GearEffectId, GearPassiveId } from "./gearEffects";
 import { pouchIds } from "./pouch";
+import {
+  STAMINA_GUARD,
+  STAMINA_MIN_PAID,
+  STAMINA_BACKPACK,
+  STAMINA_TECHNIQUE_EXTRA,
+  STAMINA_UNARMED,
+  staminaMax,
+  weaponStaminaCost,
+  STAMINA_BY_WEIGHT,
+} from "./stamina";
 import { heroItemEffects, type TabEffect } from "./effectEntries";
 import {
   GEAR_PASSIVE_BASE,
@@ -204,7 +214,7 @@ export interface BattleState {
     passive: EnemyPassive | null;
     /** Итоговый боевой тип (с учётом ограничений рода). */
     mtype: MonsterType;
-    /** Характеристики СИЛ/ЛОВ/ИНТ: дают ОЗ, урон, ходы, уклонение, крит и сопротивления. */
+    /** Характеристики СИЛ/ЛОВ/ИНТ: дают ОЗ, урон, выносливость или ходы, уклонение, крит и сопротивления. */
     stats: MonsterStats;
     /** Сколько твоих попаданий выдержал дракон (для «залпа»). */
     hitsTaken: number;
@@ -278,6 +288,11 @@ export interface BattleState {
     armor: number;
     evade: number;
     ap: number;
+    /** Выносливость: тратится действиями, восстанавливается в начале раунда. */
+    stamina: number;
+    staminaMax: number;
+    /** Удары по рукам для атаки; пусто — кулаки. */
+    hands: HandStrike[];
     firstRoundApBonus: number;
     stats: Record<StatKey, number>;
     passives: string[];
@@ -316,7 +331,7 @@ export interface BattleState {
     /** Счётчики за текущий ход героя: сбрасываются, когда очередь переходит дальше. */
     turnConsumables: number;
     turnScrolls: number;
-    /** Зелье из сумки за ход: первое не тратит ход. */
+    /** Зелье из сумки: не тратит выносливость. */
     turnPouch: number;
     /** Концентрация 0–5: атака +1, приём −1, расходник +1, защита +2; при 5 — спец-приём архетипа. */
     concentration: number;
@@ -406,7 +421,7 @@ export interface BattleState {
     firstAttackDone: boolean;
   };
   bag: Record<string, number>;
-  /** Зелья из сумки (до трёх видов): первое за ход не тратит ход. */
+  /** Зелья из сумки (до трёх видов): не тратят выносливость. */
   pouch: string[];
   /** Созданное в бою (свитки мудреца, расходники ниндзя): лежит в bag, герою после боя не переходит. */
   conjured: Record<string, number>;
@@ -433,7 +448,8 @@ export type PlayerAction =
   | { type: "item"; id: string }
   | { type: "guard" }
   | { type: "archetype_skill" }
-  | { type: "flee"; rate?: number };
+  | { type: "flee"; rate?: number }
+  | { type: "end_turn" };
 
 let flashSeq = 0;
 
@@ -453,9 +469,26 @@ export function equippedList(pl: Player): GearItem[] {
   return SLOT_ORDER.map((s) => eq[s]).filter((g): g is GearItem => !!g);
 }
 
+/** Один удар оружия в руке: отдельная атака со своим броском, стоимостью и эффектами. */
+export interface HandStrike {
+  lo: number;
+  hi: number;
+  /** ЛОВ идёт в плоский урон этого удара (лёгкое оружие с основной ЛОВ). */
+  agi: boolean;
+  /** Выносливость за удар. */
+  cost: number;
+  /** Средний урон: по нему выбирается сильнейшее оружие для приёмов. */
+  power: number;
+  name: string;
+}
+
 export interface DerivedStats {
   maxHp: number;
   ap: number;
+  /** Выносливость на раунд (максимум). */
+  staminaMax: number;
+  /** Удары по рукам; пусто — кулаки. */
+  hands: HandStrike[];
   /** Дополнительные ходы первого раунда от пассивов/легендарных свойств, не от ускорения предметов. */
   firstRoundApBonus: number;
   armor: number;
@@ -521,6 +554,7 @@ export function derived(pl: Player): DerivedStats {
   let weaponSkill: WeaponSkillDef | null = null;
   /* Основное оружие лёгкое и требует ЛОВ: тогда его урон получает +1 за очко ЛОВ (как СИЛ). */
   let mainAgiWeapon = false;
+  const hands: HandStrike[] = [];
 
   for (const slot of SLOT_ORDER) {
     const g = eq[slot];
@@ -536,8 +570,19 @@ export function derived(pl: Player): DerivedStats {
     const isHand = slot === "mainHand" || slot === "offHand";
     if (isHand && st.dmg) {
       const handMult = slot === "offHand" ? 0.5 : 1;
-      hitLo += Math.round(st.dmg[0] * handMult);
-      hitHi += Math.round(st.dmg[1] * handMult);
+      const lo = Math.round(st.dmg[0] * handMult);
+      const hi = Math.round(st.dmg[1] * handMult);
+      hitLo += lo;
+      hitHi += hi;
+      const cls = gearClassFor(g);
+      hands.push({
+        lo,
+        hi,
+        agi: cls === "light" && gearAffinity(g) === "agi",
+        cost: weaponStaminaCost(cls),
+        power: (lo + hi) / 2,
+        name: st.base.name,
+      });
       if (slot === "mainHand") {
         mainName = st.base.name;
         weaponSkill = st.skill;
@@ -650,6 +695,7 @@ export function derived(pl: Player): DerivedStats {
     chanceLayers.magicResist.effects.push(passivePower.fortress.resist / 100);
   }
 
+  /* Ходы героя за раунд: 1 + ЛОВ (блоков действий) + ускорение предметов. Действия внутри блока тратят выносливость. */
   const ap = Math.max(1, statActions(pl.stats.agi)) + Math.min(MAX_EXTRA_AP, effectPower.ap ?? 0);
   let firstRoundApBonus = 0;
   for (const slot of SLOT_ORDER) {
@@ -672,6 +718,8 @@ export function derived(pl: Player): DerivedStats {
   return {
     maxHp,
     ap,
+    staminaMax: staminaMax(pl.stats),
+    hands,
     armor,
     evade,
     hit,
@@ -1101,6 +1149,9 @@ export function newBattle(
       armor: d.armor,
       evade: d.evade,
       ap: d.ap,
+      stamina: d.staminaMax,
+      staminaMax: d.staminaMax,
+      hands: d.hands,
       firstRoundApBonus: d.firstRoundApBonus,
       stats: { ...pl.stats },
       passives: [...pl.passives],
@@ -1610,9 +1661,14 @@ function grantDodgeAction(b: BattleState) {
   }
 }
 
-function calcWeaponRoll(b: BattleState, mult = 1, bonusFlat = 0, opts: { skill?: boolean; forceCrit?: boolean; multi?: boolean } = {}) {
-  const [lo, hi] = b.p.hit;
-  let d = randInt(lo, hi) + statDamage(b.p.stats.str, b.p.passives) + (b.p.weaponAgi ? b.p.stats.agi : 0) + bonusFlat;
+function calcWeaponRoll(
+  b: BattleState,
+  mult = 1,
+  bonusFlat = 0,
+  opts: { skill?: boolean; forceCrit?: boolean; multi?: boolean; hand?: HandStrike } = {},
+) {
+  const hand = opts.hand ?? { lo: b.p.hit[0], hi: b.p.hit[1], agi: b.p.weaponAgi };
+  let d = randInt(hand.lo, hand.hi) + statDamage(b.p.stats.str, b.p.passives) + (hand.agi ? b.p.stats.agi : 0) + bonusFlat;
 
   if (hasPassive(b, "heavy_hand")) d += 3;
   d += rarePower(b, "might", "damage");
@@ -2179,11 +2235,9 @@ function beginTurn(b: BattleState) {
   const side = b.queue[b.idx];
   if (!side) return;
 
-  /* Страх: в свой ход герой сам встаёт в защиту, без кнопки. */
+  /* Страх: атаки и приёмы закрыты; защиту, рюкзак, побег или конец хода герой выбирает сам. */
   if (side === "p" && b.p.statuses.fear > 0) {
-    b.p.guard = true;
-    flash(b, "p", "guard", 0);
-    push(b, "Страх сковывает волю: ты в защите. Можно достать вещь из рюкзака или остаться в защите.", "e");
+    push(b, "Страх сковывает волю: атаки и приёмы закрыты. Доступны рюкзак, защита, побег или конец хода.", "e");
   }
 
   if (b.biome === "ice" && side === "p") {
@@ -2447,6 +2501,8 @@ function advance(b: BattleState) {
 
     b.round += 1;
     b.idx = 0;
+    /* Выносливость восстанавливается в начале раунда. */
+    b.p.stamina = b.p.staminaMax;
     const hasteBonus = b.p.statuses.haste > 0 ? 1 : 0;
     const sageAp = hasPassive(b, "arch_sage_10") ? 1 : 0;
     const shadowAp = b.p.statuses.shadowStep;
@@ -2724,6 +2780,47 @@ export function skipStunnedTurn(b0: BattleState): BattleState {
   return b;
 }
 
+/** Выносливость за обычную атаку: сумма ударов по рукам; без оружия — как лёгкое. */
+export function attackStaminaCost(b: BattleState): number {
+  const hands = b.p.hands ?? [];
+  if (!hands.length) return STAMINA_UNARMED;
+  return hands.reduce((sum, h) => sum + h.cost, 0);
+}
+
+/** Приём: вес сильнейшего оружия (по среднему урону) + добавка. */
+export function techniqueStaminaCost(b: BattleState): number {
+  const hands = b.p.hands ?? [];
+  const base = hands.length ? hands.reduce((best, h) => (h.power > best.power ? h : best)).cost : STAMINA_UNARMED;
+  return base + STAMINA_TECHNIQUE_EXTRA;
+}
+
+/** Выносливость, которую тратит действие. Спец-приём архетипа, побег и конец хода — бесплатны. */
+export function actionStaminaCost(b: BattleState, a: PlayerAction): number {
+  switch (a.type) {
+    case "attack":
+      return attackStaminaCost(b);
+    case "weapon_skill":
+    case "epic_skill":
+      return techniqueStaminaCost(b);
+    case "armor_skill": {
+      const sk = b.p.armorSkills.find((x) => x.id === a.id);
+      return sk ? STAMINA_BY_WEIGHT[sk.gearClass] + STAMINA_TECHNIQUE_EXTRA : 0;
+    }
+    case "guard":
+      return STAMINA_GUARD;
+    case "item":
+      return b.pouch.includes(a.id) ? 0 : STAMINA_BACKPACK;
+    default:
+      return 0;
+  }
+}
+
+/** Ход продолжается, пока хватает выносливости хотя бы на одну платную трату или есть бесплатный предмет в сумке. */
+function canKeepActing(b: BattleState): boolean {
+  if (b.p.stamina >= STAMINA_MIN_PAID) return true;
+  return b.pouch.some((id) => (b.bag[id] ?? 0) > 0);
+}
+
 export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
   if (b0.over || b0.queue[b0.idx] !== "p") return b0;
   if (b0.p.statuses.stunAp > 0) return skipStunnedTurn(b0);
@@ -2746,9 +2843,14 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
     return b;
   };
 
-  if (fearTurn && a.type !== "item" && a.type !== "guard" && a.type !== "flee") {
-    return err("Страх: атаковать и применять приёмы нельзя. Доступны рюкзак, защита и побег.");
+  if (fearTurn && a.type !== "item" && a.type !== "guard" && a.type !== "flee" && a.type !== "end_turn") {
+    return err("Страх: атаковать и применять приёмы нельзя. Доступны рюкзак, защита, побег и конец хода.");
   }
+
+  /* Выносливость: действие тратит её только в свой ход; списывается после успешного действия. */
+  const cost = takeTurn ? actionStaminaCost(b, a) : 0;
+  if (cost > b.p.stamina) return err(`Не хватает выносливости: нужно ${cost}, осталось ${b.p.stamina}.`);
+  let spent = cost;
 
   const spellPowerMult =
     (hasPassive(b, "resonance") ? 1.4 : 1) * (1 + legPower(b, "archmage_blood", "spellDamage") / 100);
@@ -2766,45 +2868,49 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
   }
   if (a.type === "item" && b.p.statuses.sealItems > 0) return err("Печать немоты запрещает расходники в этот ход.");
 
-  /* Расходник, который не тратит ход: игрок остаётся на своём ходу (Ниндзя 10, Мудрец 10). */
-  let freeAction = false;
   switch (a.type) {
     case "attack": {
       const firstStrike = !b.p.firstAttackDone && hasPassive(b, "arch_assassin_10");
-      const { d, crit } = calcWeaponRoll(b);
-      /* Бастион: после стойки следующая обычная атака получает броню стойки как прямой урон (один раз). */
-      const strikeBonus = b.p.statuses.bulwarkStrike;
-      b.p.statuses.bulwarkStrike = 0;
-      const dealt = hitEnemy(
-        b,
-        d + strikeBonus,
-        "phys",
-        (crit ? " Критический удар!" : "") + (strikeBonus > 0 ? ` [Стойка: +${strikeBonus}]` : ""),
-      );
-      applyVamp(b, dealt, 0, "weapon");
-      if (dealt > 0) oilOnHit(b, dealt);
-      b.p.firstAttackDone = true;
-      if (firstStrike) firstStrikeStun(b);
-      weaponHitEffects(b);
-      if (crit && hasPassive(b, "arch_assassin_10")) {
-        const heal = healPlayer(b, Math.max(1, Math.round(dealt * 0.15)));
-        if (heal > 0) push(b, `Тень смерти: крит возвращает +${heal} здоровья.`, "p");
-      }
-      const stunChance = combatChance(b.p.chanceLayers.stun, [
-        effectPower(b, "stun_chance") / 100,
-        passivePower(b, "heavy_blow", "stun") / 100,
-        passivePower(b, "barbarian_rage", "stun") / 100,
-        hasPassive(b, "arch_barbarian_10") ? 0.15 : 0,
-      ]);
-      if (b.enemy.hp > 0 && stunChance > 0 && Math.random() < stunChance && !bossResists(b)) {
-        b.enemy.statuses.stunAp = Math.min(2, b.enemy.statuses.stunAp + 1);
-        push(b, `${b.enemy.def.name} оглушён и потеряет 1 ход в следующем раунде!`, "p");
-      }
-      const counterChance = Math.min(1, effectPower(b, "counter") / 100 + passivePower(b, "dance", "counter") / 100);
-      if (b.enemy.hp > 0 && counterChance > 0 && Math.random() < counterChance) {
-        const { d: cd } = calcWeaponRoll(b, 0.6);
-        const dealt2 = hitEnemy(b, cd, "phys", " [Второй удар]");
-        applyVamp(b, dealt2, 0, "weapon");
+      /* Каждое оружие в руках — отдельный удар: свой бросок, свой крит, свои эффекты. Кулаки — один удар. */
+      const strikes = (b.p.hands ?? []).length ? b.p.hands : [undefined];
+      for (let i = 0; i < strikes.length && b.enemy.hp > 0; i++) {
+        const hand = strikes[i];
+        const label = strikes.length > 1 && hand ? ` [${hand.name}]` : "";
+        const { d, crit } = calcWeaponRoll(b, 1, 0, { hand });
+        /* Бастион: после стойки следующая обычная атака получает броню стойки как прямой урон (один раз). */
+        const strikeBonus = b.p.statuses.bulwarkStrike;
+        b.p.statuses.bulwarkStrike = 0;
+        const dealt = hitEnemy(
+          b,
+          d + strikeBonus,
+          "phys",
+          label + (crit ? " Критический удар!" : "") + (strikeBonus > 0 ? ` [Стойка: +${strikeBonus}]` : ""),
+        );
+        applyVamp(b, dealt, 0, "weapon");
+        if (dealt > 0) oilOnHit(b, dealt);
+        b.p.firstAttackDone = true;
+        if (firstStrike && i === 0) firstStrikeStun(b);
+        weaponHitEffects(b);
+        if (crit && hasPassive(b, "arch_assassin_10")) {
+          const heal = healPlayer(b, Math.max(1, Math.round(dealt * 0.15)));
+          if (heal > 0) push(b, `Тень смерти: крит возвращает +${heal} здоровья.`, "p");
+        }
+        const stunChance = combatChance(b.p.chanceLayers.stun, [
+          effectPower(b, "stun_chance") / 100,
+          passivePower(b, "heavy_blow", "stun") / 100,
+          passivePower(b, "barbarian_rage", "stun") / 100,
+          hasPassive(b, "arch_barbarian_10") ? 0.15 : 0,
+        ]);
+        if (b.enemy.hp > 0 && stunChance > 0 && Math.random() < stunChance && !bossResists(b)) {
+          b.enemy.statuses.stunAp = Math.min(2, b.enemy.statuses.stunAp + 1);
+          push(b, `${b.enemy.def.name} оглушён и потеряет 1 ход в следующем раунде!`, "p");
+        }
+        const counterChance = Math.min(1, effectPower(b, "counter") / 100 + passivePower(b, "dance", "counter") / 100);
+        if (b.enemy.hp > 0 && counterChance > 0 && Math.random() < counterChance) {
+          const { d: cd } = calcWeaponRoll(b, 0.6, 0, { hand });
+          const dealt2 = hitEnemy(b, cd, "phys", " [Второй удар]");
+          applyVamp(b, dealt2, 0, "weapon");
+        }
       }
       break;
     }
@@ -3321,24 +3427,27 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
       } else {
         push(b, "Эхо мысли сохраняет свиток — он не истлел!", "p");
       }
-      /* Ниндзя 10: первый расходник за ход не тратит ход. Мудрец 10: первый свиток за ход не тратит ход.
-         Сумка: первое зелье из слотов за ход не тратит ход. Сумка и ниндзя считаются независимо. */
+      /* Ниндзя 10: первый расходник за ход бесплатен. Мудрец 10: первый свиток за ход бесплатен.
+         Сумка: зелье из слотов бесплатно. Сумка и ниндзя считаются независимо. */
       const isScroll = def.kind === "scroll";
-      const pouchFree = def.kind === "potion" && b.pouch.includes(a.id) && b.p.turnPouch < 1;
+      /* Предмет из сумки не тратит выносливость. Ниндзя 10 и Мудрец 10: первый расходник (свиток) за ход тоже бесплатен. */
+      const pouchFree = def.kind === "potion" && b.pouch.includes(a.id);
       const ninjaFree = !isScroll && hasPassive(b, "arch_ninja_10") && b.p.turnConsumables < 1;
-      const freeUse = isScroll ? hasPassive(b, "arch_sage_10") && b.p.turnScrolls < 1 : pouchFree || ninjaFree;
+      const freeUse = isScroll ? hasPassive(b, "arch_sage_10") && b.p.turnScrolls < 1 : ninjaFree;
       if (pouchFree) b.p.turnPouch += 1;
       else b.p.turnConsumables += 1;
       if (isScroll) b.p.turnScrolls += 1;
+      if (pouchFree) {
+        spent = 0;
+        push(b, "Зелье из сумки не тратит выносливость.", "p");
+      }
       if (freeUse) {
-        freeAction = true;
+        spent = 0;
         push(
           b,
           isScroll
-            ? "Свиток не тратит ход: можно применить ещё один."
-            : pouchFree
-              ? "Зелье из сумки не тратит ход."
-              : "Первый расходник за ход не тратит ход.",
+            ? "Свиток не тратит выносливость: можно применить ещё один."
+            : "Первый расходник за ход не тратит выносливость.",
           "p",
         );
       }
@@ -3354,6 +3463,9 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
       break;
     }
 
+    case "end_turn":
+      break;
+
     case "flee": {
       b.over = "flee";
       b.fleeRate = a.rate ?? 0.4 + Math.random() * 0.3;
@@ -3362,7 +3474,8 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
     }
   }
 
-  if (takeTurn && !b.over) adjustConcentration(b, a.type);
+  if (takeTurn) b.p.stamina = Math.max(0, b.p.stamina - spent);
+  if (takeTurn && !b.over && a.type !== "end_turn") adjustConcentration(b, a.type);
   if (!b.over && b.enemy.hp <= 0 && !tryRevive(b)) {
     b.enemy.hp = 0;
     b.over = "win";
@@ -3371,8 +3484,9 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
     return b;
   }
   if (b.over) return b;
-  if (fearTurn) b.p.guard = true;
-  if (takeTurn && !freeAction) advance(b);
+  /* Ход заканчивается защитой и кнопкой «Закончить ход» либо когда выносливость иссякла. */
+  const endsTurn = a.type === "guard" || a.type === "end_turn";
+  if (takeTurn && (endsTurn || !canKeepActing(b))) advance(b);
   return b;
 }
 
@@ -4192,6 +4306,9 @@ export interface CombatReadout {
   fortify: number;
   ap: number;
   apBase: number;
+  /** Выносливость сейчас и на раунд. */
+  stamina: number;
+  staminaMax: number;
   resist: number;
   dmgMods: Modifier[];
   defMods: Modifier[];
@@ -4498,6 +4615,8 @@ export function combatReadout(b: BattleState): CombatReadout {
 
   const haste = b.p.statuses.haste;
   const apBase = b.p.ap;
+  const stamina = b.p.stamina;
+  const staminaMax = b.p.staminaMax;
   const sageAp = hasPassive(b, "arch_sage_10") ? 1 : 0;
   const ap = Math.max(1, apBase + (haste > 0 ? 1 : 0) + sageAp + b.p.statuses.shadowStep);
 
@@ -4525,6 +4644,8 @@ export function combatReadout(b: BattleState): CombatReadout {
     fortify: combatChance(b.p.chanceLayers.fortify),
     ap,
     apBase,
+    stamina,
+    staminaMax,
     resist: playerResistChance(b),
     dmgMods,
     defMods,

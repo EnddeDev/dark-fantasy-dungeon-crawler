@@ -53,7 +53,8 @@ test("guide core sections are characteristics, gear quality/wear, then combat ru
   assert.match(html, /×1\.325/);
   assert.match(html, /×1</);
   assert.match(html, /×0\.75/);
-  assert.match(html, /Одно действие — один ход/);
+  assert.match(html, /Ход героя — блок действий, пока хватает/);
+  assert.match(html, /Защита — 10 и заканчивает ход/);
 });
 
 test("guide codifies the new stat formulas and probability rule", () => {
@@ -62,6 +63,7 @@ test("guide codifies the new stat formulas and probability rule", () => {
   assert.ok(html.includes("Урон оружием: 2 + 1 × СИЛ"));
   assert.ok(html.includes("Стойкость: 5% за каждое очко"));
   assert.ok(html.includes("Ход: 1 за каждое очко ЛОВ"));
+  assert.ok(html.includes("Выносливость: +10 за каждое очко ЛОВ"));
   assert.ok(html.includes("Уклонение: 5% за каждое очко"));
   assert.ok(html.includes("Урон расходников: 15 + 2 × ЛОВ"));
   assert.ok(html.includes("Крит-шанс: 2% + 1% × ЛОВ"));

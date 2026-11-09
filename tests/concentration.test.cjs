@@ -146,7 +146,7 @@ test("ассасин: удар всегда крит и даёт вампири�
   assert.ok(next.p.hp > b.p.hp, "вампиризм возвращает здоровье");
 });
 
-test("ниндзя: 5 расходников, 2 брошены, 3 остаются временными; ход тратится один раз", () => {
+test("ниндзя: 5 расходников, 2 брошены, 3 остаются временными; приём бесплатный, ход не заканчивает", () => {
   const b = fightFor({ archetype: "ninja" });
   b.p.concentration = 5;
   const bagBefore = { ...battle.persistentBag(b) };
@@ -155,7 +155,8 @@ test("ниндзя: 5 расходников, 2 брошены, 3 остаютс
   const conjuredLeft = Object.values(next.conjured).reduce((s, n) => s + n, 0);
   assert.equal(conjuredLeft, 3, "5 созданы, 2 брошены");
   assert.deepEqual(battle.persistentBag(next), bagBefore, "личный запас не меняется");
-  assert.equal(next.idx, 1, "ход переходит врагу один раз");
+  assert.equal(next.idx, 0, "приём бесплатный: ход героя продолжается");
+  assert.equal(next.p.stamina, b.p.stamina, "выносливость не тратится");
   assert.equal(next.round, 1);
   assert.ok(next.log.some((l) => l.text.includes("Град снарядов")));
 });
