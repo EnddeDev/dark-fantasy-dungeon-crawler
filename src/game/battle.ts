@@ -156,6 +156,7 @@ import { pouchIds } from "./pouch";
 import {
   STAMINA_GUARD,
   STAMINA_MIN_PAID,
+  STAMINA_TURN_RECOVERY,
   STAMINA_BACKPACK,
   STAMINA_TECHNIQUE_EXTRA,
   STAMINA_UNARMED,
@@ -2338,6 +2339,12 @@ function beginTurn(b: BattleState) {
   if (side === "p" && (b.p.regenTurn ?? 0) > 0 && b.p.hp > 0 && b.p.hp < b.p.maxHp) {
     const heal = healPlayer(b, b.p.regenTurn ?? 0);
     if (heal > 0) push(b, `Регенерация снаряжения: +${heal} здоровья.`, "p");
+  }
+  /* Выносливость: каждый ход героя восстанавливает STAMINA_TURN_RECOVERY, не больше максимума. */
+  if (side === "p" && b.p.hp > 0 && b.p.stamina < b.p.staminaMax) {
+    const gain = Math.min(STAMINA_TURN_RECOVERY, b.p.staminaMax - b.p.stamina);
+    b.p.stamina += gain;
+    push(b, `Передышка: +${gain} выносливости.`, "p");
   }
   /* Непреклонность (ранг 3): ниже 30% ОЗ — лечение 5% макс. ОЗ в начале хода героя. */
   if (side === "p" && hasPassive(b, "skill_fortitude_a") && b.p.hp > 0 && b.p.hp < b.p.maxHp * 0.3) {

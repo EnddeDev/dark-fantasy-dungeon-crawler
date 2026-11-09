@@ -20,6 +20,9 @@ export const STAMINA_GUARD = 10;
 /** Предмет из рюкзака. Предмет из сумки (слоты для зелий) бесплатен. */
 export const STAMINA_BACKPACK = 5;
 
+/** Восстановление в начале каждого хода героя (сверх полного восстановления в начале раунда). */
+export const STAMINA_TURN_RECOVERY = 20;
+
 /** Самая дешёвая платная трата: если выносливости меньше, ход заканчивается сам. */
 export const STAMINA_MIN_PAID = STAMINA_BACKPACK;
 

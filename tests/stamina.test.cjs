@@ -188,6 +188,27 @@ test("в начале каждого раунда выносливость во�
   assert.equal(s.p.stamina, s.p.staminaMax);
 });
 
+test("каждый ход героя восстанавливает 20 выносливости, но не больше максимума", () => {
+  const b = fight(hero());
+  b.queue = ["p", "e", "p", "e"];
+  b.idx = 0;
+  b.p.stamina = 50;
+  let s = battle.playerAct(b, { type: "end_turn" });
+  s = battle.enemyStep(s);
+  assert.equal(s.queue[s.idx], "p", "второй ход героя в том же раунде");
+  assert.equal(s.round, b.round, "тот же раунд: полного восстановления ещё не было");
+  assert.equal(s.p.stamina, 70, "50 + 20");
+  assert.ok(s.log.some((l) => l.text.includes("Передышка: +20 выносливости")));
+
+  const c = fight(hero());
+  c.queue = ["p", "e", "p", "e"];
+  c.idx = 0;
+  c.p.stamina = c.p.staminaMax - 5;
+  let t = battle.playerAct(c, { type: "end_turn" });
+  t = battle.enemyStep(t);
+  assert.equal(t.p.stamina, t.p.staminaMax, "восстановление не выходит за максимум");
+});
+
 test("страх: удар и приёмы закрыты, рюкзак и защита открыты, выносливость по-прежнему списывается", () => {
   const b = fight(withWeapons([gear("sword")]));
   b.p.statuses.fear = 1;
