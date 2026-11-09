@@ -46,8 +46,6 @@ export interface MonsterTypeMeta {
   hpMult: number;
   /** Прибавка к броне (может быть отрицательной). */
   armorDelta: number;
-  /** Множитель урона обычной атаки. */
-  atkMult: number;
   /** Ходы вида поверх базового хода: 1 всегда, у ловкого +1, у остальных 0. Ловкость добавляет ходы сверху. */
   apDelta: number;
   /** Врождённое уклонение. */
@@ -63,7 +61,6 @@ export const MONSTER_TYPE_META: Record<MonsterType, MonsterTypeMeta> = {
     note: "Много здоровья и брони, мало ходов, но каждый удар тяжёл.",
     hpMult: 1.15,
     armorDelta: 1,
-    atkMult: 1.2,
     apDelta: 0,
     evade: 0,
     movePower: 0.9,
@@ -74,7 +71,6 @@ export const MONSTER_TYPE_META: Record<MonsterType, MonsterTypeMeta> = {
     note: "Мало здоровья и брони, зато уклонение и лишний ход; бьёт слабее.",
     hpMult: 0.85,
     armorDelta: -1,
-    atkMult: 0.85,
     apDelta: 1,
     evade: 0.15,
     movePower: 0.9,
@@ -85,7 +81,6 @@ export const MONSTER_TYPE_META: Record<MonsterType, MonsterTypeMeta> = {
     note: "Средние здоровье, броня и ходы; обычный удар слаб, а урон держится на приёмах.",
     hpMult: 1.0,
     armorDelta: 0,
-    atkMult: 0.75,
     apDelta: 0,
     evade: 0.05,
     movePower: 1.45,
@@ -308,6 +303,58 @@ export function coerceMonsterType(race: MonsterRace, type: MonsterType): Monster
 export function monsterEvade(race: MonsterRace, type: MonsterType): number {
   const t = MONSTER_TYPE_META[type] ?? MONSTER_TYPE_META.strong;
   return Math.min(0.6, t.evade + raceEvade(race));
+}
+
+/** Основа здоровья до множителей: 35 × T × R + 10 × СИЛ. */
+export const BASE_HP = 35;
+
+/** Множитель здоровья рода R: при спавне выбирается случайное значение из диапазона. */
+export const RACE_HP_RANGE: Record<MonsterRace, [number, number]> = {
+  undead: [0.75, 1.25],
+  construct: [2, 3],
+  vampire: [1, 1.25],
+  ghost: [0.7, 1],
+  beast: [1.25, 1.75],
+  demon: [1.5, 1.75],
+  dragon: [1.5, 2],
+  none: [0.9, 1.1],
+};
+
+/** Случайный R рода из его диапазона. rng — тот же источник, что у спавна. */
+export function rollRaceHpMult(race: MonsterRace, rng: () => number = Math.random): number {
+  const [lo, hi] = RACE_HP_RANGE[race] ?? RACE_HP_RANGE.none;
+  return lo + rng() * (hi - lo);
+}
+
+/** Основа удара до множителей: def.atk = 10 × T × R + 1 × СИЛ. Здесь 10. */
+export const BASE_ATK = 10;
+
+/** Множитель удара рода R: при спавне выбирается случайное значение из диапазона. */
+export const RACE_ATK_RANGE: Record<MonsterRace, [number, number]> = {
+  undead: [0.9, 1.1],
+  construct: [1.5, 2],
+  vampire: [1.25, 1.5],
+  ghost: [1, 1.25],
+  beast: [0.75, 1.25],
+  demon: [1.75, 2],
+  dragon: [2, 3],
+  none: [0.9, 1.1],
+};
+
+/** Случайный R рода для удара. rng — тот же источник, что у спавна. */
+export function rollRaceAtkMult(race: MonsterRace, rng: () => number = Math.random): number {
+  const [lo, hi] = RACE_ATK_RANGE[race] ?? RACE_ATK_RANGE.none;
+  return lo + rng() * (hi - lo);
+}
+
+/** Разброс удара: итоговый диапазон = центр × (1 ± разброс). */
+export const ATK_SPREAD = 0.1;
+
+/** Основа удара вида до уровня, угрозы и СИЛ: 10 × T × R, по роду — диапазон. T — множитель типа (как у ОЗ). */
+export function baseAtkRange(type: MonsterType, race: MonsterRace): [number, number] {
+  const t = MONSTER_TYPE_META[type]?.hpMult ?? 1;
+  const [lo, hi] = RACE_ATK_RANGE[race] ?? RACE_ATK_RANGE.none;
+  return [BASE_ATK * t * lo, BASE_ATK * t * hi];
 }
 
 /** Описание врождённых свойств рода для интерфейса и бестиария. */

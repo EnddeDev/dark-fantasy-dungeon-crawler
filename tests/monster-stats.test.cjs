@@ -127,8 +127,8 @@ test("обычные монстры и боссы получают характ�
       const total = s.stats.str + s.stats.agi + s.stats.int;
       const [lo, hi] = stats.monsterStatTotalRange(s.level);
       assert.ok(total >= lo && total <= hi, `${def.id} этаж ${floor}: сумма ${total}`);
-      assert.ok(s.hp - stats.monsterHealthBonus(s.stats.str) >= battle.NORMAL_MIN_HP, `${def.id}: минимум ОЗ`);
-      assert.ok(s.atk[0] - stats.monsterDamageBonus(s.stats.str) >= battle.NORMAL_MIN_ATK, `${def.id}: минимум удара`);
+      assert.ok(s.hp >= battle.NORMAL_MIN_HP, `${def.id}: минимум ОЗ ${s.hp}`);
+      assert.ok(s.atk[0] >= 1, `${def.id}: удар ${s.atk[0]}`);
     }
     const boss = battle.spawnEnemy(floor, true, lcg(floor));
     const total = boss.stats.str + boss.stats.agi + boss.stats.int;
@@ -242,4 +242,35 @@ test("ходы монстра: 1 всегда, +1 у ловкого типа, п
   }
   assert.ok(checked > 1000, `проверено ${checked}`);
   assert.ok(content.ENEMIES.length > 0);
+});
+
+test("здоровье: H = 35 × T × R + 10 × СИЛ, ОЗ = max(35, H × L × Ут) для обычных и H × L × 2,275 для боссов", () => {
+  const monsters = load("monsters");
+  const scaling = load("enemyScaling");
+  const content = load("content");
+  const RANGES = { undead: [0.75, 1.25], construct: [2, 3], vampire: [1, 1.25], ghost: [0.7, 1], beast: [1.25, 1.75], demon: [1.5, 1.75], dragon: [1.5, 2], none: [0.9, 1.1] };
+  for (const [race, range] of Object.entries(RANGES)) {
+    assert.deepEqual(monsters.RACE_HP_RANGE[race], range, `диапазон рода ${race}`);
+  }
+  assert.equal(monsters.BASE_HP, 35);
+  let seen = 0;
+  for (let i = 0; i < 1500; i++) {
+    const floor = 1 + (i % 10);
+    const s = battle.spawnEnemy(floor, false, lcg(i + 17));
+    const [lo, hi] = RANGES[s.def.race];
+    const T = monsters.MONSTER_TYPE_META[s.mtype].hpMult;
+    const R = (s.baseHp - 10 * s.stats.str) / (35 * T);
+    assert.ok(R >= lo - 1e-9 && R <= hi + 1e-9, `${s.def.id}: R ${R} вне ${lo}–${hi}`);
+    const L = scaling.enemyLevelMult(s.level);
+    const threatMult = { normal: 1.3, horror: 1.625, catastrophe: 1.95 }[s.threat];
+    const expAt = Math.max(battle.NORMAL_MIN_HP, Math.round(s.baseHp * L * threatMult));
+    assert.equal(s.hp, expAt, `${s.def.id} ${s.threat}: ОЗ ${s.hp}`);
+    seen++;
+  }
+  assert.ok(seen > 1000);
+  for (let floor = 1; floor <= 10; floor++) {
+    const b = battle.spawnEnemy(floor, true, lcg(floor * 3));
+    const L = scaling.enemyLevelMult(b.level);
+    assert.equal(b.hp, Math.max(1, Math.round(b.baseHp * L * content.BOSS_META.hpMult)), `босс этаж ${floor}`);
+  }
 });

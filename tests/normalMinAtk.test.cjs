@@ -22,27 +22,30 @@ const monsterStats = load("monsterStats");
 
 const rng = () => 0.5; // уровень = этаж
 
-test("обычные монстры бьют минимум на 10 на любом этаже и угрозе", () => {
-  assert.equal(battle.NORMAL_MIN_ATK, 10);
+test("минимума удара нет: удар = (10 × T × R + СИЛ) × L × Угр с разбросом ±10%", () => {
+  assert.equal(battle.NORMAL_MIN_ATK, undefined);
   for (let floor = 1; floor <= 12; floor++) {
     for (const threat of ["normal", "horror", "catastrophe"]) {
       for (const def of content.ENEMIES.filter((d) => d.minFloor <= floor)) {
         const s = battle.spawnEnemy(floor, false, rng, threat, def.id);
-        assert.ok(s.atk[0] >= 10, `${def.id} этаж ${floor} ${threat}: минимум ${s.atk[0]}`);
-        assert.ok(s.atk[1] >= s.atk[0], `${def.id} этаж ${floor}: максимум ${s.atk[1]} ниже минимума`);
+        const T = monsters.MONSTER_TYPE_META[s.mtype].hpMult;
+        const [lo, hi] = monsters.RACE_ATK_RANGE[s.def.race];
+        const str = monsterStats.monsterDamageBonus(s.stats.str);
+        assert.ok(s.baseAtk >= 10 * T * lo + str - 1e-9 && s.baseAtk <= 10 * T * hi + str + 1e-9, `${def.id}: основа ${s.baseAtk}`);
+        const center = s.baseAtk * scaling.enemyLevelMult(s.level) * content.THREAT_META[threat].atkMult;
+        assert.equal(s.atk[0], Math.max(1, Math.round(center * 0.9)), `${def.id} этаж ${floor} ${threat}: нижняя ${s.atk[0]}`);
+        assert.equal(s.atk[1], Math.max(1, Math.round(center * 1.1)), `${def.id} этаж ${floor} ${threat}: верхняя ${s.atk[1]}`);
       }
     }
   }
 });
 
-test("боссы не затронуты: удар считается по прежней формуле без минимума 10 (плюс СИЛ)", () => {
+test("боссы: удар = (10 × T × R + СИЛ) × L × 1,75 с разбросом ±10%", () => {
   for (let floor = 1; floor <= 12; floor++) {
     const boss = battle.spawnEnemy(floor, true, rng);
-    const typeMeta = monsters.MONSTER_TYPE_META[boss.mtype];
-    const mult = scaling.enemyLevelMult(boss.level) * content.BOSS_META.atkMult * typeMeta.atkMult;
-    const bonus = monsterStats.monsterDamageBonus(boss.stats.str);
-    assert.equal(boss.atk[0], Math.max(1, Math.round(boss.def.atk[0] * mult)) + bonus, `босс этаж ${floor}: минимум`);
-    assert.equal(boss.atk[1], Math.max(2, Math.round(boss.def.atk[1] * mult)) + bonus, `босс этаж ${floor}: максимум`);
+    const center = boss.baseAtk * scaling.enemyLevelMult(boss.level) * content.BOSS_META.atkMult;
+    assert.equal(boss.atk[0], Math.max(1, Math.round(center * 0.9)), `босс этаж ${floor}: нижняя`);
+    assert.equal(boss.atk[1], Math.max(1, Math.round(center * 1.1)), `босс этаж ${floor}: верхняя`);
   }
 });
 
@@ -61,8 +64,7 @@ test("обычные монстры имеют минимум 35 ОЗ на лю�
 test("боссы по ОЗ считаются по прежней формуле без минимума 35", () => {
   for (let floor = 1; floor <= 12; floor++) {
     const boss = battle.spawnEnemy(floor, true, rng);
-    const typeMeta = monsters.MONSTER_TYPE_META[boss.mtype];
-    const mult = scaling.enemyLevelMult(boss.level) * content.BOSS_META.hpMult * typeMeta.hpMult;
-    assert.equal(boss.hp, Math.max(1, Math.round(boss.def.hp * mult)) + monsterStats.monsterHealthBonus(boss.stats.str), `босс этаж ${floor}: ОЗ`);
+    const mult = scaling.enemyLevelMult(boss.level) * content.BOSS_META.hpMult;
+    assert.equal(boss.hp, Math.max(1, Math.round(boss.baseHp * mult)), `босс этаж ${floor}: ОЗ`);
   }
 });
