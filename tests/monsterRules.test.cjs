@@ -113,7 +113,9 @@ test("Гнилой ходок: тяжёлый удар снимает броню
 });
 
 test("Гнилой ходок: слой уходит через два раунда", () => {
-  const b = fight("husk", { armor: 30 });
+  /* Удар и СИЛ фиксируем: случайный монстр из newBattle не должен менять выбор приёма. */
+  const b = fight("husk", { armor: 30, atk: [5, 8] });
+  b.enemy.stats = { str: 0, agi: 0, int: 0 };
   b.p.statuses.rot = 2;
   b.p.statuses.rotRounds = 2;
   b.queue = ["e"];

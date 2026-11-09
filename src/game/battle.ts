@@ -63,7 +63,12 @@ import {
   NONE_SMART_MOVE,
   REVIVE_DEBUFF,
   WEAKNESS_STEP,
+  ATK_SPREAD,
+  BASE_ATK,
+  BASE_HP,
   raceArmorMult,
+  rollRaceAtkMult,
+  rollRaceHpMult,
   raceBonusMoves,
   raceCannotHeal,
   raceEffectResist,
@@ -768,6 +773,10 @@ export interface SpawnedEnemy {
   xp: number;
   /** Характеристики СИЛ/ЛОВ/ИНТ. */
   stats: MonsterStats;
+  /** Основа здоровья H до уровня и угрозы: 35 × T × R + 10 × СИЛ. */
+  baseHp: number;
+  /** Основа удара: 10 × T × R + 1 × СИЛ, до уровня и угрозы. */
+  baseAtk: number;
 }
 
 const SPECIAL_MOVES: EnemyMove[] = ["wound", "curse", "drain", "sunder", "bell_stun"];
@@ -781,8 +790,6 @@ export function mayHaveSeals(isBoss: boolean, threat: Threat): boolean {
 }
 
 /** Спавн монстра: уровень (этаж ±1, на первом этаже возможен 0), угроза (80/15/5). */
-/** Нижняя граница удара обычного монстра до брони героя. Боссы не затрагиваются. */
-export const NORMAL_MIN_ATK = 10;
 
 /** Нижняя граница здоровья обычного монстра. Боссы не затрагиваются. */
 export const NORMAL_MIN_HP = 35;
@@ -808,12 +815,17 @@ export function spawnEnemy(
   const typeMeta = MONSTER_TYPE_META[mtype];
   /* Характеристики кидаются сразу после вида и уровня: угроза не меняет раскладку, у одной твари она одна. */
   const stats = rollMonsterStats(mtype, level, rng);
+  /* Здоровье: H = 35 × T × R + 10 × СИЛ; дальше ОЗ = H × L × Ут. R — случайный множитель рода, T — типа. */
+  const raceHp = rollRaceHpMult(def.race, rng);
+  const baseHp = BASE_HP * typeMeta.hpMult * raceHp + monsterHealthBonus(stats.str);
+  /* Удар: def.atk = 10 × T × R + 1 × СИЛ; дальше × L × Угр. R — свой случайный множитель рода для удара. */
+  const raceAtk = rollRaceAtkMult(def.race, rng);
+  const baseAtk = BASE_ATK * typeMeta.hpMult * raceAtk + monsterDamageBonus(stats.str);
 
   // Шаг усиления падает на 0.05 за уровень, но не ниже ×1.05 (кроме ходов).
   const levelMult = enemyLevelMult(level);
   const scale = isBoss ? BOSS_META : meta;
-  const hpMult = levelMult * scale.hpMult * typeMeta.hpMult;
-  const atkMult = levelMult * scale.atkMult * typeMeta.atkMult;
+  const atkMult = levelMult * scale.atkMult;
   const armorMult = scale.armorMult;
 
   /* Приёмы рода (запугивание, мрак, холодное касание, сила ада) есть у каждой твари. */
@@ -867,16 +879,15 @@ export function spawnEnemy(
     effects,
     effectPower: enemyEffectPower(effects, level),
     /* Обычные монстры держат минимум NORMAL_MIN_HP; боссы — как задано. */
-    hp: (isBoss ? Math.max(1, Math.round(def.hp * hpMult)) : Math.max(NORMAL_MIN_HP, Math.round(def.hp * hpMult))) +
-      monsterHealthBonus(stats.str),
+    hp: isBoss ? Math.max(1, Math.round(baseHp * levelMult * scale.hpMult)) : Math.max(NORMAL_MIN_HP, Math.round(baseHp * levelMult * scale.hpMult)),
+    baseHp,
+    baseAtk,
     ap: Math.max(1, Math.min(10, apBase)) + monsterActionsBonus(stats.agi),
-    /* Обычные монстры бьют минимум на NORMAL_MIN_ATK (до брони героя); боссы — как задано. */
-    atk: (isBoss
-      ? [Math.max(1, Math.round(def.atk[0] * atkMult)), Math.max(2, Math.round(def.atk[1] * atkMult))]
-      : [
-          Math.max(NORMAL_MIN_ATK, Math.round(def.atk[0] * atkMult)),
-          Math.max(NORMAL_MIN_ATK, Math.round(def.atk[1] * atkMult)),
-        ]).map((v) => v + monsterDamageBonus(stats.str)) as [number, number],
+    /* Удар = def.atk × L × Угр с разбросом ±ATK_SPREAD. Минимума нет. */
+    atk: [
+      Math.max(1, Math.round(baseAtk * atkMult * (1 - ATK_SPREAD))),
+      Math.max(1, Math.round(baseAtk * atkMult * (1 + ATK_SPREAD))),
+    ],
     /* Броня: уровень плюс прибавка типа (у ловких она отрицательная). */
     armor: Math.max(0, Math.round(def.armor * levelMult * armorMult * raceArmorMult(def.race)) + typeMeta.armorDelta),
     gold: [

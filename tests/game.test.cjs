@@ -879,6 +879,7 @@ test("combat readout shows live numbers for curses, rage and guard", () => {
   b0.enemy.hp = 900;
   b0.enemy.maxHp = 900;
   b0.enemy.armor = 0;
+  b0.enemy.atk = [40, 40]; // удар фиксируем: случайный монстр с сильным ударом смещает проверку защиты
 
   const clean = battle.combatReadout(b0);
   assert.equal(clean.dmgMods.length, 0);
@@ -3039,9 +3040,9 @@ test("strong monsters are tougher, agile ones are quicker and harder to hit", ()
   const strong = monsters.MONSTER_TYPE_META.strong;
   const agile = monsters.MONSTER_TYPE_META.agile;
   const smart = monsters.MONSTER_TYPE_META.smart;
-  assert.ok(strong.hpMult > agile.hpMult && strong.atkMult > agile.atkMult);
+  assert.ok(strong.hpMult > agile.hpMult);
   assert.ok(agile.apDelta > strong.apDelta && agile.evade > strong.evade);
-  assert.ok(smart.movePower > strong.movePower && smart.atkMult < strong.atkMult);
+  assert.ok(smart.movePower > strong.movePower);
 });
 
 /** Собирает бой с принудительным родом, типом и набором приёмов. */
@@ -3937,8 +3938,6 @@ test("угрозы: обычный монстр +30% ОЗ, ужас ×1.25, ка
   };
   const spawn = (threat, seed, floor) => battle.spawnEnemy(floor, false, lcg(seed), threat);
   /* Бонусы СИЛ к ОЗ и удару — поверх множителей угрозы, поэтому сравниваем без них. */
-  const strHp = (m) => monsterStats.monsterHealthBonus(m.stats.str);
-  const strAtk = (m) => monsterStats.monsterDamageBonus(m.stats.str);
   let checked = 0;
   for (let seed = 1; seed <= 80; seed++) {
     const floor = 2 + (seed % 7);
@@ -3952,19 +3951,17 @@ test("угрозы: обычный монстр +30% ОЗ, ужас ×1.25, ка
     const typeMeta = monsters.MONSTER_TYPE_META[n.mtype];
     /* Обычный: ОЗ ×1.3 к базе. */
     /* Минимум ОЗ у обычных монстров (NORMAL_MIN_HP) — поверх формулы. */
-    assert.ok(Math.abs(n.hp - strHp(n) - Math.max(battle.NORMAL_MIN_HP, Math.round(n.def.hp * lm * 1.3 * typeMeta.hpMult))) <= 1, `обычный ОЗ ${n.hp}`);
+    /* ОЗ = max(минимум, H × L × Ут), H — основа рода и типа; у ужаса и катастрофы та же H. */
+    assert.equal(n.hp, Math.max(battle.NORMAL_MIN_HP, Math.round(n.baseHp * lm * 1.3)), `обычный ОЗ ${n.hp}`);
     /* Ужас ×1.25, катастрофа ×1.5 — относительно обычного, по ОЗ и атаке; минимум не даёт множителю работать ниже себя. */
-    if (n.hp - strHp(n) > battle.NORMAL_MIN_HP) {
-      const baseN = n.hp - strHp(n);
-      assert.ok(Math.abs((h.hp - strHp(h)) - 1.25 * baseN) <= 2, `ужас ОЗ ${h.hp} при обычном ${n.hp}`);
-      assert.ok(Math.abs((c.hp - strHp(c)) - 1.5 * baseN) <= 2, `катастрофа ОЗ ${c.hp} при обычном ${n.hp}`);
+    if (n.hp > battle.NORMAL_MIN_HP) {
+      assert.ok(Math.abs(h.hp - 1.25 * n.hp) <= 2, `ужас ОЗ ${h.hp} при обычном ${n.hp}`);
+      assert.ok(Math.abs(c.hp - 1.5 * n.hp) <= 2, `катастрофа ОЗ ${c.hp} при обычном ${n.hp}`);
     }
-    /* Минимум 10 у обычных монстров: множитель проверяем, пока удар выше минимума. */
-    if (n.atk[0] - strAtk(n) > battle.NORMAL_MIN_ATK) {
-      const baseAtk = n.atk[0] - strAtk(n);
-      assert.ok(Math.abs((h.atk[0] - strAtk(h)) - 1.25 * baseAtk) <= 2, `ужас атака ${h.atk[0]} при обычной ${n.atk[0]}`);
-      assert.ok(Math.abs((c.atk[0] - strAtk(c)) - 1.5 * baseAtk) <= 2, `катастрофа атака ${c.atk[0]} при обычной ${n.atk[0]}`);
-    }
+    /* Удар = основа × L × Угр, разброс ±10%: ужас ×1.25, катастрофа ×1.5 к обычному (минимума нет). */
+    assert.equal(h.baseAtk, n.baseAtk, "одна и та же основа удара");
+    assert.ok(Math.abs(h.atk[1] - 1.25 * n.atk[1]) <= 2, `ужас атака ${h.atk[1]} при обычной ${n.atk[1]}`);
+    assert.ok(Math.abs(c.atk[1] - 1.5 * n.atk[1]) <= 2, `катастрофа атака ${c.atk[1]} при обычной ${n.atk[1]}`);
     /* Броня масштабируется вместе с остальными параметрами, у прибавки типа своя поправка. */
     if (n.def.armor * lm >= 2) {
       const d = typeMeta.armorDelta;
@@ -3980,9 +3977,8 @@ test("угрозы: обычный монстр +30% ОЗ, ужас ×1.25, ка
     const floor = 2 + (seed % 7);
     const boss = battle.spawnEnemy(floor, true, lcg(seed));
     const lm = scaling.enemyLevelMult(boss.level);
-    const tm = monsters.MONSTER_TYPE_META[boss.mtype];
-    assert.ok(Math.abs(boss.hp - strHp(boss) - Math.round(boss.def.hp * lm * 2.275 * tm.hpMult)) <= 1, `босс ОЗ ${boss.hp}`);
-    assert.ok(Math.abs(boss.atk[0] - strAtk(boss) - Math.round(boss.def.atk[0] * lm * 1.75 * tm.atkMult)) <= 1, `босс атака ${boss.atk[0]}`);
+    assert.equal(boss.hp, Math.max(1, Math.round(boss.baseHp * lm * 2.275)), `босс ОЗ ${boss.hp}`);
+    assert.equal(boss.atk[0], Math.max(1, Math.round(boss.baseAtk * lm * 1.75 * 0.9)), `босс атака ${boss.atk[0]}`);
   }
 });
 

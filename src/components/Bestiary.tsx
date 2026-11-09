@@ -13,7 +13,7 @@ import {
 } from "../game/content";
 import type { Threat } from "../game/types";
 import { mazeSizeForFloor } from "../game/maze";
-import { MONSTER_RACE_META, MONSTER_TYPE_META, raceTraits } from "../game/monsters";
+import { ATK_SPREAD, BASE_HP, MONSTER_RACE_META, MONSTER_TYPE_META, RACE_HP_RANGE, baseAtkRange, raceTraits } from "../game/monsters";
 import { ENEMY_COOLDOWN_MOVES, ENEMY_MOVE_COOLDOWN } from "../game/battle";
 import { MONSTER_RULES, MOVE_LABELS } from "../game/monsterRules";
 import { FoePortrait } from "./FoeArt";
@@ -29,6 +29,19 @@ const LOOT_LABELS = [
   ["supplies", "Припасы", Package],
   ["gear", "Снаряжение", Swords],
 ] as const;
+
+/** Основа здоровья вида до уровня и угрозы: 35 × T × R, диапазон по роду (без СИЛ). */
+function hpRange(type: keyof typeof MONSTER_TYPE_META, race: keyof typeof RACE_HP_RANGE): string {
+  const t = MONSTER_TYPE_META[type]?.hpMult ?? 1;
+  const [lo, hi] = RACE_HP_RANGE[race];
+  return `${Math.round(BASE_HP * t * lo)}–${Math.round(BASE_HP * t * hi)}`;
+}
+
+/** Удар вида без СИЛ, уровня и угрозы: 10 × T × R, диапазон по роду, с разбросом. */
+function atkRange(type: keyof typeof MONSTER_TYPE_META, race: keyof typeof RACE_HP_RANGE): string {
+  const [lo, hi] = baseAtkRange(type, race);
+  return `${Math.max(1, Math.round(lo * (1 - ATK_SPREAD)))}–${Math.round(hi * (1 + ATK_SPREAD))}`;
+}
 
 export function Bestiary() {
   const [floor, setFloor] = useState(1);
@@ -226,8 +239,8 @@ export function Bestiary() {
                   })()}
                 </div>
                 <div className="flex flex-row gap-3 font-mono text-[0.84rem] text-mute sm:flex-col sm:items-end sm:gap-1">
-                  <span className="flex items-center gap-1"><Skull size={12} aria-hidden />{enemy.hp} ОЗ</span>
-                  <span className="flex items-center gap-1"><Swords size={12} aria-hidden />{enemy.atk[0]}–{enemy.atk[1]}</span>
+                  <span className="flex items-center gap-1"><Skull size={12} aria-hidden />{hpRange(enemy.type, enemy.race)} ОЗ</span>
+                  <span className="flex items-center gap-1"><Swords size={12} aria-hidden />{atkRange(enemy.type, enemy.race)}</span>
                   <span className="flex items-center gap-1"><Shield size={12} aria-hidden />{enemy.armor} брони</span>
                 </div>
               </article>
