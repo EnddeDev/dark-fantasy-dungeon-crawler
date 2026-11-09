@@ -82,6 +82,7 @@ import type { CraftStation } from "../game/content";
 import { TRUST_MAX, type QuestGiverId } from "../game/types";
 import { Btn, Meter, Modal, Panel, Pips, Tag } from "./ui";
 import { PouchSlots } from "./PouchSlots";
+import { SkillsPanel } from "./SkillsPanel";
 
 
 type Tab = "train" | "armory" | "shop" | "quests" | "bestiary" | "guide";
@@ -1112,6 +1113,10 @@ export function Lobby({
                       </div>
                     )}
                   </Panel>
+
+                  {player.archetype && (
+                    <SkillsPanel player={player} onRank={(branch, rank) => say(controller.changeSkillRank(branch, rank))} />
+                  )}
 
                   {STAT_ORDER.map((k) => {
                     const v = player.stats[k];

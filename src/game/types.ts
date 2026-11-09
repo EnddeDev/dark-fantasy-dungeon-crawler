@@ -294,6 +294,8 @@ export interface Player {
   archetype?: ArchetypeId | null;
   /** Выборы на рубежах характеристик 5/10. */
   statMilestones?: StatMilestoneChoices;
+  /** Ранги веток навыков архетипа (0–5). Очки считаются от уровня. */
+  skillRanks?: Record<string, number>;
   statuses: {
     wound: number; curse: number; poison: number; cursePower?: number;
     /** Новые боевые эффекты, которые могут переживать бой. */

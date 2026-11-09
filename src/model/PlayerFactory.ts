@@ -132,6 +132,7 @@ export class PlayerFactory {
           shopLevel: Math.max(1, Math.min(SHOP_MAX_LEVEL, Number(saved.shopLevel) || 1)),
           archetype: saved.archetype ?? null,
           statMilestones: saved.statMilestones ?? {},
+          skillRanks: saved.skillRanks ?? {},
           /* Старое сохранение без заданий получает стартовый набор; журнал дополняется недостающими полями. */
           questLog: saved.questLog
             ? normalizeQuestLog(saved.questLog)
