@@ -21,12 +21,12 @@ export const GEAR_LEVEL_GROWTH = GEAR_EFFECT_RATE;
 /** Двуручное оружие и копьё: урон ×2 после всех остальных множителей. */
 export const TWO_HAND_DAMAGE_SCALE = 2;
 /**
- * База урона оружия: 9 + ХАР + вес.
- * ХАР: ИНТ −1, ЛОВ +1, СИЛ +2. Вес: лёгкое 1, среднее 4, тяжёлое 9.
+ * База урона оружия: 5 + ХАР + вес.
+ * ХАР: ИНТ −1, ЛОВ +1, СИЛ +2. Вес: лёгкое 1, среднее 5, тяжёлое 9.
  */
-export const WEAPON_BASE_DAMAGE = 9;
+export const WEAPON_BASE_DAMAGE = 5;
 export const WEAPON_STAT_DAMAGE_MOD: Record<"str" | "agi" | "int", number> = { str: 2, agi: 1, int: -1 };
-export const WEAPON_WEIGHT_DAMAGE: Record<"light" | "medium" | "heavy", number> = { light: 1, medium: 4, heavy: 9 };
+export const WEAPON_WEIGHT_DAMAGE: Record<"light" | "medium" | "heavy", number> = { light: 1, medium: 5, heavy: 9 };
 /** Множитель R при создании экземпляра: от 1 до 1,5. */
 export const WEAPON_DMG_MULT_MIN = 1;
 export const WEAPON_DMG_MULT_MAX = 1.5;

@@ -1795,10 +1795,10 @@ test("bulwark: armor damage, thorns and guard reduction are applied", () => {
 test("barbarian: two-handed damage and missing-health scaling", () => {
   const { p, g } = withGear("barbarian_greataxe", { archetype: "barbarian", passives: ["arch_barbarian_5", "arch_barbarian_10"] });
   assert.equal(content.GEAR_BASES[g.baseId].hands, 2);
-  /* База: 9 + СИЛ 2 + тяжёлое 9 = 20; двуручное ×2 применяется к итогу. */
-  assert.equal(content.GEAR_BASES[g.baseId].dmg[0], 20);
+  /* База: 5 + СИЛ 2 + тяжёлое 9 = 16; двуручное ×2 применяется к итогу. */
+  assert.equal(content.GEAR_BASES[g.baseId].dmg[0], 16);
   const scaled = content.scaledGearStats(g).dmg;
-  const v = 20 * g.wearMult * (1 + 0.5 * g.level) * (g.dmgMult ?? 1) * 2;
+  const v = 16 * g.wearMult * (1 + 0.5 * g.level) * (g.dmgMult ?? 1) * 2;
   assert.equal(scaled[0], Math.round(v * 0.9));
   assert.equal(scaled[1], Math.round(v * 1.1));
   const b = freshBattle(p, 1);
@@ -2318,8 +2318,8 @@ test("hero starts at full health with three stat points, two-handers double thei
   const twoHand = content.createGearItem({ baseId: "greatsword", level: 1, wear: "new", rarity: "common", identified: true, rng: () => 0.5 });
   const a = content.scaledGearStats(oneHand).dmg;
   const b = content.scaledGearStats(twoHand).dmg;
-  /* Клеймор: база 9+2+9 = 20 ×2; меч: база 9+2+4 = 15. Отношение 40/15 ≈ 2.67. */
-  const expected = (20 * 2) / 15;
+  /* Клеймор: база 5+2+9 = 16 ×2; меч: база 5+2+5 = 12. Отношение 32/12 ≈ 2.67. */
+  const expected = (16 * 2) / 12;
   assert.ok(Math.abs(b[0] / a[0] - expected) < 0.2, `мин: ${b[0]} против ${a[0]}`);
   assert.ok(Math.abs(b[1] / a[1] - expected) < 0.2, `макс: ${b[1]} против ${a[1]}`);
 });
