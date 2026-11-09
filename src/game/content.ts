@@ -46,6 +46,12 @@ import {
   EXTRA_AP_MIN_LEVEL,
   clampGearLevel,
   TWO_HAND_DAMAGE_SCALE,
+  WEAPON_DMG_MULT_MAX,
+  WEAPON_DMG_MULT_MIN,
+  WEAPON_DMG_SPREAD,
+  GEAR_STAT_RATE,
+  levelFactor,
+  weaponBaseDamage,
   epicMagnitude,
   legendaryMagnitude,
   rareAffixMagnitude,
@@ -1153,7 +1159,8 @@ function normalizeGearBases(list: LegacyGear[]): Record<string, GearBaseDef> {
       armor: kind === "weapon" ? 0 : accessoryStats ? accessoryStats.armor : defense ? defense.armor : raw.armor,
       hp: kind === "weapon" ? 0 : accessoryStats ? accessoryStats.hp : defense ? defense.hp : raw.hp,
       evade: kind === "weapon" ? 0 : accessoryStats ? accessoryStats.evade : defense ? defense.evade : raw.evade,
-      dmg: kind === "weapon" ? raw.dmg : undefined,
+      /* Урон оружия по формуле 9 + ХАР + вес (одно число, без своего разброса). */
+      dmg: kind === "weapon" ? [weaponBaseDamage(stat, gearClass), weaponBaseDamage(stat, gearClass)] : undefined,
       altSlots: raw.altSlots ?? ALT_FIX[raw.id],
       minFloor: raw.minFloor ?? level,
     };
@@ -1707,20 +1714,17 @@ export function scaledGearStats(item: GearItem) {
   const kind = gearKindOfBase(base);
   const m = item.wearMult ?? WEAR_META[item.wear].mult;
   const level = clampGearLevel(item.level);
-  const roll = item.dmgRoll ?? base.dmg;
-  /* Урон бывает только у оружия. */
-  let dmg: [number, number] | undefined = kind === "weapon" && roll
-    ? [
-        Math.max(1, scaleGearStatByLevel(Math.ceil(roll[0] * m), level)),
-        Math.max(2, scaleGearStatByLevel(Math.ceil(roll[1] * m), level)),
-      ]
-    : undefined;
-  /* Двуручное оружие: сила относительно одноручного аналога ×2 (было ×3). */
-  if (dmg && (base.hands === 2 || base.weaponType === "spear")) {
-    dmg = [Math.max(1, Math.round(dmg[0] * TWO_HAND_DAMAGE_SCALE)), Math.max(2, Math.round(dmg[1] * TWO_HAND_DAMAGE_SCALE))];
-  }
-  if (dmg && canTwoHandGrip(item) && item.grip === "two") {
-    dmg = [Math.ceil(dmg[0] * 1.5), Math.ceil(dmg[1] * 1.5)];
+  /* Урон: база × износ × (1 + 0.5 × уровень) × R; двуручное ×2; хват двумя руками ×1.5.
+     Разброс ±10% считается последним — от итогового значения. */
+  let dmg: [number, number] | undefined;
+  if (kind === "weapon" && base.dmg) {
+    let v = base.dmg[0] * m * levelFactor(level, GEAR_STAT_RATE) * (item.dmgMult ?? 1);
+    if (base.hands === 2 || base.weaponType === "spear") v *= TWO_HAND_DAMAGE_SCALE;
+    if (canTwoHandGrip(item) && item.grip === "two") v *= 1.5;
+    dmg = [
+      Math.max(1, Math.round(v * (1 - WEAPON_DMG_SPREAD))),
+      Math.max(2, Math.round(v * (1 + WEAPON_DMG_SPREAD))),
+    ];
   }
   const cls = gearClassFor(item);
   const rolls = item.statRolls ?? rollItemStatRolls(base, cls, () => 0.5);
@@ -1781,28 +1785,6 @@ export function identifyAllPlan(player: Player, intDiscount = 0): { count: numbe
 }
 
 /** Разброс урона конкретного клинка: узкий (3–5) или размашистый (2–7). */
-export function rollDamageSpread(base: [number, number], rng: () => number = Math.random): [number, number] {
-  const style = rng();
-  let lo = base[0];
-  let hi = base[1];
-  if (style < 0.22) {
-    lo = base[0] - 2;
-    hi = base[1] + 1 + Math.round(rng() * 2);
-  } else if (style < 0.45) {
-    lo = base[0] - 1;
-    hi = base[1];
-  } else if (style < 0.78) {
-    lo = base[0];
-    hi = base[1] + 1;
-  } else {
-    lo = base[0];
-    hi = base[1] + 2 + Math.round(rng() * 2);
-  }
-  lo = Math.max(1, lo);
-  hi = Math.max(lo + 1, hi);
-  return [lo, hi];
-}
-
 /** Случайный разброс параметров брони и украшений: −10% … +10%. */
 export function rollStatSpread(rng: () => number = Math.random): number {
   return Number((0.9 + rng() * 0.2).toFixed(2));
@@ -1985,6 +1967,8 @@ export function createGearItem(opts: {
 
   /* Множитель состояния: изношенное 0.75±0.05, ношенное 1.0±0.10, новое 1.25±0.05…0.10 */
   const wearMult = rollWearMult(wear, rng);
+  /* Множитель урона R: только у оружия, от 1 до 1.5. */
+  const dmgMult = base.dmg ? Number((WEAPON_DMG_MULT_MIN + rng() * (WEAPON_DMG_MULT_MAX - WEAPON_DMG_MULT_MIN)).toFixed(3)) : undefined;
   const statRolls = rollItemStatRolls(base, gearClass, rng);
 
   /* Свойства по типу предмета: оружие — пул вида клинка, броня — пул веса,
@@ -2055,7 +2039,7 @@ export function createGearItem(opts: {
     wear,
     rarity,
     identified: opts.identified ?? false,
-    dmgRoll: base.dmg ? rollDamageSpread(base.dmg, rng) : undefined,
+    dmgMult,
     statMult: rollStatSpread(rng),
     skillId: base.weaponSkill
       ? opts.skillId && techniquePool.includes(opts.skillId)

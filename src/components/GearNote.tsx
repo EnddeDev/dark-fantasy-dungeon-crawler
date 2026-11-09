@@ -148,7 +148,7 @@ export function GearNote({
             <Row label="Состояние" value={`${WEAR_META[item.wear].name} · ×${st.wearMult.toFixed(3)}`} />
             <Row label="Диапазон состояния" value={`×${range.lo}–${range.hi}, базовый ×${range.base}`} />
             <Row label="Разброс параметров" value={`${spread > 0 ? "+" : ""}${spread}%`} />
-            {item.dmgRoll && <Row label="Разброс клинка" value={`${st.base.dmg?.[0]}–${st.base.dmg?.[1]} → ${item.dmgRoll[0]}–${item.dmgRoll[1]}`} />}
+            {st.dmg && <Row label="Множитель урона R" value={`×${(item.dmgMult ?? 1).toFixed(3)}`} />}
             <Row label={inShop ? "Цена покупки" : "Цена продажи"} value={`${inShop ? buyPrice ?? gearBuyPrice(item) : gearSellPrice(item)} зол.`} />
           </dl>
         </DetailSection>
