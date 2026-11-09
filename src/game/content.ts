@@ -77,7 +77,10 @@ export { SHOP_MAX_LEVEL, shopRarityTable, shopUpgradeCost, shopWearTable } from 
 
 /* ─────────────  УРОВНИ, ОПЫТ И ОЧКИ ХАРАКТЕРИСТИК  ───────────── */
 
-export const MAX_LEVEL = 10;
+export const MAX_LEVEL = 15;
+/** Последний уровень, на котором даются очки характеристик. */
+export const STAT_POINT_LAST_LEVEL = 10;
+export const STAT_POINTS_PER_LEVEL_GAIN = 3;
 
 const XP_TABLE: Record<number, number> = {
   1: 60,
@@ -89,6 +92,12 @@ const XP_TABLE: Record<number, number> = {
   7: 1480,
   8: 2020,
   9: 2700,
+  /* 10→11 = 2700 × 1.3; дальше 11→12 ×1.3, 12→13 ×1.25, 13→14 ×1.15, 14→15 ×1.10; округлено до десятков. */
+  10: 3510,
+  11: 4560,
+  12: 5700,
+  13: 6560,
+  14: 7220,
 };
 
 export function xpForNextLevel(level: number): number {
@@ -129,7 +138,8 @@ export function grantXp(p0: Player, gained: number): { player: Player; levelsGai
     if (xp < need) break;
     xp -= need;
     level += 1;
-    statPoints += 3;
+    /* Очки характеристик — только до 10 уровня; дальше герой получает очки навыков. */
+    if (level <= STAT_POINT_LAST_LEVEL) statPoints += STAT_POINTS_PER_LEVEL_GAIN;
     levelsGained += 1;
   }
   if (level >= MAX_LEVEL) xp = 0;

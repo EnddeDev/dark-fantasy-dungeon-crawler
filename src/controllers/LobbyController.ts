@@ -24,6 +24,7 @@ import {
 import { forgeUpgrade, type ForgeUpgradeKind } from "../game/forge";
 import { resetStats } from "../game/progression";
 import { chooseStatMilestone, type StatMilestoneTier } from "../game/statMilestones";
+import { setSkillRank, type SkillBranchId } from "../game/archetypeSkills";
 import type { ArchetypeId } from "../game/archetypes";
 import type { GearItem, Player, Slot, StatKey } from "../game/types";
 import { SLOT_META } from "../game/types";
@@ -83,6 +84,15 @@ export class LobbyController {
     if (this.player.archetype) return null;
     this.model.updatePlayer((p) => ({ ...p, archetype: id }));
     return `Архетип выбран: ${ARCHETYPES[id].name}`;
+  }
+
+  /** Ранг ветки навыков: +1 или −1. Возвращает null, если изменить нельзя. */
+  changeSkillRank(branch: SkillBranchId, rank: number): string | null {
+    const before = this.player;
+    const next = setSkillRank(before, branch, rank);
+    if (next === before) return null;
+    this.model.setPlayer(next);
+    return rank > (before.skillRanks?.[branch] ?? 0) ? "Ранг ветки повышен" : "Ранг ветки понижен";
   }
 
   pickStatMilestone(stat: StatKey, tier: StatMilestoneTier, id: string): string | null {

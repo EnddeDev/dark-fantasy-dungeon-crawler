@@ -3,15 +3,16 @@
  * Стоимость растёт на 100 золотых за каждый уровень персонажа.
  */
 import type { Player, Slot } from "./types";
-import { canWear, MAX_LEVEL } from "./content";
+import { canWear, STAT_POINT_LAST_LEVEL, STAT_POINTS_PER_LEVEL_GAIN } from "./content";
 import { normalizeStatMilestones } from "./statMilestones";
 import { derived } from "./battle";
 
 export const START_STAT_POINTS = 3;
-export const STAT_POINTS_PER_LEVEL = 3;
+export const STAT_POINTS_PER_LEVEL = STAT_POINTS_PER_LEVEL_GAIN;
 
+/** Очки характеристик: стартовые и по 3 за уровень до 10-го включительно. */
 export function totalStatPoints(level: number): number {
-  const lvl = Math.max(1, Math.min(MAX_LEVEL, Math.floor(level)));
+  const lvl = Math.max(1, Math.min(STAT_POINT_LAST_LEVEL, Math.floor(level)));
   return START_STAT_POINTS + STAT_POINTS_PER_LEVEL * (lvl - 1);
 }
 

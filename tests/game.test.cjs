@@ -349,8 +349,9 @@ test("пустая клетка никогда не даёт находку: н�
 
 test("levels are never capped by the floor, but late levels cost many runs", () => {
   const first = content.grantXp(player(), 100_000);
-  assert.equal(first.player.level, 10);
+  assert.equal(first.player.level, 15);
   assert.equal(first.player.xp, 0);
+  // Очки характеристик — до 10 уровня включительно; дальше только очки навыков.
   assert.equal(first.player.statPoints, 29);
   assert.strictEqual(content.grantXp(first.player, 10_000).player, first.player);
 

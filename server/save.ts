@@ -27,6 +27,7 @@ import {
 import { xpForNextLevel } from "../src/game/content";
 import { GEAR_EFFECTS, GEAR_PASSIVES, type GearEffectId, type GearPassiveId } from "../src/game/gearEffects";
 import { statMilestoneById } from "../src/game/statMilestones";
+import { SKILL_RANK_MAX, skillBranchById, skillPointsEarned, skillPointsSpent } from "../src/game/archetypeSkills";
 import { ARCHETYPE_ORDER, type ArchetypeId } from "../src/game/archetypes";
 import { totalStatPoints } from "../src/game/progression";
 import { derived } from "../src/game/battle";
@@ -385,6 +386,19 @@ export function sanitizePlayer(raw: unknown, floors = 1): Player {
     ? (input.archetype as ArchetypeId)
     : null;
 
+  /* Ранги веток навыков: только ветки основного архетипа, сумма не больше очков уровня. */
+  const skillsRaw = input.skillRanks === undefined || input.skillRanks === null ? null : asObject(input.skillRanks, "навыки");
+  const skillRanks: Record<string, number> = {};
+  if (skillsRaw) {
+    for (const [id, value] of Object.entries(skillsRaw)) {
+      const def = skillBranchById(id);
+      if (!def || def.archetype !== archetype) continue;
+      const rank = int(value ?? 0, 0, SKILL_RANK_MAX, `ранг ветки «${id}»`);
+      if (rank > 0) skillRanks[id] = rank;
+    }
+  }
+  if (skillPointsSpent(skillRanks) > skillPointsEarned(level)) bad("очки навыков превышают уровень");
+
   const knownRecipes = Array.isArray(input.knownRecipes)
     ? [...new Set(input.knownRecipes.filter((id): id is string => typeof id === "string" && RECIPE_IDS.has(id)))]
     : [];
@@ -408,6 +422,7 @@ export function sanitizePlayer(raw: unknown, floors = 1): Player {
     passives,
     archetype,
     statMilestones,
+    skillRanks,
     statuses,
     kills: int(input.kills ?? 0, 0, 1_000_000, "убийства"),
     shopLevel: int(input.shopLevel ?? 1, 1, SHOP_MAX_LEVEL, "уровень лавки"),
