@@ -145,6 +145,7 @@ export function GearNote({
             {st.armor > 0 && <Row label="Броня" value={`+${st.armor}`} />}
             {st.hp > 0 && <Row label="Здоровье" value={`+${st.hp}`} />}
             {st.evade > 0 && <Row label="Уклонение" value={`+${Math.round(st.evade * 100)}%`} />}
+            {st.barrier > 0 && <Row label="Маг. барьер" value={`+${st.barrier}`} />}
             {st.regen > 0 && <Row label="Регенерация" value={`+${st.regen} за ход`} />}
             <Row label="Хват" value={gripNote} />
             <Row label="Состояние" value={`${WEAR_META[item.wear].name} · ×${st.wearMult.toFixed(3)}`} />

@@ -594,6 +594,13 @@ export function BattleView({
               <span className="sc text-rubric">Здоровье</span>
               <Meter value={b.p.hp} max={b.p.maxHp} tone="rubric" />
               <span className="font-mono text-sm tab text-parch">{b.p.hp}/{b.p.maxHp}</span>
+              {(b.p.barrierMax ?? 0) > 0 && (
+                <>
+                  <span className="sc text-flamehi">Барьер</span>
+                  <Meter value={b.p.barrier ?? 0} max={b.p.barrierMax} tone="flame" />
+                  <span className="font-mono text-sm tab text-parch">{b.p.barrier ?? 0}/{b.p.barrierMax}</span>
+                </>
+              )}
               <span className="sc text-flamedim">Выносливость</span>
               <Meter value={b.p.stamina} max={b.p.staminaMax} tone="flame" />
               <span className="font-mono text-sm tab text-parch">{b.p.stamina}/{b.p.staminaMax}</span>

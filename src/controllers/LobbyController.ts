@@ -22,6 +22,8 @@ import {
   type Recipe,
 } from "../game/content";
 import { forgeUpgrade, type ForgeUpgradeKind } from "../game/forge";
+import { ritualReplace, ritualStrip, type RitualReplaceKind } from "../game/ritual";
+import type { GearEffectId } from "../game/gearEffects";
 import { resetStats } from "../game/progression";
 import { chooseStatMilestone, type StatMilestoneTier } from "../game/statMilestones";
 import { setSkillRank, type SkillBranchId } from "../game/archetypeSkills";
@@ -203,6 +205,24 @@ export class LobbyController {
 
   buyWizardItem(id: string): string | null {
     const res = buyWizardItem(this.player, id);
+    if (!res) return null;
+    this.model.setPlayer(res.player);
+    playSfx("buy");
+    return res.message;
+  }
+
+  /** Магический ритуал: замена или хаос-замена свойства предмета. */
+  ritualReplace(uid: string, effectId: GearEffectId, kind: RitualReplaceKind): string | null {
+    const res = ritualReplace(this.player, uid, effectId, kind);
+    if (!res) return null;
+    this.model.setPlayer(res.player);
+    playSfx("buy");
+    return res.message;
+  }
+
+  /** Магический ритуал: снятие свойства за реагенты. */
+  ritualStrip(uid: string, effectId: GearEffectId): string | null {
+    const res = ritualStrip(this.player, uid, effectId);
     if (!res) return null;
     this.model.setPlayer(res.player);
     playSfx("buy");

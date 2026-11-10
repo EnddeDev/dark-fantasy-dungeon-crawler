@@ -51,7 +51,7 @@ import { SLOT_META, SLOT_ORDER } from "../game/types";
 import type { RarityTier, Slot } from "../game/types";
 import { derived } from "../game/battle";
 import { GEAR_BASES, identifyAllPlan } from "../game/content";
-import { GEAR_EFFECTS, GEAR_PASSIVES } from "../game/gearEffects";
+import { GEAR_EFFECTS, GEAR_PASSIVES, effectDetail, type GearEffectId } from "../game/gearEffects";
 import type { GearItem, Player, StatKey } from "../game/types";
 import type { ArchetypeId } from "../game/archetypes";
 import { canChooseStatMilestone, chosenStatMilestone, statMilestoneOptions, type StatMilestoneTier } from "../game/statMilestones";
@@ -69,6 +69,7 @@ import {
   type SupplyLevelFilter,
 } from "../game/shopFilters";
 import { forgeFailChance, forgeOptions, forgeReagentPlan, type ForgeUpgradeKind } from "../game/forge";
+import { RITUAL_COSTS, RITUAL_INK_ID, RITUAL_MIN_TRUST, ritualCandidates, ritualEligible, ritualUnlocked, stripReagentCount, type RitualReplaceKind } from "../game/ritual";
 import { statResetCost, totalStatPoints } from "../game/progression";
 import { WEAR_RANGE } from "../game/types";
 import { Guide } from "./Guide";
@@ -383,6 +384,7 @@ export function Lobby({
   const [forgeUid, setForgeUid] = useState<string | null>(null);
   const [forgeConfirm, setForgeConfirm] = useState<{ uid: string; kind: ForgeUpgradeKind } | null>(null);
   const [forgeUseReagents, setForgeUseReagents] = useState(true);
+  const [ritualUid, setRitualUid] = useState<string | null>(null);
   const [resetConfirm, setResetConfirm] = useState(false);
 
   const d = derived(player);
@@ -939,11 +941,103 @@ export function Lobby({
               </div>
   );
 
-  /* Содержимое вкладки «Жители» по NPC: рецепты с варкой и кузница. */
+  /* Магический ритуал волшебника: замена, хаос-замена и снятие свойств предмета. Открыт с доверием 3. */
+  const renderRitual = () => {
+    const trust = trustOf(player, "wizard");
+    if (!ritualUnlocked(player)) {
+      return <p className="text-sm italic text-mute">Магический ритуал открывается при доверии {RITUAL_MIN_TRUST} (сейчас {trust}).</p>;
+    }
+    const ink = player.bag[RITUAL_INK_ID] ?? 0;
+    const eligible = player.armory.filter(ritualEligible);
+    const item = eligible.find((g) => g.uid === ritualUid) ?? null;
+    const costOf = (kind: RitualReplaceKind | "strip") => RITUAL_COSTS[kind];
+    const affordable = (kind: RitualReplaceKind | "strip") => player.gold >= costOf(kind).gold && ink >= costOf(kind).ink;
+    return (
+      <div>
+        <p className="dropcap mb-4 max-w-2xl text-[1.02rem] leading-relaxed text-parch/85">
+          Замена меняет свойство на другое той же характеристики. Хаос замены — на свойство любой характеристики.
+          Снятие убирает свойство и отдаёт реагенты по уровню предмета. Выбираешь предмет и свойство, новое — случайное.
+        </p>
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+          <Panel title="Выбери предмет" className="p-4">
+            <div className="max-h-[28rem] space-y-2 overflow-y-auto pr-1">
+              {eligible.length === 0 && <p className="text-sm italic text-mute">Нет исследованного снаряжения со свойствами.</p>}
+              {eligible.map((g) => {
+                const base = GEAR_BASES[g.baseId];
+                const active = item?.uid === g.uid;
+                return (
+                  <button
+                    key={g.uid}
+                    onClick={() => setRitualUid(g.uid)}
+                    className={`flex w-full items-center justify-between gap-2 border px-3 py-2 text-left transition-colors ${active ? "border-flame bg-flame/10" : "border-line bg-slab2 hover:border-flamedim"}`}
+                  >
+                    <span>
+                      <span className="block font-display text-[1.02rem] uppercase tracking-[0.08em] text-flamehi">{base?.name ?? g.baseId}</span>
+                      <span className="block font-mono text-[0.82rem] text-mute">ур. {g.level} · свойств: {g.effects.length}</span>
+                    </span>
+                    {Object.values(player.equip).includes(g.uid) && <Tag tone="verd">надето</Tag>}
+                  </button>
+                );
+              })}
+            </div>
+          </Panel>
+          <Panel title="Свойства" className="p-4">
+            {!item && <p className="text-sm italic text-mute">Выбери предмет слева, чтобы увидеть свойства.</p>}
+            {item && (
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-2 font-mono text-[0.84rem]">
+                  <Tag tone="flame">золото {player.gold}</Tag>
+                  <Tag tone={ink >= 5 ? "verd" : "mute"}>чернила {ink}</Tag>
+                </div>
+                {item.effects.map((id: GearEffectId) => {
+                  const def = GEAR_EFFECTS[id];
+                  const replace = ritualCandidates(item, id, "replace").length > 0;
+                  const chaos = ritualCandidates(item, id, "chaos").length > 0;
+                  const reagents = stripReagentCount(item.level);
+                  return (
+                    <div key={id} className="border border-line bg-black/25 p-3">
+                      <div className="font-display text-[1.02rem] uppercase tracking-[0.08em] text-flamehi">{def.name}</div>
+                      <div className="mt-0.5 text-[0.86rem] text-parch/80">{effectDetail(id, item.level, item.effectRolls?.[id])}</div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Btn
+                          tone={replace && affordable("replace") ? "flame" : "ghost"}
+                          disabled={!replace || !affordable("replace")}
+                          onClick={() => say(controller.ritualReplace(item.uid, id, "replace"))}
+                        >
+                          Замена · {RITUAL_COSTS.replace.gold} зол. · {RITUAL_COSTS.replace.ink} чернил
+                        </Btn>
+                        <Btn
+                          tone={chaos && affordable("chaos") ? "flame" : "ghost"}
+                          disabled={!chaos || !affordable("chaos")}
+                          onClick={() => say(controller.ritualReplace(item.uid, id, "chaos"))}
+                        >
+                          Хаос замены · {RITUAL_COSTS.chaos.gold} зол. · {RITUAL_COSTS.chaos.ink} чернил
+                        </Btn>
+                        <Btn
+                          tone={affordable("strip") ? "flame" : "ghost"}
+                          disabled={!affordable("strip")}
+                          onClick={() => say(controller.ritualStrip(item.uid, id))}
+                        >
+                          Снятие · {RITUAL_COSTS.strip.gold} зол. → {reagents} реаг.
+                        </Btn>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Panel>
+        </div>
+      </div>
+    );
+  };
+
+  /* Содержимое вкладки «Жители» по NPC: рецепты с варкой, кузница и ритуал волшебника. */
   const npcServices = {
     alchemist: renderCraft("alchemy"),
     master: renderCraft("workshop"),
     smith: renderForge(),
+    wizard: renderRitual(),
   };
 
   return (

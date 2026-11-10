@@ -1694,7 +1694,7 @@ export function rollItemStatRolls(
   base: GearBaseDef,
   gearClass: "light" | "medium" | "heavy",
   rng: () => number = Math.random,
-): { hp: number; armor: number; evade: number } {
+): { hp: number; armor: number; evade: number; barrier?: number } {
   const kind = gearKindOfBase(base);
   const k = SLOT_ITEM_SCALE[base.slot] ?? 0.6;
   const roll = (lo: number, spread: number) => lo + Math.floor(rng() * (spread + 1));
@@ -1709,13 +1709,18 @@ export function rollItemStatRolls(
   }
 
   const cls = base.gearClass ?? gearClass;
-  if (cls === "heavy") return { hp: at(roll(4, 4)), armor: at(roll(4, 3) * 2), evade: 0 };
+  if (cls === "heavy") {
+    const intBarrier = stat === "int" && kind === "armor" ? roll(5, 5) : undefined;
+    return { hp: at(roll(4, 4)), armor: at(roll(4, 3) * 2), evade: 0, barrier: intBarrier };
+  }
   if (cls === "medium") {
     if (stat === "agi") return { hp: at(roll(2, 3)), armor: at(roll(1, 2)), evade: roll(4, 5) };
-    return { hp: at(roll(3, 3)), armor: at(roll(3, 3)), evade: 0 };
+    const intBarrier = stat === "int" && kind === "armor" ? roll(5, 5) : undefined;
+    return { hp: at(roll(3, 3)), armor: at(roll(3, 3)), evade: 0, barrier: intBarrier };
   }
   /* Лёгкая броня: здоровье и уклонение; с требованием ИНТ здоровья больше. */
-  if (stat === "int") return { hp: at(roll(13, 7), 2), armor: 0, evade: roll(5, 5) };
+  /* Броня на ИНТ: маг. барьер вместо уклонения (тот же ролл 5–10). */
+  if (stat === "int") return { hp: at(roll(13, 7), 2), armor: 0, evade: 0, barrier: roll(5, 5) };
   return { hp: at(roll(9, 5), 2), armor: 0, evade: roll(6, 6) };
 }
 
@@ -1762,12 +1767,15 @@ export function scaledGearStats(item: GearItem) {
   const hp = kind === "weapon" ? 0 : scaleGearStatByLevel(Math.ceil(rolls.hp * m), level) + strHp;
   /* Потолок уклонения: на 1 уровне 5% (средняя ЛОВ) или 7% (лёгкая); дальше растёт с уровнем. */
   const evadeCap = kind === "weapon" ? 0 : evadeCapLevel1(cls, reqStat);
-  const evadeRaw = kind === "weapon" ? 0 : scaleGearStatByLevel(Math.ceil((rolls.evade ?? 0) * m), level);
+  /* Броня на ИНТ: маг. барьер занимает место уклонения и без капа уклонения. Старые предметы: барьер = их бывшее уклонение. */
+  const intArmor = kind === "armor" && reqStat === "int";
+  const barrier = intArmor ? scaleGearStatByLevel(Math.ceil((rolls.barrier ?? rolls.evade ?? 0) * m), level) : 0;
+  const evadeRaw = kind === "weapon" || intArmor ? 0 : scaleGearStatByLevel(Math.ceil((rolls.evade ?? 0) * m), level);
   const evadePp = evadeCap ? Math.min(evadeRaw, Math.floor(evadeCap * statLevelRatio(level) + 1e-9)) : evadeRaw;
   const evade = Math.min(0.5, evadePp / 100);
   /* Регенерация: только броня и аксессуары; параметр выпадает при создании. */
   const regen = kind === "armor" || kind === "accessory" ? gearRegenValue(level, m, item.statRolls?.regen) : 0;
-  return { base, kind, dmg, armor, hp, evade, evadePp, regen, skill: weaponSkillFor(item), level, wearMult: m };
+  return { base, kind, dmg, armor, hp, evade, evadePp, barrier, regen, skill: weaponSkillFor(item), level, wearMult: m };
 }
 
 /** Золото за исследование: 20 за каждый уровень предмета. */
@@ -1862,6 +1870,7 @@ export interface GearPointParts {
   armor: number;
   hp: number;
   evade: number;
+  barrier: number;
   effects: number;
   technique: number;
   armorSkill: number;
@@ -1891,6 +1900,8 @@ export function gearPointParts(item: GearItem): GearPointParts {
     armor: w.armor * (s.armor ?? 0),
     hp: w.hp * (s.hp ?? 0),
     evade: w.evade * (s.evadePp ?? 0),
+    /* Маг. барьер стоит как здоровье: тот же вес за единицу. */
+    barrier: w.hp * (s.barrier ?? 0),
     effects: (item.effects ?? []).reduce((sum, id) => sum + effectPoints(id, level), 0),
     technique: skill
       ? Math.max(w.techniqueMin, w.techniqueBase + w.techniqueScale * skill.scaleMult - w.techniqueCooldown * skill.cooldown)
