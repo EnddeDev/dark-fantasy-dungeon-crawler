@@ -640,3 +640,15 @@ test("сумка с зельями лежит в арсенале под «На�
   assert.ok(floor.includes("Выбор яруса"), "панель выбора яруса видна");
   assert.ok(!floor.includes('aria-label="Сумка с зельями"'), "в выборе яруса сумки нет");
 });
+
+test("battle attacks: short names only; stamina and miss chance live in the hover title", () => {
+  const b = freshBattle(makePlayer(), 3, false);
+  const html = renderToStaticMarkup(React.createElement(BattleView, {
+    battle: b, onAct: noop, onEnemyTurn: noop, onContinue: noop,
+  }));
+  for (const name of ["Мощный", "Обычный", "Точный"]) {
+    assert.ok(html.includes(`>${name}</button>`), `кнопка «${name}» без лишнего текста`);
+  }
+  assert.ok(!/>[^<]*·\s*\d+<\/span>/.test(html) && !html.includes(">попасть "), "внутри кнопок атак нет текста про выносливость и шанс");
+  assert.match(html, /title="Выносливость: \d+\. Шанс промахнуться: \d+%"/, "подсказка показывает выносливость и промах");
+});

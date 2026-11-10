@@ -477,10 +477,10 @@ export interface BattleState {
 /** Вид атаки: рискованная — максимум урона и меткость −15, обычная — как раньше, безопасная — минимум и меткость +15. */
 export type AttackKind = "risky" | "normal" | "safe";
 export const ATTACK_KINDS: AttackKind[] = ["risky", "normal", "safe"];
-export const ATTACK_KIND_META: Record<AttackKind, { name: string; desc: string; accuracy: number }> = {
-  risky: { name: "Рискованная", desc: "Максимум урона оружия, меткость −15%.", accuracy: -15 },
-  normal: { name: "Обычная", desc: "Обычный разброс урона, меткость не меняется.", accuracy: 0 },
-  safe: { name: "Безопасная", desc: "Минимум урона оружия, меткость +15%.", accuracy: 15 },
+export const ATTACK_KIND_META: Record<AttackKind, { name: string; short: string; desc: string; accuracy: number }> = {
+  risky: { name: "Рискованная", short: "Мощный", desc: "Максимум урона оружия, меткость −15%.", accuracy: -15 },
+  normal: { name: "Обычная", short: "Обычный", desc: "Обычный разброс урона, меткость не меняется.", accuracy: 0 },
+  safe: { name: "Безопасная", short: "Точный", desc: "Минимум урона оружия, меткость +15%.", accuracy: 15 },
 };
 
 /** Базовая меткость по весу оружия; кулаки бьют как лёгкое оружие. */
