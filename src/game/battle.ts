@@ -295,6 +295,9 @@ export interface BattleState {
     /** Выносливость: тратится действиями, восстанавливается в начале раунда. */
     stamina: number;
     staminaMax: number;
+    /** Маг. барьер сейчас и максимум на бой: поглощает урон первым, кроме ядов и кровотечения. */
+    barrier: number;
+    barrierMax: number;
     /** Удары по рукам для атаки; пусто — кулаки. */
     hands: HandStrike[];
     firstRoundApBonus: number;
@@ -568,6 +571,8 @@ export interface DerivedStats {
   fortify: number;
   chanceLayers: Record<ChanceKey, ChanceLayers>;
   hpBonus: number;
+  /** Маг. барьер: сумма брони на ИНТ; в бою восстанавливается до этого значения. */
+  barrierBonus: number;
   /** Регенерация снаряжения за ход героя (сумма параметров брони и аксессуаров). */
   regenPerTurn: number;
   armorBonus: number;
@@ -596,6 +601,7 @@ export function derived(pl: Player): DerivedStats {
   const gearNames: Partial<Record<Slot, string>> = {};
 
   let hpBonus = 0;
+  let barrierBonus = 0;
   let regenPerTurn = 0;
   let armorBonus = 0;
   let evadeBonus = 0;
@@ -613,6 +619,7 @@ export function derived(pl: Player): DerivedStats {
     gearNames[slot] = (GEAR_BASES[g.baseId] ?? { name: "Предмет" }).name;
     const st = scaledGearStats(g);
     hpBonus += st.hp ?? 0;
+    barrierBonus += st.barrier ?? 0;
     armorBonus += st.armor ?? 0;
     evadeBonus += st.evade ?? 0;
     regenPerTurn += st.regen ?? 0;
@@ -801,6 +808,7 @@ export function derived(pl: Player): DerivedStats {
     fortify,
     chanceLayers,
     hpBonus,
+    barrierBonus,
     regenPerTurn,
     armorBonus,
     evadeBonus,
@@ -1205,6 +1213,8 @@ export function newBattle(
       ap: d.ap,
       stamina: carriedStamina(pl, d.staminaMax),
       staminaMax: d.staminaMax,
+      barrier: d.barrierBonus,
+      barrierMax: d.barrierBonus,
       hands: d.hands,
       firstRoundApBonus: d.firstRoundApBonus,
       stats: { ...pl.stats },
@@ -1699,6 +1709,19 @@ function healEnemy(b: BattleState, amount: number): number {
   return actual;
 }
 
+/**
+ * Маг. барьер поглощает урон первым. Яды и кровотечение его обходят: их считают отдельно.
+ * Возвращает остаток урона, который дошёл до здоровья.
+ */
+export function absorbBarrier(b: BattleState, dmg: number): number {
+  const pool = b.p.barrier ?? 0;
+  if (dmg <= 0 || pool <= 0) return dmg;
+  const absorbed = Math.min(pool, dmg);
+  b.p.barrier = pool - absorbed;
+  push(b, `Маг. барьер поглощает ${absorbed} урона${b.p.barrier <= 0 ? ", барьер разрушен" : ""}.`, "p");
+  return dmg - absorbed;
+}
+
 /** Единая точка лечения игрока: болото режет всё, кроме зелий. Возвращает реально восстановленные ОЗ. */
 function healPlayer(b: BattleState, amount: number, isPotion = false): number {
   if (b.p.statuses.noHeal > 0) {
@@ -1707,7 +1730,7 @@ function healPlayer(b: BattleState, amount: number, isPotion = false): number {
   }
   if (b.p.statuses.wither > 0) {
     const dmg = Math.max(1, Math.round(amount * (1 - combatChance(b.p.chanceLayers.magicResist))));
-    b.p.hp = Math.max(0, b.p.hp - dmg);
+    b.p.hp = Math.max(0, b.p.hp - absorbBarrier(b, dmg));
     push(b, `Увядание обращает лечение в ${dmg} магического урона.`, "e");
     return 0;
   }
@@ -2019,15 +2042,17 @@ function hitEnemy(
      удар, контратака и физические приёмы. Магический урон их не будит. */
   const thorns = !effectsDepleted(b) && kind === "phys" ? eEffect(b, "thorns") : 0;
   if (thorns > 0 && b.p.hp > 0) {
-    b.p.hp -= thorns;
-    push(b, `Шипы противника ранят тебя: −${thorns} ОЗ.`, "e");
+    const thornsRest = absorbBarrier(b, thorns);
+    b.p.hp -= thornsRest;
+    push(b, `Шипы противника ранят тебя: −${thornsRest} ОЗ.`, "e");
   }
   /* Шлаковая шкура: 10% физического урона по стражу возвращается герою. */
   if (b.enemy.def.id === "golem" && kind === "phys" && d > 0 && b.p.hp > 0) {
     const back = Math.round(d * GOLEM_REFLECT_SHARE);
-    if (back > 0) {
-      b.p.hp -= back;
-      push(b, `Шлаковая шкура возвращает тебе ${back} урона.`, "e");
+    const backRest = absorbBarrier(b, back);
+    if (backRest > 0) {
+      b.p.hp -= backRest;
+      push(b, `Шлаковая шкура возвращает тебе ${backRest} урона.`, "e");
     }
   }
   /* Дракон копит ярость: после трёх твоих попаданий бьёт вдвое и залечивает раны. */
@@ -2291,6 +2316,8 @@ function incoming(
     return false;
   }
   let d = damageAfterPlayerDefense(b, raw, kind, strike, ignoreDefense);
+  /* Маг. барьер первым принимает удар, до стены щитов. */
+  d = absorbBarrier(b, d);
   /* Ветки навыков: Стена щитов — в защите щит 15% макс. ОЗ до конца раунда. */
   if (b.p.guard && hasPassive(b, "skill_wall_a")) {
     if ((b.p.statuses.wallShieldRound ?? 0) !== b.round) {
@@ -2454,7 +2481,7 @@ function beginTurn(b: BattleState) {
     push(b, `Ржавчина съедает броню ${b.enemy.def.name}: −1 (осталось ${b.enemy.armor}).`, "p");
   }
   if (b.biome === "ice" && side === "p") {
-    b.p.hp = Math.max(0, b.p.hp - ICE_TURN_DAMAGE);
+    b.p.hp = Math.max(0, b.p.hp - absorbBarrier(b, ICE_TURN_DAMAGE));
     flash(b, "p", "hit", ICE_TURN_DAMAGE);
     push(b, `Ледяные просторы: холод отнимает ${ICE_TURN_DAMAGE} здоровья в начале твоего хода.`, "sys");
   }
@@ -2464,7 +2491,7 @@ function beginTurn(b: BattleState) {
   if (b.biome === "fire" && side === "p") {
     b.p.statuses.burning += 1;
     const dmg = fireBurnDamage(b.p.statuses.burning);
-    b.p.hp = Math.max(0, b.p.hp - dmg);
+    b.p.hp = Math.max(0, b.p.hp - absorbBarrier(b, dmg));
     flash(b, "p", "hit", dmg);
     push(b, `Огненные недра: горение ×${b.p.statuses.burning} отнимает ${dmg} здоровья (каждый слой +${FIRE_BURN_STEP}).`, "sys");
     b.enemy.statuses.burning += 1;
@@ -2529,17 +2556,17 @@ function advance(b: BattleState) {
       push(b, `Яд в твоей крови отнимает ${d} здоровья${stacks > 1 ? ` (${stacks} наложения)` : ""}.`, "e");
     }
     if (!warded && b.p.statuses.burn > 0 && b.p.hp > 0) {
-      const d = b.p.statuses.burnTick;
+      const d = absorbBarrier(b, b.p.statuses.burnTick);
       b.p.hp -= d;
       push(b, `Горение отнимает ${d} здоровья.`, "e");
     }
     if (!warded && b.p.statuses.chill > 0 && b.p.hp > 0) {
-      const d = magicTickFrom(b.p.statuses.chillTick, combatChance(b.p.chanceLayers.magicResist));
+      const d = absorbBarrier(b, magicTickFrom(b.p.statuses.chillTick, combatChance(b.p.chanceLayers.magicResist)));
       b.p.hp -= d;
       push(b, `Обморожение отнимает ${d} здоровья и режет лечение вдвое.`, "e");
     }
     if (!warded && b.p.statuses.curse > 0 && b.p.hp > 0) {
-      const d = magicTickFrom(b.p.statuses.curseTick, combatChance(b.p.chanceLayers.magicResist));
+      const d = absorbBarrier(b, magicTickFrom(b.p.statuses.curseTick, combatChance(b.p.chanceLayers.magicResist)));
       b.p.hp -= d;
       push(b, `Проклятие выжигает ${d} здоровья.`, "e");
     }

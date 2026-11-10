@@ -2086,7 +2086,9 @@ test("armor and accessories give defense by weight and stat; weapons give none",
   const lightInt = rolls("start_robe");
   const lightFree = rolls("start_hood");
   assert.ok(lightInt.hp > lightFree.hp, "лёгкая броня с ИНТ даёт больше здоровья");
-  assert.ok(lightInt.evade > 0 && lightFree.evade > 0, "лёгкая броня уклоняется");
+  assert.ok(lightFree.evade > 0, "лёгкая броня без ИНТ уклоняется");
+  assert.equal(lightInt.evade, 0, "лёгкая броня с ИНТ не уклоняется: её место занимает маг. барьер");
+  assert.ok(lightInt.barrier > 0, "лёгкая броня с ИНТ даёт маг. барьер");
   assert.equal(lightInt.armor, 0, "лёгкая броня почти не защищает");
   const free = content.createGearItem({ baseId: "start_hood", identified: true, level: 1 });
   assert.equal(content.gearRequiresNothing(free), true, "лёгкая броня может не иметь требований");
@@ -2111,7 +2113,10 @@ test("armor and accessories give defense by weight and stat; weapons give none",
   const plain = battle.derived(base);
   const robe = content.createGearItem({ baseId: "start_robe", level: 1, wear: "worn", rarity: "common", identified: true });
   const geared = battle.derived({ ...base, armory: [robe], equip: { ...base.equip, body: robe.uid } });
-  assert.ok(geared.evade > plain.evade, "лёгкая броня добавляет уклонение в бою");
+  assert.ok(geared.barrierBonus > 0, "лёгкая броня с ИНТ добавляет маг. барьер в бою");
+  const hood = content.createGearItem({ baseId: "start_hood", level: 1, wear: "worn", rarity: "common", identified: true });
+  const hooded = battle.derived({ ...base, armory: [hood], equip: { ...base.equip, body: hood.uid } });
+  assert.ok(hooded.evade > plain.evade, "лёгкая броня без ИНТ добавляет уклонение в бою");
   assert.ok(geared.maxHp > plain.maxHp, "лёгкая броня добавляет здоровье");
 });
 
