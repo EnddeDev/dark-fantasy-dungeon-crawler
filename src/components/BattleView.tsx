@@ -681,18 +681,17 @@ export function BattleView({
                 {ATTACK_KINDS.map((kind) => {
                   const meta = ATTACK_KIND_META[kind];
                   const preview = heroAttackPreview(b, kind);
+                  const cost = attackStaminaCost(b);
+                  const miss = Math.round((1 - preview.chance) * 100);
                   return (
                     <Btn
                       key={kind}
                       tone={!ready.attack ? "ghost" : kind === "safe" ? "verd" : "flame"}
                       disabled={!ready.attack}
-                      title={`${meta.desc} Шанс попасть: ${Math.round(preview.chance * 100)}%${
-                        preview.state === "advantage" ? " (преимущество: два броска, лучший)" : preview.state === "disadvantage" ? " (помеха: два броска, худший)" : ""
-                      }`}
+                      title={`Выносливость: ${cost}. Шанс промахнуться: ${miss}%`}
                       onClick={() => act({ type: "attack", kind })}
                     >
-                      <span className="block">{meta.name} · {attackStaminaCost(b)}</span>
-                      <span className="block text-[0.72rem] opacity-80">попасть {Math.round(preview.chance * 100)}%</span>
+                      {meta.short}
                     </Btn>
                   );
                 })}
