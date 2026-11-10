@@ -279,6 +279,8 @@ export interface Player {
   statPoints: number;
   stats: Record<StatKey, number>;
   hp: number;
+  /** Выносливость, перенесённая с карты в следующий бой. Нет — полный запас. */
+  stamina?: number;
   gold: number;
   /** Расходники, свитки и реагенты: id -> количество */
   bag: Record<string, number>;
@@ -417,7 +419,12 @@ export interface Run {
 
 export type ModalState =
   | { kind: "intro" }
-  | { kind: "trap"; trap: import("./traps").TrapState }
+  | {
+      kind: "trap";
+      trap: import("./traps").TrapState;
+      /** Провал обхода или обезвреживания: исход ждёт решения — принять или избежать за выносливость. */
+      failed?: { action: "bypass" | "disarm"; outcome: import("./traps").TrapOutcome };
+    }
   | { kind: "door"; x: number; y: number }
   | { kind: "chest"; gold: number; items: string[]; gear: GearItem[]; xp: number }
   | { kind: "key" }

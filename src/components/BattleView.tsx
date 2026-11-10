@@ -30,7 +30,10 @@ import {
   type EnemyMoveView,
   type PlayerAction,
   actionStaminaCost,
+  ATTACK_KINDS,
+  ATTACK_KIND_META,
   attackStaminaCost,
+  heroAttackPreview,
   techniqueStaminaCost,
 } from "../game/battle";
 import { FoePortrait } from "./FoeArt";
@@ -666,44 +669,65 @@ export function BattleView({
                 {b.p.statuses.sealItems > 0 && <Tag tone="rubric">Печать немоты: расходники запрещены</Tag>}
               </div>
             )}
-            {(menu === "main" || menu === "item") && b.p.archetype && (
-              <div className="mb-2 space-y-1">
-                <Btn
-                  className="w-full"
-                  tone={ready.special ? "flame" : "ghost"}
-                  disabled={!ready.special}
-                  title={ARCHETYPES[b.p.archetype].special.desc}
-                  onClick={() => act({ type: "archetype_skill" })}
-                >
-                  Спец-приём: {ARCHETYPES[b.p.archetype].special.name} · {b.p.concentration}/{MAX_CONCENTRATION}
-                </Btn>
-                <p className="text-[0.85rem] leading-snug text-mute">{ARCHETYPES[b.p.archetype].special.desc}</p>
+            {(menu === "main" || menu === "item") && (
+              <div className="grid grid-cols-3 gap-2">
+                {ATTACK_KINDS.map((kind) => {
+                  const meta = ATTACK_KIND_META[kind];
+                  const preview = heroAttackPreview(b, kind);
+                  return (
+                    <Btn
+                      key={kind}
+                      tone={!ready.attack ? "ghost" : kind === "safe" ? "verd" : "flame"}
+                      disabled={!ready.attack}
+                      title={`${meta.desc} Шанс попасть: ${Math.round(preview.chance * 100)}%${
+                        preview.state === "advantage" ? " (преимущество: два броска, лучший)" : preview.state === "disadvantage" ? " (помеха: два броска, худший)" : ""
+                      }`}
+                      onClick={() => act({ type: "attack", kind })}
+                    >
+                      <span className="block">{meta.name} · {attackStaminaCost(b)}</span>
+                      <span className="block text-[0.72rem] opacity-80">попасть {Math.round(preview.chance * 100)}%</span>
+                    </Btn>
+                  );
+                })}
               </div>
             )}
-
             {(menu === "main" || menu === "item") && (
-              <div className="grid grid-cols-2 gap-2">
-                <Btn tone={ready.attack ? "flame" : "ghost"} disabled={!ready.attack} onClick={() => act({ type: "attack" })}>
-                  Удар · {attackStaminaCost(b)}
-                </Btn>
+              <div className={b.p.archetype ? "grid grid-cols-2 gap-2" : "grid grid-cols-1 gap-2"}>
                 <Btn tone={ready.skills ? "flame" : "ghost"} disabled={!myTurn || feared || b.p.statuses.sealSkills > 0 || b.p.stamina < techniqueStaminaCost(b)} onClick={() => setMenu("skill")}>
                   Приёмы · {techniqueStaminaCost(b)}
                 </Btn>
+                {b.p.archetype && (
+                  <Btn
+                    tone={ready.special ? "flame" : "ghost"}
+                    disabled={!ready.special}
+                    title={ARCHETYPES[b.p.archetype].special.desc}
+                    onClick={() => act({ type: "archetype_skill" })}
+                  >
+                    Спец-приём: {ARCHETYPES[b.p.archetype].special.name} · {b.p.concentration}/{MAX_CONCENTRATION}
+                  </Btn>
+                )}
+              </div>
+            )}
+            {(menu === "main" || menu === "item") && b.p.archetype && (
+              <p className="mb-2 mt-1 text-[0.85rem] leading-snug text-mute">{ARCHETYPES[b.p.archetype].special.desc}</p>
+            )}
+            {(menu === "main" || menu === "item") && (
+              <div className="mt-2 grid grid-cols-3 gap-2">
                 <Btn disabled={!myTurn || b.p.statuses.sealItems > 0} onClick={() => setMenu("item")}>
                   Рюкзак · {STAMINA_BACKPACK}
                 </Btn>
                 <Btn tone="verd" disabled={!myTurn || b.p.stamina < STAMINA_GUARD} onClick={() => act({ type: "guard" })}>
                   Защита · {STAMINA_GUARD}
                 </Btn>
-                <Btn tone="danger" disabled={!myTurn} onClick={() => act({ type: "flee" })}>
-                  Сбежать
+                <Btn className="w-full" disabled={!myTurn} onClick={() => act({ type: "end_turn" })}>
+                  Пропуск хода
                 </Btn>
               </div>
             )}
             {(menu === "main" || menu === "item") && (
               <div className="mt-2">
-                <Btn className="w-full" disabled={!myTurn} onClick={() => act({ type: "end_turn" })}>
-                  Закончить ход
+                <Btn className="w-full" tone="danger" disabled={!myTurn} onClick={() => act({ type: "flee" })}>
+                  Сбежать
                 </Btn>
               </div>
             )}

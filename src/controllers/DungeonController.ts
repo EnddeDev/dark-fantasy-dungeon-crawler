@@ -5,7 +5,7 @@ import { CHEST_RARITY_WEIGHTS, DUNGEON_GOLD_SHARE, GEAR_BASES, ITEMS, consumable
 import { cellIdx, findPath, openDirs, trapsWithin, wallBetween } from "../game/maze";
 import { pruneRunLoot } from "../game/runLoot";
 import { CHILL_HEAL_MULT, curseTickFrom, magicTickFrom, refreshedTick, trapTickFrom } from "../game/statusEffects";
-import { applyTrapOutcome, isBattleCurse, lockpickChance, makeTrap, resolveTrap, rollTrapKind, type TrapAction } from "../game/traps";
+import { TRAP_AVOID_STAMINA, applyTrapOutcome, isBattleCurse, lockpickChance, makeTrap, resolveTrap, rollTrapKind, type TrapAction, type TrapOutcome, type TrapState } from "../game/traps";
 import type { GearItem, Player, Run, Slot } from "../game/types";
 import { SLOT_META } from "../game/types";
 import { MAP_EVENTS, choiceChance, mapEventById, type MapEffect, type MapEvent } from "../game/world";
@@ -303,12 +303,43 @@ export class DungeonController {
 
   takeTrap(action: TrapAction): void {
     const { modal, run, player } = this.state;
-    if (!modal || modal.kind !== "trap" || !run) return;
+    if (!modal || modal.kind !== "trap" || !run || modal.failed) return;
     const trap = modal.trap;
     const hasKit = (player.bag.sapper_kit ?? 0) > 0;
     if (action === "disarm" && !hasKit) return;
     const outcome = resolveTrap(trap, action, player.stats, hasKit, run.floor);
+    /* Провал обхода или обезвреживания: механизм сработал, но герой может заплатить выносливость и избежать его. */
+    if (!outcome.success && action !== "prepare") {
+      this.model.setModal({ kind: "trap", trap, failed: { action, outcome } });
+      return;
+    }
     this.model.setModal(null);
+    this.applyTrapResult(trap, outcome);
+  }
+
+  /** Принять последствия провалившейся ловушки. */
+  acceptTrapFailure(): void {
+    const { modal, run } = this.state;
+    if (!modal || modal.kind !== "trap" || !modal.failed || !run) return;
+    const { trap, failed } = modal;
+    this.model.setModal(null);
+    this.applyTrapResult(trap, failed.outcome);
+  }
+
+  /** Избежать провалившейся ловушки за TRAP_AVOID_STAMINA выносливости. Без последствий и без опыта. */
+  avoidTrapFailure(): void {
+    const { modal, run, player } = this.state;
+    if (!modal || modal.kind !== "trap" || !modal.failed || !run) return;
+    const stamina = player.stamina ?? derived(player).staminaMax;
+    if (stamina < TRAP_AVOID_STAMINA) return;
+    this.model.setModal(null);
+    this.model.updatePlayer((p) => ({ ...p, stamina: (p.stamina ?? derived(p).staminaMax) - TRAP_AVOID_STAMINA }));
+    this.model.logRun(`Ты избежал ловушки ценой ${TRAP_AVOID_STAMINA} выносливости.`);
+  }
+
+  private applyTrapResult(trap: TrapState, outcome: TrapOutcome): void {
+    const { run, player } = this.state;
+    if (!run) return;
     const hp = player.hp - outcome.damage;
     const statuses = applyTrapOutcome(player.statuses, trap, outcome);
     this.model.logRun(`${outcome.message}${outcome.damage > 0 ? ` −${outcome.damage} здоровья.` : ""}${outcome.xp > 0 ? ` +${outcome.xp} XP.` : ""}`);

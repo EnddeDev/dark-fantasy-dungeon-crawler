@@ -143,7 +143,7 @@ test("ice costs the player 3 HP per own turn and weakens physical strikes by 25%
     const s = combat(biome);
     s.queue = ["p", "e"]; s.idx = 0;
     s.p.hit = [100, 100]; s.p.stats.str = 1; s.p.critChance = 0;
-    return withRandom(0.99, () => battle.playerAct(s, { type: "attack" }));
+    return withRandom(0.45, () => battle.playerAct(s, { type: "attack" }));
   };
   assert.equal(5000 - strike("classic").enemy.hp, 103); // 100 + (2 + СИЛ)
   assert.equal(5000 - strike("ice").enemy.hp, 77);
@@ -152,21 +152,16 @@ test("ice costs the player 3 HP per own turn and weakens physical strikes by 25%
     const s = combat(biome);
     s.queue = ["e", "e"]; s.idx = 0;
     s.enemy.atk = [100, 100];
-    return withRandom(0.99, () => battle.enemyStep(s));
+    return withRandom(0.45, () => battle.enemyStep(s));
   };
   assert.equal(500 - enemyStrike("classic").p.hp, 100);
   assert.equal(500 - enemyStrike("ice").p.hp, 75);
 });
 
-test("darkness adds a separate 25% miss check to physical attacks", () => {
-  const playerAttack = (roll) => {
-    const b = combat("dark");
-    b.queue = ["p", "e"]; b.idx = 0;
-    b.p.hit = [100, 100]; b.p.critChance = 0;
-    return withRandom(roll, () => battle.playerAct(b, { type: "attack" }));
-  };
-  assert.equal(playerAttack(0.24).enemy.hp, 5000);
-  assert.ok(playerAttack(0.25).enemy.hp < 5000);
+test("мрак биома снижает меткость героя на 25 пунктов, отдельного броска промаха нет", () => {
+  const classic = combat("classic");
+  const dark = combat("dark");
+  assert.ok(Math.abs(battle.heroAccuracy(classic) - battle.heroAccuracy(dark) - 0.25) < 1e-9);
 
   const enemyAttack = (roll) => {
     const b = combat("dark");

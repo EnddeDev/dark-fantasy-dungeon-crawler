@@ -228,7 +228,7 @@ test("бой: полная защита и иммунитет на раунд о
   assert.equal(b.p.statuses.immune.curse, 1);
 });
 
-test("бой: приём брони-атака наносит урон от брони и характеристики", () => withFixedRandom(0.99, () => {
+test("бой: приём брони-атака наносит урон от брони и характеристики", () => withFixedRandom(0.45, () => {
   const strong = withArmor(wornArmor("plate", "heavy_bash"), { str: 10 });
   let b = battleFor(strong);
   b.enemy.hp = 9999;

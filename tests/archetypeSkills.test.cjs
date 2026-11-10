@@ -133,7 +133,7 @@ function fixedFight(pl, { enemyArmor = 0, guard = false, playerArmor = 0 } = {})
 
 function withFixedRandom(fn) {
   const rnd = Math.random;
-  Math.random = () => 0.99;
+  Math.random = () => 0.45;
   try {
     return fn();
   } finally {

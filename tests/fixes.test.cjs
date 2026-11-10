@@ -115,10 +115,12 @@ function duelFighters() {
 test("дуэль: приём бьёт той же формулой, что и в подземелье", () => {
   const { a, b } = duelFighters();
   assert.ok(a.skill, "у посоха есть приём");
+  /* Разброс урона убираем: формула сравнивается с максимумом оружия. */
+  a.hit = [a.hit[1], a.hit[1]];
   b.hp = 5000;
   b.maxHp = 5000;
   const state = { id: "d1", a, b, turn: "a", round: 1, apLeft: 4, winner: null, log: [], deadline: Date.now() + 20_000, seq: 0 };
-  const result = withRandom(0.99, () => duel.duelAction(state, "a", { type: "technique" }, Date.now()));
+  const result = withRandom(0.45, () => duel.duelAction(state, "a", { type: "technique" }, Date.now()));
 
   const bonus = Math.round(battle.weaponTechniqueBonus(a.skillStat, a.skill.scaleMult));
   const plainHit = a.hit[1] + a.strFlat;
@@ -165,9 +167,9 @@ test("дуэль: при обоюдной смерти побеждает тот
     deadline: Date.now() + 20_000,
     seq: 3,
   });
-  const first = withRandom(0.99, () => duel.duelAction(make(-1, -5), "a", { type: "pass" }, Date.now()));
+  const first = withRandom(0.45, () => duel.duelAction(make(-1, -5), "a", { type: "pass" }, Date.now()));
   assert.equal(first.winner, "a");
-  const second = withRandom(0.99, () => duel.duelAction(make(-5, -1), "a", { type: "pass" }, Date.now()));
+  const second = withRandom(0.45, () => duel.duelAction(make(-5, -1), "a", { type: "pass" }, Date.now()));
   assert.equal(second.winner, "b");
 });
 
@@ -233,14 +235,14 @@ function gameWithEvent(overrides = {}) {
 
 /* Путь от входа к значку: (0,0) → (1,0) → (2,0) → (2,1). Первый шаг — вход в комнату. */
 function walkToEvent(game) {
-  withRandom(0.99, () => game.dungeon.move(1, 0));
-  withRandom(0.99, () => game.dungeon.move(1, 0));
-  withRandom(0.99, () => game.dungeon.move(0, 1));
+  withRandom(0.45, () => game.dungeon.move(1, 0));
+  withRandom(0.45, () => game.dungeon.move(1, 0));
+  withRandom(0.45, () => game.dungeon.move(0, 1));
 }
 
 test("вход в комнату без шага на значок события не запускает", () => {
   const game = gameWithEvent();
-  withRandom(0.99, () => game.dungeon.move(1, 0));
+  withRandom(0.45, () => game.dungeon.move(1, 0));
   const snap = game.model.getSnapshot();
   assert.equal(snap.modal, null, "событие не открылось при входе в комнату");
   assert.deepEqual(snap.run.maze.usedEvents, [], "событие не потрачено");
@@ -261,8 +263,8 @@ test("событие срабатывает при шаге на его клет
   assert.equal(game.model.getSnapshot().modal, null);
 
   /* Второй заход на значок снова открывает выбор. */
-  withRandom(0.99, () => game.dungeon.move(0, -1));
-  withRandom(0.99, () => game.dungeon.move(0, 1));
+  withRandom(0.45, () => game.dungeon.move(0, -1));
+  withRandom(0.45, () => game.dungeon.move(0, 1));
   assert.equal(game.model.getSnapshot().modal.kind, "event", "событие вернулось");
 
   const choice = world.mapEventById("altar").choices.find((c) => !c.leave);
@@ -430,7 +432,7 @@ test("число урона у приёма в меню совпадает с у
     /* Характеристики случайного монстра дают ему ходы и урон: здесь проверяем только совпадение чисел меню и боя, герой не должен погибнуть. */
     b.p.hp = 1e6;
     b.p.maxHp = 1e6;
-    b = withRandom(0.99, () => {
+    b = withRandom(0.45, () => {
       let guard = 0;
       let s = b;
       while (s.queue[s.idx] !== "p" && guard++ < 20) s = battle.enemyStep(s);
@@ -439,8 +441,10 @@ test("число урона у приёма в меню совпадает с у
     assert.ok(!b.over, `${baseId}: герой погиб до хода`);
     const readout = battle.combatReadout(b);
     assert.ok(readout.techMin !== null && readout.techMin <= readout.techMax, `${baseId}: диапазон приёма`);
+    /* Бросок 0.45 даст середину диапазона: сравниваем максимум меню с ударом при максимальном уроне оружия. */
+    b.p.hit = [b.p.hit[1], b.p.hit[1]];
     b.p.concentration = 5; // приём требует концентрацию
-    const after = withRandom(0.99, () => battle.playerAct(b, { type: "weapon_skill" }));
+    const after = withRandom(0.45, () => battle.playerAct(b, { type: "weapon_skill" }));
     const hits = after.log
       .filter((l) => l.text.includes("[Приём:") && l.text.includes("получает"))
       .map((l) => Number(/получает (\d+) урона/.exec(l.text)[1]));

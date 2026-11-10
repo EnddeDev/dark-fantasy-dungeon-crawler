@@ -88,7 +88,7 @@ test("стоимость удара по весу оружия: лёгкое 10,
     assert.equal(content.gearClassFor(w), cls, baseId);
     const b = fight(withWeapons([w]));
     assert.equal(battle.attackStaminaCost(b), COST[cls], `${baseId} → ${COST[cls]}`);
-    const after = withRandom(0.99, () => battle.playerAct(b, { type: "attack" }));
+    const after = withRandom(0.45, () => battle.playerAct(b, { type: "attack" }));
     assert.equal(after.p.stamina, b.p.stamina - COST[cls], `${baseId}: удар списывает ${COST[cls]}`);
     assert.equal(after.idx, 0, "ход героя продолжается, пока есть выносливость");
   }
@@ -100,7 +100,7 @@ test("две руки: каждое оружие — свой удар и сво
   const b = fight(withWeapons([main, off], ["mainHand", "offHand"]));
   assert.equal(b.p.hands.length, 2, "два удара");
   assert.equal(battle.attackStaminaCost(b), COST.medium + COST.light, "сумма ударов");
-  const after = withRandom(0.99, () => battle.playerAct(b, { type: "attack" }));
+  const after = withRandom(0.45, () => battle.playerAct(b, { type: "attack" }));
   assert.equal(after.p.stamina, b.p.stamina - (COST.medium + COST.light));
   assert.ok(after.enemy.hp < b.enemy.hp);
 });
