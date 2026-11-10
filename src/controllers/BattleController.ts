@@ -59,6 +59,7 @@ export class BattleController {
     const withLoot: Player = {
       ...player,
       hp: b.p.hp,
+      stamina: b.p.stamina,
       bag,
       armory: [...b.loot.gear, ...player.armory],
       kills: player.kills + 1,
@@ -136,6 +137,7 @@ export class BattleController {
     const basePlayer: Player = {
       ...player,
       hp: b.p.hp,
+      stamina: b.p.stamina,
       bag: persistentBag(b),
       statuses: {
         wound: b.p.statuses.wound,

@@ -83,6 +83,7 @@ export class GameController {
     const nextPlayer: Player = {
       ...blessed,
       hp: derived(blessed).maxHp,
+      stamina: derived(blessed).staminaMax,
       statuses: { wound: 0, curse: 0, poison: 0, chill: 0, fear: 0, wither: 0, burn: 0 },
     };
     const nextBest = Math.max(best, floor);
@@ -152,6 +153,7 @@ export class GameController {
       statuses: { wound: 0, curse: 0, poison: 0, chill: 0, fear: 0, wither: 0, burn: 0 },
     };
     nextPlayer.hp = derived(nextPlayer).maxHp;
+    nextPlayer.stamina = derived(nextPlayer).staminaMax;
     this.model.update({
       player: nextPlayer,
       run: null,
@@ -263,6 +265,7 @@ export class GameController {
         ...home,
         gold: home.gold + savedGold,
         hp: derived(home).maxHp,
+        stamina: derived(home).staminaMax,
         statuses: { wound: 0, curse: 0, poison: 0, chill: 0, fear: 0, wither: 0, burn: 0 },
       },
       ...(opened !== null ? { unlockedFloor: opened } : {}),

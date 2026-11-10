@@ -64,19 +64,19 @@ test("концентрация начинается с нуля в каждом 
 
 test("атака даёт +1, защита +2, расходник +1; значение не выходит за 0–5", () => {
   const b = fightFor();
-  const afterAttack = withRandom(0.99, () => battle.playerAct(b, { type: "attack" }));
+  const afterAttack = withRandom(0.45, () => battle.playerAct(b, { type: "attack" }));
   assert.equal(afterAttack.p.concentration, 1);
 
-  const guarded = withRandom(0.99, () => battle.playerAct(b, { type: "guard" }));
+  const guarded = withRandom(0.45, () => battle.playerAct(b, { type: "guard" }));
   assert.equal(guarded.p.concentration, 2);
 
   const withPotion = fightFor({ bag: { potion_l: 2 } });
-  const drank = withRandom(0.99, () => battle.playerAct(withPotion, { type: "item", id: "potion_l" }));
+  const drank = withRandom(0.45, () => battle.playerAct(withPotion, { type: "item", id: "potion_l" }));
   assert.equal(drank.p.concentration, 1);
 
   let c = b;
   for (let i = 0; i < 4; i++) {
-    c = withRandom(0.99, () => battle.playerAct({ ...c, idx: 0, queue: ["p", "e"] }, { type: "guard" }));
+    c = withRandom(0.45, () => battle.playerAct({ ...c, idx: 0, queue: ["p", "e"] }, { type: "guard" }));
   }
   assert.equal(c.p.concentration, 5, "концентрация не растёт выше 5");
 });
@@ -107,7 +107,7 @@ test("варвар: удар равен недостающему здоровь�
   const b = fightFor({ archetype: "barbarian" });
   b.p.concentration = 5;
   b.p.hp = b.p.maxHp - 12;
-  const next = withRandom(0.99, () => battle.playerAct(b, { type: "archetype_skill" }));
+  const next = withRandom(0.45, () => battle.playerAct(b, { type: "archetype_skill" }));
   assert.equal(next.p.concentration, 0);
   assert.equal(b.enemy.hp - next.enemy.hp, 12);
 });
@@ -125,13 +125,13 @@ test("бастион: стойка лечит на броню, следующа�
   b.p.concentration = 5;
   b.p.armor = 10;
   b.p.hp = b.p.maxHp - 20;
-  const stance = withRandom(0.99, () => battle.playerAct(b, { type: "archetype_skill" }));
+  const stance = withRandom(0.45, () => battle.playerAct(b, { type: "archetype_skill" }));
   assert.equal(stance.p.concentration, 0);
   assert.equal(stance.p.guard, true);
   assert.ok(stance.p.statuses.bulwarkStrike > 0, "стойка запоминает броню для следующей атаки");
   assert.ok(stance.p.hp > b.p.hp, "стойка лечит");
 
-  const strike = withRandom(0.99, () => battle.playerAct({ ...stance, idx: 0, queue: ["p", "e"] }, { type: "attack" }));
+  const strike = withRandom(0.45, () => battle.playerAct({ ...stance, idx: 0, queue: ["p", "e"] }, { type: "attack" }));
   assert.equal(strike.p.statuses.bulwarkStrike, 0, "бонус тратится на одну атаку");
   assert.ok(strike.log.some((l) => l.text.includes("Стойка: +")));
 });
@@ -140,7 +140,7 @@ test("ассасин: удар всегда крит и даёт вампири�
   const b = fightFor({ archetype: "assassin" });
   b.p.concentration = 5;
   b.p.hp = b.p.maxHp - 50;
-  const next = withRandom(0.99, () => battle.playerAct(b, { type: "archetype_skill" }));
+  const next = withRandom(0.45, () => battle.playerAct(b, { type: "archetype_skill" }));
   assert.equal(next.p.concentration, 0);
   assert.ok(next.log.some((l) => l.text.includes("КРИТ")), "удар критует");
   assert.ok(next.p.hp > b.p.hp, "вампиризм возвращает здоровье");
@@ -150,7 +150,7 @@ test("ниндзя: 5 расходников, 2 брошены, 3 остаютс
   const b = fightFor({ archetype: "ninja" });
   b.p.concentration = 5;
   const bagBefore = { ...battle.persistentBag(b) };
-  const next = withRandom(0.99, () => battle.playerAct(b, { type: "archetype_skill" }));
+  const next = withRandom(0.45, () => battle.playerAct(b, { type: "archetype_skill" }));
   assert.equal(next.p.concentration, 0);
   const conjuredLeft = Object.values(next.conjured).reduce((s, n) => s + n, 0);
   assert.equal(conjuredLeft, 3, "5 созданы, 2 брошены");
@@ -171,14 +171,14 @@ test("колдун: здоровье становится ровно 50% и ге
   assert.equal(next.p.concentration, 0);
 
   const hitBefore = next.p.hp;
-  const enemyTurn = withRandom(0.99, () => battle.enemyStep({ ...next, idx: 1, queue: ["p", "e"] }));
+  const enemyTurn = withRandom(0.45, () => battle.enemyStep({ ...next, idx: 1, queue: ["p", "e"] }));
   assert.equal(enemyTurn.p.hp, hitBefore, "удар врага не проходит");
 });
 
 test("мудрец: 2 временных свитка, один сразу применён, второй остаётся временным", () => {
   const b = fightFor({ archetype: "sage" });
   b.p.concentration = 5;
-  const next = withRandom(0.99, () => battle.playerAct(b, { type: "archetype_skill" }));
+  const next = withRandom(0.45, () => battle.playerAct(b, { type: "archetype_skill" }));
   assert.equal(next.p.concentration, 0);
   const conjuredLeft = Object.values(next.conjured).reduce((s, n) => s + n, 0);
   assert.equal(conjuredLeft, 1, "2 созданы, 1 сразу применён");
@@ -189,7 +189,7 @@ test("созданное в бою не переходит герою: расх�
   const b = fightFor({ bag: { potion_l: 2 } });
   b.conjured = { potion_l: 1 };
   assert.deepEqual(battle.persistentBag(b), { potion_l: 1 });
-  const used = withRandom(0.99, () => battle.playerAct(b, { type: "item", id: "potion_l" }));
+  const used = withRandom(0.45, () => battle.playerAct(b, { type: "item", id: "potion_l" }));
   assert.equal(used.bag.potion_l, 1);
   assert.equal(used.conjured.potion_l, undefined, "созданное тратится первым");
   assert.deepEqual(battle.persistentBag(used), { potion_l: 1 }, "личный запас остаётся одной штукой");
@@ -200,7 +200,7 @@ test("состояние боя не меняется: спец-приём не 
   b.p.concentration = 5;
   const snapshotBag = JSON.stringify(b.bag);
   const snapshotConj = JSON.stringify(b.conjured);
-  withRandom(0.99, () => battle.playerAct(b, { type: "archetype_skill" }));
+  withRandom(0.45, () => battle.playerAct(b, { type: "archetype_skill" }));
   assert.equal(JSON.stringify(b.bag), snapshotBag);
   assert.equal(JSON.stringify(b.conjured), snapshotConj);
 });
@@ -231,7 +231,7 @@ test("приём оружия без концентрации не примен�
   const b = swordFor();
   assert.ok(b.p.weaponSkill, "у меча есть приём");
   b.p.concentration = 0;
-  const next = withRandom(0.99, () => battle.playerAct(b, { type: "weapon_skill" }));
+  const next = withRandom(0.45, () => battle.playerAct(b, { type: "weapon_skill" }));
   assert.equal(next.p.concentration, 0);
   assert.equal(next.p.weaponCd, 0, "перезарядка не запущена");
   assert.equal(next.enemy.hp, b.enemy.hp, "удара не было");
@@ -241,7 +241,7 @@ test("приём оружия без концентрации не примен�
 test("приём оружия с 1 концентрацией применяется и тратит её", () => {
   const b = swordFor();
   b.p.concentration = 1;
-  const next = withRandom(0.99, () => battle.playerAct(b, { type: "weapon_skill" }));
+  const next = withRandom(0.45, () => battle.playerAct(b, { type: "weapon_skill" }));
   assert.ok(next.enemy.hp < b.enemy.hp, "приём ударил");
   assert.equal(next.p.concentration, 0, "−1 за приём");
 });

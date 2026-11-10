@@ -174,7 +174,7 @@ test("без рода, сильный: регенерация в конце св
 
 test("без рода, ловкий: 20% шанс уйти от удара и контратаковать без урона", () => {
   const b = fight("none", "agile");
-  const hitOnce = withRandom(0.99, () => battle.playerAct(b, { type: "attack" }));
+  const hitOnce = withRandom(0.45, () => battle.playerAct(b, { type: "attack" }));
   assert.ok(hitOnce.enemy.hp < b.enemy.hp, "без срабатывания удар проходит");
 
   const countered = withRandom(0, () => battle.playerAct(b, { type: "attack" }));

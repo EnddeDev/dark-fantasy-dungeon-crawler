@@ -205,7 +205,7 @@ test("Страж из шлака: огонь наносит вдвое мень�
   const hit = fight("golem", { hp: 200 });
   hit.queue = ["p", "e"];
   hit.idx = 0;
-  const after = withRandom(0.99, () => battle.playerAct(hit, { type: "attack" }));
+  const after = withRandom(0.45, () => battle.playerAct(hit, { type: "attack" }));
   const dealt = 200 - after.enemy.hp;
   assert.ok(dealt > 0, "удар прошёл");
   assert.equal(1000 - after.p.hp, Math.round(dealt * 0.1), "10% возвращается герою");
@@ -251,6 +251,6 @@ test("Пророк: повтор приёма уклоняется с шансо
   again.lastSkill = "weapon_skill:";
   again.queue = ["p", "e"];
   again.idx = 0;
-  const landed = withRandom(0.9, () => battle.playerAct(again, { type: "weapon_skill" }));
-  assert.ok(landed.enemy.hp < 200, "при броске 0.9 удар проходит");
+  const landed = withRandom(0.6, () => battle.playerAct(again, { type: "weapon_skill" }));
+  assert.ok(landed.enemy.hp < 200, "при броске 0.6 удар проходит");
 });

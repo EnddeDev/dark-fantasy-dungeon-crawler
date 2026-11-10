@@ -3,7 +3,8 @@ import { Btn, Modal, Tag } from "../components/ui";
 import type { GameController } from "../controllers/GameController";
 import { BIOMES, biomeVision, mazeBiome } from "../game/biomes";
 import { ITEMS, WEAR_META, scaledGearStats } from "../game/content";
-import { lockpickChance, trapChance, TRAP_META } from "../game/traps";
+import { lockpickChance, TRAP_AVOID_STAMINA, trapChance, TRAP_META } from "../game/traps";
+import { derived } from "../game/battle";
 import { choiceChance, mapEventById, type MapEventKind } from "../game/world";
 import type { GameState } from "../model/types";
 
@@ -91,6 +92,33 @@ export function ModalView({ game, state }: { game: GameController; state: GameSt
       const trap = modal.trap;
       const hasKit = (player.bag.sapper_kit ?? 0) > 0;
       const prep = Math.max(0.1, 1 - player.stats.str * 0.1);
+      if (modal.failed) {
+        const stamina = player.stamina ?? derived(player).staminaMax;
+        const maxStamina = derived(player).staminaMax;
+        const canAvoid = stamina >= TRAP_AVOID_STAMINA;
+        return (
+          <Modal
+            title={TRAP_META[trap.kind].name}
+            sub="Механизм сработал"
+            actions={
+              <>
+                <Btn tone="flame" onClick={() => game.dungeon.acceptTrapFailure()}>
+                  Принять последствия{modal.failed.outcome.damage > 0 ? ` · −${modal.failed.outcome.damage} здоровья` : ""}
+                </Btn>
+                <Btn tone="verd" disabled={!canAvoid} onClick={() => game.dungeon.avoidTrapFailure()}>
+                  Избежать · {TRAP_AVOID_STAMINA} выносливости
+                </Btn>
+              </>
+            }
+          >
+            <p>{modal.failed.outcome.message}</p>
+            <p className="mt-3 text-mute">
+              Выносливость: {stamina}/{maxStamina}.{" "}
+              {canAvoid ? "Можно заплатить и избежать последствий." : `Не хватает выносливости: нужно ${TRAP_AVOID_STAMINA}.`}
+            </p>
+          </Modal>
+        );
+      }
       return (
         <Modal
           title={TRAP_META[trap.kind].name}

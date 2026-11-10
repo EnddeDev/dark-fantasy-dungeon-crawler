@@ -181,6 +181,7 @@ import {
 import type {
   EnemyPassive,
   EpicSkillId,
+  GearClass,
   GearItem,
   LegendaryPassiveId,
   Player,
@@ -470,8 +471,23 @@ export interface BattleState {
   flash: { id: number; target: "p" | "e"; kind: "hit" | "guard" | "miss" | "heal"; amount: number } | null;
 }
 
+/** Вид атаки: рискованная — максимум урона и меткость −15, обычная — как раньше, безопасная — минимум и меткость +15. */
+export type AttackKind = "risky" | "normal" | "safe";
+export const ATTACK_KINDS: AttackKind[] = ["risky", "normal", "safe"];
+export const ATTACK_KIND_META: Record<AttackKind, { name: string; desc: string; accuracy: number }> = {
+  risky: { name: "Рискованная", desc: "Максимум урона оружия, меткость −15%.", accuracy: -15 },
+  normal: { name: "Обычная", desc: "Обычный разброс урона, меткость не меняется.", accuracy: 0 },
+  safe: { name: "Безопасная", desc: "Минимум урона оружия, меткость +15%.", accuracy: 15 },
+};
+
+/** Базовая меткость по весу оружия; кулаки бьют как лёгкое оружие. */
+export const WEAPON_ACCURACY: Record<GearClass, number> = { light: 80, medium: 75, heavy: 65 };
+/** Меткость героя не выходит за эти пределы (в процентах). */
+export const ACCURACY_MIN = 5;
+export const ACCURACY_MAX = 95;
+
 export type PlayerAction =
-  | { type: "attack" }
+  | { type: "attack"; kind?: AttackKind }
   | { type: "weapon_skill" }
   | { type: "epic_skill"; id: EpicSkillId }
   | { type: "armor_skill"; id: string }
@@ -510,6 +526,8 @@ export interface HandStrike {
   /** Средний урон: по нему выбирается сильнейшее оружие для приёмов. */
   power: number;
   name: string;
+  /** Вес оружия: от него базовая меткость удара. */
+  cls: GearClass;
 }
 
 export interface DerivedStats {
@@ -616,6 +634,7 @@ export function derived(pl: Player): DerivedStats {
         cost: weaponStaminaCost(cls),
         power: (lo + hi) / 2,
         name: st.base.name,
+        cls,
       });
       if (slot === "mainHand") {
         mainName = st.base.name;
@@ -1184,7 +1203,7 @@ export function newBattle(
       armor: d.armor,
       evade: d.evade,
       ap: d.ap,
-      stamina: d.staminaMax,
+      stamina: carriedStamina(pl, d.staminaMax),
       staminaMax: d.staminaMax,
       hands: d.hands,
       firstRoundApBonus: d.firstRoundApBonus,
@@ -1709,14 +1728,77 @@ function grantDodgeAction(b: BattleState) {
   }
 }
 
+/** Класс оружия в главной руке: от него меткость, когда удар не задан явно. */
+function mainHandClass(b: BattleState): GearClass {
+  return b.p.hands[0]?.cls ?? "light";
+}
+
+/** Уклонение врага в долях: его собственное и от эффектов. Меткость героя сравнивается с ним. */
+function heroEvasion(b: BattleState): number {
+  const effectEvade = effectsDepleted(b) ? 0 : eChance(b, "evade");
+  return Math.min(0.95, effectEvade + enemyEvade(b));
+}
+
+/**
+ * Меткость удара в долях: базовая по весу и вид атаки. Промахи от мрака и от статуса тьмы
+ * не бросаются отдельно: они отнимают меткость в процентных пунктах.
+ */
+export function heroAccuracy(b: BattleState, cls: GearClass = mainHandClass(b), kind: AttackKind = "normal"): number {
+  let pts = WEAPON_ACCURACY[cls] + ATTACK_KIND_META[kind].accuracy;
+  const dark = (b.torchTurns ?? 0) > 0 ? 0 : biomeMissChance(b.biome);
+  pts -= dark * 100;
+  if (b.p.statuses.darkness > 0) pts -= 50;
+  return Math.min(ACCURACY_MAX, Math.max(ACCURACY_MIN, pts)) / 100;
+}
+
+/** Сравнение меткости с уклонением: выше — преимущество (лучший из двух бросков), ниже — помеха (худший). */
+export function heroHitState(accuracy: number, evasion: number): "advantage" | "disadvantage" | "normal" {
+  if (accuracy > evasion) return "advantage";
+  if (accuracy < evasion) return "disadvantage";
+  return "normal";
+}
+
+/** Шанс попасть после преимущества, помехи или одного броска. */
+export function heroHitChance(accuracy: number, evasion: number): number {
+  const p = Math.min(1, Math.max(0, accuracy));
+  const state = heroHitState(accuracy, evasion);
+  if (state === "advantage") return 1 - (1 - p) * (1 - p);
+  if (state === "disadvantage") return p * p;
+  return p;
+}
+
+/** Бросок попадания: при преимуществе достаточно одного попадания из двух, при помехе нужны оба. */
+function rollHeroHit(accuracy: number, evasion: number): boolean {
+  const p = Math.min(1, Math.max(0, accuracy));
+  const state = heroHitState(accuracy, evasion);
+  if (state === "advantage") return Math.random() < p || Math.random() < p;
+  if (state === "disadvantage") return Math.random() < p && Math.random() < p;
+  return Math.random() < p;
+}
+
+/** Превью удара для кнопки вида атаки: меткость, уклонение врага и шанс попасть. */
+export function heroAttackPreview(b: BattleState, kind: AttackKind): { accuracy: number; evasion: number; chance: number; state: "advantage" | "disadvantage" | "normal" } {
+  const accuracy = heroAccuracy(b, mainHandClass(b), kind);
+  const evasion = heroEvasion(b);
+  return { accuracy, evasion, chance: heroHitChance(accuracy, evasion), state: heroHitState(accuracy, evasion) };
+}
+
+/** Выносливость на старте боя: переносится с карты; полный запас возвращается при выходе из похода. */
+export function carriedStamina(pl: Player, max: number): number {
+  const v = pl.stamina ?? max;
+  return Math.min(max, Math.max(0, Math.round(v)));
+}
+
 function calcWeaponRoll(
   b: BattleState,
   mult = 1,
   bonusFlat = 0,
-  opts: { skill?: boolean; forceCrit?: boolean; multi?: boolean; hand?: HandStrike } = {},
+  opts: { skill?: boolean; forceCrit?: boolean; multi?: boolean; hand?: HandStrike; kind?: AttackKind } = {},
 ) {
-  const hand = opts.hand ?? { lo: b.p.hit[0], hi: b.p.hit[1], agi: b.p.weaponAgi };
-  let d = randInt(hand.lo, hand.hi) + statDamage(b.p.stats.str, b.p.passives) + (hand.agi ? b.p.stats.agi : 0) + bonusFlat;
+  const hand = opts.hand ?? { lo: b.p.hit[0], hi: b.p.hit[1], agi: b.p.weaponAgi, cls: "light" as GearClass };
+  /* Рискованная бьёт по максимуму оружия, безопасная — по минимуму, обычная — по разбросу. */
+  const base = opts.kind === "risky" ? hand.hi : opts.kind === "safe" ? hand.lo : randInt(hand.lo, hand.hi);
+  let d = base + statDamage(b.p.stats.str, b.p.passives) + (hand.agi ? b.p.stats.agi : 0) + bonusFlat;
 
   if (hasPassive(b, "heavy_hand")) d += 3;
   d += rarePower(b, "might", "damage");
@@ -1859,6 +1941,7 @@ function hitEnemy(
   note = "",
   strike = kind === "phys",
   element?: DamageElement,
+  accuracy?: number,
 ): number {
   /* Ловкий «без рода»: часть физических ударов он уводит и сам контратакует без урона для себя.
      Контратака героя сюда не попадает — иначе цепочка ударов не кончится. */
@@ -1872,14 +1955,16 @@ function hitEnemy(
     incoming(b, Math.round(base * enemyChill(b)), "phys", `${b.enemy.def.name} контратакует`);
     return 0;
   }
-  const darkMiss = (b.torchTurns ?? 0) > 0 ? 0 : biomeMissChance(b.biome);
+  /* Физический удар героя промахивается по меткости: мрак и тьма уже снижают её (см. heroAccuracy). */
+  const accurateStrike = strike && kind === "phys";
+  const darkMiss = accurateStrike || (b.torchTurns ?? 0) > 0 ? 0 : biomeMissChance(b.biome);
   if (strike && darkMiss > 0 && !b.skillNoMiss && Math.random() < darkMiss) {
     flash(b, "e", "miss", 0);
     push(b, `Мрак скрывает цель: удар проходит мимо.${note}`, "sys");
     return 0;
   }
   /* «Мрак» вампира: до конца раунда половина ударов героя уходит в пустоту. */
-  if (strike && b.p.statuses.darkness > 0 && Math.random() < 0.5) {
+  if (!accurateStrike && strike && b.p.statuses.darkness > 0 && Math.random() < 0.5) {
     flash(b, "e", "miss", 0);
     push(b, `Мрак вампира съедает удар: промах.${note}`, "e");
     return 0;
@@ -1899,12 +1984,23 @@ function hitEnemy(
   }
   /* Базовое уклонение — параметр породы и телосложения, оно остаётся;
      уклонение от эффектов при истощении гаснет. */
-  const effectEvade = effectsDepleted(b) ? 0 : eChance(b, "evade");
-  const evade = kind === "phys" && !b.skillNoMiss ? effectEvade + enemyEvade(b) : 0;
-  if (evade > 0 && Math.random() < evade) {
-    flash(b, "e", "miss", 0);
-    push(b, `${b.enemy.def.name} уклоняется от удара.${note}`, "e");
-    return 0;
+  if (accurateStrike) {
+    if (!b.skillNoMiss) {
+      const acc = accuracy ?? heroAccuracy(b, mainHandClass(b), "normal");
+      if (!rollHeroHit(acc, heroEvasion(b))) {
+        flash(b, "e", "miss", 0);
+        push(b, `Удар мимо: ${b.enemy.def.name} уклоняется.${note}`, "e");
+        return 0;
+      }
+    }
+  } else {
+    const effectEvade = effectsDepleted(b) ? 0 : eChance(b, "evade");
+    const evade = kind === "phys" && !b.skillNoMiss ? effectEvade + enemyEvade(b) : 0;
+    if (evade > 0 && Math.random() < evade) {
+      flash(b, "e", "miss", 0);
+      push(b, `${b.enemy.def.name} уклоняется от удара.${note}`, "e");
+      return 0;
+    }
   }
   const d = damageAfterEnemyDefense(b, raw, kind);
   b.enemy.hp -= d;
@@ -2996,10 +3092,14 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
       b.armorIgnore = hasPassive(b, "skill_ram_a") && afterGuardAttack ? 0.2 : 0;
       const ramStun = hasPassive(b, "skill_ram_b") && afterGuardAttack && Math.random() < 0.25;
       const strikes = (b.p.hands ?? []).length ? b.p.hands : [undefined];
+      const kind: AttackKind = a.kind ?? "normal";
       for (let i = 0; i < strikes.length && b.enemy.hp > 0; i++) {
         const hand = strikes[i];
-        const label = strikes.length > 1 && hand ? ` [${hand.name}]` : "";
-        const { d, crit } = calcWeaponRoll(b, 1, 0, { hand });
+        const label =
+          (strikes.length > 1 && hand ? ` [${hand.name}]` : "") +
+          (kind === "normal" ? "" : ` [${ATTACK_KIND_META[kind].name}]`);
+        const acc = heroAccuracy(b, hand?.cls ?? "light", kind);
+        const { d, crit } = calcWeaponRoll(b, 1, 0, { hand, kind });
         /* Бастион: после стойки следующая обычная атака получает броню стойки как прямой урон (один раз). */
         const strikeBonus = b.p.statuses.bulwarkStrike;
         b.p.statuses.bulwarkStrike = 0;
@@ -3008,6 +3108,9 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
           d + strikeBonus,
           "phys",
           label + (crit ? " Критический удар!" : "") + (strikeBonus > 0 ? ` [Стойка: +${strikeBonus}]` : ""),
+          true,
+          undefined,
+          acc,
         );
         applyVamp(b, dealt, 0, "weapon");
         if (dealt > 0) oilOnHit(b, dealt);
@@ -3023,8 +3126,8 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
         if (crit && b.enemy.hp > 0 && hasPassive(b, "skill_flurry_a")) {
           const extra = hasPassive(b, "skill_flurry_b") && enemyBelowShare(b, 0.5) ? 2 : 1;
           for (let t = 0; t < extra && b.enemy.hp > 0; t++) {
-            const { d: xd } = calcWeaponRoll(b, 1, 0, { hand });
-            const xdealt = hitEnemy(b, xd, "phys", `${label} [Серия]`);
+            const { d: xd } = calcWeaponRoll(b, 1, 0, { hand, kind });
+            const xdealt = hitEnemy(b, xd, "phys", `${label} [Серия]`, true, undefined, acc);
             applyVamp(b, xdealt, 0, "weapon");
           }
         }
@@ -3048,8 +3151,8 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
         }
         const counterChance = Math.min(1, effectPower(b, "counter") / 100 + passivePower(b, "dance", "counter") / 100);
         if (b.enemy.hp > 0 && counterChance > 0 && Math.random() < counterChance) {
-          const { d: cd } = calcWeaponRoll(b, 0.6, 0, { hand });
-          const dealt2 = hitEnemy(b, cd, "phys", " [Второй удар]");
+          const { d: cd } = calcWeaponRoll(b, 0.6, 0, { hand, kind });
+          const dealt2 = hitEnemy(b, cd, "phys", " [Второй удар]", true, undefined, acc);
           applyVamp(b, dealt2, 0, "weapon");
         }
       }
@@ -3695,7 +3798,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
     return b;
   }
   if (b.over) return b;
-  /* Ход заканчивается защитой и кнопкой «Закончить ход» либо когда выносливость иссякла. */
+  /* Ход заканчивается защитой и кнопкой «Пропуск хода» либо когда выносливость иссякла. */
   const endsTurn = a.type === "guard" || a.type === "end_turn";
   if (takeTurn && (endsTurn || !canKeepActing(b))) advance(b);
   return b;

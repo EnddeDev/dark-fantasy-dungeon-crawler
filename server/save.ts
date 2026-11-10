@@ -415,6 +415,7 @@ export function sanitizePlayer(raw: unknown, floors = 1): Player {
     statPoints,
     stats,
     hp: int(input.hp ?? 1, 0, 100_000, "здоровье"),
+    stamina: input.stamina === undefined ? undefined : int(input.stamina, 0, 100_000, "выносливость"),
     gold: int(input.gold ?? 0, 0, GOLD_CAP, "золото"),
     bag,
     knownRecipes,

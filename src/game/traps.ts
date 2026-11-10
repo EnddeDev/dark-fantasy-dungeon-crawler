@@ -64,6 +64,9 @@ export interface TrapState {
   advantage: boolean;
 }
 
+/** Избежать ловушки после любого провала (обход или обезвреживание): столько выносливости. */
+export const TRAP_AVOID_STAMINA = 25;
+
 /** Урон ловушки: 8% максимального здоровья героя, не меньше 4. Каменная кожа −25%. */
 export const TRAP_DAMAGE_PCT = 0.08;
 export const TRAP_DAMAGE_MIN = 4;
