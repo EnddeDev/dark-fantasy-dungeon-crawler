@@ -150,6 +150,7 @@ export function Rail({
   battle,
   onLeaveRun,
   onRename,
+  lobby = false,
 }: {
   player: Player;
   run: Run | null;
@@ -157,6 +158,8 @@ export function Rail({
   onLeaveRun?: () => void;
   /** Возвращает текст ошибки или null, если имя принято. */
   onRename?: (name: string) => string | null;
+  /** В лобби над панелью есть верхняя полоса: панель прилипает ниже неё. */
+  lobby?: boolean;
 }) {
   const [section, setSection] = useState<"stats" | "effects">("stats");
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -303,7 +306,12 @@ export function Rail({
   const activeEffects = activeCount + learned.length + gearEntries.length;
 
   return (
-    <aside className="order-1 min-w-0 shrink-0 border-b border-line bg-slab lg:sticky lg:top-0 lg:h-dvh lg:w-[350px] lg:border-b-0 lg:border-r xl:w-[380px]" aria-label="Персонаж">
+    <aside
+      className={`order-1 min-w-0 shrink-0 border-b border-line bg-slab lg:sticky lg:w-[350px] lg:border-b-0 lg:border-r xl:w-[380px] ${
+        lobby ? "lg:top-14 lg:h-[calc(100dvh-3.5rem)]" : "lg:top-0 lg:h-dvh"
+      }`}
+      aria-label="Персонаж"
+    >
       <div className="lg:flex lg:h-full lg:flex-col">
         {/* Кошелёк не уезжает при прокрутке характеристик и эффектов. */}
         <div className="sticky top-0 z-20 shrink-0 border-b border-flamedim/40 bg-slab px-4 py-3 shadow-[0_6px_18px_-12px_#000]" aria-label="Кошель персонажа">

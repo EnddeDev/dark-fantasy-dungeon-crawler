@@ -68,8 +68,11 @@ test("lobby removes the development-rules block and the requested floor copy", (
     "Победи Стража, чтобы открыть следующий этаж",
     "опыт без потолка этажа",
   ]) assert.ok(!html.includes(text), `should be removed: ${text}`);
-  assert.ok(html.includes("Начать с этажа"));
   assert.ok(html.includes("+3 очка характеристик"));
+  const floors = renderToStaticMarkup(React.createElement(Lobby, {
+    player: makePlayer(), controller: {}, shopStock: [], onStart: noop, best: 1, unlockedFloor: 2, initialTab: "dungeon",
+  }));
+  assert.ok(floors.includes("Начать с этажа"), "старт на странице подземелий");
 });
 
 test("left panel shows health, then negative effects, then experience", () => {
@@ -636,7 +639,7 @@ test("сумка с зельями лежит в арсенале под «На�
   assert.ok(at > 0, "в арсенале есть сумка");
   assert.ok(at > armory.indexOf("Надето на персонаже"), "сумка под экипировкой");
   assert.ok(at < armory.indexOf('id="armory-inventory"'), "сумка до инвентаря");
-  const floor = renderToStaticMarkup(React.createElement(Lobby, { ...common }));
+  const floor = renderToStaticMarkup(React.createElement(Lobby, { ...common, initialTab: "dungeon" }));
   assert.ok(floor.includes("Выбор яруса"), "панель выбора яруса видна");
   assert.ok(!floor.includes('aria-label="Сумка с зельями"'), "в выборе яруса сумки нет");
 });
