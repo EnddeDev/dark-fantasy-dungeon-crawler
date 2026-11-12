@@ -727,3 +727,35 @@ function QuestCard({ quest, player, onClaim }: { quest: Quest; player: Player; o
     </div>
   );
 }
+
+/** Взятые задания для карты подземелья: только просмотр. Сдача — в лобби у жителя. */
+export function ActiveQuestList({ player }: { player: Player }) {
+  const active = logOf(player).active;
+  if (active.length === 0) {
+    return <p className="text-sm italic text-mute">Взятых заданий нет. Задания берут у жителей в лобби.</p>;
+  }
+  return (
+    <div className="space-y-3">
+      {active.map((q) => {
+        const ready = questReady(q, player);
+        return (
+          <div key={q.id} className={`flex flex-col gap-2 border p-3 ${ready ? "border-verd bg-verd/5" : "border-line bg-black/30"}`}>
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-mono text-xs uppercase tracking-[0.12em] text-mute">{giverLabel(q)}</span>
+              <Tag>{QUEST_KIND_NAME[q.kind]} · этаж {q.floor}</Tag>
+            </div>
+            <div className="font-display text-sm uppercase tracking-[0.1em] text-flamehi">{q.title}</div>
+            <p className="text-sm text-mute">{q.text}</p>
+            <div className="font-mono text-xs text-parch/85">{progressText(q, player)}</div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="flex items-center gap-1 font-mono text-sm text-verd">
+                <Coins size={14} aria-hidden /> {rewardLine(q)}
+              </span>
+              {ready && <Tag tone="verd">готово к сдаче</Tag>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useFitInViewport } from "./useFitInViewport";
-import { BookOpen, X } from "lucide-react";
+import { X } from "lucide-react";
 import {
   ENEMY_MOVE_META,
   ITEMS,
@@ -187,7 +187,7 @@ export function EnemyMoveTip({ mv, meta }: { mv: EnemyMoveView; meta?: { name: s
 }
 
 /** Строка приёма врага. При наводке или фокусе показывает подсказку: расчёт урона и наложения с числами. */
-function EnemyMoveRow({ mv, meta }: { mv: EnemyMoveView; meta?: { name: string; desc: string } }) {
+export function EnemyMoveRow({ mv, meta }: { mv: EnemyMoveView; meta?: { name: string; desc: string } }) {
   const [open, setOpen] = useState(false);
   const tipRef = useRef<HTMLDivElement>(null);
   useFitInViewport(tipRef, open);
@@ -896,9 +896,27 @@ export function BattleView({
               </div>
             )}
           </div>
+
+          {/* ХРОНИКА БОЯ: под действиями и сумкой */}
+          <div className="mt-4 border border-line bg-black/45 p-4">
+            <div className="sc mb-2">Хроника боя</div>
+            <div className="max-h-[38vh] space-y-1.5 overflow-y-auto pr-1 text-[0.98rem] leading-snug xl:max-h-[46vh]">
+              {b.log.slice(-40).reverse().map((l) => (
+                <div
+                  key={l.id}
+                  className={`border-l-2 pl-2 ${
+                    l.kind === "p" ? "border-flamedim text-parch" : l.kind === "e" ? "border-rubric text-parch/85" : "border-line text-mute italic"
+                  }`}
+                >
+                  {l.dmg && <DamageTypeTag id={l.dmg} size={12} className="mr-1.5" />}
+                  {l.text}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
-        {/* ПРОТИВНИК И ХРОНИКА — правая колонка */}
+        {/* ПРОТИВНИК — правая колонка */}
         {/* ПРОТИВНИК — правая колонка боя: занимает свою треть экрана */}
         <div className="order-1 min-w-0 xl:order-3 xl:col-start-3 xl:border-l xl:border-line">
           <div className="relative flex flex-col border-line bg-black/30">
@@ -930,13 +948,6 @@ export function BattleView({
                 {b.isBoss && <Tag tone="rubric">БОСС ЭТАЖА</Tag>}
                 <Tag tone="mute">ур. {e.level}</Tag>
               </div>
-              <button
-                onClick={() => setCodex(true)}
-                className="absolute right-3 top-3 flex items-center gap-1.5 border border-flamedim bg-black/70 px-2.5 py-1.5 font-display text-[0.82rem] uppercase tracking-[0.14em] text-flame transition-colors hover:bg-flame hover:text-ink"
-              >
-                <BookOpen size={13} aria-hidden />
-                Способности
-              </button>
               <div className="absolute inset-x-0 bottom-0 p-4">
                 {e.def.title && <div className="sc mb-1 text-rubric">{e.def.title}</div>}
                 {/* Род и тип — над именем; подсказка по наведению */}
@@ -966,7 +977,17 @@ export function BattleView({
                   )}
                 </div>
                 <div className="mb-1 flex items-baseline justify-between gap-2">
-                  <h3 className="font-display text-xl uppercase tracking-[0.12em] text-flamehi">{e.def.name}</h3>
+                  <h3 className="font-display text-xl uppercase tracking-[0.12em] text-flamehi">
+                    <button
+                      type="button"
+                      onClick={() => setCodex(true)}
+                      title="Кодекс противника"
+                      aria-label={`Кодекс противника: ${e.def.name}`}
+                      className="text-left transition-colors hover:text-parch focus:outline-none focus-visible:ring-1 focus-visible:ring-flame"
+                    >
+                      {e.def.name}
+                    </button>
+                  </h3>
                   <span className="font-mono text-sm tab text-parch">{e.hp}/{e.maxHp}</span>
                 </div>
                 <Meter value={e.hp} max={e.maxHp} tone="rubric" />
@@ -980,7 +1001,7 @@ export function BattleView({
                 {e.forceGuard > 0 && <Tag tone="verd">вынужден держать оборону</Tag>}
               </div>
               <div className="mt-2">
-                <SummaryTabs value={foeTab} onChange={setFoeTab} effectsCount={foeEffects.length} />
+                <SummaryTabs value={foeTab} onChange={setFoeTab} effectsCount={foeEffects.length} movesCount={er.moves.length} />
               </div>
               {foeTab === "stats" ? (
                 <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1.5 text-[0.94rem]">
@@ -993,43 +1014,24 @@ export function BattleView({
                     />
                   ))}
                 </div>
-              ) : (
+              ) : foeTab === "effects" ? (
                 <EffectsTab entries={foeEffects} label="эффекты врага" />
+              ) : (
+                <div className="mt-2">
+                  <div className="mb-1.5 flex items-baseline justify-end">
+                    <span className="font-mono text-[0.76rem] text-mute" title="Ожидаемый урон по тебе после твоей брони и защит">≈ урон по тебе</span>
+                  </div>
+                  <ul className="divide-y divide-line/40">
+                    {er.moves.map((mv) => (
+                      <EnemyMoveRow key={mv.move} mv={mv} meta={ENEMY_MOVE_META[mv.move]} />
+                    ))}
+                  </ul>
+                </div>
               )}
             </div>
 
-            {/* Приёмы врага: сколько нанесёт и какие наложит */}
-            <div className="border-b border-line bg-black/25 px-4 py-3">
-              <div className="flex items-baseline justify-between">
-                <span className="sc">Приёмы врага</span>
-                <span className="font-mono text-[0.76rem] text-mute" title="Ожидаемый урон по тебе после твоей брони и защит">≈ урон по тебе</span>
-              </div>
-              <ul className="mt-1.5 divide-y divide-line/40">
-                {er.moves.map((mv) => (
-                  <EnemyMoveRow key={mv.move} mv={mv} meta={ENEMY_MOVE_META[mv.move]} />
-                ))}
-              </ul>
-            </div>
           </div>
 
-          <div className="border-t border-line p-4">
-            <div className="border border-line bg-black/45 p-4">
-              <div className="sc mb-2">Хроника боя</div>
-              <div className="max-h-[38vh] space-y-1.5 overflow-y-auto pr-1 text-[0.98rem] leading-snug xl:max-h-[46vh]">
-                {b.log.slice(-40).reverse().map((l) => (
-                  <div
-                    key={l.id}
-                    className={`border-l-2 pl-2 ${
-                      l.kind === "p" ? "border-flamedim text-parch" : l.kind === "e" ? "border-rubric text-parch/85" : "border-line text-mute italic"
-                    }`}
-                  >
-                    {l.dmg && <DamageTypeTag id={l.dmg} size={12} className="mr-1.5" />}
-                    {l.text}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -1296,21 +1298,25 @@ export function BattleView({
   );
 }
 
-export type SummaryTab = "stats" | "effects";
+export type SummaryTab = "stats" | "effects" | "moves";
 
 /** Два таба сводки: «Характеристики» и «Эффекты». Активный помечен aria-selected. */
 export function SummaryTabs({
   value,
   onChange,
   effectsCount,
+  movesCount,
 }: {
   value: SummaryTab;
   onChange: (tab: SummaryTab) => void;
   effectsCount: number;
+  /** Есть у врага: добавляет вкладку «Приёмы врага». */
+  movesCount?: number;
 }) {
   const tabs: { id: SummaryTab; label: string; count?: number }[] = [
     { id: "stats", label: "Характеристики" },
     { id: "effects", label: "Эффекты", count: effectsCount },
+    ...(movesCount !== undefined ? [{ id: "moves" as SummaryTab, label: "Приёмы врага", count: movesCount }] : []),
   ];
   return (
     <div role="tablist" className="flex gap-1.5">

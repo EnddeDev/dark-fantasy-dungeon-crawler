@@ -1,11 +1,12 @@
 import { shownEventKind } from "../game/mapEvents";
 import { useMemo, useState } from "react";
-import { Backpack, Footprints, X } from "lucide-react";
+import { Backpack, Footprints, ScrollText, X } from "lucide-react";
 import { GEAR_BASES, ITEMS, consumableIntReq, consumablePower, gearStatReqLabel } from "../game/content";
 import { TORCH, computeVisibility, openDirs } from "../game/maze";
-import { markAlwaysVisible } from "../game/quests";
+import { logOf, markAlwaysVisible } from "../game/quests";
 import { BIOMES, BIOME_MAP_COLORS, biomeHealingAmount, biomeVision, mazeBiome } from "../game/biomes";
-import { BiomeRule, BiomeTag, biomeStyle } from "./BiomeLabel";
+import { BiomeRule, biomeStyle } from "./BiomeLabel";
+import { ActiveQuestList } from "./Quests";
 import type { GearItem, Player, Run } from "../game/types";
 import { ItemArt } from "./ItemArt";
 import { PouchSlots } from "./PouchSlots";
@@ -53,6 +54,8 @@ export function Dungeon({
   const W = S * CS;
   const [detailUid, setDetailUid] = useState<string | null>(null);
   const [bagOpen, setBagOpen] = useState(false);
+  const [questsOpen, setQuestsOpen] = useState(false);
+  const activeQuests = logOf(player).active.length;
 
   /* 0 — темнота, 1 — луч факела, 2 — уже пройденные клетки */
   const vis = useMemo(() => computeVisibility(m, run.pos, run.seen, run.torchTurns ?? 0), [m, run.pos, run.seen, run.torchTurns]);
@@ -130,10 +133,16 @@ export function Dungeon({
             <span className="font-title text-2xl leading-none text-flamehi">Сумрак</span>
             <span className="sc hidden text-flamedim md:inline">подземелье · этаж <span className="font-mono tab">{run.floor}</span></span>
           </div>
-          <div className="flex flex-1 justify-center">
-            <BiomeTag biome={biome} />
-          </div>
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setQuestsOpen(true)}
+              className="flex items-center gap-2 border border-line bg-black/40 px-3 py-2 font-display text-[0.85rem] uppercase tracking-[0.1em] text-parch transition-colors hover:border-flamedim hover:text-flamehi"
+              title="Взятые задания"
+            >
+              <ScrollText size={15} strokeWidth={1.7} aria-hidden /> Задания
+              {activeQuests > 0 && <span className="border border-line px-1.5 py-0.5 font-mono text-[0.78rem] text-mute">{activeQuests}</span>}
+            </button>
             <button
               type="button"
               onClick={() => setBagOpen(true)}
@@ -714,6 +723,16 @@ export function Dungeon({
         </div>
       </div>
 
+      {questsOpen && (
+        <Modal
+          title="Задания"
+          sub="Взятые задания. Сдать можно в лобби у жителя."
+          onClose={() => setQuestsOpen(false)}
+          actions={<Btn onClick={() => setQuestsOpen(false)}>Закрыть</Btn>}
+        >
+          <ActiveQuestList player={player} />
+        </Modal>
+      )}
       {bagOpen && (
         <Modal
           title="Рюкзак"
