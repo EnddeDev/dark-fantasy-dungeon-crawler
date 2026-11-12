@@ -27,7 +27,7 @@ const { Lobby } = load("src/components/Lobby.tsx", "lobby");
 const { Rail, EffectTip, EffectList, summedEffectEntries } = load("src/components/Rail.tsx", "rail");
 const { gearEffectTotals } = load("src/game/gearEffectTotals.ts", "gear-effect-totals");
 const { Dungeon } = load("src/components/Dungeon.tsx", "dungeon");
-const { BattleView, SummaryTabs, EffectsTab, chipEntries, ENEMY_EFFECT_DESC, ENEMY_EFFECT_TITLE } = load("src/components/BattleView.tsx", "battle-view");
+const { BattleView, SummaryTabs, EffectsTab, EnemyMoveRow, chipEntries, ENEMY_EFFECT_DESC, ENEMY_EFFECT_TITLE } = load("src/components/BattleView.tsx", "battle-view");
 const { playerEffectChips } = load("src/game/effects.ts", "effects-chips");
 const { heroItemEffects, learnedEffects, enemyEffects } = load("src/game/effectEntries.ts", "effect-entries");
 const battle = load("src/game/battle.ts", "battle");
@@ -202,8 +202,8 @@ test("battle summary: two tabs for hero and monster — stats and effects", () =
     battle: b, onAct: noop, onEnemyTurn: noop, onContinue: noop,
   }));
   assert.equal((html.match(/role="tablist"/g) || []).length, 2, "по одной паре табов у героя и монстра");
-  assert.equal((html.match(/role="tab"/g) || []).length, 4, "четыре таба: два у героя, два у монстра");
-  assert.ok(html.includes("Характеристики") && html.includes("Эффекты"), "подписи табов");
+  assert.equal((html.match(/role="tab"/g) || []).length, 5, "пять табов: два у героя, три у монстра");
+  assert.ok(html.includes("Характеристики") && html.includes("Эффекты") && html.includes("Приёмы врага"), "подписи табов");
   assert.ok(html.includes("Урон по тебе"), "по умолчанию у монстра видны характеристики");
   assert.ok(html.includes('aria-selected="true"'), "активный таб помечен");
 });
@@ -304,9 +304,10 @@ test("battle: three columns — hero info, actions, monster; no sidebar", () => 
   const at = (s) => html.indexOf(s);
   assert.ok(at("Покоритель") > 0 && at("Действия</h3>") > at("Покоритель"), "герой над действиями");
   assert.ok(at("Сводка врага") > at("Действия</h3>"), "сводка врага справа");
-  assert.ok(at("Приёмы врага") > at("Сводка врага"), "приёмы врага под сводкой");
-  assert.ok(at("Хроника боя") > at("Приёмы врага"), "хроника под приёмами");
-  assert.ok(html.includes("Способности"), "кнопка кодекса на месте");
+  assert.ok(at("Приёмы врага") > at("Сводка врага"), "приёмы врага — вкладка сводки врага");
+  assert.ok(at("Хроника боя") > at("Действия</h3>") && at("Хроника боя") < at("Сводка врага"), "хроника под действиями и сумкой, в центре");
+  assert.ok(!/>\s*Способности\s*</.test(html), "кнопки «Способности» у монстра нет");
+  assert.ok(html.includes("Кодекс противника: "), "кодекс открывается по имени монстра");
 });
 
 test("battle: enemy summary keeps the key parameters and shows the monster's СИЛ/ЛОВ/ИНТ", () => {
@@ -315,7 +316,7 @@ test("battle: enemy summary keeps the key parameters and shows the monster's С�
     battle: b, onAct: noop, onEnemyTurn: noop, onContinue: noop,
   }));
   const start = html.indexOf("Сводка врага");
-  const sum = html.slice(start, html.indexOf("Приёмы врага", start));
+  const sum = html.slice(start, start + 15000);
   for (const label of ["Урон по тебе", "Защита", "Уклонение", "Броня", "Стойкость", "Укрепление", "Маг. сопротивление", "Ходов в раунде"]) {
     assert.ok(sum.includes(`aria-label="${label}: `), `строка «${label}» есть`);
   }
@@ -335,10 +336,10 @@ test("battle: race and type sit above the monster name as hover tags", () => {
   }));
   const raceAt = html.indexOf(`>${monsters.MONSTER_RACE_META.beast.name}</span>`);
   const typeAt = html.indexOf(`>${monsters.MONSTER_TYPE_META.agile.name}</span>`);
-  const nameAt = html.indexOf("Тестовый зверь</h3>");
+  const nameAt = html.indexOf("Тестовый зверь</button>");
   assert.ok(raceAt > 0 && typeAt > 0, "род и тип выведены тегами");
   assert.ok(raceAt < nameAt && typeAt < nameAt, "теги над именем");
-  assert.ok(html.indexOf("Тестовый зверь</h3>") > html.indexOf(`>${monsters.MONSTER_TYPE_META.agile.name}</span>`));
+  assert.ok(html.indexOf("Тестовый зверь</button>") > html.indexOf(`>${monsters.MONSTER_TYPE_META.agile.name}</span>`));
   assert.ok(html.includes('tabindex="0"'), "теги открывают подсказку с фокусом и наведением");
 });
 
@@ -355,11 +356,8 @@ test("battle: enemy moves list damage and effect icons from the turn rules", () 
   assert.deepEqual(byMove.wound.effects, [{ id: "bleed", half: false }]);
   assert.equal(byMove.darkness.damage, 0, "мрак урона не наносит");
   assert.deepEqual(byMove.darkness.effects, [{ id: "darkness", half: false }]);
-  const html = renderToStaticMarkup(React.createElement(BattleView, {
-    battle: b, onAct: noop, onEnemyTurn: noop, onContinue: noop,
-  }));
-  const start = html.indexOf("Приёмы врага");
-  const list = html.slice(start, html.indexOf("Хроника боя", start));
+  /* Приёмы врага — вкладка сводки; строки проверяем напрямую. */
+  const list = er.moves.map((mv) => renderToStaticMarkup(React.createElement(EnemyMoveRow, { mv, meta: content.ENEMY_MOVE_META[mv.move] }))).join("");
   assert.ok(list.includes("≈"), "урон приёма показан приблизительно");
   assert.ok(list.includes("Кровотечение"), "иконка кровотечения с подписью");
 });

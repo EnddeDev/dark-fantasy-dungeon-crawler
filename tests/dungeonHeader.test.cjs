@@ -26,6 +26,8 @@ function load(entry, name) {
 const { Dungeon } = load("src/components/Dungeon.tsx", "dungeon");
 const maze = load("src/game/maze.ts", "maze");
 const biomes = load("src/game/biomes.ts", "biomes");
+const quests = load("src/game/quests.ts", "quests");
+const { ActiveQuestList } = load("src/components/Quests.tsx", "quests-ui");
 
 const noop = () => {};
 
@@ -57,16 +59,26 @@ function render(biome) {
   }));
 }
 
-test("шапка карты как в лобби: бренд, тип подземелья по центру, рюкзак и звук", () => {
+test("шапка карты как в лобби: бренд, задания, рюкзак и звук; тип подземелья в шапке не выводится", () => {
   const html = render("swamp");
   const header = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
   assert.ok(header.includes("Сумрак"), "название игры");
   assert.ok(header.includes("подземелье · этаж"), "подзаголовок с этажом");
-  assert.ok(header.includes(biomes.BIOMES.swamp.name), "тип подземелья в шапке");
+  assert.ok(!header.includes(biomes.BIOMES.swamp.name), "тип подземелья убран из шапки");
+  assert.ok(header.includes("Задания"), "кнопка заданий");
   assert.ok(header.includes("Рюкзак"), "кнопка рюкзака");
   assert.ok(header.includes("sticky"), "шапка закреплена, как в лобби");
-  assert.ok(header.indexOf("Сумрак") < header.indexOf(biomes.BIOMES.swamp.name), "тип подземелья правее названия");
-  assert.ok(header.indexOf(biomes.BIOMES.swamp.name) < header.indexOf("Рюкзак"), "тип подземелья левее рюкзака");
+  assert.ok(header.indexOf("Задания") < header.indexOf("Рюкзак"), "задания левее рюкзака");
+});
+
+test("задания на карте: взятые задания видны, сдачи здесь нет", () => {
+  const q = quests.rollQuest("priest", 2, () => 0.3);
+  const player = makePlayer({ questLog: { ...quests.emptyQuestLog(), active: [q] } });
+  const html = renderToStaticMarkup(React.createElement(ActiveQuestList, { player }));
+  assert.ok(html.includes(q.title), "название взятого задания");
+  assert.ok(!html.includes(">Сдать<"), "кнопки сдачи на карте нет");
+  const empty = renderToStaticMarkup(React.createElement(ActiveQuestList, { player: makePlayer() }));
+  assert.ok(empty.includes("Взятых заданий нет"), "пустой список");
 });
 
 test("карта: блоки «Снаряжение · смена в походе» и «Разведка и опасности» убраны", () => {
