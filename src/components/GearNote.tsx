@@ -61,6 +61,7 @@ export function GearNote({
   inShop = false,
   buyPrice,
   onIdentify,
+  actions,
 }: {
   item: GearItem;
   player: Player;
@@ -69,6 +70,8 @@ export function GearNote({
   /** Цена покупки, если она не базовая (наёмник, скидка). */
   buyPrice?: number;
   onIdentify?: (uid: string, mode: "int" | "gold") => void;
+  /** Дополнительные кнопки перед «Закрыть»: надеть, снять, продать. */
+  actions?: ReactNode;
 }) {
   const st = scaledGearStats(item);
   const archetype = st.base.archetype ? ARCHETYPES[st.base.archetype] : null;
@@ -104,7 +107,12 @@ export function GearNote({
       title={st.base.name}
       sub="Полная информация о предмете"
       onClose={onClose}
-      actions={<Btn onClick={onClose}>Закрыть</Btn>}
+      actions={
+        <>
+          {actions}
+          <Btn onClick={onClose}>Закрыть</Btn>
+        </>
+      }
     >
       <div className="space-y-4">
         <div className="flex items-start gap-4">

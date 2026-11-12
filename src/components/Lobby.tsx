@@ -23,8 +23,12 @@ import {
   consumableIntReq,
   consumableScaleLabel,
   canBuySupply,
+  canTwoHandGrip,
+  canWear,
+  gearSellPrice,
   supplySellPrice,
   slotsForItem,
+  wearRequirementNote,
   ITEMS,
   LEGENDARY_PASSIVES,
   MAX_LEVEL,
@@ -85,6 +89,7 @@ import type { CraftStation } from "../game/content";
 import { TRUST_MAX, type QuestGiverId } from "../game/types";
 import { Btn, Modal, Panel, Pips, Tag } from "./ui";
 import { PouchSlots } from "./PouchSlots";
+import { EquipmentFigure, GearTile, SLOT_DRAG_PREFIX } from "./EquipmentFigure";
 import { SkillsPanel } from "./SkillsPanel";
 
 
@@ -380,7 +385,8 @@ export function Lobby({
   const [shopSection, setShopSection] = useState<ShopSection>(initialShopSection);
   const [supplyGroup, setSupplyGroup] = useState<SupplyGroup>("potion");
   /* Сумка арсенала: припасы и реагенты в двух вкладках одной таблицы. */
-  const [bagTab, setBagTab] = useState<"supplies" | "reagents">("supplies");
+  /** Вкладки сундука: снаряжение, припасы и реагенты из сумки. */
+  const [chestTab, setChestTab] = useState<"gear" | "supplies" | "reagents">("gear");
   /* Алхимик и мастер: вкладки «Рецепты» (покупка листов) и «Создание» (варка). */
   const [craftTab, setCraftTab] = useState<"recipes" | "brew">("recipes");
   /* Снаряжение наёмника открывается в том же окне подробностей, что и магазин. */
@@ -655,12 +661,25 @@ export function Lobby({
   const bagEntries = Object.entries(player.bag ?? {}).filter(([, n]) => n > 0);
   const bagSupplies = bagEntries.filter(([id]) => ITEMS[id] && ITEMS[id].kind !== "reagent");
   const bagReagents = bagEntries.filter(([id]) => ITEMS[id]?.kind === "reagent");
-  const slotCandidates = chosenSlot ? inventoryItems.filter((item) => slotsForItem(item).includes(chosenSlot)) : inventoryItems;
+  const slotCandidates = chosenSlot
+    ? inventoryItems.filter((item) => slotsForItem(item).includes(chosenSlot) && canWear(item, player))
+    : inventoryItems;
   const visibleInventory = filterGear(slotCandidates);
   const twoHanded = player.armory.find((item) => item.uid === player.equip.mainHand && GEAR_BASES[item.baseId]?.hands === 2);
   const detailItem = gearDetail
     ? (gearDetail.inShop ? shopStock : player.armory).find((item) => item.uid === gearDetail.uid)
     : null;
+
+  const detailActionsFor = (item: GearItem) => {
+    const worn = SLOT_ORDER.find((slot) => player.equip[slot] === item.uid);
+    return worn ? (
+      <Btn tone="danger" onClick={() => { unequipFromFigure(worn); setGearDetail(null); }}>
+        Снять
+      </Btn>
+    ) : (
+      renderDetailActions(item)
+    );
+  };
 
   const chooseSlot = (slot: Slot) => {
     setChosenSlot(slot);
@@ -671,6 +690,70 @@ export function Lobby({
     if (window.matchMedia("(max-width: 1199px)").matches) {
       window.requestAnimationFrame(() => document.getElementById("armory-inventory")?.scrollIntoView({ block: "start" }));
     }
+  };
+
+  /* Экипировка: клик на гнездо — подробности или список вещей для пустого слота. */
+  const inspectGear = (uid: string) => setGearDetail({ uid, inShop: false });
+  const unequipFromFigure = (slot: Slot) => {
+    const uid = player.equip[slot];
+    takeOff(slot);
+    if (uid && gearDetail?.uid === uid) setGearDetail(null);
+  };
+  const chooseFromFigure = (slot: Slot) => {
+    setChestTab("gear");
+    chooseSlot(slot);
+  };
+  /* Вещь из сундука, брошенная на гнездо. */
+  const dropOnSlot = (uid: string, slot: Slot) => {
+    const item = player.armory.find((entry) => entry.uid === uid);
+    if (!item || !slotsForItem(item).includes(slot)) return;
+    equipGear(item, slot);
+  };
+  /* Надетая вещь, брошенная в сундук, снимается. */
+  const dropOnChest = (data: string) => {
+    if (data.startsWith(SLOT_DRAG_PREFIX)) unequipFromFigure(data.slice(SLOT_DRAG_PREFIX.length) as Slot);
+  };
+  /* Двойной клик в сундуке: первое свободное подходящее гнездо (или выбранное). */
+  const equipFromChest = (item: GearItem) => {
+    const options = slotsForItem(item);
+    const target = chosenSlot && options.includes(chosenSlot)
+      ? chosenSlot
+      : options.find((slot) => !player.equip[slot]) ?? options[0];
+    setGearDetail(null);
+    equipGear(item, target);
+  };
+  /* Кнопки окна «Подробнее» для вещи из сундука: надеть (с выбором хвата) и продать. */
+  const renderDetailActions = (item: GearItem) => {
+    const options = slotsForItem(item);
+    const wearable = canWear(item, player);
+    const note = wearable ? undefined : wearRequirementNote(item, player);
+    const act = (fn: () => void) => () => {
+      setGearDetail(null);
+      fn();
+    };
+    return (
+      <>
+        {options.map((target) =>
+          canTwoHandGrip(item) && target === "mainHand" ? (
+            <span key={target} className="flex flex-wrap gap-1.5">
+              <Btn tone="verd" disabled={!wearable} title={note ?? "Надеть одной рукой"} onClick={act(() => equipGear(item, target, "one"))}>
+                Одной рукой
+              </Btn>
+              <Btn tone="flame" disabled={!wearable} title={note ?? "Взять двумя руками: урон ×1.5, левая рука свободна"} onClick={act(() => equipGear(item, target, "two"))}>
+                Двумя руками
+              </Btn>
+            </span>
+          ) : (
+            <Btn key={target} tone="verd" disabled={!wearable} title={note ?? `Надеть: ${SLOT_META[target].name}`} onClick={act(() => equipGear(item, target))}>
+              {options.length > 1 ? SLOT_META[target].short : "Надеть"}
+            </Btn>
+          ),
+        )}
+        <Btn tone="danger" title={`Продать за ${gearSellPrice(item)} зол.`} onClick={act(() => sellGear(item))}>
+          Продать · {gearSellPrice(item)} зол.
+        </Btn>
+      </>
+    );
   };
 
   const renderGearCard = (item: GearItem, mode: "equipped" | "inventory" | "shop", slot?: Slot) => (
@@ -1254,34 +1337,21 @@ export function Lobby({
             )}
 
             {tab === "armory" && (
-              <div className="grid items-start gap-5 min-[1200px]:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.35fr)]">
-                <section aria-label="Надето на персонаже" className="min-w-0 border border-line bg-black/20 p-3 min-[1200px]:sticky min-[1200px]:top-4 min-[1200px]:max-h-[calc(100dvh-2rem)] min-[1200px]:overflow-y-auto">
-                  <div className="mb-3 flex items-end justify-between gap-3 border-b border-line pb-3">
-                    <div>
-                      <span className="sc text-flamedim">Экипировка</span>
-                      <h3 className="mt-1 font-display text-xl uppercase tracking-[0.08em] text-flamehi">Надето на персонаже</h3>
-                    </div>
-                    <span className="shrink-0 font-mono text-sm tab text-verd">{wornUids.size}/{SLOT_ORDER.length}</span>
-                  </div>
-                  <div className="grid grid-cols-1 gap-2">
-                    {SLOT_ORDER.map((slot) => {
-                      const item = player.armory.find((entry) => entry.uid === player.equip[slot]);
-                      if (item) return renderGearCard(item, "equipped", slot);
-                      const occupied = slot === "offHand" && twoHanded;
-                      return (
-                        <div key={slot} className={`flex min-h-[76px] items-center justify-between gap-3 border border-dashed px-3 py-2.5 ${chosenSlot === slot ? "border-flame bg-flame/5" : "border-line"}`}>
-                          <div className="min-w-0">
-                            <div className="sc text-[0.84rem] text-flamedim">{SLOT_META[slot].name}</div>
-                            <p className="mt-1 text-[0.94rem] leading-snug text-mute">{occupied ? "Занято двуручным оружием" : "Пустая ячейка"}</p>
-                          </div>
-                          <Btn className="shrink-0 px-2.5 py-2 text-[0.84rem]" onClick={() => chooseSlot(slot)}>
-                            {occupied ? "Заменить" : "Выбрать"}
-                          </Btn>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <p className="mt-3 text-[0.92rem] leading-relaxed text-mute">Снятая вещь появится в инвентаре справа. Её эффекты сразу перестанут учитываться в листе персонажа.</p>
+              <div className="grid items-start gap-5 min-[1200px]:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.4fr)]">
+                <section aria-label="Экипировка" className="min-w-0 border border-line bg-black/20 p-3 min-[1200px]:sticky min-[1200px]:top-4 min-[1200px]:max-h-[calc(100dvh-2rem)] min-[1200px]:overflow-y-auto">
+                  <div className="mb-2 text-right font-mono text-sm tab text-verd">{wornUids.size}/{SLOT_ORDER.length}</div>
+                  <EquipmentFigure
+                    player={player}
+                    chosenSlot={chosenSlot}
+                    blockedSlot={twoHanded ? "offHand" : null}
+                    onInspect={(item) => inspectGear(item.uid)}
+                    onUnequip={unequipFromFigure}
+                    onChooseSlot={chooseFromFigure}
+                    onDropItem={dropOnSlot}
+                  />
+                  <p className="mt-3 text-center text-[0.92rem] leading-relaxed text-mute">
+                    Клик — подробности · двойной клик — снять · перетащите в сундук
+                  </p>
                   {onSetPouch && (
                     <div className="mt-4">
                       <PouchSlots player={player} onSet={onSetPouch} />
@@ -1289,70 +1359,81 @@ export function Lobby({
                   )}
                 </section>
 
-                <section id="armory-inventory" aria-label="Инвентарь снаряжения" className="min-w-0 scroll-mt-4 border border-line bg-black/20 p-3">
+                <section
+                  id="armory-inventory"
+                  aria-label="Сундук"
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    dropOnChest(e.dataTransfer.getData("text/plain"));
+                  }}
+                  className="min-w-0 scroll-mt-4 border border-line bg-black/20 p-3"
+                >
                   <div className="mb-3 flex flex-wrap items-end justify-between gap-3 border-b border-line pb-3">
-                    <div>
-                      <span className="sc text-flamedim">Свободные вещи</span>
-                      <h3 className="mt-1 font-display text-xl uppercase tracking-[0.08em] text-flamehi">Инвентарь</h3>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <span className="font-mono text-[0.92rem] text-mute">{visibleInventory.length} из {inventoryItems.length} · неизвестно: {inventoryItems.filter((item) => !item.identified).length}</span>
-                      {researchPlan.count > 0 && (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Btn tone={canResearchAll ? "flame" : "ghost"} disabled={!canResearchAll} onClick={identifyAllGear}>
-                            Исследовать все · {researchPlan.count}{researchPlan.gold > 0 ? ` · ${researchPlan.gold} зол.` : ""}
-                          </Btn>
-                          {!canResearchAll && <span className="font-mono text-[0.84rem] text-rubric">не хватает {researchPlan.gold - player.gold} зол.</span>}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  {chosenSlot && (
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border border-flamedim/60 bg-flame/5 px-3 py-2 text-[0.94rem]">
-                      <span className="text-flamehi">Выбрать предмет: {SLOT_META[chosenSlot].name}</span>
-                      <button className="text-mute underline underline-offset-2 hover:text-parch" onClick={() => { setChosenSlot(null); setGearSlot("all"); }}>Показать все</button>
-                    </div>
-                  )}
-                  {renderGearFilters("armory")}
-                  <p className="my-3 text-[0.92rem] leading-relaxed text-mute">Приёмы, свойства и исследование — в окне «Подробнее».</p>
-                  {visibleInventory.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-3 min-[1600px]:grid-cols-2">
-                      {visibleInventory.map((item) => renderGearCard(item, "inventory"))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center gap-3 border border-dashed border-line px-4 py-12 text-center">
-                      <PackageSearch size={30} className="text-mute" aria-hidden />
-                      <p className="text-[1rem] leading-relaxed text-mute">{inventoryItems.length === 0 ? "Все вещи надеты или инвентарь пуст. Новое снаряжение можно найти в подземелье или купить в магазине." : "Подходящих вещей нет. Измените фильтры или загляните в магазин."}</p>
-                      {(gearQuery || gearSlot !== "all" || gearRarity !== "all" || onlyUnknown || chosenSlot) && <Btn onClick={resetGearFilters}>Сбросить фильтры</Btn>}
-                    </div>
-                  )}
-                </section>
-
-                {/* В арсенале видно, какие припасы и реагенты лежат в сумке; их можно продать. */}
-                <section aria-label="Припасы и реагенты" className="min-w-0 border border-line bg-black/20 p-3 min-[1200px]:col-span-2">
-                  <div className="mb-3 flex flex-wrap items-end justify-between gap-3 border-b border-line pb-3">
-                    <div>
-                      <span className="sc text-flamedim">Сумка</span>
-                      <h3 className="mt-1 font-display text-xl uppercase tracking-[0.08em] text-flamehi">Припасы и реагенты</h3>
-                    </div>
-                    <span className="font-mono text-[0.92rem] text-mute">
-                      припасов: {bagSupplies.length} · реагентов: {bagReagents.length}
-                    </span>
+                    <h3 className="font-display text-xl uppercase tracking-[0.08em] text-flamehi">Сундук</h3>
+                    {chestTab === "gear" && (
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span className="font-mono text-[0.92rem] text-mute">{visibleInventory.length} из {inventoryItems.length} · неизвестно: {inventoryItems.filter((item) => !item.identified).length}</span>
+                        {researchPlan.count > 0 && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Btn tone={canResearchAll ? "flame" : "ghost"} disabled={!canResearchAll} onClick={identifyAllGear}>
+                              Исследовать все · {researchPlan.count}{researchPlan.gold > 0 ? ` · ${researchPlan.gold} зол.` : ""}
+                            </Btn>
+                            {!canResearchAll && <span className="font-mono text-[0.84rem] text-rubric">не хватает {researchPlan.gold - player.gold} зол.</span>}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-line pb-2">
                     {([
+                      ["gear", `Снаряжение · ${inventoryItems.length}`],
                       ["supplies", `Припасы · ${bagSupplies.length}`],
                       ["reagents", `Реагенты · ${bagReagents.length}`],
-                    ] as ["supplies" | "reagents", string][]).map(([id, label]) => (
-                      <Btn key={id} tone={bagTab === id ? "flame" : "ghost"} onClick={() => setBagTab(id)}>
+                    ] as ["gear" | "supplies" | "reagents", string][]).map(([id, label]) => (
+                      <Btn key={id} tone={chestTab === id ? "flame" : "ghost"} onClick={() => setChestTab(id)}>
                         {label}
                       </Btn>
                     ))}
-                    <span className="ml-auto text-xs text-mute">Продажа идёт по половине цены лавки</span>
+                    {chestTab !== "gear" && <span className="ml-auto text-xs text-mute">Продажа идёт по половине цены лавки</span>}
                   </div>
+
+                  {chestTab === "gear" ? (
+                    <>
+                      {chosenSlot && (
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border border-flamedim/60 bg-flame/5 px-3 py-2 text-[0.94rem]">
+                          <span className="text-flamehi">Можно надеть на: {SLOT_META[chosenSlot].name}</span>
+                          <button className="text-mute underline underline-offset-2 hover:text-parch" onClick={() => { setChosenSlot(null); setGearSlot("all"); }}>Показать все</button>
+                        </div>
+                      )}
+                      {renderGearFilters("armory")}
+                      <p className="my-3 text-[0.92rem] leading-relaxed text-mute">Клик — подробности · двойной клик — надеть · перетащите на гнездо.</p>
+                      {visibleInventory.length > 0 ? (
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 min-[1600px]:grid-cols-4">
+                          {visibleInventory.map((item) => (
+                            <GearTile
+                              key={item.uid}
+                              item={item}
+                              player={player}
+                              selected={gearDetail?.uid === item.uid}
+                              onInspect={() => inspectGear(item.uid)}
+                              onEquip={() => equipFromChest(item)}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-3 border border-dashed border-line px-4 py-12 text-center">
+                          <PackageSearch size={30} className="text-mute" aria-hidden />
+                      <p className="text-[1rem] leading-relaxed text-mute">{inventoryItems.length === 0 ? "Все вещи надеты или инвентарь пуст. Новое снаряжение можно найти в подземелье или купить в магазине." : "Подходящих вещей нет. Измените фильтры или загляните в магазин."}</p>
+                          {(gearQuery || gearSlot !== "all" || gearRarity !== "all" || onlyUnknown || chosenSlot) && <Btn onClick={resetGearFilters}>Сбросить фильтры</Btn>}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
                   {(() => {
-                    const rows = bagTab === "supplies" ? bagSupplies : bagReagents;
-                    const empty = bagTab === "supplies"
+                    const rows = chestTab === "supplies" ? bagSupplies : bagReagents;
+                    const empty = chestTab === "supplies"
                       ? "Припасов нет: зелья, свитки и метательное покупаются в лавке."
                       : "Реагентов нет: они нужны для варки и ковки.";
                     if (rows.length === 0) return <p className="text-sm italic text-mute">{empty}</p>;
@@ -1394,6 +1475,8 @@ export function Lobby({
                       </div>
                     );
                   })()}
+                    </>
+                  )}
                 </section>
               </div>
             )}
@@ -1937,6 +2020,7 @@ export function Lobby({
           inShop={gearDetail.inShop}
           onClose={() => setGearDetail(null)}
           onIdentify={gearDetail.inShop ? undefined : identifyGear}
+          actions={gearDetail.inShop ? undefined : detailActionsFor(detailItem)}
         />
       )}
 
