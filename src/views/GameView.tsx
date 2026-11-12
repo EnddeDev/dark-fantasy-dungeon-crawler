@@ -74,8 +74,6 @@ export function GameView({
             onMove={(dx, dy) => game.dungeon.move(dx, dy)}
             onCellClick={(x, y) => game.dungeon.clickCell(x, y)}
             onUseItem={(id) => game.dungeon.useFieldItem(id)}
-            onEquip={(uid, slot) => game.dungeon.equip(uid, slot)}
-            onUnequip={(slot) => game.dungeon.unequip(slot)}
             onCancelPath={() => game.dungeon.cancelPath()}
             onResumePath={() => game.dungeon.resumePath()}
             onSetPouch={(index, id) => game.setPouchSlot(index, id)}

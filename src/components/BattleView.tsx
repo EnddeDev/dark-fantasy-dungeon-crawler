@@ -433,7 +433,7 @@ export function BattleView({
           : b.p.statuses.stunAp > 0
           ? { text: `Оглушение: пропуск ${b.p.statuses.stunAp} хода`, tone: "rubric" }
           : undefined,
-      hint: "у кого больше — тот всегда раньше",
+      hint: "",
     },
     { label: "Уклонение", base: `${Math.round(r.evade * 100)}%`, now: `${Math.round(r.evade * 100)}%`, hint: "шанс полного промаха врага" },
     ...(r.missChance > 0
@@ -502,7 +502,7 @@ export function BattleView({
       label: "Ходов в раунде",
       base: `${er.ap}`,
       now: `${er.ap}`,
-      hint: "у кого больше — тот всегда раньше",
+      hint: "",
     },
     /* Характеристики врага: та же шкала, что у героя; подсказка показывает, что каждая даёт. */
     {
@@ -568,7 +568,6 @@ export function BattleView({
             <span>
               у врага: <b className="text-rubric">{e.ap}</b>
             </span>
-            <span className="text-[0.78rem] text-flamedim">у кого больше — тот идёт первым</span>
           </span>
         </div>
       </div>
@@ -633,7 +632,7 @@ export function BattleView({
                 <SummaryTabs value={heroTab} onChange={setHeroTab} effectsCount={heroEffects.length} />
               </div>
               {heroTab === "stats" ? (
-                <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1.5 text-[0.94rem] sm:grid-cols-3">
+                <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1.5 text-[0.94rem]">
                   {rows.map((row, i) => (
                     <SummaryRow
                       key={row.label}
@@ -984,7 +983,7 @@ export function BattleView({
                 <SummaryTabs value={foeTab} onChange={setFoeTab} effectsCount={foeEffects.length} />
               </div>
               {foeTab === "stats" ? (
-                <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1.5 text-[0.94rem] sm:grid-cols-3">
+                <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1.5 text-[0.94rem]">
                   {enemyRows.map((row, i) => (
                     <SummaryRow
                       key={row.label}
@@ -1350,28 +1349,59 @@ export function chipEntries(chips: EffectChip[]): TabEffect[] {
   }));
 }
 
-/** Вкладка «Эффекты»: иконки статусов сверху и полный список всех эффектов. */
+/** Вкладка «Эффекты»: карточки как в лобби — название и срок; описание в подсказке при наведении. */
 export function EffectsTab({ entries }: { entries: TabEffect[]; label?: string }) {
   if (entries.length === 0) return <p className="mt-2 text-sm italic text-mute">Эффектов нет.</p>;
   return (
-    <div className="mt-2">
-      <ul className="space-y-1.5">
-        {entries.map((en) => (
-          <li key={en.id} className="border-l-2 border-line/70 pl-2">
-            <div className="flex items-baseline justify-between gap-3">
-              <span
-                className={`min-w-0 truncate font-display text-[0.92rem] uppercase tracking-[0.05em] ${
-                  en.negative ? "text-rubric" : "text-flamehi"
-                }`}
-              >
-                {en.name}
-              </span>
-              {en.meta && <span className="shrink-0 font-mono text-[0.74rem] text-mute">{en.meta}</span>}
-            </div>
-            {en.detail && <p className="text-[0.86rem] leading-snug text-parch/85">{en.detail}</p>}
-          </li>
-        ))}
-      </ul>
+    <ul className="mt-2 space-y-2.5">
+      {entries.map((en) => (
+        <li key={en.id}>
+          <BattleEffectCard entry={en} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Карточка эффекта боя: рамка слева, «Название: срок», подсказка с описанием. */
+function BattleEffectCard({ entry }: { entry: TabEffect }) {
+  const [open, setOpen] = useState(false);
+  const tipRef = useRef<HTMLDivElement>(null);
+  useFitInViewport(tipRef, open);
+  const tipId = `battle-effect-tip-${entry.id}`;
+  const title = entry.meta ? `${entry.name}: ${entry.meta}` : entry.name;
+  return (
+    <div className="relative" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <div
+        tabIndex={0}
+        role="button"
+        aria-describedby={open && entry.detail ? tipId : undefined}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onClick={() => setOpen((o) => !o)}
+        className="cursor-help focus:outline-none focus-visible:ring-1 focus-visible:ring-flame"
+      >
+        <div className={`border-l-2 bg-black/20 py-2 pl-3 pr-2 ${entry.negative ? "border-rubric/70" : "border-flamedim/70"}`}>
+          <h4
+            className={`font-display text-[1.05rem] uppercase leading-snug tracking-[0.05em] ${
+              entry.negative ? "text-rubric" : "text-flamehi"
+            }`}
+          >
+            {title}
+          </h4>
+        </div>
+      </div>
+      {open && entry.detail && (
+        <div
+          ref={tipRef}
+          role="tooltip"
+          id={tipId}
+          className="pointer-events-none absolute left-0 top-full z-50 mt-2 w-[min(19rem,72vw)] border border-flamedim bg-black/95 p-2.5 text-left shadow-[0_10px_30px_rgba(0,0,0,0.75)]"
+        >
+          <div className="font-display text-[0.95rem] uppercase tracking-[0.06em] text-flamehi">{entry.name}</div>
+          <p className="mt-1.5 text-[0.86rem] leading-snug text-parch/90">{entry.detail}</p>
+        </div>
+      )}
     </div>
   );
 }
