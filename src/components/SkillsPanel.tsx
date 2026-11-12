@@ -43,29 +43,34 @@ export function SkillsPanel({
         первый эффект ветки, ранг 5 — второй. Очки можно распределять по веткам свободно.
       </p>
 
-      {/* Ветки в одну строку: три рядом на широком экране, на узком — прокрутка вбок. */}
-      <div className="mt-3 flex gap-3 overflow-x-auto pb-1">
+      {/* Каждая ветка — отдельная строка на всю ширину: слева название и ранг, дальше эффекты и кнопки. */}
+      <div className="mt-3 flex flex-col gap-3">
         {branches.map((def) => {
           const rank = skillRankOf(player, def.id);
           const canUp = rank < SKILL_RANK_MAX && free >= 1;
           const canDown = rank > 0;
           return (
-            <div key={def.id} className="flex min-w-[16rem] flex-1 flex-col gap-2 border border-flamedim/50 bg-black/25 p-3">
-              <div className="flex items-start justify-between gap-2">
-                <div>
+            <div
+              key={def.id}
+              className="grid gap-3 border border-flamedim/50 bg-black/25 p-3 lg:grid-cols-[minmax(12rem,1fr)_minmax(9rem,0.8fr)_minmax(0,1.5fr)_minmax(0,1.5fr)_auto] lg:items-center"
+            >
+              <div className="min-w-0">
+                <div className="flex items-start justify-between gap-2">
                   <div className="text-[1.02rem] font-semibold text-parch">{def.name}</div>
-                  <div className="text-[0.9rem] leading-snug text-parch/70">{def.desc}</div>
+                  <span className="font-mono text-sm tab text-flamehi whitespace-nowrap">{rank}/{SKILL_RANK_MAX}</span>
                 </div>
-                <span className="font-mono text-sm tab text-flamehi whitespace-nowrap">{rank}/{SKILL_RANK_MAX}</span>
+                <div className="text-[0.9rem] leading-snug text-parch/70">{def.desc}</div>
               </div>
 
-              <div className="flex gap-1" aria-label={`Ранг ${rank} из ${SKILL_RANK_MAX}`}>
-                {Array.from({ length: SKILL_RANK_MAX }).map((_, i) => (
-                  <span
-                    key={i}
-                    className={`h-2 flex-1 border ${i < rank ? "border-flamehi bg-flame" : "border-flamedim/60 bg-transparent"}`}
-                  />
-                ))}
+              <div className="flex flex-col justify-center gap-1.5">
+                <div className="flex gap-1" aria-label={`Ранг ${rank} из ${SKILL_RANK_MAX}`}>
+                  {Array.from({ length: SKILL_RANK_MAX }).map((_, i) => (
+                    <span
+                      key={i}
+                      className={`h-2 flex-1 border ${i < rank ? "border-flamehi bg-flame" : "border-flamedim/60 bg-transparent"}`}
+                    />
+                  ))}
+                </div>
               </div>
 
               <EffectLine
@@ -81,7 +86,7 @@ export function SkillsPanel({
                 on={rank >= SKILL_RANK_B}
               />
 
-              <div className="mt-auto flex items-center gap-2 pt-1">
+              <div className="flex items-center gap-2">
                 <Btn tone="ghost" disabled={!canDown} onClick={() => onRank(def.id, rank - 1)}>
                   −
                 </Btn>

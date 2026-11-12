@@ -105,9 +105,13 @@ test("left panel shows battle parameters as icon badges; the multiplier value is
     player, run: null, battle: null, onLeaveRun: noop,
   }));
   assert.ok(html.includes("Боевые параметры"), "блок боевых параметров есть");
-  assert.ok(html.includes(`aria-label="Множитель приёма: ${ws.scaleMult.toFixed(2)}"`), html);
-  assert.ok(html.includes('aria-label="Броня: '), "броня показана иконкой и значением");
-  assert.ok(html.includes('aria-label="Критический удар: '), "критический удар показан иконкой и значением");
+  assert.ok(html.includes('aria-expanded="false"'), "боевые параметры по умолчанию свёрнуты");
+  assert.ok(html.includes('aria-label="Урон оружия: '), "урон оружия наверху");
+  assert.ok(html.includes('aria-label="Броня: '), "броня наверху");
+  assert.ok(html.includes('aria-label="Ходы за раунд: '), "ходы наверху");
+  assert.ok(!html.includes(`aria-label="Множитель приёма: ${ws.scaleMult.toFixed(2)}"`), "множитель приёма спрятан в свёрнутом блоке");
+  assert.ok(!html.includes('aria-label="Критический удар: '), "критический удар спрятан в свёрнутом блоке");
+  assert.ok(!html.includes("Исследования и ловушки"), "блока исследований нет");
   assert.ok(!html.includes('role="tooltip"'), "подсказка открывается только по наведению");
   assert.ok(!html.includes("Архетип") && !html.includes("не выбран"), "строка «Архетип» удалена");
 });
@@ -586,7 +590,7 @@ test("left panel shows main stats as icons with values; name and description app
   const html = renderToStaticMarkup(React.createElement(Rail, {
     player, run: null, battle: null, onLeaveRun: noop,
   }));
-  assert.ok(html.includes("Основные характеристики"));
+  assert.ok(!html.includes("Основные характеристики"), "заголовка «Основные характеристики» нет");
   assert.ok(html.includes('aria-label="Сила: 7"'), "СИЛ: иконка и значение");
   assert.ok(html.includes('aria-label="Ловкость: 3"'), "ЛОВ: иконка и значение");
   assert.ok(html.includes('aria-label="Интеллект: 5"'), "ИНТ: иконка и значение");
@@ -612,9 +616,10 @@ test("left panel sums the same gear effect over worn items; the hover tip lists 
   const entries = summedEffectEntries([knife, amulet, ring]);
   assert.equal(entries.length, 1, "одна запись на эффект");
   const list = renderToStaticMarkup(React.createElement(EffectList, { entries, empty: "пусто" }));
-  assert.ok(list.includes("Предметов: 3"), "три предмета дают одну запись с числом предметов");
-  assert.ok(list.includes("+16% к множителю от Интеллекта"), "значение складывается: 6 + 6 + 4");
-  assert.ok(!list.includes("+6% к множителю от Интеллекта"), "одиночное значение первого предмета не выводится");
+  assert.ok(list.includes("Мудрость: 16%"), "карточка: название и значение (6 + 6 + 4)");
+  assert.ok(!list.includes("Предметов"), "счётчика предметов в карточке нет");
+  assert.ok(!list.includes("Источник"), "источника в карточке нет");
+  assert.ok(!list.includes("к множителю от Интеллекта"), "описания в карточке нет");
 
   const [wisdom] = gearEffectTotals([knife, amulet, ring]);
   const tip = renderToStaticMarkup(React.createElement(EffectTip, {
@@ -655,4 +660,13 @@ test("battle attacks: short names only; stamina and miss chance live in the hove
   }
   assert.ok(!/>[^<]*·\s*\d+<\/span>/.test(html) && !html.includes(">попасть "), "внутри кнопок атак нет текста про выносливость и шанс");
   assert.match(html, /title="Выносливость: \d+\. Шанс промахнуться: \d+%"/, "подсказка показывает выносливость и промах");
+});
+
+test("карточка эффекта: короткое значение — проценты или число без процентов", () => {
+  const { effectShortValue } = load("src/game/gearEffects.ts", "gear-effects-short");
+  assert.equal(effectShortValue("fortify", 14), "14%", "Укрепление: 14%");
+  assert.equal(effectShortValue("wisdom", 16), "16%");
+  assert.equal(effectShortValue("thorns", 4), "4", "шипы — урон без процентов");
+  assert.equal(effectShortValue("ap", 1), "1", "ходы — число");
+  assert.equal(effectShortValue("consumable_scale", 2), "2×ЛОВ");
 });

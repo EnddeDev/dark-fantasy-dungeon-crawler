@@ -264,6 +264,26 @@ export function effectTotalDetail(id: GearEffectId, n: number): string {
   }
 }
 
+/** Эффекты, у которых значение — число без процентов: урон, здоровье, ходы, раунды и т. п. */
+const FLAT_EFFECT_SUFFIX: Partial<Record<GearEffectId, string>> = {
+  damage_resist: "",
+  thorns: "",
+  regen: "",
+  ap: "",
+  skill_cd: "",
+  status_duration: "",
+  skill_scale: "",
+  scroll_create: "",
+  consumable_scale: "×ЛОВ",
+  scroll_scale: "×ИНТ",
+};
+
+/** Короткое значение эффекта для карточки: «14%», «4», «0.3×ИНТ». Полный текст — в подсказке. */
+export function effectShortValue(id: GearEffectId, n: number): string {
+  const flat = FLAT_EFFECT_SUFFIX[id];
+  return flat === undefined ? `${n}%` : `${n}${flat}`;
+}
+
 export function passiveDetail(id: GearPassiveId, level = 1): string {
   const n = (key: string) => passiveMagnitude(id, key, level);
   switch (id) {
