@@ -68,7 +68,7 @@ test("lobby removes the development-rules block and the requested floor copy", (
     "Победи Стража, чтобы открыть следующий этаж",
     "опыт без потолка этажа",
   ]) assert.ok(!html.includes(text), `should be removed: ${text}`);
-  assert.ok(html.includes("+3 очка характеристик"));
+  assert.ok(!html.includes("+3 очка характеристик"), "в развитии нет информации об уровне");
   const floors = renderToStaticMarkup(React.createElement(Lobby, {
     player: makePlayer(), controller: {}, shopStock: [], onStart: noop, best: 1, unlockedFloor: 2, initialTab: "dungeon",
   }));
@@ -482,9 +482,10 @@ test("lobby exposes stat reset, special supplies and sell buttons", () => {
     player: makePlayer({ gold: 1000, bag: { moss: 2, sapper_kit: 1 } }), controller: {}, shopStock: [],
     onStart: noop, best: 1, unlockedFloor: 2, initialTab: "train",
   }));
-  assert.ok(html.includes("Сбросить характеристики"));
-  assert.ok(html.includes("100 × уровень персонажа"));
-  assert.ok(html.includes("1 Сила / 1 Ловкость / 1 Интеллект"));
+  assert.ok(html.includes("Сбросить характеристики"), "кнопка сброса в шапке развития");
+  assert.ok(html.includes('title="Полный сброс до 1 Сила / 1 Ловкость / 1 Интеллект.'), "описание сброса в подсказке кнопки");
+  assert.ok(html.includes("100 × уровень персонажа"), "стоимость сброса в подсказке кнопки");
+  assert.ok(!html.includes("Перераспределение характеристик"), "отдельного блока перераспределения нет");
 });
 
 test("dungeon shows field specials, torch chip and revealed map markers", () => {

@@ -43,13 +43,14 @@ export function SkillsPanel({
         первый эффект ветки, ранг 5 — второй. Очки можно распределять по веткам свободно.
       </p>
 
-      <div className="mt-3 grid gap-3 md:grid-cols-3">
+      {/* Ветки в одну строку: три рядом на широком экране, на узком — прокрутка вбок. */}
+      <div className="mt-3 flex gap-3 overflow-x-auto pb-1">
         {branches.map((def) => {
           const rank = skillRankOf(player, def.id);
           const canUp = rank < SKILL_RANK_MAX && free >= 1;
           const canDown = rank > 0;
           return (
-            <div key={def.id} className="flex flex-col gap-2 border border-flamedim/50 bg-black/25 p-3">
+            <div key={def.id} className="flex min-w-[16rem] flex-1 flex-col gap-2 border border-flamedim/50 bg-black/25 p-3">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <div className="text-[1.02rem] font-semibold text-parch">{def.name}</div>
