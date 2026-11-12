@@ -912,9 +912,9 @@ test("combat readout shows live numbers for curses, rage and guard", () => {
   const armoredRead = battle.combatReadout(b0);
   b0.p.guard = true;
   const guarded = battle.combatReadout(b0);
-  assert.equal(guarded.armor, 25, "в защите броня +25%: 20 → 25");
+  assert.equal(guarded.armor, 30, "в защите броня +10: 20 → 30");
   assert.ok(guarded.inMax <= armoredRead.inMax, "броня в защите снижает входящий урон");
-  assert.ok(guarded.inMax > Math.floor(armoredRead.inMax / 2) || armoredRead.inMax <= 1, "защита не делит урон пополам");
+  assert.equal(armoredRead.inMax - guarded.inMax, 10, "защита даёт +10 брони и снижает урон на 10, а не делит его пополам");
   b0.p.armor = 0;
 
   b0.p.guard = false;
@@ -1051,7 +1051,7 @@ test("haste, terror, stone skin and acid change the fight as described", () => {
   assert.equal(hasted.p.statuses.haste, 3);
   hasted = battle.playerAct(hasted, { type: "end_turn" });
   while (hasted.queue[hasted.idx] !== "p" || hasted.round < 2) {
-    hasted = hasted.queue[hasted.idx] === "e" ? battle.enemyStep(hasted) : battle.playerAct(hasted, { type: "guard" });
+    hasted = hasted.queue[hasted.idx] === "e" ? battle.enemyStep(hasted) : battle.playerAct(hasted, { type: "end_turn" });
     if (hasted.round >= 2) break;
   }
   assert.ok(hasted.queue.filter((s) => s === "p").length === hasted.p.ap + 1,
@@ -1070,7 +1070,7 @@ test("haste, terror, stone skin and acid change the fight as described", () => {
   // каменная кожа: входящий урон ниже (сравниваем после одинакового хода игрока)
   const stoned = battle.playerAct(mk({ potion_stone: 1 }), { type: "item", id: "potion_stone" });
   assert.equal(stoned.p.statuses.stone, 3);
-  let plain = battle.playerAct(mk({}), { type: "guard" });
+  let plain = battle.playerAct(mk({}), { type: "end_turn" });
   plain.p.guard = false; // сравниваем чистый урон без защиты
   let stone = battle.enemyStep(stoned);
   plain = battle.enemyStep(plain);
@@ -1880,7 +1880,7 @@ test("варвар 10: регенерация 1% макс. ОЗ за кажды�
   /* Сравниваем с тем же боем без пассива: экипировка даёт своё лечение, его вычитаем. */
   const gain = (passives) => {
     const st = { ...b, p: { ...b.p, hp: hp0, passives } };
-    const after = withRandom(() => battle.playerAct({ ...st, queue: ["p"], idx: 0 }, { type: "guard" }), 0.45);
+    const after = withRandom(() => battle.playerAct({ ...st, queue: ["p"], idx: 0 }, { type: "end_turn" }), 0.45);
     return after.p.hp - hp0;
   };
   const extra = gain(["arch_barbarian_10"]) - gain([]);
@@ -2408,7 +2408,7 @@ test("в бою дебаффы монстра идут не чаще раза в
             applied.add(chosen);
           }
         } else {
-          b = battle.playerAct(b, { type: "guard" });
+          b = battle.playerAct(b, { type: "end_turn" });
         }
       }
       return used;
@@ -2472,7 +2472,7 @@ test("яд складывается: срок обновляется, урон �
       queue: ["p"],
       idx: 0,
     },
-    { type: "guard" },
+    { type: "end_turn" },
   ), 0.45);
   assert.equal(ticked.p.hp, 100 - 2 * second.p.statuses.poisonTick, "урон яда удвоился от двух наложений");
 
@@ -2502,7 +2502,7 @@ test("кровотечение складывается так же, как яд
       queue: ["p"],
       idx: 0,
     },
-    { type: "guard" },
+    { type: "end_turn" },
   ), 0.45);
   assert.equal(ticked.p.hp, 100 - 2 * second.p.statuses.woundTick, "тик кровотечения × 2 наложения");
 });
@@ -2989,7 +2989,7 @@ test("boss effect resistance is 25% and seals block the next player action", () 
   const refused = battle.playerAct(b, { type: "item", id: "potion_s" });
   assert.equal(refused.bag.potion_s, 3);
   assert.equal(refused.idx, 0);
-  const guard = battle.playerAct(refused, { type: "guard" });
+  const guard = battle.playerAct(refused, { type: "end_turn" });
   assert.equal(guard.p.statuses.sealItems, 0);
   // Сопротивление босса: при Math.random=0 эффект отражается.
   const b2 = freshBattle(pl, 3, true);
@@ -3572,7 +3572,7 @@ test("масло на клинке: действует на ближайший �
   assert.equal(oiled.p.statuses.oilRounds, 2, "остаток раунда и следующий");
   assert.equal(oiled.bag.oil_fire ?? 0, 0, "масло израсходовано");
 
-  const endRound = (st) => withRandom(() => battle.playerAct({ ...st, queue: ["p"], idx: 0 }, { type: "guard" }), 0.45);
+  const endRound = (st) => withRandom(() => battle.playerAct({ ...st, queue: ["p"], idx: 0 }, { type: "end_turn" }), 0.45);
   const r1 = endRound(oiled);
   assert.equal(r1.p.statuses.oilRounds, 1);
   const r2 = endRound(r1);
@@ -3593,7 +3593,7 @@ test("огонь масла тикает 10% от удара три раунда
   const tick = Math.max(1, Math.round(dealt * 0.1));
   assert.equal(hit.enemy.statuses.oilTick, tick, "тик — 10% от удара, которым наложено");
 
-  const endRound = (st) => withRandom(() => battle.playerAct({ ...st, queue: ["p"], idx: 0 }, { type: "guard" }), 0.45);
+  const endRound = (st) => withRandom(() => battle.playerAct({ ...st, queue: ["p"], idx: 0 }, { type: "end_turn" }), 0.45);
   let st = hit;
   const ticks = [];
   for (let i = 0; i < 3; i++) {
@@ -3616,7 +3616,7 @@ test("яд масла: тик 10% от удара, а не от ЛОВ", () => {
   const hit = withRandom(() => battle.playerAct({ ...oiled, queue: ["p", "e"], idx: 0 }, { type: "attack" }), 0.45);
   const tick = Math.max(1, Math.round((9999 - hit.enemy.hp) * 0.1));
   assert.equal(hit.enemy.statuses.oilTick, tick, "тик — 10% от удара");
-  const ended = withRandom(() => battle.playerAct({ ...hit, queue: ["p"], idx: 0 }, { type: "guard" }), 0.45);
+  const ended = withRandom(() => battle.playerAct({ ...hit, queue: ["p"], idx: 0 }, { type: "end_turn" }), 0.45);
   assert.ok(ended.log.some((l) => l.text.includes(`Яд масла отнимает ${tick} ОЗ`)), "яд тикает своим тиком");
 });
 
@@ -3637,7 +3637,7 @@ test("стихия масла учитывает род: конструкт по
   constructB.enemy.maxHp = 9999;
   const oiled = battle.playerAct({ ...constructB, queue: ["p", "e"], idx: 0 }, { type: "item", id: "oil_fire" });
   const hit = withRandom(() => battle.playerAct({ ...oiled, queue: ["p", "e"], idx: 0 }, { type: "attack" }), 0.45);
-  const ended = withRandom(() => battle.playerAct({ ...hit, queue: ["p"], idx: 0 }, { type: "guard" }), 0.45);
+  const ended = withRandom(() => battle.playerAct({ ...hit, queue: ["p"], idx: 0 }, { type: "end_turn" }), 0.45);
   const shown = ended.log.map((l) => l.text).find((t) => t.includes("Огонь масла отнимает") && t.includes("Уязвимость ×1.5"));
   assert.ok(shown, "огонь бьёт конструкт ×1.5");
   assert.equal(Number(/отнимает (\d+) ОЗ/.exec(shown)[1]), Math.max(1, Math.round(hit.enemy.statuses.oilTick * 1.5)), "тик × 1.5 от уязвимости");
@@ -3662,7 +3662,7 @@ test("магическое масло бьёт сразу: 3 + 3×ИНТ при 
   const plainDmg = plainB.enemy.hp - plain.enemy.hp;
   const oiledDmg = oiled.enemy.hp - hit.enemy.hp;
   assert.equal(oiledDmg - plainDmg, 15, "сверх обычного удара: 3 + 3×4");
-  const ended = withRandom(() => battle.playerAct({ ...hit, queue: ["p"], idx: 0 }, { type: "guard" }), 0.45);
+  const ended = withRandom(() => battle.playerAct({ ...hit, queue: ["p"], idx: 0 }, { type: "end_turn" }), 0.45);
   assert.ok(!ended.log.some((l) => l.text.includes("Магический масла отнимает")), "тика у магии нет");
 });
 
@@ -3846,12 +3846,12 @@ test("истощение спадает через два раунда, свит
   const startRound = b.round;
   let steps = 0;
   while (b.round < startRound + 1 && steps < 40) {
-    b = b.queue[b.idx] === "p" ? battle.playerAct(b, { type: "guard" }) : battle.enemyStep(b);
+    b = b.queue[b.idx] === "p" ? battle.playerAct(b, { type: "end_turn" }) : battle.enemyStep(b);
     steps++;
   }
   assert.equal(b.enemy.depleted, 1, "через раунд остаётся один ход");
   while (b.round < startRound + 2 && steps < 80) {
-    b = b.queue[b.idx] === "p" ? battle.playerAct(b, { type: "guard" }) : battle.enemyStep(b);
+    b = b.queue[b.idx] === "p" ? battle.playerAct(b, { type: "end_turn" }) : battle.enemyStep(b);
     steps++;
   }
   assert.equal(b.enemy.depleted, 0, "через два раунда эффекты возвращаются");
@@ -4013,7 +4013,7 @@ test("угрозы: обычный монстр +30% ОЗ, ужас ×1.25, ка
   }
 });
 
-test("кнопка «Защита» не делит урон пополам, а даёт броню +25%", () => {
+test("кнопка «Защита» не делит урон пополам, а даёт броню +10", () => {
   const rnd = Math.random;
   Math.random = () => 0.45; // без промахов, уклонений и критов
   try {
@@ -4030,13 +4030,13 @@ test("кнопка «Защита» не делит урон пополам, а 
       const s = battle.enemyStep(b);
       return 300 - s.p.hp;
     };
-    assert.equal(battle.playerArmorNow({ p: { armor: 20, statuses: { tempArmor: 0, ironTonic: 0, sundered: 0 }, guard: true } }), 25);
+    assert.equal(battle.playerArmorNow({ p: { armor: 20, statuses: { tempArmor: 0, ironTonic: 0, sundered: 0 }, guard: true } }), 30);
     const open = hitFor(0, false);
     const guardedNoArmor = hitFor(0, true);
-    assert.equal(guardedNoArmor, open, "в защите без брони урон тот же, а не вдвое меньше");
+    assert.equal(open - guardedNoArmor, 10, "в защите без брони броня +10: урон меньше на 10, а не делится пополам");
     const plainArmored = hitFor(20, false);
     const guardedArmored = hitFor(20, true);
-    assert.equal(plainArmored - guardedArmored, 5, `броня 20 → 25 режет на 5 больше: без защиты ${plainArmored}, в защите ${guardedArmored}`);
+    assert.equal(plainArmored - guardedArmored, 10, `броня 20 → 30 режет на 10 больше: без защиты ${plainArmored}, в защите ${guardedArmored}`);
   } finally {
     Math.random = rnd;
   }

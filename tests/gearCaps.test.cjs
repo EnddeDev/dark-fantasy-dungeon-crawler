@@ -75,7 +75,8 @@ test("ОЗ предмета на СИЛ: +10 на 1 уровне, дальше �
     const s = content.scaledGearStats(item);
     const rolled = scaling.scaleGearStatByLevel(Math.ceil(item.statRolls.hp * item.wearMult), level);
     const bonus = Math.floor(10 * scaling.statLevelRatio(level) + 1e-9);
-    assert.equal(s.hp, rolled + bonus, `уровень ${level}`);
+    const flatPerLevel = { heavy: 3, medium: 1, light: 5 }[content.gearClassFor(item)];
+    assert.equal(s.hp, rolled + bonus + flatPerLevel * level, `уровень ${level}`);
   }
   assert.equal(
     Math.floor(10 * scaling.statLevelRatio(1) + 1e-9),

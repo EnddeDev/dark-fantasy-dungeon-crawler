@@ -54,7 +54,7 @@ test("guide core sections are characteristics, gear quality/wear, then combat ru
   assert.match(html, /×1</);
   assert.match(html, /×0\.75/);
   assert.match(html, /Ход героя — блок действий, пока хватает/);
-  assert.match(html, /Защита — 10 и заканчивает ход/);
+  assert.match(html, /Защита — 10 и не заканчивает ход/);
 });
 
 test("guide codifies the new stat formulas and probability rule", () => {

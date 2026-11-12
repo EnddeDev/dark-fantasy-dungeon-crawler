@@ -399,10 +399,10 @@ test("battle shows the concentration meter and the archetype special, enabled on
   };
   const low = render(3);
   assert.ok(low.includes("Концентрация"), "шкала концентрации видна");
-  assert.ok(low.includes("3/5"));
+  assert.ok(low.includes("3/7"));
   assert.ok(/ disabled=""/.test(buttonAt(low)), "при 3 кнопка закрыта");
   const full = render(5);
-  assert.ok(full.includes("5/5"));
+  assert.ok(full.includes("5/7"));
   assert.ok(!/ disabled=""/.test(buttonAt(full)), "при 5 кнопка открыта");
 });
 

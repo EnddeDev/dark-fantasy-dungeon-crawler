@@ -340,7 +340,7 @@ export interface BattleState {
     turnScrolls: number;
     /** Зелье из сумки: не тратит выносливость. */
     turnPouch: number;
-    /** Концентрация 0–5: атака +1, приём −1, расходник +1, защита +2; при 5 — спец-приём архетипа. */
+    /** Концентрация 0–7: мощная атака −1, обычная 0, безопасная +1, приём −1, расходник +1, защита +2; при 5 — спец-приём архетипа. */
     concentration: number;
     /** Библиотека душ: первый удар по герою в бою уже заблокирован. */
     sageWardUsed: boolean;
@@ -443,6 +443,8 @@ export interface BattleState {
     };
     guard: boolean;
     firstAttackDone: boolean;
+    /** Защита уже потрачена на первую атаку после неё (Таран 3 и 5). */
+    guardStrikeUsed: boolean;
   };
   bag: Record<string, number>;
   /** Зелья из сумки (до трёх видов): не тратят выносливость. */
@@ -1304,6 +1306,7 @@ export function newBattle(
       },
       guard: false,
       firstAttackDone: false,
+      guardStrikeUsed: false,
     },
     bag: { ...pl.bag },
     pouch: pouchIds(pl),
@@ -2100,13 +2103,15 @@ export function enemyElementMult(b: BattleState, element: DamageElement | undefi
   return base;
 }
 
-/** В защите (кнопка «Защита») броня героя растёт на 25% до его следующего хода. Урон не делится. */
+/** Множитель брони врага в защите (глухая стойка монстра). */
 export const GUARD_ARMOR_MULT = 1.25;
+/** В защите (кнопка «Защита») броня героя растёт на 10 до его следующего хода. Урон не делится. */
+export const GUARD_ARMOR_FLAT = 10;
 
-/** Броня героя в бою сейчас: надетая, временная, тоник и раскол; в защите — ×1.25. */
+/** Броня героя в бою сейчас: надетая, временная, тоник и раскол; в защите — +10. */
 export function playerArmorNow(b: BattleState): number {
   const base = Math.max(0, b.p.armor + b.p.statuses.tempArmor + (b.p.statuses.ironTonic > 0 ? 4 : 0) - b.p.statuses.sundered - (b.p.statuses.rot ?? 0) - (skillRageOn(b) ? 5 : 0));
-  return b.p.guard ? Math.round(base * GUARD_ARMOR_MULT) : base;
+  return b.p.guard ? base + GUARD_ARMOR_FLAT : base;
 }
 
 /** false означает, что враг промахнулся: побочные эффекты атаки тоже не срабатывают. */
@@ -2453,6 +2458,11 @@ function beginTurn(b: BattleState) {
   if (b.over) return;
   const side = b.queue[b.idx];
   if (!side) return;
+  /* Защита героя держится до начала его следующего хода; внутри хода её не сбрасывают другие действия. */
+  if (side === "p") {
+    b.p.guard = false;
+    b.p.guardStrikeUsed = false;
+  }
 
   /* Страх: атаки и приёмы закрыты; защиту, рюкзак, побег или конец хода герой выбирает сам. */
   if (side === "p" && b.p.statuses.fear > 0) {
@@ -2814,9 +2824,9 @@ export function persistentBag(b: BattleState): Record<string, number> {
   return out;
 }
 
-export const MAX_CONCENTRATION = 5;
-/** Спец-приём архетипа открывается при полной концентрации и тратит её всю. */
-const SPECIAL_CONCENTRATION = 5;
+export const MAX_CONCENTRATION = 7;
+/** Спец-приём архетипа открывается при этом порогу концентрации и тратит её всю. */
+export const SPECIAL_CONCENTRATION = 5;
 /** Пул расходников ниндзя: метательные, дымовая бомба исключена — она не наносит урона. */
 const NINJA_CONJURE_POOL = ["serrated_knife", "poison_dart", "acid_vial", "blast_bomb"];
 const NINJA_CONJURED = 5;
@@ -2830,18 +2840,18 @@ function techniqueConcentrationMsg(b: BattleState): string {
   return `Приём требует ${TECHNIQUE_CONCENTRATION} концентрации (сейчас ${b.p.concentration}).`;
 }
 
-/** Концентрация за ход: атака +1, приём −1, расходник +1, защита +2. Только для хода героя, не для внутренних розыгрышей. */
-function adjustConcentration(b: BattleState, type: PlayerAction["type"]) {
+/** Концентрация за ход: мощная атака −1, обычная 0, безопасная +1, приём −1, расходник +1, защита +2. Только для хода героя, не для внутренних розыгрышей. */
+function adjustConcentration(b: BattleState, type: PlayerAction["type"], kind: AttackKind = "normal") {
   const before = b.p.concentration;
   let delta = 0;
-  if (type === "attack") delta = 1;
+  if (type === "attack") delta = kind === "risky" ? -1 : kind === "safe" ? 1 : 0;
   else if (type === "weapon_skill" || type === "epic_skill" || type === "armor_skill") delta = -1;
   else if (type === "item") delta = 1;
   else if (type === "guard") delta = 2;
   if (delta === 0) return;
   b.p.concentration = Math.max(0, Math.min(MAX_CONCENTRATION, before + delta));
-  if (before < MAX_CONCENTRATION && b.p.concentration === MAX_CONCENTRATION && b.p.archetype) {
-    push(b, `Концентрация ${MAX_CONCENTRATION}/${MAX_CONCENTRATION}: спец-приём «${ARCHETYPES[b.p.archetype].special.name}» готов.`, "p");
+  if (before < SPECIAL_CONCENTRATION && b.p.concentration >= SPECIAL_CONCENTRATION && b.p.archetype) {
+    push(b, `Концентрация ${b.p.concentration}/${MAX_CONCENTRATION}: спец-приём «${ARCHETYPES[b.p.archetype].special.name}» готов.`, "p");
   }
 }
 
@@ -3074,11 +3084,8 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
   /* Страх: защиту герой уже занял в начале хода (beginTurn). Пока страх держится,
      атаковать, применять приёмы и бежать нельзя; рюкзак и защита доступны. */
   const fearTurn = b.p.statuses.fear > 0;
-  const previousGuard = b.p.guard;
-  b.p.guard = false;
 
   const err = (msg: string) => {
-    b.p.guard = previousGuard;
     push(b, msg, "sys");
     return b;
   };
@@ -3114,7 +3121,9 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
       /* Каждое оружие в руках — отдельный удар: свой бросок, свой крит, свои эффекты. Кулаки — один удар. */
       /* Ветки навыков на один ход атаки: Тень 3 — первый удар не уклоняется; Зверь 5 — добивание не промахивается;
          Таран 3 — первая атака после защиты пробивает 20% брони; Таран 5 — оглушает с шансом 25%. */
-      const afterGuardAttack = previousGuard;
+      /* Первая атака после защиты: защита держится весь ход, поэтому считается одна атака на включение. */
+      const afterGuardAttack = b.p.guard && !b.p.guardStrikeUsed;
+      if (afterGuardAttack) b.p.guardStrikeUsed = true;
       b.skillNoMiss = (!b.p.firstAttackDone && hasPassive(b, "skill_shadow_a")) || (hasPassive(b, "skill_beast_b") && enemyBelowShare(b, 0.2));
       b.armorIgnore = hasPassive(b, "skill_ram_a") && afterGuardAttack ? 0.2 : 0;
       const ramStun = hasPassive(b, "skill_ram_b") && afterGuardAttack && Math.random() < 0.25;
@@ -3404,8 +3413,9 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
 
     case "guard": {
       b.p.guard = true;
+      b.p.guardStrikeUsed = false;
       flash(b, "p", "guard", 0);
-      push(b, "Ты уходишь в глухую защиту: броня +25% до твоего следующего хода.", "p");
+      push(b, "Ты уходишь в глухую защиту: броня +10 до твоего следующего хода.", "p");
       break;
     }
 
@@ -3816,7 +3826,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
   }
 
   if (takeTurn) b.p.stamina = Math.max(0, b.p.stamina - spent);
-  if (takeTurn && !b.over && a.type !== "end_turn") adjustConcentration(b, a.type);
+  if (takeTurn && !b.over && a.type !== "end_turn") adjustConcentration(b, a.type, a.type === "attack" ? a.kind ?? "normal" : undefined);
   if (!b.over && b.enemy.hp <= 0 && !tryRevive(b)) {
     b.enemy.hp = 0;
     b.over = "win";
@@ -3825,8 +3835,8 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
     return b;
   }
   if (b.over) return b;
-  /* Ход заканчивается защитой и кнопкой «Пропуск хода» либо когда выносливость иссякла. */
-  const endsTurn = a.type === "guard" || a.type === "end_turn";
+  /* Ход заканчивается кнопкой «Пропуск хода» либо когда выносливость иссякла. Защита ход не заканчивает. */
+  const endsTurn = a.type === "end_turn";
   if (takeTurn && (endsTurn || !canKeepActing(b))) advance(b);
   return b;
 }
@@ -4817,7 +4827,7 @@ export function combatReadout(b: BattleState): CombatReadout {
       detail: "Входящий урон −30%.",
     });
   if (b.p.guard)
-    defMods.push({ id: "guard", label: "Защита", good: true, detail: "Броня +25% до твоего следующего хода." });
+    defMods.push({ id: "guard", label: "Защита", good: true, detail: "Броня +10 до твоего следующего хода." });
   if (b.p.statuses.smoke > 0)
     defMods.push({
       id: "smoke",

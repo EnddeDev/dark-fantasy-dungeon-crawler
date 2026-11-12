@@ -1711,7 +1711,7 @@ export function rollItemStatRolls(
   const cls = base.gearClass ?? gearClass;
   if (cls === "heavy") {
     const intBarrier = stat === "int" && kind === "armor" ? roll(5, 5) : undefined;
-    return { hp: at(roll(4, 4)), armor: at(roll(4, 3) * 2), evade: 0, barrier: intBarrier };
+    return { hp: at(roll(4, 4)), armor: at(roll(4, 3) * 1.5), evade: 0, barrier: intBarrier };
   }
   if (cls === "medium") {
     if (stat === "agi") return { hp: at(roll(2, 3)), armor: at(roll(1, 2)), evade: roll(4, 5) };
@@ -1734,6 +1734,11 @@ export function gearRegenValue(level: number, wearMult: number, roll: number | u
   return Math.max(1, Math.round((1 + GEAR_REGEN_PER_LEVEL * clampGearLevel(level)) * wearMult * (roll / 100)));
 }
 
+/** Плоский бонус за каждый уровень, начиная с первого (статическое значение, не масштабируется). */
+const LEVEL_FLAT_HP: Partial<Record<ArmorGearClass | "accessory", number>> = { heavy: 3, medium: 1, light: 5, accessory: 3 };
+const LEVEL_FLAT_ARMOR: Partial<Record<ArmorGearClass | "accessory", number>> = { heavy: 2, medium: 1, accessory: 1 };
+const LEVEL_FLAT_BARRIER: Partial<Record<ArmorGearClass, number>> = { medium: 1, light: 3 };
+
 export function scaledGearStats(item: GearItem) {
   const base = GEAR_BASES[item.baseId] ?? GEAR_BASES.knife;
   const kind = gearKindOfBase(base);
@@ -1755,21 +1760,27 @@ export function scaledGearStats(item: GearItem) {
   const rolls = item.statRolls ?? rollItemStatRolls(base, cls, () => 0.5);
   /* Оружие не даёт защиту, здоровье и уклонение — только свойства. */
   /* Броня предмета: по границам слота и качеству; у старых предметов качество считается при миграции. */
-  const armor =
+  const scaledArmor =
     kind === "weapon"
       ? 0
       : kind === "armor" && ARMOR_CURVE[base.slot]
         ? armorValue(base.slot, cls, level, item.wear, item.armorQuality ?? 0.5)
         : scaleGearStatByLevel(Math.ceil(rolls.armor * m), level);
+  /* Плоский бонус за каждый уровень, начиная с первого: добавляется после масштаба, не умножается. */
+  const flatLevels = level;
+  const armor = scaledArmor > 0 ? scaledArmor + (LEVEL_FLAT_ARMOR[kind === "accessory" ? "accessory" : cls] ?? 0) * flatLevels : 0;
   const reqStat = gearAffinity(item);
   /* На СИЛ: +10 ОЗ на 1 уровне, дальше растёт тем же коэффициентом. */
   const strHp = kind !== "weapon" && reqStat === "str" ? Math.floor(STR_ITEM_HP_LEVEL1 * statLevelRatio(level) + 1e-9) : 0;
-  const hp = kind === "weapon" ? 0 : scaleGearStatByLevel(Math.ceil(rolls.hp * m), level) + strHp;
+  const scaledHp = kind === "weapon" ? 0 : scaleGearStatByLevel(Math.ceil(rolls.hp * m), level) + strHp;
+  const hpFlat = kind !== "weapon" && rolls.hp > 0 ? (LEVEL_FLAT_HP[kind === "accessory" ? "accessory" : cls] ?? 0) * flatLevels : 0;
+  const hp = scaledHp > 0 ? scaledHp + hpFlat : 0;
   /* Потолок уклонения: на 1 уровне 5% (средняя ЛОВ) или 7% (лёгкая); дальше растёт с уровнем. */
   const evadeCap = kind === "weapon" ? 0 : evadeCapLevel1(cls, reqStat);
   /* Броня на ИНТ: маг. барьер занимает место уклонения и без капа уклонения. Старые предметы: барьер = их бывшее уклонение. */
   const intArmor = kind === "armor" && reqStat === "int";
-  const barrier = intArmor ? scaleGearStatByLevel(Math.ceil((rolls.barrier ?? rolls.evade ?? 0) * m), level) : 0;
+  const scaledBarrier = intArmor ? scaleGearStatByLevel(Math.ceil((rolls.barrier ?? rolls.evade ?? 0) * m), level) : 0;
+  const barrier = scaledBarrier > 0 ? scaledBarrier + (LEVEL_FLAT_BARRIER[cls] ?? 0) * flatLevels : 0;
   const evadeRaw = kind === "weapon" || intArmor ? 0 : scaleGearStatByLevel(Math.ceil((rolls.evade ?? 0) * m), level);
   const evadePp = evadeCap ? Math.min(evadeRaw, Math.floor(evadeCap * statLevelRatio(level) + 1e-9)) : evadeRaw;
   const evade = Math.min(0.5, evadePp / 100);

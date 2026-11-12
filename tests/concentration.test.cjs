@@ -62,10 +62,22 @@ test("концентрация начинается с нуля в каждом 
   assert.equal(battle.persistentBag(b).potion_l, undefined);
 });
 
-test("атака даёт +1, защита +2, расходник +1; значение не выходит за 0–5", () => {
+test("атака по виду: мощная −1, обычная 0, безопасная +1; значение не выходит за 0–7", () => {
   const b = fightFor();
+  /* Враг не умирает, чтобы ход всегда считался. Вид удара влияет на концентрацию, даже если удар промахнулся. */
+  const attack = (conc, kind) => {
+    const s = { ...b, idx: 0, queue: ["p", "e"], p: { ...b.p, concentration: conc }, enemy: { ...b.enemy, hp: 9999, maxHp: 9999 } };
+    return withRandom(0.45, () => battle.playerAct(s, { type: "attack", kind })).p.concentration;
+  };
+  assert.equal(attack(3, "risky"), 2, "мощная атака −1");
+  assert.equal(attack(3, "normal"), 3, "обычная атака не меняет концентрацию");
+  assert.equal(attack(3, "safe"), 4, "безопасная атака +1");
+  assert.equal(attack(0, "risky"), 0, "мощная атака не уводит ниже 0");
+  assert.equal(attack(7, "safe"), 7, "безопасная атака не поднимает выше 7");
+  assert.equal(attack(6, "safe"), 7);
+
   const afterAttack = withRandom(0.45, () => battle.playerAct(b, { type: "attack" }));
-  assert.equal(afterAttack.p.concentration, 1);
+  assert.equal(afterAttack.p.concentration, 0, "атака по умолчанию — обычная, концентрация не меняется");
 
   const guarded = withRandom(0.45, () => battle.playerAct(b, { type: "guard" }));
   assert.equal(guarded.p.concentration, 2);
@@ -78,7 +90,7 @@ test("атака даёт +1, защита +2, расходник +1; значе
   for (let i = 0; i < 4; i++) {
     c = withRandom(0.45, () => battle.playerAct({ ...c, idx: 0, queue: ["p", "e"] }, { type: "guard" }));
   }
-  assert.equal(c.p.concentration, 5, "концентрация не растёт выше 5");
+  assert.equal(c.p.concentration, 7, "концентрация не растёт выше 7");
 });
 
 test("спец-приём без 5 концентрации отклоняется и ничего не тратит", () => {

@@ -115,7 +115,7 @@ test("swamp halves non-potion healing for both sides but leaves potions intact",
   /* Нежить: родовой регенерации у «без рода» нет, цифра проверяет только пассив. */
   regen.enemy.def = { ...regen.enemy.def, race: "undead" };
   regen.enemy.passive = { id: "regen", name: "Регенерация", desc: "" };
-  let b = battle.playerAct(regen, { type: "guard" });
+  let b = battle.playerAct(regen, { type: "end_turn" });
   b = battle.enemyStep(b);
   assert.equal(b.enemy.hp, 12);
 
@@ -124,7 +124,7 @@ test("swamp halves non-potion healing for both sides but leaves potions intact",
   classic.enemy.hp = 10; classic.enemy.maxHp = 100;
   classic.enemy.def = { ...classic.enemy.def, race: "undead" };
   classic.enemy.passive = { id: "regen", name: "Регенерация", desc: "" };
-  let c = battle.playerAct(classic, { type: "guard" });
+  let c = battle.playerAct(classic, { type: "end_turn" });
   c = battle.enemyStep(c);
   assert.equal(c.enemy.hp, 14);
 });
@@ -133,7 +133,7 @@ test("ice costs the player 3 HP per own turn and weakens physical strikes by 25%
   const b = combat("ice");
   b.queue = ["p", "e", "p", "e"]; b.idx = 0; b.p.hp = 100;
   b.enemy.moves = ["guard"]; b.enemy.def = { ...b.enemy.def, id: "fixture", moves: ["guard"] };
-  let next = battle.playerAct(b, { type: "guard" });
+  let next = battle.playerAct(b, { type: "end_turn" });
   assert.equal(next.p.hp, 100); // ход врага не морозит игрока
   next = battle.enemyStep(next);
   assert.equal(next.p.hp, 97); // начался следующий ход игрока
@@ -190,7 +190,7 @@ test("fire burns both sides only on the hero's turn", () => {
   b.queue = ["p", "e", "p", "e", "p", "e"]; b.idx = 0;
 
   /* Ход героя: огонь молчит до начала следующего его хода. */
-  let next = battle.playerAct(b, { type: "guard" });
+  let next = battle.playerAct(b, { type: "end_turn" });
   assert.equal(next.p.statuses.burning, 1);
   assert.equal(next.p.hp, 100);
   assert.equal(next.enemy.statuses.burning, 1);
@@ -206,7 +206,7 @@ test("fire burns both sides only on the hero's turn", () => {
   assert.equal(next.enemy.hp, 996);
 
   /* Ход героя не добавляет горения — только начало его следующего хода. */
-  next = battle.playerAct(next, { type: "guard" });
+  next = battle.playerAct(next, { type: "end_turn" });
   assert.equal(next.p.statuses.burning, 2);
   assert.equal(next.p.hp, 96);
   assert.equal(next.enemy.statuses.burning, 2);
