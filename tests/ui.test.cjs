@@ -126,7 +126,7 @@ test("starter knife and rag show no requirements in the armory", () => {
   const html = renderToStaticMarkup(React.createElement(Lobby, {
     player, controller: {}, shopStock: [], onStart: noop, onRestart: noop, best: 1, unlockedFloor: 1, initialTab: "armory",
   }));
-  assert.ok((html.match(/без требований/g) ?? []).length >= 2, "у стартовых вещей нет требований");
+  /* Надетые вещи видны только картинкой в гнезде; требования проверяются в плитке сундука (equipmentFigure). */
   assert.ok(!html.includes("ЛОВ 2") && !html.includes("СИЛ 2"), "характеристики не требуются");
   assert.ok(!html.includes("Нужно:"), "нет предупреждения о нехватке характеристик");
 });
@@ -150,14 +150,10 @@ test("armory shows supplies and reagents from the bag", () => {
   const html = renderToStaticMarkup(React.createElement(Lobby, {
     player, controller: {}, shopStock: [], onStart: noop, best: 1, unlockedFloor: 2, initialTab: "armory",
   }));
-  assert.ok(html.includes("Припасы и реагенты"), "в арсенале виден блок припасов и реагентов");
-  assert.ok(html.includes("припасов: 2") && html.includes("реагентов: 1"));
-  /* Сумка — таблица в две вкладки: припасы открыты по умолчанию. */
-  assert.ok(html.includes("Припасы · 2") && html.includes("Реагенты · 1"));
-  assert.ok(html.includes("<table"), "припасы показаны таблицей");
-  assert.ok(html.includes(content.ITEMS.potion_s.name), "видно зелье");
-  assert.ok(html.includes("Продать 1"), "из арсенала можно продать припас");
-  assert.ok(html.includes("Цена продажи"));
+  assert.ok(html.includes(">Сундук<"), "в арсенале есть сундук");
+  /* Сундук: вкладки Снаряжение / Припасы / Реагенты; по умолчанию открыто снаряжение. */
+  assert.ok(html.includes("Припасы · 2") && html.includes("Реагенты · 1"), "счётчики вкладок сумки");
+  assert.ok(!html.includes("<table"), "таблица припасов во вкладке «Припасы», не в снаряжении");
 });
 
 test("dungeon draws only revealed traps on the map", () => {
@@ -637,13 +633,13 @@ test("left panel sums the same gear effect over worn items; the hover tip lists 
   assert.ok(tip.includes("+6% к множителю от Интеллекта") && tip.includes("+4% к множителю от Интеллекта"), "у каждого предмета своё значение");
 });
 
-test("сумка с зельями лежит в арсенале под «Надето на персонаже», а не в выборе яруса", () => {
+test("сумка с зельями лежит в арсенале под экипировкой, а не в выборе яруса", () => {
   const player = makePlayer({ bag: { potion_s: 1 } });
   const common = { player, controller: {}, shopStock: [], onStart: noop, best: 1, unlockedFloor: 2, onSetPouch: () => null };
   const armory = renderToStaticMarkup(React.createElement(Lobby, { ...common, initialTab: "armory" }));
   const at = armory.indexOf('aria-label="Сумка с зельями"');
   assert.ok(at > 0, "в арсенале есть сумка");
-  assert.ok(at > armory.indexOf("Надето на персонаже"), "сумка под экипировкой");
+  assert.ok(at > armory.indexOf('aria-label="Экипировка"'), "сумка под экипировкой");
   assert.ok(at < armory.indexOf('id="armory-inventory"'), "сумка до инвентаря");
   const floor = renderToStaticMarkup(React.createElement(Lobby, { ...common, initialTab: "dungeon" }));
   assert.ok(floor.includes("Выбор яруса"), "панель выбора яруса видна");

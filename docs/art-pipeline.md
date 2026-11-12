@@ -12,6 +12,7 @@
 - `public/images/items/<item-id>.jpg` — индивидуальные иллюстрации предметов.
 - Базовые портреты `public/images/foe-*.jpg` остаются как fallback и для старых существ.
 - `public/images/items-atlas.jpg` остаётся только как fallback для предметов без индивидуальной картины.
+- `public/images/armory/vitruvian.jpg` — силуэт экипировки в арсенале («Витрувианский человек»); гнёзда слотов расставлены по нему в `src/components/EquipmentFigure.tsx`.
 
 ## Команды
 ```bash
