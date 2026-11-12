@@ -122,11 +122,14 @@ test("«Развитие»: без уровня и опыта; вкладки и
   for (const stat of ["Сила", "Ловкость", "Интеллект"]) assert.ok(html.includes(stat), `характеристика «${stat}»`);
 });
 
-test("навыки выводятся одной строкой с прокруткой на узком экране", () => {
+test("навыки: каждая ветка — отдельная строка", () => {
   const { SkillsPanel } = load("src/components/SkillsPanel.tsx", "skills-panel");
   const html = renderToStaticMarkup(React.createElement(SkillsPanel, {
     player: makePlayer({ archetype: "barbarian", level: 8, skillRanks: {} }), onRank: noop,
   }));
-  assert.ok(html.includes('class="mt-3 flex gap-3 overflow-x-auto pb-1"'), "ветки в одну строку");
-  assert.ok(!html.includes("md:grid-cols-3"), "не столбцом по сетке");
+  assert.ok(html.includes('class="mt-3 flex flex-col gap-3"'), "ветки идут строками одна под другой");
+  assert.ok(!html.includes("overflow-x-auto"), "нет горизонтальной прокрутки с карточками");
+  assert.ok(!html.includes("min-w-[16rem]"), "ветки не карточками в ряд");
+  assert.ok(!html.includes("md:grid-cols-3"), "не столбцами по сетке");
+  assert.ok((html.match(/lg:grid-cols-\[/g) || []).length === 3, "каждая ветка — строка из пяти колонок на широком экране");
 });
