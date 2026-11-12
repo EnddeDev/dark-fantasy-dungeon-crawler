@@ -121,7 +121,7 @@ test("приём = вес оружия + 10; эпический приём — �
   assert.equal(battle.actionStaminaCost(pa, { type: "armor_skill", id: "heavy_fort" }), weight + 10);
 });
 
-test("спец-приём архетипа, побег и «Закончить ход» бесплатны; защита стоит 10 и заканчивает ход", () => {
+test("спец-приём архетипа, побег и «Закончить ход» бесплатны; защита стоит 10 и не заканчивает ход", () => {
   const b = fight(hero());
   assert.equal(battle.actionStaminaCost(b, { type: "archetype_skill" }), 0);
   assert.equal(battle.actionStaminaCost(b, { type: "flee" }), 0);
@@ -135,7 +135,7 @@ test("спец-приём архетипа, побег и «Закончить �
   const guarded = battle.playerAct(b, { type: "guard" });
   assert.equal(guarded.p.stamina, b.p.stamina - 10);
   assert.equal(guarded.p.guard, true);
-  assert.equal(guarded.queue[guarded.idx], "e", "защита заканчивает ход");
+  assert.equal(guarded.queue[guarded.idx], "p", "защита не заканчивает ход");
 });
 
 test("рюкзак: предмет тратит 5 выносливости; из сумки — бесплатно", () => {
@@ -228,7 +228,7 @@ test("страх: удар и приёмы закрыты, рюкзак и за�
 
   const guarded = battle.playerAct(b, { type: "guard" });
   assert.equal(guarded.p.stamina, b.p.stamina - 10);
-  assert.equal(guarded.queue[guarded.idx], "e");
+  assert.equal(guarded.queue[guarded.idx], "p", "защита не заканчивает ход");
 });
 
 test("сводка боя показывает выносливость героя", () => {

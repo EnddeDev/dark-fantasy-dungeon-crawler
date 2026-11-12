@@ -415,13 +415,13 @@ export function BattleView({
       now: `${r.inMin}–${r.inMax}`,
       badge:
         b.p.guard && b.p.statuses.stone > 0
-          ? { text: "+25% Броня · −30% Каменная кожа", tone: "verd" }
+          ? { text: "+10 Броня · −30% Каменная кожа", tone: "verd" }
           : b.p.guard
-          ? { text: "+25% Броня", tone: "verd" }
+          ? { text: "+10 Броня", tone: "verd" }
           : b.p.statuses.stone > 0
           ? { text: `−30% Каменная кожа (${b.p.statuses.stone} р.)`, tone: "verd" }
           : undefined,
-      hint: `после брони ${r.armor}${b.p.guard ? " (в защите +25%)" : ""}`,
+      hint: `после брони ${r.armor}${b.p.guard ? " (в защите +10)" : ""}`,
     },
     {
       label: "Выносливость",
@@ -613,10 +613,10 @@ export function BattleView({
               </div>
             )}
 
-            {/* Концентрация: атака +1, приём −1, расходник +1, защита +2; при 5 открывается спец-приём */}
+            {/* Концентрация: мощная атака −1, обычная 0, безопасная +1, приём −1, расходник +1, защита +2; при 5 открывается спец-приём */}
             <div
               className="mt-2 grid grid-cols-[auto_1fr_auto] items-center gap-x-3"
-              title="Атака +1, приём −1, расходник +1, защита +2. При 5 открывается спец-приём архетипа и концентрация тратится целиком."
+              title="Мощная атака −1, обычная 0, безопасная +1, приём −1, расходник +1, защита +2. При 5 открывается спец-приём архетипа и концентрация тратится целиком."
             >
               <span className="sc text-flamedim">Концентрация</span>
               <div className="flex gap-1" role="meter" aria-valuemin={0} aria-valuemax={MAX_CONCENTRATION} aria-valuenow={b.p.concentration} aria-label="Концентрация">

@@ -97,10 +97,10 @@ test("качество предмета выбирается при создан
 test("scaledGearStats берёт броню по слоту, уровню и состоянию", () => {
   const item = content.createGearItem({ baseId: "plate", wear: "new", rarity: "common", identified: true, level: 10 });
   item.armorQuality = 1;
-  assert.equal(content.scaledGearStats(item).armor, 66, "тело тяжёлой брони на 10 уровне, новое, максимум");
+  assert.equal(content.scaledGearStats(item).armor, 66 + 2 * 10, "тело тяжёлой брони на 10 уровне, новое, максимум (+2 за каждый уровень)");
   item.armorQuality = 0;
   item.wear = "battered";
-  assert.equal(content.scaledGearStats(item).armor, 50, "тело тяжёлой брони на 10 уровне, изношенное, минимум");
+  assert.equal(content.scaledGearStats(item).armor, 50 + 2 * 10, "тело тяжёлой брони на 10 уровне, изношенное, минимум");
 });
 
 test("старый предмет без качества получает его при миграции и не теряет слот", () => {

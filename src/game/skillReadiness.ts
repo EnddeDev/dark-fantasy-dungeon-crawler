@@ -1,4 +1,4 @@
-import { MAX_CONCENTRATION, attackStaminaCost, techniqueStaminaCost, type BattleState } from "./battle";
+import { SPECIAL_CONCENTRATION, attackStaminaCost, techniqueStaminaCost, type BattleState } from "./battle";
 import { STAMINA_BY_WEIGHT, STAMINA_TECHNIQUE_EXTRA } from "./stamina";
 
 /**
@@ -23,7 +23,7 @@ export function skillReadiness(b: BattleState, myTurn: boolean, feared: boolean)
   const conc = b.p.concentration;
   const sealed = b.p.statuses.sealSkills > 0;
 
-  const special = canAct && conc >= MAX_CONCENTRATION && !sealed;
+  const special = canAct && conc >= SPECIAL_CONCENTRATION && !sealed;
 
   const ws = b.p.weaponSkill;
   const wsReady = !!ws && b.p.stats.int >= Math.max(1, ws.intReq - b.p.intDiscount) && b.p.weaponCd === 0;

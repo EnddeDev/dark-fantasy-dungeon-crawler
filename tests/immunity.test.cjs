@@ -55,7 +55,7 @@ function fight(race, moves, bag = {}) {
   return b;
 }
 
-const endRound = (st) => withRandom(() => battle.playerAct({ ...st, queue: ["p"], idx: 0 }, { type: "guard" }));
+const endRound = (st) => withRandom(() => battle.playerAct({ ...st, queue: ["p"], idx: 0 }, { type: "end_turn" }));
 
 test("зелье иммунитета из рюкзака тратит 5 выносливости и защищает ровно от одного эффекта на 3 хода", () => {
   const b = fight("none", ["guard"], { immune_bleed: 1 });
@@ -108,7 +108,7 @@ test("страх заканчивается в конце раунда и даё
   b.idx = 0;
   b.p.hp = b.p.maxHp = 5000;
   b.p.statuses.fear = 1;
-  const afterHero = battle.playerAct(b, { type: "guard" });
+  const afterHero = battle.playerAct(b, { type: "end_turn" });
   assert.equal(afterHero.p.statuses.fear, 1, "страх не тает на ходу героя");
   const roundEnd = withRandom(() => battle.enemyStep(afterHero));
   assert.equal(roundEnd.p.statuses.fear, 0, "страх кончился в конце раунда");

@@ -215,7 +215,7 @@ test("Пророк: объявляет ход в начале раунда и з
   const b = fight("seer", { hp: 200 });
   b.queue = ["p"];
   b.idx = 0;
-  const next = withRandom(0.99, () => battle.playerAct(b, { type: "guard" }));
+  const next = withRandom(0.99, () => battle.playerAct(b, { type: "end_turn" }));
   assert.ok(next.enemy.announced, "ход объявлен");
   assert.ok(next.log.some((l) => l.text.includes("объявляет:")));
 
