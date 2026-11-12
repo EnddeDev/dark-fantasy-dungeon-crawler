@@ -24,3 +24,10 @@ test("the shift hook uses the translate property, so it does not clash with cent
   assert.match(src, /style\.translate/, "сдвиг через translate");
   assert.doesNotMatch(src, /style\.transform/, "transform не трогаем: он нужен центрированным подсказкам");
 });
+
+test("the shift hook also keeps tooltips above the bottom edge of the window", () => {
+  const src = fs.readFileSync("src/components/useFitInViewport.ts", "utf8");
+  assert.match(src, /clientHeight/, "высота окна учитывается");
+  assert.match(src, /rect\.bottom\s*>\s*viewportH/, "подсказка, уходящая вниз, поднимается");
+  assert.match(src, /rect\.top\s*\+\s*dy\s*<\s*EDGE_GAP/, "верхний край не уходит за окно");
+});

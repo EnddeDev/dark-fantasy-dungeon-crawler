@@ -6,9 +6,10 @@ const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : use
 const EDGE_GAP = 8;
 
 /**
- * Сдвигает всплывающую подсказку по горизонтали, если она выходит за край окна.
- * Сдвиг идёт через CSS-свойство translate: оно не мешает transform у подсказок,
- * которые центрируются классом -translate-x-1/2.
+ * Сдвигает всплывающую подсказку, если она выходит за край окна: по горизонтали и по вертикали.
+ * Подсказка, открытая вниз у нижнего края, поднимается вверх; если выше тоже нет места,
+ * верхний край прижимается к окну. Сдвиг идёт через CSS-свойство translate: оно не мешает
+ * transform у подсказок, которые центрируются классом -translate-x-1/2.
  */
 export function useFitInViewport(ref: RefObject<HTMLElement | null>, open: boolean): void {
   useIsoLayoutEffect(() => {
@@ -16,10 +17,17 @@ export function useFitInViewport(ref: RefObject<HTMLElement | null>, open: boole
     if (!open || !el) return;
     el.style.translate = "";
     const rect = el.getBoundingClientRect();
-    const viewport = document.documentElement.clientWidth;
+    const viewportW = document.documentElement.clientWidth;
+    const viewportH = document.documentElement.clientHeight;
+
     let dx = 0;
-    if (rect.right > viewport - EDGE_GAP) dx = viewport - EDGE_GAP - rect.right;
+    if (rect.right > viewportW - EDGE_GAP) dx = viewportW - EDGE_GAP - rect.right;
     if (rect.left + dx < EDGE_GAP) dx = EDGE_GAP - rect.left;
-    if (dx !== 0) el.style.translate = `${Math.round(dx)}px 0px`;
+
+    let dy = 0;
+    if (rect.bottom > viewportH - EDGE_GAP) dy = viewportH - EDGE_GAP - rect.bottom;
+    if (rect.top + dy < EDGE_GAP) dy = EDGE_GAP - rect.top;
+
+    if (dx !== 0 || dy !== 0) el.style.translate = `${Math.round(dx)}px ${Math.round(dy)}px`;
   }, [open, ref]);
 }
