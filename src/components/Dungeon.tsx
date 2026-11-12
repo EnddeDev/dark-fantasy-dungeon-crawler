@@ -1,17 +1,17 @@
 import { shownEventKind } from "../game/mapEvents";
 import { useMemo, useState } from "react";
-import { Backpack, Footprints, Hammer, Info, X } from "lucide-react";
-import { GEAR_BASES, ITEMS, canWear, consumableIntReq, consumablePower, gearStatReqLabel, slotsForItem, wearRequirementNote } from "../game/content";
+import { Backpack, Footprints, X } from "lucide-react";
+import { GEAR_BASES, ITEMS, consumableIntReq, consumablePower, gearStatReqLabel } from "../game/content";
 import { TORCH, computeVisibility, openDirs } from "../game/maze";
 import { markAlwaysVisible } from "../game/quests";
 import { BIOMES, BIOME_MAP_COLORS, biomeHealingAmount, biomeVision, mazeBiome } from "../game/biomes";
 import { BiomeRule, BiomeTag, biomeStyle } from "./BiomeLabel";
-import type { GearItem, Player, Run, Slot } from "../game/types";
-import { SLOT_META, SLOT_ORDER } from "../game/types";
+import type { GearItem, Player, Run } from "../game/types";
 import { ItemArt } from "./ItemArt";
 import { PouchSlots } from "./PouchSlots";
 import { GearNote } from "./GearNote";
 import { Btn, Modal, Tag } from "./ui";
+import { AudioSettings } from "./AudioSettings";
 
 const CS = 34;
 
@@ -26,8 +26,6 @@ export function Dungeon({
   onMove,
   onCellClick,
   onUseItem,
-  onEquip,
-  onUnequip,
   onCancelPath,
   onResumePath,
   onSetPouch,
@@ -42,8 +40,6 @@ export function Dungeon({
   onMove: (dx: number, dy: number) => void;
   onCellClick: (x: number, y: number) => void;
   onUseItem: (id: string) => void;
-  onEquip: (uid: string, slot: Slot) => void;
-  onUnequip: (slot: Slot) => void;
   onCancelPath: () => void;
   onResumePath: () => void;
   onSetPouch?: (index: number, id: string | null) => string | null;
@@ -55,7 +51,6 @@ export function Dungeon({
   const radius = torchActive ? TORCH + 1 : biomeVision(biome, TORCH);
   const S = m.size;
   const W = S * CS;
-  const [openSlot, setOpenSlot] = useState<Slot | null>(null);
   const [detailUid, setDetailUid] = useState<string | null>(null);
   const [bagOpen, setBagOpen] = useState(false);
 
@@ -121,10 +116,6 @@ export function Dungeon({
   const suppliesBag = bagEntries.filter(([id]) => ITEMS[id] && ITEMS[id].kind !== "reagent");
   const reagentsBag = bagEntries.filter(([id]) => ITEMS[id]?.kind === "reagent");
 
-  const equippedUid = openSlot ? player.equip[openSlot] : null;
-  const candidates: GearItem[] = openSlot
-    ? player.armory.filter((g) => slotsForItem(g).includes(openSlot))
-    : [];
   const detailItem = player.armory.find((item) => item.uid === detailUid);
   const inspectGear = (uid: string) => {
     onCancelPath();
@@ -133,29 +124,26 @@ export function Dungeon({
 
   return (
     <div className="biome-surface flex min-h-screen flex-col bg-soot" data-biome={biome} style={biomeStyle(biome)}>
-      <header className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-b border-line bg-black/40 px-4 py-3 sm:px-6">
-        <div className="flex flex-wrap items-center gap-3">
-          <h2 className="font-display text-lg uppercase tracking-[0.2em] text-flamehi">
-            Этаж <span className="font-mono tab">{run.floor}</span>
-          </h2>
-          <BiomeTag biome={biome} />
-        </div>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[0.86rem] text-mute">
-          <span className="tab">шагов: <span className="text-parch">{run.steps}</span></span>
-          <span className="tab">добыча: <span className="text-flame">{run.gold}</span></span>
-          <span className="tab text-verd">ключи: {run.keys}</span>
-          {torchActive && <span className="tab text-flame">факел: {run.torchTurns} ход.</span>}
-
-          {run.mapRevealed && <span className="tab text-flame">карта раскрыта</span>}
-          {/* Здоровье и негативные эффекты переехали в левую панель над опытом. */}
-          <button
-            type="button"
-            onClick={() => setBagOpen(true)}
-            className="flex items-center gap-1.5 border border-line px-2.5 py-1.5 font-display text-[0.86rem] uppercase tracking-[0.1em] text-parch transition-colors hover:border-flame hover:text-flamehi"
-            title="Рюкзак: припасы, реагенты и снаряжение"
-          >
-            <Backpack size={14} aria-hidden /> Рюкзак
-          </button>
+      <header className="sticky top-0 z-30 border-b border-line bg-soot/95 backdrop-blur-[2px] lg:h-14">
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 px-4 py-2.5 sm:px-6 lg:h-full lg:py-0">
+          <div className="flex items-baseline gap-3">
+            <span className="font-title text-2xl leading-none text-flamehi">Сумрак</span>
+            <span className="sc hidden text-flamedim md:inline">подземелье · этаж <span className="font-mono tab">{run.floor}</span></span>
+          </div>
+          <div className="flex flex-1 justify-center">
+            <BiomeTag biome={biome} />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setBagOpen(true)}
+              className="flex items-center gap-2 border border-line bg-black/40 px-3 py-2 font-display text-[0.85rem] uppercase tracking-[0.1em] text-parch transition-colors hover:border-flamedim hover:text-flamehi"
+              title="Рюкзак: припасы, реагенты и снаряжение"
+            >
+              <Backpack size={15} strokeWidth={1.7} aria-hidden /> Рюкзак
+            </button>
+            <AudioSettings inline />
+          </div>
         </div>
       </header>
       {biome !== "classic" && (
@@ -167,6 +155,13 @@ export function Dungeon({
       <div className="flex flex-1 flex-col items-center gap-6 px-4 py-6 sm:px-6 min-[1400px]:flex-row min-[1400px]:items-start min-[1400px]:justify-center">
         {/* КАРТА-ЧЕРТЁЖ */}
         <div className="relative w-full min-w-0 max-w-[600px]">
+          <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[0.86rem] text-mute">
+            <span className="tab">шагов: <span className="text-parch">{run.steps}</span></span>
+            <span className="tab">добыча: <span className="text-flame">{run.gold}</span></span>
+            <span className="tab text-verd">ключи: {run.keys}</span>
+            {torchActive && <span className="tab text-flame">факел: {run.torchTurns} ход.</span>}
+            {run.mapRevealed && <span className="tab text-flame">карта раскрыта</span>}
+          </div>
           <div className="grain relative border border-line bg-ink p-2 shadow-[0_30px_80px_-40px_#000]">
             <svg viewBox={`-6 -6 ${W + 12} ${W + 12}`} className="block w-full" role="img" aria-label={`План подземелья: ${BIOMES[biome].name}`}>
               <defs>
@@ -626,97 +621,6 @@ export function Dungeon({
 
         {/* СНАРЯЖЕНИЕ + УПРАВЛЕНИЕ + ЖУРНАЛ */}
         <div className="flex w-full max-w-[600px] flex-col gap-4">
-          {/* Экипировка: смена прямо в походе */}
-          <section className="border border-line bg-slab/70">
-            <div className="flex items-center justify-between border-b border-line px-3 py-2">
-              <span className="sc">Снаряжение · смена в походе</span>
-              <span className="font-mono text-[0.88rem] text-mute">Подробности — по кнопке ⓘ</span>
-            </div>
-            <div className="grid grid-cols-1 gap-px bg-line/60 sm:grid-cols-2">
-              {SLOT_ORDER.map((slot) => {
-                const item = player.armory.find((g) => g.uid === player.equip[slot]);
-                const open = openSlot === slot;
-                return (
-                  <div key={slot} className={`flex min-w-0 items-center bg-slab ${open ? "ring-1 ring-inset ring-flame" : ""}`}>
-                    <button
-                      onClick={() => setOpenSlot(open ? null : slot)}
-                      aria-expanded={open}
-                      className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2.5 text-left transition-colors hover:bg-flame/10"
-                    >
-                      {item ? (
-                        <ItemArt id={item.baseId} name={stName(item)} size={32} rarity={item.identified ? item.rarity : undefined} />
-                      ) : (
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center border border-dashed border-line text-mute"><Hammer size={14} aria-hidden /></span>
-                      )}
-                      <span className="min-w-0">
-                        <span className="block font-mono text-[0.84rem] uppercase text-flamedim">{SLOT_META[slot].short}</span>
-                        <span className="block truncate font-display text-[1rem] uppercase tracking-[0.03em] text-parch" title={item ? stName(item) : "Пусто"}>{item ? stName(item) : "Пусто"}</span>
-                      </span>
-                    </button>
-                    {item && (
-                      <button
-                        onClick={() => inspectGear(item.uid)}
-                        className="mr-1 flex h-9 w-9 shrink-0 items-center justify-center text-mute transition-colors hover:text-flamehi"
-                        aria-label={`Подробнее: ${stName(item)}`}
-                        title="Подробнее о предмете"
-                      ><Info size={16} aria-hidden /></button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {openSlot && (
-              <div className="border-t border-line bg-black/35 p-3">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="sc">{SLOT_META[openSlot].name} · {candidates.length} подходит</span>
-                  <button onClick={() => setOpenSlot(null)} className="sc hover:text-rubric">
-                    закрыть
-                  </button>
-                </div>
-                <div className="grid max-h-72 gap-2 overflow-y-auto pr-1">
-                  {equippedUid && (
-                    <button
-                      onClick={() => onUnequip(openSlot)}
-                      className="border border-rubric/60 bg-rubric/10 px-3 py-2 text-left transition-colors hover:bg-rubric/20"
-                    >
-                      <span className="block font-display text-[1rem] uppercase tracking-[0.06em] text-rubric">Снять предмет</span>
-                      <span className="block text-[0.92rem] text-mute">Ячейка останется пустой</span>
-                    </button>
-                  )}
-                  {candidates.filter((g) => g.uid !== equippedUid).map((g) => {
-                    const wearable = canWear(g, player);
-                    return (
-                      <div key={g.uid} className="flex min-w-0 items-center gap-2 border border-line bg-slab2 pr-1">
-                        <button
-                          onClick={() => onEquip(g.uid, openSlot!)}
-                          disabled={!wearable}
-                          title={wearable ? `Надеть: ${SLOT_META[openSlot!].name}` : wearRequirementNote(g, player)}
-                          className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-left transition-colors enabled:hover:bg-flame/10 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          <ItemArt id={g.baseId} name={stName(g)} size={36} rarity={g.identified ? g.rarity : undefined} />
-                          <span className="min-w-0">
-                            <span className="block truncate font-display text-[1rem] uppercase tracking-[0.04em] text-flamehi">{stName(g)}</span>
-                            <span className="block font-mono text-[0.86rem] leading-snug text-mute">
-                              ур. {g.level ?? 1} · {gearStatReqLabel(g)} · {g.identified ? "исследовано" : "редкость ???"}
-                              {GEAR_BASES[g.baseId]?.hands === 2 ? " · обе руки" : ""}
-                            </span>
-                          </span>
-                        </button>
-                        <button onClick={() => inspectGear(g.uid)} className="flex h-9 w-9 shrink-0 items-center justify-center text-mute hover:text-flamehi" aria-label={`Подробнее: ${stName(g)}`} title="Подробнее о предмете">
-                          <Info size={16} aria-hidden />
-                        </button>
-                      </div>
-                    );
-                  })}
-                  {candidates.length <= (equippedUid ? 1 : 0) && (
-                    <p className="text-[0.96rem] italic text-mute">Подходящих вещей нет — загляни в магазин.</p>
-                  )}
-                </div>
-              </div>
-            )}
-          </section>
-
           <div className="flex items-start gap-5">
             <div className="grid shrink-0 grid-cols-3 gap-1.5">
               {(
@@ -762,23 +666,6 @@ export function Dungeon({
                 ))}
               </div>
             </div>
-          </div>
-
-          <div className="border border-line bg-slab/70 px-4 py-3 text-[0.96rem] leading-snug text-mute">
-            <span className="sc mb-1 block">Разведка и опасности</span>
-            <p className="font-mono text-[0.88rem] text-parch/80">
-              Монстры: <span className="text-rubric">1 на 8 клеток</span> · видны, пока их освещает факел
-            </p>
-            <p className="mt-1 font-mono text-[0.88rem] text-parch/80">
-              Ловушки: <span className="text-rubric">1 на 16 клеток</span> · все отмечены на карте с первого шага
-            </p>
-            <p className="mt-1 font-mono text-[0.88rem] text-parch/80">
-              Пустая клетка: <span className="text-verd">тишина</span> · находок на пустых клетках нет
-            </p>
-            <p className="mt-1.5">
-              Кликни любую клетку — маршрут прочертится на чертеже и пойдёт сам. После боя или ловушки его можно
-              продолжить. Свет не проходит сквозь стены и углы, а перед лестницей стоит <b className="text-rubric">Босс этажа</b>.
-            </p>
           </div>
 
           <div className="border border-line bg-slab/70 px-4 py-3">

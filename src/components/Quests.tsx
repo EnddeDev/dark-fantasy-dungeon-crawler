@@ -138,17 +138,7 @@ export function QuestsTab({
   return (
     <div className="space-y-5">
       <div>
-        <span className="sc text-flamedim">Жители деревни</span>
         <h3 className="font-display text-xl uppercase tracking-[0.12em] text-flamehi">Жители</h3>
-        <p className="mt-1 max-w-2xl text-sm text-mute">
-          На карте этажа задания отмечены <b className="text-flamehi">восклицательным знаком</b>. Убийство засчитывается сразу.
-          Трофей, остатки и живого товарища несёшь живым до лобби — там и сдаёшь. Реагенты берутся из сумки.
-          Новые задания и товары появляются, когда ты проходишь новый этаж.
-        </p>
-        <p className="mt-1 max-w-2xl text-sm text-mute">
-          Каждое сданное задание поднимает <b className="text-flamehi">доверие</b> к его жителю (до {TRUST_MAX}).
-          Чем выше доверие, тем больше товаров и благословений открыто.
-        </p>
         <p className="mt-2 text-sm text-mute">
           Взято заданий: {log.active.length}/{QUEST_ACTIVE_LIMIT}
           {log.coupons > 0 && <span className="ml-3 text-verd">Скидка 25% на следующую покупку: {log.coupons}</span>}

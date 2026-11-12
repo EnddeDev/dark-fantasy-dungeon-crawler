@@ -1484,12 +1484,7 @@ export function Lobby({
             {tab === "shop" && (
               <div className="space-y-5">
                 <div>
-                  <span className="sc text-flamedim">Лавка под сводами</span>
                   <h3 className="font-display text-xl uppercase tracking-[0.12em] text-flamehi">Магазин</h3>
-                  <p className="mt-1 max-w-2xl text-sm text-mute">
-                    Купленный предмет сразу уходит с прилавка в твой арсенал. Припасы разделены на зелья,
-                    расходники и свитки; рецепты — на тех же три отдела.
-                  </p>
                 </div>
                 <section className="border border-flamedim/50 bg-black/35 p-4">
                   <div className="flex flex-wrap items-end justify-between gap-4">
@@ -1512,9 +1507,6 @@ export function Lobby({
                       >
                         {upgradeCost === 0 ? "Предел · уровень 10" : `Вложиться в лавку · ${upgradeCost} зол.`}
                       </Btn>
-                      <span className="font-mono text-[0.84rem] text-mute">
-                        следующий уровень открывает вещи ур. {player.shopLevel + 1}
-                      </span>
                     </div>
                   </div>
 
@@ -1572,7 +1564,6 @@ export function Lobby({
                 {shopSection === "equipment" && (
                   <div>
                     <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs text-mute">Видны класс, уровень, состояние и требуемая характеристика.</p>
                       <Btn
                         tone="ghost"
                         disabled={player.gold < 25}
