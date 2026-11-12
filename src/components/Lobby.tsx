@@ -83,7 +83,7 @@ import { QuestsTab } from "./Quests";
 import { availableQuestCount, couponPreview, logOf, mercenaryPrice, readyQuestCount, recipeMinTrust, stationRecipeList, trustOf } from "../game/quests";
 import type { CraftStation } from "../game/content";
 import { TRUST_MAX, type QuestGiverId } from "../game/types";
-import { Btn, Meter, Modal, Panel, Pips, Tag } from "./ui";
+import { Btn, Modal, Panel, Pips, Tag } from "./ui";
 import { PouchSlots } from "./PouchSlots";
 import { SkillsPanel } from "./SkillsPanel";
 
@@ -91,6 +91,12 @@ import { SkillsPanel } from "./SkillsPanel";
 type Tab = "train" | "armory" | "dungeon" | "shop" | "quests" | "about";
 /** Разделы «О игре»: бестиарий, как играть, обновления. */
 type AboutSection = "bestiary" | "guide" | "updates";
+/** Разделы «Развития»: характеристики и навыки архетипа. */
+type TrainSection = "stats" | "skills";
+const TRAIN_SECTIONS: { id: TrainSection; label: string }[] = [
+  { id: "stats", label: "Характеристики" },
+  { id: "skills", label: "Навыки" },
+];
 const ABOUT_SECTIONS: { id: AboutSection; label: string }[] = [
   { id: "bestiary", label: "Бестиарий" },
   { id: "guide", label: "Как играть" },
@@ -370,6 +376,7 @@ export function Lobby({
 }) {
   const [tab, setTab] = useState<Tab>(initialTab === "guide" ? "about" : initialTab);
   const [aboutSection, setAboutSection] = useState<AboutSection>("guide");
+  const [trainSection, setTrainSection] = useState<TrainSection>("stats");
   const [shopSection, setShopSection] = useState<ShopSection>(initialShopSection);
   const [supplyGroup, setSupplyGroup] = useState<SupplyGroup>("potion");
   /* Сумка арсенала: припасы и реагенты в двух вкладках одной таблицы. */
@@ -1113,70 +1120,43 @@ export function Lobby({
         <div className="border border-line bg-slab/95 shadow-[0_40px_100px_-40px_#000] backdrop-blur-[2px]">
           <div className="p-5 sm:p-6">
             {tab === "train" && (
-              <div className="max-w-3xl space-y-4">
-                  <Panel
-                    className="p-4"
-                    title={`Уровень ${player.level} из ${MAX_LEVEL}`}
-                    right={
-                      <span className="font-mono text-xs text-flame">
-                        свободных очков: <b>{player.statPoints}</b>
-                      </span>
-                    }
-                  >
-                    <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-                      <span className="text-sm text-parch/85">
-                        За каждый новый уровень даётся <b>+3 очка характеристик</b>.
-                      </span>
-                      <span className="font-mono text-xs tab text-flamehi">
-                        {player.level >= MAX_LEVEL ? "МАКС" : `${player.xp} / ${xpNeed} XP`}
-                      </span>
-                    </div>
-                    <Meter
-                      value={player.level >= MAX_LEVEL ? 1 : player.xp}
-                      max={player.level >= MAX_LEVEL ? 1 : xpNeed}
-                      tone="flame"
-                      className="mt-2.5"
-                    />
-                  </Panel>
-
-                  <Panel className="p-4" title="Перераспределение характеристик">
-                    <p className="text-[0.98rem] leading-snug text-parch/85">
-                      Полный сброс до <b className="text-flamehi">1 Сила / 1 Ловкость / 1 Интеллект</b>.
-                      Все очки за уровни вернутся свободными; выбранные рубежи сбросятся.
-                      Стоимость: <b className="text-flamehi">{statResetCost(player.level)} зол.</b> (100 × уровень персонажа).
-                    </p>
+              <div className="space-y-5">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
+                  <div role="tablist" aria-label="Развитие" className="flex flex-wrap gap-2">
+                    {TRAIN_SECTIONS.map((section) => (
+                      <button
+                        key={section.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={trainSection === section.id}
+                        onClick={() => setTrainSection(section.id)}
+                        className={`border px-4 py-2 font-display text-[0.9rem] uppercase tracking-[0.12em] transition-colors ${
+                          trainSection === section.id
+                            ? "border-flame bg-flame/15 text-flamehi"
+                            : "border-line text-mute hover:border-flamedim hover:text-parch"
+                        }`}
+                      >
+                        {section.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="font-mono text-xs text-flame">
+                      свободных очков: <b>{player.statPoints}</b>
+                    </span>
                     <Btn
-                      className="mt-3"
                       tone={player.gold >= statResetCost(player.level) ? "danger" : "ghost"}
                       disabled={player.gold < statResetCost(player.level)}
+                      title="Полный сброс до 1 Сила / 1 Ловкость / 1 Интеллект. Все очки за уровни вернутся свободными; выбранные рубежи сбросятся. Стоимость: 100 × уровень персонажа."
                       onClick={() => setResetConfirm(true)}
                     >
                       Сбросить характеристики · {statResetCost(player.level)} зол.
                     </Btn>
-                  </Panel>
+                  </div>
+                </div>
 
-                  <Panel className="p-4" title="Архетип" right={<span className="font-mono text-sm tab text-flame">{player.archetype ? ARCHETYPES[player.archetype].name : "не выбран"}</span>}>
-                    <p className="text-[1rem] leading-relaxed text-parch/85">
-                      На <b>5 уровне</b> выбери основной архетип. Усиления архетипов открываются на <b>рубежах характеристик 5 и 10</b>:
-                      там всегда два варианта — по одному на каждый архетип этой характеристики. Можно усилить свой путь или взять дополнительный для соседнего.
-                    </p>
-                    {player.archetype ? (
-                      <p className="mt-3 border border-flamedim/60 bg-flame/10 px-3 py-2 text-[0.98rem] leading-snug text-parch/85">
-                        Основной путь: <b className="text-flamehi">{ARCHETYPES[player.archetype].name}</b>. {ARCHETYPES[player.archetype].desc}
-                      </p>
-                    ) : (
-                      <div className="mt-3">
-                        <Btn tone={player.level >= 5 ? "flame" : "ghost"} disabled={player.level < 5} onClick={() => setPickArchetype(true)}>
-                          {player.level >= 5 ? "Выбрать архетип" : `Откроется на 5 уровне (${player.level}/5)`}
-                        </Btn>
-                      </div>
-                    )}
-                  </Panel>
-
-                  {player.archetype && (
-                    <SkillsPanel player={player} onRank={(branch, rank) => say(controller.changeSkillRank(branch, rank))} />
-                  )}
-
+                {trainSection === "stats" && (
+                  <div className="max-w-3xl space-y-4">
                   {STAT_ORDER.map((k) => {
                     const v = player.stats[k];
                     const cost = statPointCost(k, v);
@@ -1241,6 +1221,35 @@ export function Lobby({
                       </Panel>
                     );
                   })}
+                  </div>
+                )}
+
+                {trainSection === "skills" && (
+                  <div className="space-y-4">
+                    <div className="max-w-3xl">
+                  <Panel className="p-4" title="Архетип" right={<span className="font-mono text-sm tab text-flame">{player.archetype ? ARCHETYPES[player.archetype].name : "не выбран"}</span>}>
+                    <p className="text-[1rem] leading-relaxed text-parch/85">
+                      На <b>5 уровне</b> выбери основной архетип. Усиления архетипов открываются на <b>рубежах характеристик 5 и 10</b>:
+                      там всегда два варианта — по одному на каждый архетип этой характеристики. Можно усилить свой путь или взять дополнительный для соседнего.
+                    </p>
+                    {player.archetype ? (
+                      <p className="mt-3 border border-flamedim/60 bg-flame/10 px-3 py-2 text-[0.98rem] leading-snug text-parch/85">
+                        Основной путь: <b className="text-flamehi">{ARCHETYPES[player.archetype].name}</b>. {ARCHETYPES[player.archetype].desc}
+                      </p>
+                    ) : (
+                      <div className="mt-3">
+                        <Btn tone={player.level >= 5 ? "flame" : "ghost"} disabled={player.level < 5} onClick={() => setPickArchetype(true)}>
+                          {player.level >= 5 ? "Выбрать архетип" : `Откроется на 5 уровне (${player.level}/5)`}
+                        </Btn>
+                      </div>
+                    )}
+                  </Panel>
+                    </div>
+                    {player.archetype && (
+                      <SkillsPanel player={player} onRank={(branch, rank) => say(controller.changeSkillRank(branch, rank))} />
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

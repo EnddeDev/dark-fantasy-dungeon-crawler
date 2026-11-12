@@ -109,3 +109,24 @@ test("«Жители» и «Магазин» остаются на своих м
   assert.ok(residents.includes("Взято заданий:"), "жители показывают задания и NPC");
   assert.ok(!residents.includes("Выбор яруса"), "жители без выбора яруса");
 });
+
+test("«Развитие»: без уровня и опыта; вкладки и сброс в шапке; блока перераспределения нет", () => {
+  const html = render({}, { initialTab: "train" });
+  const head = html.slice(html.indexOf('aria-label="Развитие"'), html.indexOf('aria-label="Развитие"') + 2000);
+  assert.ok(head.includes("Характеристики") && head.includes("Навыки"), "две вкладки развития");
+  assert.ok(head.includes("свободных очков"), "счётчик очков в шапке");
+  assert.ok(head.includes("Сбросить характеристики"), "сброс справа в шапке");
+  for (const text of ["Уровень 3 из", "XP", "За каждый новый уровень", "+3 очка характеристик", "Перераспределение"]) {
+    assert.ok(!html.includes(text), `убрано из развития: ${text}`);
+  }
+  for (const stat of ["Сила", "Ловкость", "Интеллект"]) assert.ok(html.includes(stat), `характеристика «${stat}»`);
+});
+
+test("навыки выводятся одной строкой с прокруткой на узком экране", () => {
+  const { SkillsPanel } = load("src/components/SkillsPanel.tsx", "skills-panel");
+  const html = renderToStaticMarkup(React.createElement(SkillsPanel, {
+    player: makePlayer({ archetype: "barbarian", level: 8, skillRanks: {} }), onRank: noop,
+  }));
+  assert.ok(html.includes('class="mt-3 flex gap-3 overflow-x-auto pb-1"'), "ветки в одну строку");
+  assert.ok(!html.includes("md:grid-cols-3"), "не столбцом по сетке");
+});
