@@ -1,20 +1,20 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useFitInViewport } from "./useFitInViewport";
 import { createPortal } from "react-dom";
 import {
   ArrowDownUp,
   BookOpen,
   Brain,
+  DoorOpen,
   EyeOff,
   Gem,
   PackageSearch,
   Search,
   Shield,
   Sparkles,
-  ScrollText,
   ShoppingBag,
-  Skull,
   Sword,
+  Users,
   X,
 } from "lucide-react";
 import {
@@ -74,11 +74,13 @@ import { statResetCost, totalStatPoints } from "../game/progression";
 import { WEAR_RANGE } from "../game/types";
 import { Guide } from "./Guide";
 import { Bestiary } from "./Bestiary";
+import { Updates } from "./Updates";
+import { LobbyNav, LobbyTopBar, type LobbyAccount } from "./LobbyChrome";
 import { ItemArt } from "./ItemArt";
 import { GearNote } from "./GearNote";
 import { GearCard } from "./GearCard";
 import { QuestsTab } from "./Quests";
-import { availableQuestCount, couponPreview, mercenaryPrice, readyQuestCount, recipeMinTrust, stationRecipeList, trustOf } from "../game/quests";
+import { availableQuestCount, couponPreview, logOf, mercenaryPrice, readyQuestCount, recipeMinTrust, stationRecipeList, trustOf } from "../game/quests";
 import type { CraftStation } from "../game/content";
 import { TRUST_MAX, type QuestGiverId } from "../game/types";
 import { Btn, Meter, Modal, Panel, Pips, Tag } from "./ui";
@@ -86,7 +88,14 @@ import { PouchSlots } from "./PouchSlots";
 import { SkillsPanel } from "./SkillsPanel";
 
 
-type Tab = "train" | "armory" | "shop" | "quests" | "bestiary" | "guide";
+type Tab = "train" | "armory" | "dungeon" | "shop" | "quests" | "about";
+/** Разделы «О игре»: бестиарий, как играть, обновления. */
+type AboutSection = "bestiary" | "guide" | "updates";
+const ABOUT_SECTIONS: { id: AboutSection; label: string }[] = [
+  { id: "bestiary", label: "Бестиарий" },
+  { id: "guide", label: "Как играть" },
+  { id: "updates", label: "Обновления" },
+];
 export type ShopSection = "equipment" | "supplies" | "reagents";
 type SupplyGroup = "potion" | "throwable" | "scroll" | "special";
 /** Всплывающая подсказка о припасе / реагенте / рецепте. */
@@ -306,10 +315,10 @@ type RarityFilter = "all" | "unknown" | RarityTier;
 const TAB_ICONS = {
   train: Brain,
   armory: Sword,
+  dungeon: DoorOpen,
   shop: ShoppingBag,
-  quests: ScrollText,
-  bestiary: Skull,
-  guide: BookOpen,
+  quests: Users,
+  about: BookOpen,
 } as const;
 
 const RARITY_RANK: Record<RarityTier, number> = { common: 0, rare: 1, epic: 2, legendary: 3 };
@@ -321,10 +330,10 @@ const TABS: { id: Tab; label: string; badge?: (p: Player) => number; alert?: (p:
     label: "Арсенал",
     badge: (p) => p.armory.filter((g) => !g.identified).length,
   },
+  { id: "dungeon", label: "Подземелья" },
   { id: "shop", label: "Магазин" },
   { id: "quests", label: "Жители", badge: (p) => readyQuestCount(p), alert: (p) => availableQuestCount(p) },
-  { id: "bestiary", label: "Бестиарий" },
-  { id: "guide", label: "Как играть" },
+  { id: "about", label: "О игре" },
 ];
 
 export function Lobby({
@@ -338,6 +347,8 @@ export function Lobby({
   unlockedFloor,
   initialTab = "train",
   initialShopSection = "equipment",
+  account,
+  leftPanel,
 }: {
   player: Player;
   controller: LobbyController;
@@ -348,11 +359,17 @@ export function Lobby({
   onRestart: () => void;
   best: number;
   unlockedFloor: number;
-  initialTab?: "train" | "guide";
+  /** Раздел, открываемый сразу. «guide» — «О игре» с разделом «Как играть». */
+  initialTab?: Tab | "guide";
   /** Раздел лавки, открываемый сразу (для ссылок и проверок). */
   initialShopSection?: ShopSection;
+  /** Кнопка входа в верхней панели. */
+  account?: LobbyAccount;
+  /** Левая панель героя (слева от выбранного раздела). */
+  leftPanel?: ReactNode;
 }) {
-  const [tab, setTab] = useState<Tab>(initialTab);
+  const [tab, setTab] = useState<Tab>(initialTab === "guide" ? "about" : initialTab);
+  const [aboutSection, setAboutSection] = useState<AboutSection>("guide");
   const [shopSection, setShopSection] = useState<ShopSection>(initialShopSection);
   const [supplyGroup, setSupplyGroup] = useState<SupplyGroup>("potion");
   /* Сумка арсенала: припасы и реагенты в двух вкладках одной таблицы. */
@@ -1040,8 +1057,22 @@ export function Lobby({
     wizard: renderRitual(),
   };
 
+  const questLog = logOf(player);
+  const questCounts = {
+    active: questLog.active.length,
+    ready: readyQuestCount(player),
+    available: availableQuestCount(player),
+  };
+  const navItems = TABS.map((t) => ({
+    id: t.id,
+    label: t.label,
+    Icon: TAB_ICONS[t.id],
+    count: t.badge ? t.badge(player) : 0,
+    alert: t.alert ? t.alert(player) > 0 : false,
+  }));
+
   return (
-    <div className="relative min-h-screen w-full overflow-x-hidden">
+    <div className="relative min-h-screen w-full overflow-x-clip">
       {/* гравюра лобби */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[62vh] overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-slab2 via-slab to-soot" />
@@ -1055,11 +1086,12 @@ export function Lobby({
         <div className="absolute inset-0 bg-gradient-to-t from-soot via-transparent to-soot/70" />
       </div>
 
-      <div className="relative mx-auto max-w-7xl px-4 pb-16 pt-6 sm:px-6 lg:px-7">
-        <header className="max-w-2xl">
-          <span className="sc text-flamedim">Лобби · лагерь под сводами</span>
-          <h2 className="font-title text-4xl leading-[0.95] text-flamehi sm:text-5xl">Сумрак</h2>
-          <div className="mt-4 flex flex-wrap items-center gap-4 font-mono text-xs text-mute">
+      <LobbyTopBar quests={questCounts} onOpenQuests={() => setTab("quests")} account={account} />
+      <div className="relative mx-auto flex max-w-[1600px] flex-col lg:flex-row lg:items-start">
+        {leftPanel}
+        <section className="order-2 min-w-0 flex-1 px-4 pb-16 pt-6 sm:px-6 lg:px-7">
+        <header className="mb-6">
+          <div className="flex flex-wrap items-center gap-4 font-mono text-xs text-mute">
             <span className="tab">
               уровень: <span className="text-flamehi">{player.level}/{MAX_LEVEL}</span>
             </span>
@@ -1078,74 +1110,7 @@ export function Lobby({
           </div>
         </header>
 
-        {/* накладка-панель */}
-        <div className="mt-8 border border-line bg-slab/95 shadow-[0_40px_100px_-40px_#000] backdrop-blur-[2px]">
-          <div className="border-b border-line bg-black/40 px-5 py-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <span className="sc text-flamedim">Выбор яруса</span>
-              <Btn tone="flame" className="px-6 py-2.5 text-sm" onClick={() => onStart(selectedFloor)}>
-                Начать с этажа {selectedFloor}
-              </Btn>
-            </div>
-            <div className="mt-3 flex max-w-full gap-2 overflow-x-auto pb-1" role="group" aria-label="Выбор этажа подземелья">
-              {Array.from({ length: unlockedFloor }, (_, i) => i + 1).map((floor) => (
-                <button
-                  key={floor}
-                  type="button"
-                  aria-pressed={selectedFloor === floor}
-                  onClick={() => setSelectedFloor(floor)}
-                  className={`shrink-0 border px-3 py-2 font-mono text-[0.89rem] transition-colors ${
-                    selectedFloor === floor
-                      ? "border-flame bg-flame/20 text-flamehi"
-                      : "border-line text-mute hover:border-flamedim hover:text-parch"
-                  }`}
-                >
-                  {floor}
-                </button>
-              ))}
-            </div>
-          </div>
-          <nav className="flex flex-wrap border-b border-line">
-            {TABS.map((t) => {
-              const count = t.badge ? t.badge(player) : 0;
-              const Icon = TAB_ICONS[t.id];
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  aria-current={tab === t.id ? "page" : undefined}
-                  className={`relative flex items-center gap-2 px-4 py-3 font-display text-[0.92rem] uppercase tracking-[0.18em] transition-colors sm:px-6 ${
-                    tab === t.id ? "bg-slab2 text-flamehi" : "text-mute hover:text-parch"
-                  }`}
-                >
-                  <Icon size={15} strokeWidth={1.7} aria-hidden />
-                  <span>{t.label}</span>
-                  {count > 0 && (
-                    <span className="border border-flame bg-flame/20 px-1.5 py-0.5 font-mono text-[0.81rem] text-flamehi">
-                      {count}
-                    </span>
-                  )}
-                  {t.alert && t.alert(player) > 0 && (
-                    <span
-                      title="Есть задание, которое можно взять"
-                      className="animate-pulse border border-verd bg-verd/20 px-1.5 py-0.5 font-mono text-[0.81rem] text-verd"
-                    >
-                      !
-                    </span>
-                  )}
-                  {tab === t.id && <span className="absolute inset-x-0 bottom-0 h-px bg-flame" />}
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              onClick={() => setRestartConfirm(true)}
-              className="ml-auto flex items-center gap-2 px-4 py-3 font-display text-[0.9rem] uppercase tracking-[0.16em] text-mute transition-colors hover:text-rubric"
-            >
-              Начать заново
-            </button>
-          </nav>
-
+        <div className="border border-line bg-slab/95 shadow-[0_40px_100px_-40px_#000] backdrop-blur-[2px]">
           <div className="p-5 sm:p-6">
             {tab === "train" && (
               <div className="max-w-3xl space-y-4">
@@ -1736,18 +1701,75 @@ export function Lobby({
               />
             )}
 
-            {tab === "bestiary" && <Bestiary />}
+            {tab === "dungeon" && (
+              <div className="max-w-3xl space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span className="sc text-flamedim">Выбор яруса</span>
+                  <Btn tone="flame" className="px-6 py-2.5 text-sm" onClick={() => onStart(selectedFloor)}>
+                    Начать с этажа {selectedFloor}
+                  </Btn>
+                </div>
+                <div className="flex max-w-full gap-2 overflow-x-auto pb-1" role="group" aria-label="Выбор этажа подземелья">
+              {Array.from({ length: unlockedFloor }, (_, i) => i + 1).map((floor) => (
+                <button
+                  key={floor}
+                  type="button"
+                  aria-pressed={selectedFloor === floor}
+                  onClick={() => setSelectedFloor(floor)}
+                  className={`shrink-0 border px-3 py-2 font-mono text-[0.89rem] transition-colors ${
+                    selectedFloor === floor
+                      ? "border-flame bg-flame/20 text-flamehi"
+                      : "border-line text-mute hover:border-flamedim hover:text-parch"
+                  }`}
+                >
+                  {floor}
+                </button>
+              ))}
+                </div>
+              </div>
+            )}
 
-            {tab === "guide" && (
-              <Guide
-                onOpenShop={() => setTab("shop")}
-                onOpenArmory={() => setTab("armory")}
-                onOpenBestiary={() => setTab("bestiary")}
-              />
+            {tab === "about" && (
+              <div className="space-y-5">
+                <div role="tablist" aria-label="О игре" className="flex flex-wrap gap-2 border-b border-line pb-3">
+                  {ABOUT_SECTIONS.map((section) => (
+                    <button
+                      key={section.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={aboutSection === section.id}
+                      onClick={() => setAboutSection(section.id)}
+                      className={`border px-4 py-2 font-display text-[0.9rem] uppercase tracking-[0.12em] transition-colors ${
+                        aboutSection === section.id
+                          ? "border-flame bg-flame/15 text-flamehi"
+                          : "border-line text-mute hover:border-flamedim hover:text-parch"
+                      }`}
+                    >
+                      {section.label}
+                    </button>
+                  ))}
+                </div>
+                {aboutSection === "bestiary" && <Bestiary />}
+                {aboutSection === "guide" && (
+                  <Guide
+                    onOpenShop={() => setTab("shop")}
+                    onOpenArmory={() => setTab("armory")}
+                    onOpenBestiary={() => setAboutSection("bestiary")}
+                  />
+                )}
+                {aboutSection === "updates" && <Updates />}
+              </div>
             )}
           </div>
-
         </div>
+        </section>
+        <LobbyNav
+          items={navItems}
+          current={tab}
+          onSelect={(id) => setTab(id)}
+          onRestart={() => setRestartConfirm(true)}
+          className="order-none lg:order-3"
+        />
       </div>
 
       {infoTip && (

@@ -44,7 +44,8 @@ export default function App() {
           }}
         />
       )}
-      <AudioSettings />
+      {/* В лобби звук в верхней панели; на остальных экранах — плавающая кнопка. */}
+      {state.screen !== "lobby" && <AudioSettings />}
       {/* Форма входа, а при недоступном сервере — объяснение, почему онлайн не работает. */}
       {online.authOpen && <AuthView />}
     </>

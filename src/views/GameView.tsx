@@ -24,15 +24,30 @@ export function GameView({
   useDungeonInput(game, state);
   const { screen, player, run, battle, shopStock, best, unlockedFloor, lobbyEntry, path, pathPaused } = state;
   const d = derived(player);
+  const lobby = screen === "lobby";
+  /* Вход или сообщество: в лобби живут в верхней панели, в остальных местах — плавающей кнопкой. */
+  const account = onOpenCommunity
+    ? { label: "Сообщество", title: "Сообщество: игроки, рынок, обмены, дуэли, чат", onClick: onOpenCommunity }
+    : onOpenAuth
+      ? { label: "Войти", title: "Войти в аккаунт", onClick: onOpenAuth }
+      : undefined;
+  /* Левая панель: в лобби и на карте. В бою её нет: здоровье и сводка героя уже в карточке боя. */
+  const rail = (
+    <Rail
+      player={player}
+      run={run}
+      battle={battle}
+      onLeaveRun={() => game.leaveRun()}
+      onRename={(name) => game.renameHero(name)}
+      lobby={lobby}
+    />
+  );
 
   return (
-    <div className="flex min-h-screen flex-col bg-soot lg:flex-row">
-      {/* Левая панель: в лобби и на карте. В бою её нет: здоровье и сводка героя уже в карточке боя. */}
-      {screen !== "battle" && (
-        <Rail player={player} run={run} battle={battle} onLeaveRun={() => game.leaveRun()} onRename={(name) => game.renameHero(name)} />
-      )}
-      <main className="order-2 min-w-0 flex-1">
-        {screen === "lobby" && (
+    <div className={lobby ? "min-h-screen bg-soot" : "flex min-h-screen flex-col bg-soot lg:flex-row"}>
+      {!lobby && screen !== "battle" && rail}
+      <main className={lobby ? undefined : "order-2 min-w-0 flex-1"}>
+        {lobby && (
           <Lobby
             player={player}
             controller={game.lobby}
@@ -43,6 +58,8 @@ export function GameView({
             best={best}
             unlockedFloor={unlockedFloor}
             initialTab={lobbyEntry}
+            account={account}
+            leftPanel={rail}
           />
         )}
         {screen === "dungeon" && run && (
@@ -75,14 +92,14 @@ export function GameView({
         )}
       </main>
       <ModalView game={game} state={state} />
-      {(onOpenCommunity || onOpenAuth) && (
+      {account && !lobby && (
         <button
-          onClick={onOpenCommunity ?? onOpenAuth}
+          onClick={account.onClick}
           className="fixed bottom-4 right-4 z-40 flex items-center gap-2 border border-flamedim bg-slab/95 px-3 py-2 font-display text-[0.85rem] uppercase tracking-[0.1em] text-flamehi shadow-[0_10px_30px_-12px_#000] hover:border-flame hover:bg-flame/15"
-          title={onOpenCommunity ? "Сообщество: игроки, рынок, обмены, дуэли, чат" : "Войти в аккаунт"}
+          title={account.title}
         >
           <Users size={15} aria-hidden />
-          {onOpenCommunity ? "Сообщество" : "Войти"}
+          {account.label}
         </button>
       )}
     </div>
