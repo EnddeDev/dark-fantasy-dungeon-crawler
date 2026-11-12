@@ -1,18 +1,17 @@
 import { shownEventKind } from "../game/mapEvents";
 import { useMemo, useState } from "react";
-import { Backpack, Footprints, ScrollText, X } from "lucide-react";
-import { GEAR_BASES, ITEMS, consumableIntReq, consumablePower, gearStatReqLabel } from "../game/content";
+import { Footprints, X } from "lucide-react";
+import { ITEMS, consumableIntReq, consumablePower } from "../game/content";
 import { TORCH, computeVisibility, openDirs } from "../game/maze";
 import { logOf, markAlwaysVisible } from "../game/quests";
 import { BIOMES, BIOME_MAP_COLORS, biomeHealingAmount, biomeVision, mazeBiome } from "../game/biomes";
 import { BiomeRule, biomeStyle } from "./BiomeLabel";
-import { ActiveQuestList } from "./Quests";
-import type { GearItem, Player, Run } from "../game/types";
+import type { Player, Run } from "../game/types";
 import { ItemArt } from "./ItemArt";
-import { PouchSlots } from "./PouchSlots";
+import { PlayTopBar } from "./PlayTopBar";
+import { BagModal, QuestsModal } from "./PlayModals";
+import type { LobbyAccount } from "./LobbyChrome";
 import { GearNote } from "./GearNote";
-import { Btn, Modal, Tag } from "./ui";
-import { AudioSettings } from "./AudioSettings";
 
 const CS = 34;
 
@@ -30,6 +29,7 @@ export function Dungeon({
   onCancelPath,
   onResumePath,
   onSetPouch,
+  account,
 }: {
   run: Run;
   player: Player;
@@ -44,6 +44,8 @@ export function Dungeon({
   onCancelPath: () => void;
   onResumePath: () => void;
   onSetPouch?: (index: number, id: string | null) => string | null;
+  /** Вход или сообщество: кнопка в шапке, как в лобби. */
+  account?: LobbyAccount;
 }) {
   const m = run.maze;
   const biome = mazeBiome(m);
@@ -113,11 +115,6 @@ export function Dungeon({
     return t === "heal" || t === "cleanse" || t === "special_map" || t === "special_water" || t === "special_torch";
   });
 
-  /* Рюкзак: припасы и реагенты из сумки, снаряжение из арсенала. */
-  const wornUids = new Set(Object.values(player.equip).filter((uid): uid is string => !!uid));
-  const bagEntries = Object.entries(bag).filter(([, n]) => n > 0);
-  const suppliesBag = bagEntries.filter(([id]) => ITEMS[id] && ITEMS[id].kind !== "reagent");
-  const reagentsBag = bagEntries.filter(([id]) => ITEMS[id]?.kind === "reagent");
 
   const detailItem = player.armory.find((item) => item.uid === detailUid);
   const inspectGear = (uid: string) => {
@@ -127,34 +124,13 @@ export function Dungeon({
 
   return (
     <div className="biome-surface flex min-h-screen flex-col bg-soot" data-biome={biome} style={biomeStyle(biome)}>
-      <header className="sticky top-0 z-30 border-b border-line bg-soot/95 backdrop-blur-[2px] lg:h-14">
-        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 px-4 py-2.5 sm:px-6 lg:h-full lg:py-0">
-          <div className="flex items-baseline gap-3">
-            <span className="font-title text-2xl leading-none text-flamehi">Сумрак</span>
-            <span className="sc hidden text-flamedim md:inline">подземелье · этаж <span className="font-mono tab">{run.floor}</span></span>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setQuestsOpen(true)}
-              className="flex items-center gap-2 border border-line bg-black/40 px-3 py-2 font-display text-[0.85rem] uppercase tracking-[0.1em] text-parch transition-colors hover:border-flamedim hover:text-flamehi"
-              title="Взятые задания"
-            >
-              <ScrollText size={15} strokeWidth={1.7} aria-hidden /> Задания
-              {activeQuests > 0 && <span className="border border-line px-1.5 py-0.5 font-mono text-[0.78rem] text-mute">{activeQuests}</span>}
-            </button>
-            <button
-              type="button"
-              onClick={() => setBagOpen(true)}
-              className="flex items-center gap-2 border border-line bg-black/40 px-3 py-2 font-display text-[0.85rem] uppercase tracking-[0.1em] text-parch transition-colors hover:border-flamedim hover:text-flamehi"
-              title="Рюкзак: припасы, реагенты и снаряжение"
-            >
-              <Backpack size={15} strokeWidth={1.7} aria-hidden /> Рюкзак
-            </button>
-            <AudioSettings inline />
-          </div>
-        </div>
-      </header>
+      <PlayTopBar
+        floor={run.floor}
+        activeQuests={activeQuests}
+        onOpenQuests={() => setQuestsOpen(true)}
+        onOpenBag={() => setBagOpen(true)}
+        account={account}
+      />
       {biome !== "classic" && (
         <div className="border-b border-line bg-black/30 px-4 py-2 sm:px-6">
           <BiomeRule biome={biome} />
@@ -723,101 +699,20 @@ export function Dungeon({
         </div>
       </div>
 
-      {questsOpen && (
-        <Modal
-          title="Задания"
-          sub="Взятые задания. Сдать можно в лобби у жителя."
-          onClose={() => setQuestsOpen(false)}
-          actions={<Btn onClick={() => setQuestsOpen(false)}>Закрыть</Btn>}
-        >
-          <ActiveQuestList player={player} />
-        </Modal>
-      )}
+      {questsOpen && <QuestsModal player={player} onClose={() => setQuestsOpen(false)} />}
       {bagOpen && (
-        <Modal
-          title="Рюкзак"
-          sub="Что взято в подземелье"
+        <BagModal
+          player={player}
+          onSetPouch={onSetPouch}
+          onInspect={(uid) => {
+            setBagOpen(false);
+            inspectGear(uid);
+          }}
           onClose={() => setBagOpen(false)}
-          actions={<Btn onClick={() => setBagOpen(false)}>Закрыть</Btn>}
-        >
-          <div className="space-y-5">
-            {onSetPouch && <PouchSlots player={player} onSet={onSetPouch} />}
-            <section aria-label="Снаряжение в рюкзаке">
-              <div className="sc mb-2 text-[0.86rem] text-flamedim">Снаряжение · {player.armory.length}</div>
-              {player.armory.length === 0 ? (
-                <p className="text-sm italic text-mute">Арсенал пуст.</p>
-              ) : (
-                <ul className="space-y-1.5">
-                  {player.armory.map((g) => {
-                    const worn = wornUids.has(g.uid);
-                    return (
-                      <li key={g.uid}>
-                        <button
-                          type="button"
-                          onClick={() => { setBagOpen(false); inspectGear(g.uid); }}
-                          className="flex w-full items-center gap-2 border border-line bg-black/20 px-2.5 py-1.5 text-left transition-colors hover:border-flame hover:bg-flame/10"
-                        >
-                          <ItemArt id={g.baseId} name={stName(g)} size={28} framed={false} />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate font-display text-[0.95rem] uppercase tracking-[0.04em] text-parch">{stName(g)}</span>
-                            <span className="block font-mono text-[0.8rem] text-mute">
-                              {gearStatReqLabel(g)} · ур. {g.level ?? 1}{g.identified ? "" : " · не исследовано"}
-                            </span>
-                          </span>
-                          {worn && <Tag tone="verd">надето</Tag>}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </section>
-
-            <section aria-label="Припасы в рюкзаке">
-              <div className="sc mb-2 text-[0.86rem] text-flamedim">Припасы</div>
-              {suppliesBag.length === 0 ? (
-                <p className="text-sm italic text-mute">Припасов нет.</p>
-              ) : (
-                <ul className="space-y-1">
-                  {suppliesBag.map(([id, n]) => (
-                    <li key={id} className="flex items-baseline justify-between gap-2 border border-line bg-black/20 px-2.5 py-1.5">
-                      <span className="min-w-0 truncate text-[0.96rem] text-parch">{ITEMS[id]?.name ?? id}</span>
-                      <span className="font-mono text-[0.88rem] text-flame">×{n}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            <section aria-label="Реагенты в рюкзаке">
-              <div className="sc mb-2 text-[0.86rem] text-flamedim">Реагенты</div>
-              {reagentsBag.length === 0 ? (
-                <p className="text-sm italic text-mute">Реагентов нет.</p>
-              ) : (
-                <ul className="space-y-1">
-                  {reagentsBag.map(([id, n]) => (
-                    <li key={id} className="flex items-baseline justify-between gap-2 border border-line bg-black/20 px-2.5 py-1.5">
-                      <span className="min-w-0 truncate text-[0.96rem] text-parch">{ITEMS[id]?.name ?? id}</span>
-                      <span className="font-mono text-[0.88rem] text-verd">×{n}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          </div>
-        </Modal>
+        />
       )}
 
       {detailItem && <GearNote item={detailItem} player={player} onClose={() => setDetailUid(null)} />}
     </div>
   );
-}
-
-/** Быстрый доступ к названию предмета без повторного поиска в словаре. */
-const GEAR_NAME_CACHE: Record<string, string> = Object.fromEntries(
-  Object.values(GEAR_BASES).map((b) => [b.id, b.name]),
-);
-
-function stName(item: GearItem) {
-  return GEAR_NAME_CACHE[item.baseId] ?? item.baseId;
 }
