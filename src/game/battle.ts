@@ -2855,13 +2855,21 @@ function techniqueConcentrationMsg(b: BattleState): string {
 }
 
 /** Концентрация за ход: мощная атака −1, обычная 0, безопасная +1, приём −1, расходник +1, защита +2. Только для хода героя, не для внутренних розыгрышей. */
+/** Базовое изменение концентрации действием (без пассивов): то же, что применяет бой и что видит игрок в подсказке. */
+export function concentrationDelta(type: PlayerAction["type"], kind: AttackKind = "normal"): number {
+  if (type === "attack") return kind === "risky" ? -1 : kind === "safe" ? 1 : 0;
+  if (type === "weapon_skill" || type === "epic_skill" || type === "armor_skill") return -1;
+  if (type === "item") return 1;
+  if (type === "guard") return 2;
+  if (type === "archetype_skill") return -SPECIAL_CONCENTRATION;
+  return 0;
+}
+
 function adjustConcentration(b: BattleState, type: PlayerAction["type"], kind: AttackKind = "normal") {
+  /* Спец-приём тратит концентрацию сам, в своём case: здесь его не учитываем, иначе спишется дважды. */
+  if (type === "archetype_skill") return;
   const before = b.p.concentration;
-  let delta = 0;
-  if (type === "attack") delta = kind === "risky" ? -1 : kind === "safe" ? 1 : 0;
-  else if (type === "weapon_skill" || type === "epic_skill" || type === "armor_skill") delta = -1;
-  else if (type === "item") delta = 1;
-  else if (type === "guard") delta = 2;
+  const delta = concentrationDelta(type, kind);
   if (delta === 0) return;
   b.p.concentration = Math.max(0, Math.min(MAX_CONCENTRATION, before + delta));
   if (before < SPECIAL_CONCENTRATION && b.p.concentration >= SPECIAL_CONCENTRATION && b.p.archetype) {

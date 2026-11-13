@@ -1,12 +1,14 @@
 import { shownEventKind } from "../game/mapEvents";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Footprints, X } from "lucide-react";
-import { ITEMS, consumableIntReq, consumablePower } from "../game/content";
+import { ITEMS, canTwoHandGrip, canWear, consumableIntReq, consumablePower, slotsForItem, wearRequirementNote } from "../game/content";
+import { Btn } from "./ui";
 import { TORCH, computeVisibility, openDirs } from "../game/maze";
 import { logOf, markAlwaysVisible } from "../game/quests";
 import { BIOMES, BIOME_MAP_COLORS, biomeHealingAmount, biomeVision, mazeBiome } from "../game/biomes";
 import { BiomeRule, biomeStyle } from "./BiomeLabel";
-import type { Player, Run } from "../game/types";
+import type { GearItem, Player, Run, Slot } from "../game/types";
+import { SLOT_META } from "../game/types";
 import { ItemArt } from "./ItemArt";
 import { PlayTopBar } from "./PlayTopBar";
 import { BagModal, QuestsModal } from "./PlayModals";
@@ -29,6 +31,7 @@ export function Dungeon({
   onCancelPath,
   onResumePath,
   onSetPouch,
+  onEquip,
   account,
 }: {
   run: Run;
@@ -44,6 +47,8 @@ export function Dungeon({
   onCancelPath: () => void;
   onResumePath: () => void;
   onSetPouch?: (index: number, id: string | null) => string | null;
+  /** Надеть предмет из рюкзака прямо на карте (без исследования). */
+  onEquip?: (uid: string, slot: Slot, grip?: "one" | "two") => void;
   /** Вход или сообщество: кнопка в шапке, как в лобби. */
   account?: LobbyAccount;
 }) {
@@ -120,6 +125,37 @@ export function Dungeon({
   const inspectGear = (uid: string) => {
     onCancelPath();
     setDetailUid(uid);
+  };
+
+  /* Окно предмета из рюкзака: кнопки надевания по слотам (без «Исследовать» и без смены в бою). */
+  const equipActions = (item: GearItem) => {
+    if (!onEquip || Object.values(player.equip).includes(item.uid)) return undefined;
+    const wearable = canWear(item, player);
+    const why = wearable ? undefined : wearRequirementNote(item, player);
+    const equipTo = (slot: Slot, grip?: "one" | "two") => {
+      onEquip(item.uid, slot, grip);
+      setDetailUid(null);
+    };
+    return (
+      <>
+        {slotsForItem(item).map((target) =>
+          canTwoHandGrip(item) && target === "mainHand" ? (
+            <Fragment key={target}>
+              <Btn tone="verd" disabled={!wearable} title={why ?? "Надеть одной рукой"} onClick={() => equipTo(target, "one")}>
+                Одной рукой
+              </Btn>
+              <Btn tone="flame" disabled={!wearable} title={why ?? "Взять двумя руками: урон ×1.5, левая рука свободна"} onClick={() => equipTo(target, "two")}>
+                Двумя руками
+              </Btn>
+            </Fragment>
+          ) : (
+            <Btn key={target} tone="verd" disabled={!wearable} title={why ?? `Надеть: ${SLOT_META[target].name}`} onClick={() => equipTo(target)}>
+              Надеть: {SLOT_META[target].name}
+            </Btn>
+          ),
+        )}
+      </>
+    );
   };
 
   return (
@@ -712,7 +748,14 @@ export function Dungeon({
         />
       )}
 
-      {detailItem && <GearNote item={detailItem} player={player} onClose={() => setDetailUid(null)} />}
+      {detailItem && (
+        <GearNote
+          item={detailItem}
+          player={player}
+          onClose={() => setDetailUid(null)}
+          actions={equipActions(detailItem)}
+        />
+      )}
     </div>
   );
 }

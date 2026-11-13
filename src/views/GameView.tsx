@@ -76,6 +76,7 @@ export function GameView({
             onCancelPath={() => game.dungeon.cancelPath()}
             onResumePath={() => game.dungeon.resumePath()}
             onSetPouch={(index, id) => game.setPouchSlot(index, id)}
+            onEquip={(uid, slot, grip) => game.dungeon.equip(uid, slot, grip)}
             account={account}
           />
         )}

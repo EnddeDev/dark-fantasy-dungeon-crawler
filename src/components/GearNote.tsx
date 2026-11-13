@@ -25,6 +25,7 @@ import {
   canTwoHandGrip,
   effectiveHands,
   gearAffinity,
+  gearKindFor,
 } from "../game/content";
 import { derived } from "../game/battle";
 import { techniqueIntReq } from "../game/gearScaling";
@@ -78,6 +79,8 @@ export function GearNote({
   const d = derived(player);
   const level = item.level ?? 1;
   const req = gearRequirement(item);
+  /* Неисследованный аксессуар показывает первый эффект; остальные скрыты до исследования. */
+  const peekEffect = !item.identified && gearKindFor(item) === "accessory" && item.effects[0] ? item.effects[0] : null;
   const research = identifyReqs(item);
   const researchInt = identifyIntReq(item, d.intDiscount);
   const range = WEAR_RANGE[item.wear];
@@ -195,6 +198,13 @@ export function GearNote({
 
         <DetailSection title="Свойства и способности">
           {!item.identified ? (
+            <div className="space-y-3">
+              {peekEffect && GEAR_EFFECTS[peekEffect] && (
+                <div className="border-l-2 border-verd/60 pl-3">
+                  <h4 className="font-display text-[1.08rem] uppercase tracking-[0.04em] text-verd">{GEAR_EFFECTS[peekEffect].name}</h4>
+                  <p className="mt-1 text-[0.98rem] leading-relaxed text-parch/85">{effectDetail(peekEffect, level, item.effectRolls?.[peekEffect])}</p>
+                </div>
+              )}
             <div className="border border-dashed border-flamedim/60 bg-black/25 p-3">
               <h4 className="flex items-center gap-2 font-display text-[1.08rem] uppercase tracking-[0.05em] text-flame"><Eye size={16} aria-hidden />Качество скрыто туманом</h4>
               <p className="mt-2 text-[0.98rem] leading-relaxed text-mute">
@@ -213,6 +223,7 @@ export function GearNote({
                 </div>
               )}
               <p className="mt-2 text-[0.9rem] text-mute">Исследование за Интеллект не тратит золото.</p>
+            </div>
             </div>
           ) : (
             <div className="space-y-3">
