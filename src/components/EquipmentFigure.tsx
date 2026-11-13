@@ -7,9 +7,9 @@ import { RARITY_STYLE, RARITY_TEXT, Tag } from "./ui";
 export const FIGURE_SLOT_POS: Record<Slot, { x: number; y: number }> = {
   head: { x: 50, y: 7 },
   amulet: { x: 50, y: 31 },
-  mainHand: { x: 7, y: 28 },
-  offHand: { x: 93, y: 28 },
-  wrists: { x: 10, y: 38 },
+  mainHand: { x: 11, y: 28 },
+  offHand: { x: 89, y: 28 },
+  wrists: { x: 11, y: 40 },
   body: { x: 50, y: 44 },
   ring1: { x: 22, y: 52 },
   ring2: { x: 78, y: 52 },

@@ -58,6 +58,13 @@ test("силуэт: у каждого слота есть гнездо, все �
   assert.equal(Object.keys(FIGURE_SLOT_POS).length, SLOT_ORDER.length);
 });
 
+test("силуэт: все гнёзда по ширине от 11% до 89%, не у самого края картины", () => {
+  for (const slot of SLOT_ORDER) {
+    const { x } = FIGURE_SLOT_POS[slot];
+    assert.ok(x >= 11 && x <= 89, `${slot}: x=${x} вне 11–89%`);
+  }
+});
+
 test("силуэт: пустое гнездо подписано, надетая вещь — только картинка без подписи", () => {
   const knife = content.createGearItem({ baseId: "knife", wear: "worn", rarity: "common", identified: true });
   const player = makePlayer({ armory: [knife], equip: { ...makePlayer().equip, mainHand: knife.uid } });
