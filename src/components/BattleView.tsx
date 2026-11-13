@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useFitInViewport } from "./useFitInViewport";
+import { PlayTopBar } from "./PlayTopBar";
+import { BagModal, QuestsModal } from "./PlayModals";
+import { GearNote } from "./GearNote";
+import type { LobbyAccount } from "./LobbyChrome";
+import { logOf } from "../game/quests";
+import type { Player } from "../game/types";
 import { X } from "lucide-react";
 import {
   ENEMY_MOVE_META,
@@ -281,19 +287,32 @@ export function BattleView({
   onEnemyTurn,
   onStunSkip,
   onContinue,
+  player,
+  floor,
+  account,
 }: {
   battle: BattleState;
   onAct: (a: PlayerAction) => void;
   onEnemyTurn: () => void;
   onStunSkip: () => void;
   onContinue: () => void;
+  /** Герой из забега: нужен шапке (задания, рюкзак) и для модалок. Без него кнопки открывают пустое. */
+  player?: Player;
+  floor?: number;
+  account?: LobbyAccount;
 }) {
   const [menu, setMenu] = useState<"main" | "skill" | "item">("main");
   const [codex, setCodex] = useState(false);
+  /* Шапка как на карте: задания и рюкзак открываются модалками поверх боя. */
+  const [questsOpen, setQuestsOpen] = useState(false);
+  const [bagOpen, setBagOpen] = useState(false);
+  const [detailUid, setDetailUid] = useState<string | null>(null);
   /* Табы в сводках: характеристики или эффекты — отдельно для героя и монстра. */
   const [heroTab, setHeroTab] = useState<SummaryTab>("stats");
   const [foeTab, setFoeTab] = useState<SummaryTab>("stats");
   const b = battle;
+  const activeQuests = player ? logOf(player).active.length : 0;
+  const detailItem = player?.armory.find((item) => item.uid === detailUid);
   const myTurn = !b.over && b.queue[b.idx] === "p";
   const e = b.enemy;
   const earnedXp = b.loot.xp;
@@ -516,6 +535,13 @@ export function BattleView({
 
   return (
     <div className="biome-surface flex min-h-screen flex-col bg-soot" data-biome={b.biome} style={biomeStyle(b.biome)}>
+      <PlayTopBar
+        floor={floor}
+        activeQuests={activeQuests}
+        onOpenQuests={() => setQuestsOpen(true)}
+        onOpenBag={() => setBagOpen(true)}
+        account={account}
+      />
       {/* ── ПОЛОСА ИНИЦИАТИВЫ ── */}
       <div className="border-b-2 border-flamedim/50 bg-black/65 px-4 py-3 sm:px-6">
         <div className="mb-2 flex flex-wrap items-end justify-between gap-x-6 gap-y-1">
@@ -1119,6 +1145,19 @@ export function BattleView({
           </aside>
         </div>
       )}
+
+      {questsOpen && player && <QuestsModal player={player} onClose={() => setQuestsOpen(false)} />}
+      {bagOpen && player && (
+        <BagModal
+          player={player}
+          onInspect={(uid) => {
+            setBagOpen(false);
+            setDetailUid(uid);
+          }}
+          onClose={() => setBagOpen(false)}
+        />
+      )}
+      {detailItem && player && <GearNote item={detailItem} player={player} onClose={() => setDetailUid(null)} />}
 
       {/* ── КОДЕКС ПРОТИВНИКА: поля рукописи справа ── */}
       {codex && (

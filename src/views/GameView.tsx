@@ -1,4 +1,3 @@
-import { Users } from "lucide-react";
 import { BattleView } from "../components/BattleView";
 import { Dungeon } from "../components/Dungeon";
 import { Lobby } from "../components/Lobby";
@@ -25,7 +24,7 @@ export function GameView({
   const { screen, player, run, battle, shopStock, best, unlockedFloor, lobbyEntry, path, pathPaused } = state;
   const d = derived(player);
   const lobby = screen === "lobby";
-  /* Вход или сообщество: в лобби живут в верхней панели, в остальных местах — плавающей кнопкой. */
+  /* Вход или сообщество: в лобби и на карте с боем — в верхней панели. */
   const account = onOpenCommunity
     ? { label: "Сообщество", title: "Сообщество: игроки, рынок, обмены, дуэли, чат", onClick: onOpenCommunity }
     : onOpenAuth
@@ -77,6 +76,7 @@ export function GameView({
             onCancelPath={() => game.dungeon.cancelPath()}
             onResumePath={() => game.dungeon.resumePath()}
             onSetPouch={(index, id) => game.setPouchSlot(index, id)}
+            account={account}
           />
         )}
         {screen === "battle" && battle && (
@@ -86,20 +86,13 @@ export function GameView({
             onEnemyTurn={() => game.battle.enemyTurn()}
             onStunSkip={() => game.battle.skipStunned()}
             onContinue={() => game.battle.continueAfterWin()}
+            player={player}
+            floor={run?.floor}
+            account={account}
           />
         )}
       </main>
       <ModalView game={game} state={state} />
-      {account && !lobby && (
-        <button
-          onClick={account.onClick}
-          className="fixed bottom-4 right-4 z-40 flex items-center gap-2 border border-flamedim bg-slab/95 px-3 py-2 font-display text-[0.85rem] uppercase tracking-[0.1em] text-flamehi shadow-[0_10px_30px_-12px_#000] hover:border-flame hover:bg-flame/15"
-          title={account.title}
-        >
-          <Users size={15} aria-hidden />
-          {account.label}
-        </button>
-      )}
     </div>
   );
 }

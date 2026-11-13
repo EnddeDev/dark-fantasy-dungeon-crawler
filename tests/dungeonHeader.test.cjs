@@ -28,6 +28,8 @@ const maze = load("src/game/maze.ts", "maze");
 const biomes = load("src/game/biomes.ts", "biomes");
 const quests = load("src/game/quests.ts", "quests");
 const { ActiveQuestList } = load("src/components/Quests.tsx", "quests-ui");
+const { BattleView } = load("src/components/BattleView.tsx", "battle-view");
+const battle = load("src/game/battle.ts", "battle");
 
 const noop = () => {};
 
@@ -43,7 +45,7 @@ function makePlayer(extra = {}) {
   };
 }
 
-function render(biome) {
+function render(biome, extra = {}) {
   const m = maze.genMaze(8, 1);
   m.biome = biome;
   const run = {
@@ -56,7 +58,14 @@ function render(biome) {
     intStat: 1, intDiscount: 0, path: [], pathPaused: false,
     onMove: noop, onCellClick: noop, onUseItem: noop,
     onCancelPath: noop, onResumePath: noop,
+    ...extra,
   }));
+}
+
+const ACCOUNT = { label: "Войти", title: "Войти в аккаунт", onClick: noop };
+
+function headerOf(html) {
+  return html.slice(html.indexOf("<header"), html.indexOf("</header>") + "</header>".length);
 }
 
 test("шапка карты как в лобби: бренд, задания, рюкзак и звук; тип подземелья в шапке не выводится", () => {
@@ -87,4 +96,32 @@ test("карта: блоки «Снаряжение · смена в поход�
   assert.ok(!html.includes("Разведка и опасности"));
   assert.ok(html.includes("Журнал этажа"), "журнал остался");
   assert.ok(html.includes("шагов:"), "статистика осталась над картой");
+});
+
+test("вход в шапке карты: кнопка «Войти» справа от «Рюкзака»", () => {
+  const header = headerOf(render("classic", { account: ACCOUNT }));
+  assert.ok(header.includes(">Войти</button>"), "кнопка входа в шапке");
+  assert.ok(header.indexOf("Рюкзак") < header.indexOf("Войти"), "вход правее рюкзака");
+  assert.ok(!headerOf(render("classic")).includes("Войти"), "без входа кнопки нет");
+});
+
+test("бой: шапка такая же, как на карте — тот же HTML при тех же данных", () => {
+  const pl = makePlayer();
+  const b = battle.newBattle(pl, 4, false, "classic", 0, false);
+  b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none", type: "strong" };
+  b.enemy.mtype = "strong";
+  const battleHtml = renderToStaticMarkup(React.createElement(BattleView, {
+    battle: b, onAct: noop, onEnemyTurn: noop, onStunSkip: noop, onContinue: noop,
+    player: pl, floor: 4, account: ACCOUNT,
+  }));
+  const mapHtml = render("classic", { account: ACCOUNT });
+  assert.equal(headerOf(battleHtml), headerOf(mapHtml), "шапка боя совпадает с шапкой карты");
+  assert.ok(headerOf(battleHtml).includes("Войти"), "вход в шапке боя");
+  assert.ok(battleHtml.indexOf("<header") < battleHtml.indexOf("Действия"), "шапка стоит наверху экрана боя");
+});
+
+test("плавающей кнопки «Войти» больше нет: вход живёт в шапке карты и боя", () => {
+  const src = fs.readFileSync("src/views/GameView.tsx", "utf8");
+  assert.ok(!src.includes("fixed bottom-4 right-4"), "плавающей кнопки входа нет");
+  assert.match(src, /account=\{account\}/, "вход передаётся в карту и бой");
 });
