@@ -22,7 +22,7 @@ export interface ArchetypeDef {
   milestone5: { id: string; name: string; desc: string };
   /** Пассив рубежа 10 уровня. */
   milestone10: { id: string; name: string; desc: string };
-  /** Спец-приём: открывается при концентрации 5 (SPECIAL_CONCENTRATION) и тратит её всю. */
+  /** Спец-приём: открывается при концентрации 5 (SPECIAL_CONCENTRATION) и тратит 5, остаток сохраняется. */
   special: { id: string; name: string; desc: string };
 }
 

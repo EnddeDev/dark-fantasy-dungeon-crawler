@@ -41,6 +41,7 @@ import {
   attackStaminaCost,
   heroAttackPreview,
   techniqueStaminaCost,
+  riskyAttackBlock,
 } from "../game/battle";
 import { FoePortrait } from "./FoeArt";
 import { ItemArt } from "./ItemArt";
@@ -708,12 +709,15 @@ export function BattleView({
                   const preview = heroAttackPreview(b, kind);
                   const cost = attackStaminaCost(b);
                   const miss = Math.round((1 - preview.chance) * 100);
+                  /* Мощный удар требует концентрации: без неё кнопка закрыта и подсказка говорит почему. */
+                  const block = kind === "risky" ? riskyAttackBlock(b) : null;
+                  const off = !ready.attack || !!block;
                   return (
                     <Btn
                       key={kind}
-                      tone={!ready.attack ? "ghost" : kind === "safe" ? "verd" : "flame"}
-                      disabled={!ready.attack}
-                      title={`Выносливость: ${cost}. Шанс промахнуться: ${miss}%`}
+                      tone={off ? "ghost" : kind === "safe" ? "verd" : "flame"}
+                      disabled={off}
+                      title={block ?? `Выносливость: ${cost}. Шанс промахнуться: ${miss}%`}
                       onClick={() => act({ type: "attack", kind })}
                     >
                       {meta.short}

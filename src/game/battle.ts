@@ -2387,29 +2387,36 @@ function incoming(
     applyVamp(b, dealt, 0, "weapon");
   }
 
-  if (b.p.hp <= 0) {
-    if (hasPassive(b, "arch_bulwark_10") && !b.p.immortalUsed) {
-      b.p.immortalUsed = true;
-      b.p.hp = 0;
-      const heal = healPlayer(b, 1);
-      b.p.guard = true;
-      flash(b, "p", "heal", heal);
-      push(b, `Непробиваемый: смертельный удар оставил ${heal} ОЗ и включил Защиту!`, "p");
-      return true;
-    }
-    if (hasLeg(b, "immortal_pact") && !b.p.immortalUsed) {
-      b.p.immortalUsed = true;
-      b.p.hp = 0;
-      const heal = healPlayer(b, 18);
-      b.p.guard = true;
-      flash(b, "p", "heal", heal);
-      push(b, `Печать бессмертия вспыхивает! Ты остаёшься на ногах с ${heal} ОЗ и в Защите.`, "p");
-      return true;
-    }
-    b.p.hp = 0;
-    b.over = "lose";
-  }
+  heroDeathCheck(b);
   return true;
+}
+
+/**
+ * Смерть героя: ОЗ ≤ 0 — бой проигран сразу, после любого урона: удара монстра, шипов, ожога или
+ * ответа. Два пассивных спасения (Непробиваемый и Печать бессмертия) действуют один раз за бой.
+ */
+function heroDeathCheck(b: BattleState) {
+  if (b.p.hp > 0) return;
+  if (hasPassive(b, "arch_bulwark_10") && !b.p.immortalUsed) {
+    b.p.immortalUsed = true;
+    b.p.hp = 0;
+    const heal = healPlayer(b, 1);
+    b.p.guard = true;
+    flash(b, "p", "heal", heal);
+    push(b, `Непробиваемый: смертельный удар оставил ${heal} ОЗ и включил Защиту!`, "p");
+    return;
+  }
+  if (hasLeg(b, "immortal_pact") && !b.p.immortalUsed) {
+    b.p.immortalUsed = true;
+    b.p.hp = 0;
+    const heal = healPlayer(b, 18);
+    b.p.guard = true;
+    flash(b, "p", "heal", heal);
+    push(b, `Печать бессмертия вспыхивает! Ты остаёшься на ногах с ${heal} ОЗ и в Защите.`, "p");
+    return;
+  }
+  b.p.hp = 0;
+  b.over = "lose";
 }
 
 /** Опыт за монстра с поправкой на разницу уровней: сильнее враг — больше опыта. */
@@ -2825,7 +2832,7 @@ export function persistentBag(b: BattleState): Record<string, number> {
 }
 
 export const MAX_CONCENTRATION = 7;
-/** Спец-приём архетипа открывается при этом порогу концентрации и тратит её всю. */
+/** Спец-приём архетипа открывается при этом порогу концентрации и тратит ровно столько же. */
 export const SPECIAL_CONCENTRATION = 5;
 /** Пул расходников ниндзя: метательные, дымовая бомба исключена — она не наносит урона. */
 const NINJA_CONJURE_POOL = ["serrated_knife", "poison_dart", "acid_vial", "blast_bomb"];
@@ -2836,6 +2843,13 @@ const SAGE_VAMP_BONUS = 0.25;
 const WARLOCK_HP_SHARE = 0.5;
 /** Любой приём (оружия, эпический, брони) требует концентрации и тратит её на использование (−1). */
 const TECHNIQUE_CONCENTRATION = 1;
+/** Мощный удар тратит 1 концентрации и без неё недоступен: кнопка заблокирована, сервер отказывает. */
+const RISKY_CONCENTRATION = 1;
+/** Причина, по которой мощный удар сейчас недоступен (или null). */
+export function riskyAttackBlock(b: BattleState): string | null {
+  if (b.p.concentration >= RISKY_CONCENTRATION) return null;
+  return `Мощный удар требует ${RISKY_CONCENTRATION} концентрации (сейчас ${b.p.concentration}).`;
+}
 function techniqueConcentrationMsg(b: BattleState): string {
   return `Приём требует ${TECHNIQUE_CONCENTRATION} концентрации (сейчас ${b.p.concentration}).`;
 }
@@ -3114,6 +3128,10 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
     b.lastSkill = skillKey;
   }
   if (a.type === "item" && b.p.statuses.sealItems > 0) return err("Печать немоты запрещает расходники в этот ход.");
+  if (a.type === "attack" && a.kind === "risky") {
+    const block = riskyAttackBlock(b);
+    if (block) return err(block);
+  }
 
   switch (a.type) {
     case "attack": {
@@ -3809,7 +3827,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
       const problem = archetypeSpecialBlock(b);
       if (problem) return err(problem);
       const arch = b.p.archetype!;
-      b.p.concentration = 0;
+      b.p.concentration -= SPECIAL_CONCENTRATION;
       runArchetypeSpecial(b, arch);
       break;
     }
@@ -3834,6 +3852,8 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
     push(b, `${b.enemy.def.name} повержен! (+${enemyXpFor(b)} опыта)`, "sys");
     return b;
   }
+  /* Герой мог пасть от собственного действия (шипы врага): смерть не ждёт конца хода и выносливости. */
+  if (!b.over) heroDeathCheck(b);
   if (b.over) return b;
   /* Ход заканчивается кнопкой «Пропуск хода» либо когда выносливость иссякла. Защита ход не заканчивает. */
   const endsTurn = a.type === "end_turn";

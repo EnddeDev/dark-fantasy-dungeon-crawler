@@ -75,6 +75,7 @@ function fight(extra = {}) {
 function freshAttack(kind, rng, hands) {
   const b = fight();
   if (hands) b.p.hands = hands;
+  b.p.concentration = 1; /* мощный удар требует 1 концентрации */
   b.p.hit = hands ? [hands[0].lo, hands[0].hi] : b.p.hit;
   return withRandom(() => battle.playerAct(b, { type: "attack", kind }), rng);
 }
@@ -148,6 +149,7 @@ test("бросок по меткости совпадает с расчётом 
         const b = fight();
         b.p.hands = w.hands;
         b.p.hit = [4, 6];
+        b.p.concentration = 1; /* мощный удар требует 1 концентрации */
         const after = withRandom(() => battle.playerAct(b, { type: "attack", kind }), rng);
         if (after.enemy.hp < 99999) hits++;
       }
