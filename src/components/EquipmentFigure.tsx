@@ -9,10 +9,10 @@ export const FIGURE_SLOT_POS: Record<Slot, { x: number; y: number }> = {
   amulet: { x: 50, y: 31 },
   mainHand: { x: 7, y: 28 },
   offHand: { x: 93, y: 28 },
-  wrists: { x: 17, y: 35 },
+  wrists: { x: 10, y: 38 },
   body: { x: 50, y: 44 },
-  ring1: { x: 35, y: 52 },
-  ring2: { x: 65, y: 52 },
+  ring1: { x: 22, y: 52 },
+  ring2: { x: 78, y: 52 },
   feet: { x: 50, y: 86 },
 };
 
