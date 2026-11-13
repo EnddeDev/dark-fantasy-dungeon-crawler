@@ -62,10 +62,10 @@ export class DungeonController {
     this.model.update({ pathPaused: false });
   }
 
-  equip(uid: string, slot: Slot): void {
+  equip(uid: string, slot: Slot, grip?: "one" | "two"): void {
     const player = this.state.player;
     const before = derived(player).maxHp;
-    const res = equipItem(player, uid, slot);
+    const res = equipItem(player, uid, slot, grip);
     const item = player.armory.find((g) => g.uid === uid);
     const name = item ? GEAR_BASES[item.baseId]?.name ?? "предмет" : "предмет";
     const after = derived(res.player).maxHp;

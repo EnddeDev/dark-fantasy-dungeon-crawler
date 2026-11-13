@@ -42,6 +42,7 @@ import {
   heroAttackPreview,
   techniqueStaminaCost,
   riskyAttackBlock,
+  concentrationDelta,
 } from "../game/battle";
 import { FoePortrait } from "./FoeArt";
 import { ItemArt } from "./ItemArt";
@@ -110,6 +111,8 @@ export const ENEMY_EFFECT_DESC: Record<string, string> = {
 
 /** Процент для строк сводки. */
 const pct = (v: number) => `${Math.round(v * 100)}%`;
+/** Подсказка действия: изменение концентрации («Концентрация +1», «Концентрация 0»). */
+const concText = (delta: number) => (delta === 0 ? "Концентрация 0" : `Концентрация ${delta > 0 ? "+" : "−"}${Math.abs(delta)}`);
 
 /** Иконка наложения приёма врага. Пунктир-«½» — наложение с шансом около половины. Подробности — в подсказке строки приёма. */
 function EnemyEffectIcon({ effect }: { effect: EnemyMoveEffect }) {
@@ -717,7 +720,7 @@ export function BattleView({
                       key={kind}
                       tone={off ? "ghost" : kind === "safe" ? "verd" : "flame"}
                       disabled={off}
-                      title={block ?? `Выносливость: ${cost}. Шанс промахнуться: ${miss}%`}
+                      title={block ?? `Выносливость: ${cost}. ${concText(concentrationDelta("attack", kind))}. Шанс промахнуться: ${miss}%`}
                       onClick={() => act({ type: "attack", kind })}
                     >
                       {meta.short}
@@ -728,14 +731,14 @@ export function BattleView({
             )}
             {(menu === "main" || menu === "item") && (
               <div className={b.p.archetype ? "grid grid-cols-2 gap-2" : "grid grid-cols-1 gap-2"}>
-                <Btn tone={ready.skills ? "flame" : "ghost"} disabled={!myTurn || feared || b.p.statuses.sealSkills > 0 || b.p.stamina < techniqueStaminaCost(b)} onClick={() => setMenu("skill")}>
+                <Btn tone={ready.skills ? "flame" : "ghost"} title={`Выносливость: ${techniqueStaminaCost(b)}. ${concText(concentrationDelta("weapon_skill"))}.`} disabled={!myTurn || feared || b.p.statuses.sealSkills > 0 || b.p.stamina < techniqueStaminaCost(b)} onClick={() => setMenu("skill")}>
                   Приёмы · {techniqueStaminaCost(b)}
                 </Btn>
                 {b.p.archetype && (
                   <Btn
                     tone={ready.special ? "flame" : "ghost"}
                     disabled={!ready.special}
-                    title={ARCHETYPES[b.p.archetype].special.desc}
+                    title={`${ARCHETYPES[b.p.archetype].special.desc} Выносливость: ${actionStaminaCost(b, { type: "archetype_skill" })}. ${concText(concentrationDelta("archetype_skill"))}.`}
                     onClick={() => act({ type: "archetype_skill" })}
                   >
                     Спец-приём: {ARCHETYPES[b.p.archetype].special.name} · {b.p.concentration}/{MAX_CONCENTRATION}
@@ -748,10 +751,10 @@ export function BattleView({
             )}
             {(menu === "main" || menu === "item") && (
               <div className="mt-2 grid grid-cols-3 gap-2">
-                <Btn disabled={!myTurn || b.p.statuses.sealItems > 0} onClick={() => setMenu("item")}>
+                <Btn title={`Предмет: выносливость ${STAMINA_BACKPACK} из рюкзака, из сумки бесплатно. ${concText(concentrationDelta("item"))}.`} disabled={!myTurn || b.p.statuses.sealItems > 0} onClick={() => setMenu("item")}>
                   Рюкзак · {STAMINA_BACKPACK}
                 </Btn>
-                <Btn tone="verd" disabled={!myTurn || b.p.stamina < STAMINA_GUARD} onClick={() => act({ type: "guard" })}>
+                <Btn tone="verd" title={`Выносливость: ${STAMINA_GUARD}. ${concText(concentrationDelta("guard"))}. Ход заканчивается.`} disabled={!myTurn || b.p.stamina < STAMINA_GUARD} onClick={() => act({ type: "guard" })}>
                   Защита · {STAMINA_GUARD}
                 </Btn>
                 <Btn className="w-full" disabled={!myTurn} onClick={() => act({ type: "end_turn" })}>
@@ -849,6 +852,7 @@ export function BattleView({
                   {ws ? (
                     <button
                       disabled={!myTurn || !wsIntOk || b.p.weaponCd > 0 || b.p.concentration < 1 || b.p.stamina < techniqueStaminaCost(b)}
+                      title={`Выносливость: ${techniqueStaminaCost(b)}. ${concText(concentrationDelta("weapon_skill"))}.`}
                       onClick={() => act({ type: "weapon_skill" })}
                       className="flex items-center justify-between gap-3 border border-line bg-slab2 px-3 py-2 text-left transition-colors enabled:hover:border-flame enabled:hover:bg-flame/10 disabled:opacity-45"
                     >
@@ -883,6 +887,7 @@ export function BattleView({
                       <button
                         key={sk.id}
                         disabled={!myTurn || !intOk || cd > 0 || b.p.concentration < 1 || b.p.stamina < techniqueStaminaCost(b)}
+                        title={`Выносливость: ${techniqueStaminaCost(b)}. ${concText(concentrationDelta("epic_skill"))}.`}
                         onClick={() => act({ type: "epic_skill", id: sk.id })}
                         className="flex items-center justify-between gap-3 border border-flamedim/70 bg-slab2 px-3 py-2 text-left transition-colors enabled:hover:border-flame enabled:hover:bg-flame/10 disabled:opacity-45"
                       >
@@ -907,6 +912,7 @@ export function BattleView({
                       <button
                         key={sk.id}
                         disabled={!myTurn || !statOk || cd > 0 || b.p.statuses.sealSkills > 0 || b.p.concentration < 1 || b.p.stamina < actionStaminaCost(b, { type: "armor_skill", id: sk.id })}
+                        title={`Выносливость: ${actionStaminaCost(b, { type: "armor_skill", id: sk.id })}. ${concText(concentrationDelta("armor_skill"))}.`}
                         onClick={() => act({ type: "armor_skill", id: sk.id })}
                         className="flex items-center justify-between gap-3 border border-flamedim/70 bg-slab2 px-3 py-2 text-left transition-colors enabled:hover:border-flame enabled:hover:bg-flame/10 disabled:opacity-45"
                       >
@@ -1100,6 +1106,7 @@ export function BattleView({
                   <button
                     key={id}
                     disabled={!ok}
+                    title={`Выносливость: ${b.pouch.includes(id) ? 0 : STAMINA_BACKPACK}${b.pouch.includes(id) ? " (из сумки, бесплатно)" : " (из рюкзака)"}. ${concText(concentrationDelta("item"))}.`}
                     onClick={() => act({ type: "item", id })}
                     className="flex w-full items-center justify-between gap-3 border border-line bg-slab2 px-3 py-2 text-left transition-colors enabled:hover:border-flame enabled:hover:bg-flame/10 disabled:opacity-40"
                   >

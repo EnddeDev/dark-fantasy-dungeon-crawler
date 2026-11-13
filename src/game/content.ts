@@ -1259,6 +1259,8 @@ export function gearRequiresNothing(item: GearItem): boolean {
   if (item.noReq === true) return true;
   /* Стартовые вещи надеваются без требований при любых характеристиках. */
   if (isStarterItem(item)) return true;
+  /* Аксессуары: требования нет, ХАР скрыта и не проверяется (только уровень предмета). */
+  if (gearKindFor(item) === "accessory") return true;
   const base = GEAR_BASES[item.baseId];
   if (!base) return false;
   return gearKindOfBase(base) === "armor" && base.noReq === true;

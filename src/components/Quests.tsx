@@ -173,6 +173,10 @@ export function QuestsTab({
   );
 }
 
+/** Цвета рамки жителей: выполненное задание — светло-золотой, новое — зелёный (палитра темы). */
+const READY_FRAME = "#f6d48a";
+const OFFER_FRAME = "#5f8f7a";
+
 function NpcTabButton({
   giver,
   selected,
@@ -189,14 +193,17 @@ function NpcTabButton({
   onSelect: () => void;
 }) {
   const meta = QUEST_GIVERS[giver];
+  /* Рамка: выполненное задание (можно сдать) важнее нового; без заданий — обычная рамка. */
+  const frame = ready > 0 ? READY_FRAME : available > 0 ? OFFER_FRAME : selected ? "#ad7a2c" : "#322720";
   return (
     <button
       type="button"
       role="tab"
       aria-selected={selected}
       onClick={onSelect}
-      className={`relative flex flex-col items-center gap-2 border p-2 text-center transition-colors ${
-        selected ? "border-flamedim bg-flame/10" : "border-line bg-black/30 hover:border-flamedim"
+      style={{ borderColor: frame }}
+      className={`relative flex flex-col items-center gap-2 border-2 p-2 text-center transition-colors ${
+        selected ? "bg-flame/10" : "bg-black/30 hover:bg-black/40"
       }`}
     >
       <NpcPortrait giver={giver} className="h-20 w-20 border border-line" />

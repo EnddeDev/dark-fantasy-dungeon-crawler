@@ -1463,7 +1463,8 @@ test("every gear base declares its kind, weight class and affinity", () => {
     assert.equal(content.gearAffinity(item), stat);
     if (kind === "accessory") {
       assert.equal(content.gearClassLabel(item), "Аксессуар", `${id}: у аксессуара нет веса в подписи`);
-      assert.equal(content.gearRequirement(item).stat, stat, `${id}: аксессуар требует характеристику`);
+      assert.equal(content.gearRequirement(item).stat, null, `${id}: у аксессуара нет требования (ХАР скрыта)`);
+      assert.equal(content.gearStatReqLabel(item), "без требований", `${id}: подпись без требования`);
     } else {
       assert.equal(content.gearStatReq(item).stat, stat);
     }

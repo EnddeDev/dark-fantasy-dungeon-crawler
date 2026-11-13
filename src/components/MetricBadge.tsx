@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useFitInViewport } from "./useFitInViewport";
 import {
   ArrowLeftRight,
@@ -141,58 +142,88 @@ export function tipAlignClass(align: TipAlign): string {
   return "left-0";
 }
 
+/** Ширина подсказки и отступ от краёв экрана (как у подсказок урона). */
+const TIP_WIDTH = 304;
+const TIP_GAP = 8;
+
+interface TipPlace {
+  left: number;
+  top?: number;
+  bottom?: number;
+}
+
+/**
+ * Место подсказки у бейджа. Подсказка выносится в body через портал, поэтому левая панель
+ * с прокруткой её не обрезает. Открывается под бейджем, у нижнего края экрана — над ним.
+ */
+function placeTip(rect: DOMRect): TipPlace {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const width = Math.min(TIP_WIDTH, vw - TIP_GAP * 2);
+  const left = Math.max(TIP_GAP, Math.min(rect.left, vw - width - TIP_GAP));
+  if (rect.bottom > vh * 0.6) return { left, bottom: vh - rect.top + TIP_GAP };
+  return { left, top: rect.bottom + TIP_GAP };
+}
+
 export function MetricBadge({
   metric,
   value,
   note,
-  align = "left",
 }: {
   metric: MetricKey;
   value: string;
   note?: string;
-  align?: TipAlign;
 }) {
-  const [open, setOpen] = useState(false);
+  const [place, setPlace] = useState<TipPlace | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const tipRef = useRef<HTMLDivElement>(null);
+  const open = place !== null;
   useFitInViewport(tipRef, open);
   const info = METRIC_INFO[metric];
   const Icon = info.icon;
   const tipId = `metric-tip-${metric}`;
+  const show = () => {
+    if (wrapRef.current) setPlace(placeTip(wrapRef.current.getBoundingClientRect()));
+  };
+  const hide = () => setPlace(null);
   return (
-    <div
-      className="relative block"
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-    >
+    <div ref={wrapRef} className="relative block" onMouseEnter={show} onMouseLeave={hide}>
       <button
         type="button"
         aria-label={`${info.label}: ${value}`}
         aria-describedby={open ? tipId : undefined}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
-        onClick={() => setOpen((o) => !o)}
+        onFocus={show}
+        onBlur={hide}
+        onClick={() => (open ? hide() : show())}
         className="flex w-full items-center justify-center gap-2 border border-line/80 bg-black/20 px-2 py-2.5 text-flame transition-colors hover:border-flame hover:bg-flame/10 focus:outline-none focus-visible:border-flame"
       >
         <Icon size={18} aria-hidden />
         <span className="font-mono text-[0.98rem] leading-tight tab text-flamehi">{value}</span>
       </button>
-      {open && (
-        <div
-          ref={tipRef} role="tooltip"
-          id={tipId}
-          className={`pointer-events-none absolute top-full z-50 mt-2 w-[min(19rem,72vw)] border border-flamedim bg-black/95 p-2.5 text-left shadow-[0_10px_30px_rgba(0,0,0,0.75)] ${tipAlignClass(align)}`}
-        >
-          <div className="flex items-center gap-2 text-flame">
-            <Icon size={16} aria-hidden />
-            <span className="font-display text-[0.95rem] uppercase tracking-[0.06em] text-flamehi">{info.label}</span>
-            <span className="ml-auto font-mono text-[0.9rem] text-parch">{value}</span>
-          </div>
-          <p className="mt-1.5 text-[0.86rem] leading-snug text-parch/90">{info.what}</p>
-          {note && (
-            <p className="mt-1.5 border-t border-line/70 pt-1.5 text-[0.84rem] leading-snug text-mute">{note}</p>
-          )}
-        </div>
-      )}
+      {open &&
+        createPortal(
+          <div
+            ref={tipRef}
+            role="tooltip"
+            id={tipId}
+            className="pointer-events-none fixed z-[100] border border-flamedim bg-black/95 p-2.5 text-left shadow-[0_10px_30px_rgba(0,0,0,0.75)]"
+            style={{
+              left: place.left,
+              top: place.top,
+              bottom: place.bottom,
+              width: `min(${TIP_WIDTH}px, calc(100vw - ${TIP_GAP * 2}px))`,
+            }}
+          >
+            <div className="flex items-center gap-2 text-flame">
+              <Icon size={16} aria-hidden />
+              <span className="font-display text-[0.95rem] uppercase tracking-[0.06em] text-flamehi">{info.label}</span>
+              <span className="ml-auto font-mono text-[0.9rem] text-parch">{value}</span>
+            </div>
+            <p className="mt-1.5 text-[0.86rem] leading-snug text-parch/90">{info.what}</p>
+            {note && <p className="mt-1.5 border-t border-line/70 pt-1.5 text-[0.84rem] leading-snug text-mute">{note}</p>}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
