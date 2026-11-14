@@ -1960,6 +1960,11 @@ function tryRevive(b: BattleState): boolean {
   return true;
 }
 
+/** Множитель магического урона героя от свойства «Магическое усиление» (проценты предметов). */
+export function magicPowerMult(effectPower: Partial<Record<GearEffectId, number>>): number {
+  return 1 + (effectPower.magic_power ?? 0) / 100;
+}
+
 function hitEnemy(
   b: BattleState,
   raw: number,
@@ -1969,6 +1974,8 @@ function hitEnemy(
   element?: DamageElement,
   accuracy?: number,
 ): number {
+  /* Магическое усиление: любой магический удар героя, включая свитки и расходники. */
+  if (kind === "magic") raw = Math.round(raw * magicPowerMult(b.p.effectPower));
   /* Ловкий «без рода»: часть физических ударов он уводит и сам контратакует без урона для себя.
      Контратака героя сюда не попадает — иначе цепочка ударов не кончится. */
   if (

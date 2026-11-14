@@ -177,6 +177,7 @@ export const GEAR_EFFECT_BASE: Record<GearEffectId, NumericDef> = {
   rage: { value: 10 },
   ap: { value: 0 },
   wisdom: { value: 5 },
+  magic_power: { value: 5 },
   might: { value: 5 },
   precision: { value: 5 },
   thorns: { value: 4 },
@@ -216,7 +217,7 @@ export const GEAR_EFFECT_BASE: Record<GearEffectId, NumericDef> = {
 export const GEAR_EFFECT_SPREAD: Partial<Record<GearEffectId, number>> = {
   vamp: 2, magic_vamp: 2, crit_chance: 3, crit_mult: 5, regen: 2,
   fortify: 1, magic_resist: 1, armor_damage: 2, rage: 5,
-  wisdom: 1, might: 1, precision: 1, thorns: 1,
+  wisdom: 1, magic_power: 1, might: 1, precision: 1, thorns: 1,
   poison_damage: 6, bleed: 7, sunder: 6,
 };
 

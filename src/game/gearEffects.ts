@@ -23,7 +23,7 @@ export type GearEffectId =
   // Оружейные свойства: яд, кровотечение, раскол
   | "poison_damage" | "bleed" | "sunder"
   // Новый набор свойств предметов
-  | "magic_vamp" | "fortify" | "magic_resist" | "rage" | "wisdom" | "might" | "precision";
+  | "magic_vamp" | "fortify" | "magic_resist" | "rage" | "wisdom" | "might" | "precision" | "magic_power";
 
 export interface GearEffectDef {
   id: GearEffectId;
@@ -78,6 +78,7 @@ export const GEAR_EFFECTS: Record<GearEffectId, GearEffectDef> = {
   magic_resist: { id: "magic_resist", stat: "int", name: "Магическое сопротивление", desc: "Снижает магический урон.", detail: "+5% снижения магического урона" },
   rage: { id: "rage", stat: "str", name: "Ярость", desc: "Недостающее здоровье усиливает урон.", detail: "+10% урона за каждые 10% недостающего здоровья" },
   wisdom: { id: "wisdom", stat: "int", name: "Мудрость", desc: "Усиливает урон, зависящий от Интеллекта.", detail: "+5% к множителю от Интеллекта" },
+  magic_power: { id: "magic_power", stat: "int", name: "Магическое усиление", desc: "Усиливает весь магический урон.", detail: "+5% магического урона" },
   might: { id: "might", stat: "str", name: "Мощь", desc: "Сила усиливает физический удар.", detail: "+5% к множителю от Силы" },
   precision: { id: "precision", stat: "agi", name: "Точность", desc: "Усиливает урон, зависящий от Ловкости.", detail: "+5% к множителю от Ловкости" },
   poison_damage: { id: "poison_damage", stat: "agi", name: "Урон от яда", desc: "Удары отравляют противника.", detail: "+30% шанс отравить врага на 3 раунда" },
@@ -88,7 +89,7 @@ export const GEAR_EFFECTS: Record<GearEffectId, GearEffectDef> = {
 /** Только эти свойства выпадают на новых предметах. Остальные id — совместимость старых сохранений. */
 export const ACTIVE_GEAR_EFFECTS: GearEffectId[] = [
   "vamp", "magic_vamp", "crit_chance", "crit_mult", "fortify", "magic_resist",
-  "armor_damage", "rage", "ap", "wisdom", "might", "precision", "thorns",
+  "armor_damage", "rage", "ap", "wisdom", "magic_power", "might", "precision", "thorns",
   "evade", "counter", "resist", "poison_damage", "bleed", "sunder",
 ];
 
@@ -108,8 +109,8 @@ export const WEAPON_EFFECT_POOLS: Record<string, GearEffectId[]> = {
   greatsword: ["might", "armor_damage", "fortify", "resist", "rage"],
   greataxe: ["rage", "vamp", "might", "sunder", "fortify", "crit_chance"],
   warhammer: ["rage", "might", "sunder", "fortify", "crit_chance", "armor_damage"],
-  staff: ["magic_vamp", "magic_resist", "wisdom"],
-  wand: ["magic_vamp", "magic_resist", "wisdom"],
+  staff: ["magic_vamp", "magic_resist", "wisdom", "magic_power"],
+  wand: ["magic_vamp", "magic_resist", "wisdom", "magic_power"],
 };
 
 /** Пул свойств брони по весу и требуемой характеристике. */
@@ -117,17 +118,17 @@ export const ARMOR_EFFECT_POOLS: Record<"heavy" | "medium" | "light", Record<str
   heavy: {
     str: ["fortify", "thorns", "resist", "rage"],
     agi: ["fortify", "thorns", "resist"],
-    int: ["fortify", "thorns", "resist"],
+    int: ["fortify", "thorns", "resist", "magic_power"],
   },
   medium: {
     str: ["fortify", "armor_damage", "might", "thorns"],
     agi: ["evade", "counter", "precision", "crit_chance"],
-    int: ["wisdom", "magic_resist"],
+    int: ["wisdom", "magic_resist", "magic_power"],
   },
   light: {
     str: ["thorns", "resist"],
     agi: ["evade", "counter", "precision"],
-    int: ["wisdom", "magic_resist", "magic_vamp"],
+    int: ["wisdom", "magic_resist", "magic_vamp", "magic_power"],
     none: ["thorns", "resist", "fortify"],
   },
 };
@@ -136,7 +137,7 @@ export const ARMOR_EFFECT_POOLS: Record<"heavy" | "medium" | "light", Record<str
 export const ACCESSORY_EFFECT_POOLS: Record<StatKey, GearEffectId[]> = {
   str: ["fortify", "might", "thorns", "armor_damage", "resist"],
   agi: ["evade", "precision", "crit_chance", "counter", "vamp"],
-  int: ["wisdom", "magic_resist", "magic_vamp", "ap"],
+  int: ["wisdom", "magic_resist", "magic_vamp", "ap", "magic_power"],
 };
 
 export interface GearPoolQuery {
@@ -259,6 +260,7 @@ export function effectTotalDetail(id: GearEffectId, n: number): string {
     case "sunder": return `+${n}% шанс расколоть броню врага`;
     case "rage": return `+${n}% урона за каждые 10% недостающего здоровья`;
     case "wisdom": return `+${n}% к множителю от Интеллекта`;
+    case "magic_power": return `+${n}% магического урона`;
     case "might": return `+${n}% к множителю от Силы`;
     case "precision": return `+${n}% к множителю от Ловкости`;
   }
