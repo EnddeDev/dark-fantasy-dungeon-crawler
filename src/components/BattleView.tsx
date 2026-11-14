@@ -88,7 +88,7 @@ export const ENEMY_EFFECT_TITLE: Record<string, string> = {
   sunder: "Раскол брони",
   darkness: "Мрак",
   noHeal: "Запрет лечения",
-  sealItems: "Печать немоты: рюкзак",
+  sealItems: "Немота: свитки и магия",
   sealSkills: "Печать забвения: приёмы",
   sealAttack: "Печать оков: атака",
 };
@@ -104,7 +104,7 @@ export const ENEMY_EFFECT_DESC: Record<string, string> = {
   sunder: "Броня героя снижается: раскол — до конца боя, гниение ходока — на два раунда.",
   darkness: "Половина твоих атак уходит в пустоту.",
   noHeal: "Зелья и приёмы лечения не работают.",
-  sealItems: "Припасы недоступны.",
+  sealItems: "Немота: свитки, магические приёмы и спец-приём закрыты.",
   sealSkills: "Приёмы оружия недоступны.",
   sealAttack: "Обычная атака недоступна.",
 };
@@ -702,7 +702,7 @@ export function BattleView({
                 {feared && <Tag tone="rubric">Страх: рюкзак, защита, побег, конец хода</Tag>}
                 {b.p.statuses.sealAttack > 0 && <Tag tone="rubric">Печать оков: удар запрещён</Tag>}
                 {b.p.statuses.sealSkills > 0 && <Tag tone="rubric">Печать забвения: приёмы запрещены</Tag>}
-                {b.p.statuses.sealItems > 0 && <Tag tone="rubric">Печать немоты: расходники запрещены</Tag>}
+                {b.p.statuses.sealItems > 0 && <Tag tone="rubric">Немота: свитки, магия и спец-приём закрыты</Tag>}
               </div>
             )}
             {(menu === "main" || menu === "item") && (
@@ -793,7 +793,7 @@ export function BattleView({
                     const req = def ? consumableIntReq(def, b.p.intDiscount) : 0;
                     const intOk = b.p.stats.int >= req;
                     const fearImmune = def?.use?.type === "fear" && isImmuneTo(e.def.race, "fear");
-                    const ok = !!def && n > 0 && intOk && myTurn && !fearImmune && b.p.statuses.sealItems < 1;
+                    const ok = !!def && n > 0 && intOk && myTurn && !fearImmune && !(b.p.statuses.sealItems > 0 && def?.kind === "scroll");
                     const pv = consumablePreview(b, id);
                     const freeUse = true;
                     return (
