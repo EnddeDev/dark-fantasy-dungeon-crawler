@@ -2986,12 +2986,16 @@ test("boss effect resistance is 25% and seals block the next player action", () 
   const pl = player({ hp: 500, stats: { str: 5, agi: 5, int: 5 }, bag: { potion_s: 3 } });
   const b = freshBattle(pl, 3, true);
   b.queue = ["p", "e"]; b.idx = 0;
-  b.p.statuses.sealItems = 1;
-  const refused = battle.playerAct(b, { type: "item", id: "potion_s" });
-  assert.equal(refused.bag.potion_s, 3);
+  /* Немота: свитки, магические приёмы и спец-приём закрыты на два раунда; зелья не затрагивает. */
+  b.p.statuses.sealItems = 2;
+  b.bag.scroll_spark = 1;
+  const refused = battle.playerAct(b, { type: "item", id: "scroll_spark" });
+  assert.equal(refused.bag.scroll_spark, 1);
   assert.equal(refused.idx, 0);
+  const potion = battle.playerAct(b, { type: "item", id: "potion_s" });
+  assert.equal(potion.bag.potion_s, 2);
   const guard = battle.playerAct(refused, { type: "end_turn" });
-  assert.equal(guard.p.statuses.sealItems, 0);
+  assert.equal(guard.p.statuses.sealItems, 2, "держится до конца раундов, не за ход игрока");
   // Сопротивление босса: при Math.random=0 эффект отражается.
   const b2 = freshBattle(pl, 3, true);
   b2.queue = ["p", "e"]; b2.idx = 0;
@@ -3461,6 +3465,20 @@ test("приём накладывает истощение на два хода"
   Math.random = rnd;
   assert.equal(after.enemy.depleted, 2);
   assert.ok(after.log.some((l) => l.text.includes("Истощение")), "нет сообщения об истощении");
+});
+
+test("истощение снимает ярость и костяной щит врага, продление гасит оставшиеся", () => {
+  const rnd = Math.random;
+  const b = withTechnique("ward_shatter");
+  b.enemy.fury = 3;
+  b.enemy.shield = true;
+  b.p.concentration = 5;
+  Math.random = () => 0.9;
+  const after = battle.playerAct(b, { type: "weapon_skill" });
+  Math.random = rnd;
+  assert.equal(after.enemy.fury, 0, "ярость снята");
+  assert.equal(after.enemy.shield, false, "щит снят");
+  assert.equal(after.enemy.depleted, 2);
 });
 
 /** Бой с истощённым или обычным врагом: общая заготовка для сравнений. */

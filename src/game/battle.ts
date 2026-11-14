@@ -1,4 +1,8 @@
 import {
+  SLOW_ROUNDS, SHATTER_ROUNDS, MUTE_ROUNDS, DEPLETE_ROUNDS, BEAT_ROUNDS, WEAKEN_ROUNDS, DRAIN_ROUNDS,
+  SHATTER_MULT, drainTick, depleteRemove, slowedTurns, beatenDamage, weakenedMult,
+} from "./newEffects";
+import {
   BOSSES,
   ENEMIES,
   ENEMY_PASSIVES,
@@ -440,6 +444,8 @@ export interface BattleState {
       sealItems: number;
       sealSkills: number;
       sealAttack: number;
+      /** Новые эффекты: замедление, побои, ослабление, разрушение, иссушение (раунды). */
+      slow: number; beat: number; weaken: number; shatter: number; drain: number;
     };
     guard: boolean;
     firstAttackDone: boolean;
@@ -1303,6 +1309,7 @@ export function newBattle(
         sealItems: 0,
         sealSkills: 0,
         sealAttack: 0,
+        slow: 0, beat: 0, weaken: 0, shatter: 0, drain: 0,
       },
       guard: false,
       firstAttackDone: false,
@@ -1384,6 +1391,7 @@ export function techniqueBonusNow(b: BattleState, ws: WeaponSkillDef): number {
   /* Колдун 10: скейл любого оружейного приёма идёт через ИНТ. */
   const scaleStat = hasPassive(b, "arch_warlock_10") ? "int" : ws.scaleStat;
   let bonus = Math.round(weaponTechniqueBonus(b.p.stats[scaleStat], ws.scaleMult, skillScaleBonus(b)));
+  bonus = Math.round(bonus * weakenedMult(1, b.p.statuses.weaken));
   const eff = ws.effect;
   if (eff === "armor_damage") bonus += Math.round(b.p.armor * techValue(ws, ws.id === "bulwark_verdict" ? 0.75 : 0.5, 100));
   if (eff === "missing_hp") bonus = Math.round(bonus * (1 + Math.min(10, Math.floor(missingHpRatio(b) * 10)) * techValue(ws, 0.06, 100)));
@@ -1395,7 +1403,7 @@ export function techniqueBonusNow(b: BattleState, ws: WeaponSkillDef): number {
 function skillDamageMult(b: BattleState) {
   return 1 + effectPower(b, "skill_damage") / 100 + passivePower(b, "warlock_pact", "skillDamage") / 100 +
     (hasPassive(b, "arch_warlock_5") ? 0.20 : 0) + (b.p.statuses.pactElixir > 0 ? 0.25 : 0) +
-    (b.p.stats.int * effectPower(b, "wisdom")) / 100;
+    ((b.p.stats.int * effectPower(b, "wisdom")) / 100) * weakMult(b);
 }
 /** База приёмов и свитков: 10 + 2×ИНТ. Коэффициент задаёт конкретный приём. */
 export function techniqueDamage(int: number, coefficient = 1): number {
@@ -1438,7 +1446,7 @@ export function playerResistChance(b: BattleState) {
     ...(hasPassive(b, "stone_skin") ? [0.15] : []),
     ...(b.p.statuses.resistPotion > 0 ? [0.25] : []),
   ];
-  return combatChance(b.p.chanceLayers.tenacity, extra);
+  return heroChance(b, b.p.chanceLayers.tenacity, extra);
 }
 function tryResist(b: BattleState, label: string) {
   if (Math.random() < playerResistChance(b)) {
@@ -1461,6 +1469,48 @@ function eChance(b: BattleState, id: GearEffectId): number {
 function effectsDepleted(b: BattleState): boolean {
   return (b.enemy.depleted ?? 0) > 0;
 }
+
+/** Ослабление: множитель для любого урона, который растёт от СИЛ, ЛОВ или ИНТ героя. */
+function weakMult(b: BattleState): number {
+  return weakenedMult(1, b.p.statuses.weaken);
+}
+
+/** Разрушение: шанс героя из слоя (укрепление, магическое сопротивление, стойкость) режется на 25%. */
+function heroChance(b: BattleState, layer: Parameters<typeof combatChance>[0], extra: number[] = []): number {
+  const base = combatChance(layer, extra);
+  return b.p.statuses.shatter > 0 ? base * SHATTER_MULT : base;
+}
+
+/** Истощение врага: снимает случайных положительных (ярость, костяной щит); продление снимает все. */
+function applyDepletion(b: BattleState): string[] {
+  const e = b.enemy;
+  const pool = [...(e.fury > 0 ? ["fury"] : []), ...(e.shield ? ["shield"] : [])];
+  const { removed } = depleteRemove(pool, e.depleted > 0);
+  for (const id of removed) {
+    if (id === "fury") e.fury = 0;
+    if (id === "shield") e.shield = false;
+  }
+  e.depleted = Math.max(e.depleted, DEPLETE_ROUNDS);
+  const names: Record<string, string> = { fury: "ярость", shield: "костяной щит" };
+  push(b, removed.length ? `Истощение: у ${e.def.name} снято ${removed.map((r) => names[r]).join(", ")}.` : `Истощение ${e.def.name}: положительных эффектов нет, но они гаснут на ${e.depleted} хода.`, "p");
+  return removed;
+}
+
+/** Иссушение: в конце раунда герой теряет долю макс. ОЗ (мимо брони), враг лечится на половину. */
+function drainRoundTick(b: BattleState) {
+  if (b.over || b.p.statuses.drain <= 0 || b.p.hp <= 0 || b.enemy.hp <= 0) return;
+  const t = drainTick(b.p.maxHp, b.p.statuses.drain);
+  b.p.hp = Math.max(0, b.p.hp - t.damage);
+  flash(b, "p", "hit", t.damage);
+  const healed = Math.min(t.heal, Math.max(0, b.enemy.maxHp - b.enemy.hp));
+  if (healed > 0) b.enemy.hp += healed;
+  push(b, `Иссушение: −${t.damage} ОЗ; ${b.enemy.def.name} восстанавливает ${healed} ОЗ.`, "e");
+  b.p.statuses.drain -= 1;
+  heroDeathCheck(b);
+}
+
+/** Приёмы, которые запрещает Немота (свиток, магический приём, спец-приём архетипа). */
+const MAGIC_TECH_EFFECTS: readonly string[] = ["pierce", "chill", "leech", "skill_leech"];
 
 /** Уклонение твари: тип плюс род, всегда от текущего определения. */
 function enemyEvade(b: BattleState): number {
@@ -1732,7 +1782,7 @@ function healPlayer(b: BattleState, amount: number, isPotion = false): number {
     return 0;
   }
   if (b.p.statuses.wither > 0) {
-    const dmg = Math.max(1, Math.round(amount * (1 - combatChance(b.p.chanceLayers.magicResist))));
+    const dmg = Math.max(1, Math.round(amount * (1 - heroChance(b, b.p.chanceLayers.magicResist))));
     b.p.hp = Math.max(0, b.p.hp - absorbBarrier(b, dmg));
     push(b, `Увядание обращает лечение в ${dmg} магического урона.`, "e");
     return 0;
@@ -1824,7 +1874,7 @@ function calcWeaponRoll(
   const hand = opts.hand ?? { lo: b.p.hit[0], hi: b.p.hit[1], agi: b.p.weaponAgi, cls: "light" as GearClass };
   /* Рискованная бьёт по максимуму оружия, безопасная — по минимуму, обычная — по разбросу. */
   const base = opts.kind === "risky" ? hand.hi : opts.kind === "safe" ? hand.lo : randInt(hand.lo, hand.hi);
-  let d = base + statDamage(b.p.stats.str, b.p.passives) + (hand.agi ? b.p.stats.agi : 0) + bonusFlat;
+  let d = base + Math.round(statDamage(b.p.stats.str, b.p.passives) * weakenedMult(1, b.p.statuses.weaken)) + (hand.agi ? b.p.stats.agi * weakMult(b) : 0) + bonusFlat;
 
   if (hasPassive(b, "heavy_hand")) d += 3;
   d += rarePower(b, "might", "damage");
@@ -1833,7 +1883,7 @@ function calcWeaponRoll(
   const missing = missingHpRatio(b);
   const enemyMissing = enemyMissingRatio(b);
   damageMult += rageBonus(b);
-  damageMult += (b.p.stats.str * effectPower(b, "might")) / 100;
+  damageMult += ((b.p.stats.str * effectPower(b, "might")) / 100) * weakMult(b);
   damageMult += (effectPower(b, "missing_hp_damage") / 100) * Math.min(10, Math.floor(missing * 10));
   damageMult += (effectPower(b, "enemy_missing_damage") / 100) * Math.min(10, Math.floor(enemyMissing * 10));
   if (hasPassive(b, "arch_barbarian_5")) {
@@ -1960,6 +2010,11 @@ function tryRevive(b: BattleState): boolean {
   return true;
 }
 
+/** Множитель магического урона героя от свойства «Магическое усиление» (проценты предметов). */
+export function magicPowerMult(effectPower: Partial<Record<GearEffectId, number>>): number {
+  return 1 + (effectPower.magic_power ?? 0) / 100;
+}
+
 function hitEnemy(
   b: BattleState,
   raw: number,
@@ -1969,6 +2024,8 @@ function hitEnemy(
   element?: DamageElement,
   accuracy?: number,
 ): number {
+  /* Магическое усиление: любой магический удар героя, включая свитки и расходники. */
+  if (kind === "magic") raw = Math.round(raw * magicPowerMult(b.p.effectPower));
   /* Ловкий «без рода»: часть физических ударов он уводит и сам контратакует без урона для себя.
      Контратака героя сюда не попадает — иначе цепочка ударов не кончится. */
   if (
@@ -2157,12 +2214,12 @@ function playerDefenseLines(
           note: `−${cut}`,
         });
       }
-      const fortify = combatChance(b.p.chanceLayers.fortify);
+      const fortify = heroChance(b, b.p.chanceLayers.fortify);
       d = Math.round(d * (1 - fortify));
       if (fortify > 0) lines.push({ label: "Укрепление героя", value: d, note: `−${pctText(fortify)}` });
     }
   } else if (!ignoreDefense) {
-    const magic = combatChance(b.p.chanceLayers.magicResist);
+    const magic = heroChance(b, b.p.chanceLayers.magicResist);
     d = Math.round(d * (1 - magic));
     if (magic > 0) lines.push({ label: "Сопротивление магии", value: d, note: `−${pctText(magic)}` });
   }
@@ -2258,6 +2315,8 @@ function incoming(
   /** Пробивает броню, сопротивление и уклонение (холодное касание призрака). */
   ignoreDefense = false,
 ): boolean {
+  /* Побои: урон по герою +20%, пока эффект держится. */
+  raw = beatenDamage(raw, b.p.statuses.beat);
   const darkMiss = (b.torchTurns ?? 0) > 0 ? 0 : biomeMissChance(b.biome);
   if (!ignoreDefense && strike && darkMiss > 0 && Math.random() < darkMiss) {
     flash(b, "p", "miss", 0);
@@ -2552,7 +2611,6 @@ function advance(b: BattleState) {
   b.p.turnPouch = 0;
   //.Печати живут ровно один ход игрока: снимаются после его действия.
   if (b.queue[b.idx] === "p") {
-    b.p.statuses.sealItems = Math.max(0, b.p.statuses.sealItems - 1);
     b.p.statuses.sealSkills = Math.max(0, b.p.statuses.sealSkills - 1);
     b.p.statuses.sealAttack = Math.max(0, b.p.statuses.sealAttack - 1);
   }
@@ -2578,12 +2636,12 @@ function advance(b: BattleState) {
       push(b, `Горение отнимает ${d} здоровья.`, "e");
     }
     if (!warded && b.p.statuses.chill > 0 && b.p.hp > 0) {
-      const d = absorbBarrier(b, magicTickFrom(b.p.statuses.chillTick, combatChance(b.p.chanceLayers.magicResist)));
+      const d = absorbBarrier(b, magicTickFrom(b.p.statuses.chillTick, heroChance(b, b.p.chanceLayers.magicResist)));
       b.p.hp -= d;
       push(b, `Обморожение отнимает ${d} здоровья и режет лечение вдвое.`, "e");
     }
     if (!warded && b.p.statuses.curse > 0 && b.p.hp > 0) {
-      const d = absorbBarrier(b, magicTickFrom(b.p.statuses.curseTick, combatChance(b.p.chanceLayers.magicResist)));
+      const d = absorbBarrier(b, magicTickFrom(b.p.statuses.curseTick, heroChance(b, b.p.chanceLayers.magicResist)));
       b.p.hp -= d;
       push(b, `Проклятие выжигает ${d} здоровья.`, "e");
     }
@@ -2698,6 +2756,11 @@ function advance(b: BattleState) {
     b.p.statuses.bloodRage = Math.max(0, b.p.statuses.bloodRage - 1);
     b.p.statuses.noHeal = Math.max(0, b.p.statuses.noHeal - 1);
     b.p.statuses.darkness = Math.max(0, b.p.statuses.darkness - 1);
+    b.p.statuses.sealItems = Math.max(0, b.p.statuses.sealItems - 1);
+    b.p.statuses.beat = Math.max(0, b.p.statuses.beat - 1);
+    b.p.statuses.weaken = Math.max(0, b.p.statuses.weaken - 1);
+    b.p.statuses.shatter = Math.max(0, b.p.statuses.shatter - 1);
+    drainRoundTick(b);
     b.p.statuses.quickblade = Math.max(0, b.p.statuses.quickblade - 1);
     b.p.statuses.pactElixir = Math.max(0, b.p.statuses.pactElixir - 1);
     b.p.statuses.fullGuard = Math.max(0, b.p.statuses.fullGuard - 1);
@@ -2779,7 +2842,8 @@ function advance(b: BattleState) {
       push(b, "Действие зелья скорости закончилось: количество ходов вернулось к норме.", "sys");
     if (prevStone > 0 && b.p.statuses.stone === 0)
       push(b, "Каменная кожа осыпалась: входящий урон больше не снижен.", "sys");
-    b.queue = buildQueue(pAp, eAp);
+    b.queue = buildQueue(slowedTurns(pAp, b.p.statuses.slow), eAp);
+    b.p.statuses.slow = Math.max(0, b.p.statuses.slow - 1);
     push(b, `— Раунд ${b.round} —`, "sys");
     prepareRoundRules(b);
 
@@ -2886,7 +2950,7 @@ function archetypeSpecialBlock(b: BattleState): string | null {
   }
   if (b.p.statuses.sealSkills > 0) return "Печать забвения запрещает приёмы в этот ход.";
   if (arch === "barbarian" && b.p.hp >= b.p.maxHp) return "Кровавый расчёт нужен недостающее здоровье: концентрация не потрачена.";
-  if (arch === "ninja" && b.p.statuses.sealItems > 0) return "Печать немоты запрещает расходники в этот ход.";
+  if (b.p.statuses.sealItems > 0) return "Немота запрещает спец-приём в этот ход.";
   return null;
 }
 
@@ -2976,12 +3040,12 @@ function consumableDamageMult(b: BattleState, def: { kind: string; use?: { type:
   const spellPowerMult = (hasPassive(b, "resonance") ? 1.4 : 1) * (1 + legPower(b, "archmage_blood", "spellDamage") / 100);
   let m = isScroll ? spellPowerMult : 1;
   if (isScroll) {
-    m *= 1 + (b.p.stats.int * effectPower(b, "wisdom")) / 100 +
+    m *= 1 + ((b.p.stats.int * effectPower(b, "wisdom")) / 100) * weakMult(b) +
       effectPower(b, "scroll_damage") / 100 + passivePower(b, "sage_library", "scrollDamage") / 100;
     if (hasPassive(b, "arch_sage_5")) m *= 1.25;
   } else if (def.use?.type !== "heal" && def.use?.type !== "cleanse") {
-    m *= 1 + (b.p.stats.agi * effectPower(b, "precision")) / 100 + effectPower(b, "consumable_damage") / 100 +
-      (hasPassive(b, "arch_ninja_5") ? 0.1 * b.p.stats.agi : 0);
+    m *= 1 + ((b.p.stats.agi * effectPower(b, "precision")) / 100) * weakMult(b) + effectPower(b, "consumable_damage") / 100 +
+      (hasPassive(b, "arch_ninja_5") ? 0.1 * b.p.stats.agi * weakMult(b) : 0);
     if (hasPassive(b, "arch_ninja_5")) m *= 1.25;
   }
   const debuffs = enemyDebuffCount(b);
@@ -2997,7 +3061,7 @@ function consumablePowerWithGear(b: BattleState, def: ItemDef) {
 function applyArmorSkill(b: BattleState, sk: ArmorSkillView) {
   const st = b.p.stats[sk.scaleStat];
   if (sk.dmg && b.enemy.hp > 0) {
-    const raw = sk.dmg.base + sk.dmg.stat * st + (sk.dmg.armor ?? 0) * b.p.armor;
+    const raw = sk.dmg.base + sk.dmg.stat * st * weakMult(b) + (sk.dmg.armor ?? 0) * b.p.armor;
     const kind = sk.dmg.magic ? "magic" : "phys";
     const dealt = hitEnemy(b, Math.max(1, Math.round(raw)), kind, ` [${sk.name}]`);
     applyVamp(b, dealt, 0, "skill", kind);
@@ -3135,7 +3199,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
     b.repeatSkill = skillKey !== null && skillKey === b.lastSkill;
     b.lastSkill = skillKey;
   }
-  if (a.type === "item" && b.p.statuses.sealItems > 0) return err("Печать немоты запрещает расходники в этот ход.");
+  if (a.type === "item" && b.p.statuses.sealItems > 0 && ITEMS[a.id]?.kind === "scroll") return err("Немота запрещает свитки в этот ход.");
   if (a.type === "attack" && a.kind === "risky") {
     const block = riskyAttackBlock(b);
     if (block) return err(block);
@@ -3233,6 +3297,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
 
       const bonus = techniqueBonusNow(b, ws);
       const eff = ws.effect;
+      if (b.p.statuses.sealItems > 0 && MAGIC_TECH_EFFECTS.includes(eff ?? "")) return err("Немота запрещает магические приёмы в этот ход.");
       const trueDamage = eff === "pierce" || eff === "chill" || eff === "leech" || eff === "skill_leech";
       const magicSkill = !!ws.magic;
       const hits = eff === "double_attack" ? scaleIntegerByLevel(2, ws.level ?? 1) : 1;
@@ -3321,7 +3386,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
         /* Срок фиксирован: истощение держится ровно два хода, уровнем не растягивается. */
         const rounds = 2;
         if (!bossResists(b)) {
-          b.enemy.depleted = Math.max(b.enemy.depleted, rounds);
+          applyDepletion(b);
           push(b, `Истощение ${b.enemy.def.name} на ${rounds} хода: его положительные эффекты гаснут.`, "p");
         }
       } else if (eff === "create_scroll") {
@@ -3376,14 +3441,14 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
 
       const skLevel = b.p.epicSkillLevels[sk.id] ?? 1;
       if (sk.id === "fireball") {
-        const dmg = Math.round(techniqueDamage(b.p.stats.int, epicMagnitude(sk.id, "scale", skLevel) / 2) * spellPowerMult * skillDamageMult(b));
+        const dmg = Math.round((techniqueDamage(b.p.stats.int, epicMagnitude(sk.id, "scale", skLevel) / 2) * weakMult(b)) * spellPowerMult * skillDamageMult(b));
         const dealt = elementalHit(b, dmg, " [Огненный шар]", "fire");
         applyVamp(b, dealt, 0, "skill", "magic");
         const burnRounds = epicMagnitude(sk.id, "rounds", skLevel);
         setEnemyTick(b, "burn", burnRounds, skillDotTick("burn", b.p.level, b.enemy.maxHp));
         push(b, `${b.enemy.def.name} объят пламенем (${burnRounds} раунда).`, "p");
       } else if (sk.id === "blood_lance") {
-        const dmg = Math.round(techniqueDamage(b.p.stats.int, epicMagnitude(sk.id, "scale", skLevel) / 2) * spellPowerMult * skillDamageMult(b));
+        const dmg = Math.round((techniqueDamage(b.p.stats.int, epicMagnitude(sk.id, "scale", skLevel) / 2) * weakMult(b)) * spellPowerMult * skillDamageMult(b));
         const dealt = hitEnemy(b, dmg, "magic", " [Кровавое копьё]");
         const heal = healPlayer(b, Math.max(2, Math.round(dealt * (epicMagnitude(sk.id, "leech", skLevel) / 100))));
         flash(b, "p", "heal", heal);
@@ -3400,12 +3465,12 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
         flash(b, "p", "heal", heal);
         push(b, `Эгида пепла: +${heal} ОЗ, раны сняты, включена Защита.`, "p");
       } else if (sk.id === "shadow_volley") {
-        const dmg = Math.round(techniqueDamage(b.p.stats.int, epicMagnitude(sk.id, "scale", skLevel) / 2) * spellPowerMult * skillDamageMult(b));
+        const dmg = Math.round((techniqueDamage(b.p.stats.int, epicMagnitude(sk.id, "scale", skLevel) / 2) * weakMult(b)) * spellPowerMult * skillDamageMult(b));
         const dealt = hitEnemy(b, dmg, "magic", " [Теневой росчерк]");
         setEnemyTick(b, "chill", epicMagnitude(sk.id, "rounds", skLevel), skillDotTick("chill", b.p.level, b.enemy.maxHp));
         applyVamp(b, dealt, 0, "skill", "magic");
       } else if (sk.id === "frost_nova") {
-        const dmg = Math.round(techniqueDamage(b.p.stats.int, epicMagnitude(sk.id, "scale", skLevel) / 2) * spellPowerMult * skillDamageMult(b));
+        const dmg = Math.round((techniqueDamage(b.p.stats.int, epicMagnitude(sk.id, "scale", skLevel) / 2) * weakMult(b)) * spellPowerMult * skillDamageMult(b));
         const dealt = elementalHit(b, dmg, " [Дыхание склепа]", "ice");
         applyVamp(b, dealt, 0, "skill", "magic");
         setEnemyTick(b, "chill", epicMagnitude(sk.id, "rounds", skLevel), skillDotTick("chill", b.p.level, b.enemy.maxHp));
@@ -3726,7 +3791,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
           }
           if (bossResists(b)) break;
           const rounds = u.rounds ?? 2;
-          b.enemy.depleted = Math.max(b.enemy.depleted, rounds);
+          applyDepletion(b);
           push(b, `${def.name}: истощение ${b.enemy.def.name} на ${rounds} хода — эффекты гаснут.`, "p");
           break;
         }
@@ -4242,7 +4307,7 @@ export function enemyMoveEffectDetails(b: BattleState, move: EnemyMove): EnemyMo
       add("sunder", false, landP, [`Раскол брони: броня −${enemySunderBreak(e.level)} до конца боя; всего не больше −8.`], "sunder");
       break;
     case "curse": {
-      const magic = combatChance(b.p.chanceLayers.magicResist);
+      const magic = heroChance(b, b.p.chanceLayers.magicResist);
       const [lo, hi] = span("curse", true);
       const power = Math.max(b.p.statuses.cursePower ?? 0, 30);
       add("curse", false, resisted, [
@@ -4270,7 +4335,7 @@ export function enemyMoveEffectDetails(b: BattleState, move: EnemyMove): EnemyMo
       add("darkness", false, 1, [`Мрак: ${roundsText(1)}; половина твоих атак уходит в пустоту.`], "darkness");
       break;
     case "seal_items":
-      add("sealItems", false, 1, ["Печать немоты: расходники запрещены в твой следующий ход."], "sealItems");
+      add("sealItems", false, 1, [`Немота: ${roundsText(MUTE_ROUNDS)}; свитки, магические приёмы и спец-приём запрещены.`], "sealItems");
       break;
     case "seal_skills":
       add("sealSkills", false, 1, ["Печать забвения: приёмы запрещены в твой следующий ход."], "sealSkills");
@@ -4452,8 +4517,12 @@ export function enemyStep(b0: BattleState): BattleState {
       push(b, `${e.def.name} обрушивает сокрушительный удар!`, "e");
       const landed = incoming(b, Math.round(base * 1.7 * chill), "phys", `${e.def.name} пробивает с плеча`);
       if (!landed) e.lastMiss = true;
+      if (landed && b.p.hp > 0) {
+        b.p.statuses.beat = Math.max(b.p.statuses.beat, BEAT_ROUNDS);
+        push(b, `Побои: урон по тебе +20% на ${BEAT_ROUNDS} раунда.`, "e");
+      }
       /* Гнилой ходок: тяжёлый удар снимает слой брони на два раунда. */
-      else if (e.def.id === "husk" && b.p.hp > 0) {
+      if (e.def.id === "husk" && b.p.hp > 0) {
         const stacks = nextRotStacks(b.p.statuses.rot ?? 0);
         b.p.statuses.rot = stacks;
         b.p.statuses.rotRounds = ROT_ROUNDS;
@@ -4491,6 +4560,8 @@ export function enemyStep(b0: BattleState): BattleState {
       if (incoming(b, d, "magic", `${e.def.name} вытягивает жизненную силу`)) {
         const heal = healEnemy(b, Math.max(2, Math.round(d * 0.5)));
         push(b, `${e.def.name} восстанавливает себе ${heal} ОЗ.`, "e");
+        b.p.statuses.drain = Math.max(b.p.statuses.drain, DRAIN_ROUNDS);
+        push(b, `Иссушение: ${DRAIN_ROUNDS} раунда, герой теряет долю ОЗ, враг лечится.`, "e");
       }
       break;
     }
@@ -4498,6 +4569,8 @@ export function enemyStep(b0: BattleState): BattleState {
       const landed = incoming(b, Math.round(base * 1.15 * chill), "phys", `${e.def.name} бьёт по швам доспеха`);
       if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0) {
+        b.p.statuses.shatter = Math.max(b.p.statuses.shatter, SHATTER_ROUNDS);
+        push(b, `Разрушение: укрепление, магическое сопротивление и стойкость −25% на ${SHATTER_ROUNDS} раунда.`, "e");
         if (!immuneNote(b, "sunder")) {
           const breakAmount = enemySunderBreak(b.enemy.level);
           b.p.statuses.sundered = Math.min(8, b.p.statuses.sundered + breakAmount);
@@ -4524,6 +4597,8 @@ export function enemyStep(b0: BattleState): BattleState {
       const blockSkills = immuneNote(b, "sealSkills");
       if (!blockAttack) b.p.statuses.sealAttack = 1;
       if (!blockSkills) b.p.statuses.sealSkills = 1;
+      b.p.statuses.weaken = Math.max(b.p.statuses.weaken, WEAKEN_ROUNDS);
+      push(b, `Ослабление: урон от характеристик −25% на ${WEAKEN_ROUNDS} раунда.`, "e");
       if (!blockAttack || !blockSkills) push(b, `${e.def.name} давит волей: в следующий ход нельзя ни атаковать, ни применять приёмы.`, "e");
       break;
     }
@@ -4538,6 +4613,8 @@ export function enemyStep(b0: BattleState): BattleState {
       const landed = incoming(b, Math.round(base * 1.1 * chill), "magic", `${e.def.name} касается холодом`, false, true);
       if (landed) {
         push(b, "Холодное касание проходит сквозь броню и любое сопротивление.", "e");
+        b.p.statuses.slow = Math.max(b.p.statuses.slow, SLOW_ROUNDS);
+        push(b, `Замедление: −1 ход в раунде на ${SLOW_ROUNDS} раунда.`, "e");
         if (!immuneNote(b, "noHeal")) {
           b.p.statuses.noHeal = Math.max(b.p.statuses.noHeal, 2);
           if (b.p.hp > 0) push(b, "Стужа в костях: два хода лечение не действует.", "e");
@@ -4579,8 +4656,8 @@ export function enemyStep(b0: BattleState): BattleState {
     }
     case "seal_items": {
       if (!immuneNote(b, "sealItems")) {
-        b.p.statuses.sealItems = 1;
-        push(b, `${e.def.name} накладывает Печать немоты: расходники запрещены в твой следующий ход.`, "e");
+        b.p.statuses.sealItems = MUTE_ROUNDS;
+        push(b, `${e.def.name} накладывает Немоту: свитки, магические приёмы и спец-приём запрещены на ${MUTE_ROUNDS} раунда.`, "e");
       }
       break;
     }
@@ -4708,7 +4785,7 @@ function flatOf(list: Modifier[]) {
  */
 export function combatReadout(b: BattleState): CombatReadout {
   const st = b.p.stats;
-  const strFlat = statDamage(st.str, b.p.passives) + (b.p.weaponAgi ? st.agi : 0);
+  const strFlat = Math.round(statDamage(st.str, b.p.passives) * weakMult(b)) + (b.p.weaponAgi ? st.agi * weakMult(b) : 0);
   const baseMin = b.p.hit[0] + strFlat;
   const baseMax = b.p.hit[1] + strFlat;
 
@@ -4724,7 +4801,7 @@ export function combatReadout(b: BattleState): CombatReadout {
     dmgMods.push({ id: "armor_damage", label: "Наступление", flat: Math.round(b.p.armor * effectDamage), good: true, detail: `+${Math.round(effectDamage * 100)}% брони к урону.` });
   const rageSteps = Math.min(10, Math.floor(missingHpRatio(b) * 10));
   const gearRageBonus = (effectPower(b, "rage") / 100) * rageSteps;
-  const missingBonus = gearRageBonus + (b.p.stats.str * effectPower(b, "might")) / 100 +
+  const missingBonus = gearRageBonus + ((b.p.stats.str * effectPower(b, "might")) / 100) * weakMult(b) +
     (effectPower(b, "missing_hp_damage") / 100) * Math.min(10, Math.floor(missingHpRatio(b) * 10)) +
     (hasPassive(b, "arch_barbarian_5") ? Math.floor(missingHpRatio(b) * 10) * 0.04 : 0);
   if (b.p.statuses.bulwarkStrike > 0) dmgMods.push({ id: "bulwark_strike", label: "Стойка бастиона", flat: b.p.statuses.bulwarkStrike, good: true, detail: "Следующая обычная атака получит этот урон от брони стойки." });
@@ -4893,7 +4970,7 @@ export function combatReadout(b: BattleState): CombatReadout {
   if (b.p.statuses.sealSkills > 0)
     defMods.push({ id: "sealSkills", label: "Печать забвения", good: false, rounds: b.p.statuses.sealSkills, detail: "Приёмы запрещены в этот ход." });
   if (b.p.statuses.sealItems > 0)
-    defMods.push({ id: "sealItems", label: "Печать немоты", good: false, rounds: b.p.statuses.sealItems, detail: "Расходники запрещены в этот ход." });
+    defMods.push({ id: "sealItems", label: "Немота", good: false, rounds: b.p.statuses.sealItems, detail: "Расходники запрещены в этот ход." });
   if (b.p.statuses.stunAp > 0)
     defMods.push({
       id: "stun",
@@ -5019,8 +5096,8 @@ export function combatReadout(b: BattleState): CombatReadout {
     crit: combatChance(b.p.chanceLayers.crit, b.p.statuses.quickblade > 0 ? [0.25] : []),
     critDamage: b.p.critDamage + (b.p.statuses.quickblade > 0 ? 0.5 : 0),
     tenacity: playerResistChance(b),
-    magicResist: combatChance(b.p.chanceLayers.magicResist),
-    fortify: combatChance(b.p.chanceLayers.fortify),
+    magicResist: heroChance(b, b.p.chanceLayers.magicResist),
+    fortify: heroChance(b, b.p.chanceLayers.fortify),
     ap,
     apBase,
     stamina,

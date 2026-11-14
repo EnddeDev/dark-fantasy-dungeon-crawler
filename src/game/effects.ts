@@ -33,6 +33,7 @@ export const EFFECT_ICON_IDS = [
   "pact", "fullGuard", "tempArmor", "dodge", "smoke", "shadow", "darkness",
   "noHeal", "sealItems", "sealSkills", "sealAttack", "guard", "fury",
   "depleted", "regen", "thorns", "oil", "frost", "acid", "blind", "resist", "vamp_hits", "unknown",
+  "slow", "beat", "weaken", "shatter", "drain",
 ] as const;
 
 export type EffectIconId = (typeof EFFECT_ICON_IDS)[number];
@@ -418,8 +419,8 @@ export function playerEffectChips(b: BattleState): EffectChip[] {
   }
   if (s.sealItems > 0) {
     chips.push({
-      id: "sealItems", name: "Печать припасов", polarity: "bad", rounds: s.sealItems, unit: "ход",
-      details: ["Припасы недоступны."], boosts: [], color: EFFECT_COLORS.curse,
+      id: "sealItems", name: "Немота", polarity: "bad", rounds: s.sealItems, unit: "раунд",
+      details: ["Свитки, магические приёмы и спец-приём недоступны."], boosts: [], color: EFFECT_COLORS.curse,
     });
   }
   if (s.sealSkills > 0) {
@@ -432,6 +433,38 @@ export function playerEffectChips(b: BattleState): EffectChip[] {
     chips.push({
       id: "sealAttack", name: "Печать атаки", polarity: "bad", rounds: s.sealAttack, unit: "ход",
       details: ["Обычная атака недоступна."], boosts: [], color: EFFECT_COLORS.curse,
+    });
+  }
+
+  /* ── Новые эффекты врага: замедление, побои, ослабление, разрушение, иссушение ── */
+  if (s.slow > 0) {
+    chips.push({
+      id: "slow", name: "Замедление", polarity: "bad", rounds: s.slow, unit: "раунд",
+      details: ["Ходов в раунде −1 (не меньше одного)."], boosts: [], color: EFFECT_COLORS.frost,
+    });
+  }
+  if (s.beat > 0) {
+    chips.push({
+      id: "beat", name: "Побои", polarity: "bad", rounds: s.beat, unit: "раунд",
+      details: ["Урон, получаемый тобой, +20%."], boosts: [], color: EFFECT_COLORS.sunder,
+    });
+  }
+  if (s.weaken > 0) {
+    chips.push({
+      id: "weaken", name: "Ослабление", polarity: "bad", rounds: s.weaken, unit: "раунд",
+      details: ["Урон от характеристик −25%: приёмы и сила удара."], boosts: [], color: EFFECT_COLORS.blight,
+    });
+  }
+  if (s.shatter > 0) {
+    chips.push({
+      id: "shatter", name: "Разрушение", polarity: "bad", rounds: s.shatter, unit: "раунд",
+      details: ["Укрепление, магическое сопротивление и стойкость −25%."], boosts: [], color: EFFECT_COLORS.sunder,
+    });
+  }
+  if (s.drain > 0) {
+    chips.push({
+      id: "drain", name: "Иссушение", polarity: "bad", rounds: s.drain, unit: "раунд",
+      details: ["Каждый раунд теряешь 6% макс. ОЗ мимо брони; враг лечится на половину."], boosts: [], color: EFFECT_COLORS.wither,
     });
   }
 
