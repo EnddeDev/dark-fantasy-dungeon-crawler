@@ -281,9 +281,9 @@ export function legendaryPassiveDesc(id: LegendaryPassiveId, level = 1): string 
     case "executioner":
       return `По врагам с менее чем 50% здоровья весь твой урон увеличен на ${n("damage")}%.`;
     case "time_weaver":
-      return `Даёт +${n("ap")} дополнительный ход в каждом раунде боя.`;
+      return `Даёт +${n("ap")} дополнительный ход только в первом раунде боя.`;
     case "immortal_pact":
-      return `Один раз за бой спасает от смерти и восстанавливает ${n("heal")}% максимального здоровья.`;
+      return `Один раз за бой спасает от смерти и оставляет тебя с 18 здоровья и в Защите.`;
     case "archmage_blood":
       return `Урон свитков и заклинаний +${n("spellDamage")}%; требования ИНТ снижены на ${n("intDiscount")}.`;
     case "titan_heart":
@@ -614,12 +614,12 @@ export const LEGENDARY_PASSIVES: Record<LegendaryPassiveId, LegendaryPassiveDef>
   executioner: {
     id: "executioner",
     name: "Приговор слабым",
-    desc: "По врагам с менее чем 50% здоровья весь твой урон увеличен на 35%.",
+    desc: "По врагам с менее чем 50% здоровья весь твой урон увеличен (сила растёт с уровнем предмета).",
   },
   time_weaver: {
     id: "time_weaver",
     name: "Поступь вне времени",
-    desc: "Даёт дополнительные ходы только в первом раунде боя (скейлится от уровня предмета).",
+    desc: "Даёт дополнительные ходы только в первом раунде боя (число растёт с уровнем предмета).",
   },
   immortal_pact: {
     id: "immortal_pact",
@@ -629,12 +629,12 @@ export const LEGENDARY_PASSIVES: Record<LegendaryPassiveId, LegendaryPassiveDef>
   archmage_blood: {
     id: "archmage_blood",
     name: "Кровь архимага",
-    desc: "Свитки и способности снаряжения бьют на 30% сильнее, а их требования к ИНТ снижены на 1.",
+    desc: "Свитки и способности снаряжения бьют сильнее, а их требования к ИНТ снижены (сила растёт с уровнем предмета).",
   },
   titan_heart: {
     id: "titan_heart",
     name: "Сердце колосса",
-    desc: "+24 к максимальному здоровью, +2 к броне и полный иммунитет к кровотечению.",
+    desc: "Увеличивает максимальное здоровье и броню, даёт полный иммунитет к кровотечению и яду.",
   },
 };
 

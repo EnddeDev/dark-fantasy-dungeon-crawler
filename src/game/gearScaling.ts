@@ -281,14 +281,18 @@ export function rareAffixMagnitude(id: RareAffixId, key: string, level: number):
 export const LEGENDARY_PASSIVE_BASE: Record<LegendaryPassiveId, Record<string, NumericDef>> = {
   executioner: { damage: { value: 35 } },
   time_weaver: { ap: { value: 1 } },
-  immortal_pact: { heal: { value: 50 } },
+  immortal_pact: {},
   archmage_blood: { spellDamage: { value: 30 }, intDiscount: { value: 1 } },
   titan_heart: { hp: { value: 24 }, armor: { value: 2 } },
 };
 
+/** Дискретные величины (лишние ходы, снижение требования ИНТ) растут целым шагом, а не сложным процентом. */
+const LEGENDARY_DISCRETE_KEYS: ReadonlySet<string> = new Set(["ap", "intDiscount"]);
+
 export function legendaryMagnitude(id: LegendaryPassiveId, key: string, level: number): number {
   const def = LEGENDARY_PASSIVE_BASE[id]?.[key];
   if (!def) return 0;
+  if (LEGENDARY_DISCRETE_KEYS.has(key)) return scaleIntegerByLevel(def.value, level);
   return scaleByLevel(def.value, level, def.precision ?? 1);
 }
 

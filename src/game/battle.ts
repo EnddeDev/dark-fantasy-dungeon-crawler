@@ -722,7 +722,7 @@ export function derived(pl: Player): DerivedStats {
     if (g.legendaryPassive) {
       legendaryPassives.push(g.legendaryPassive);
       const cur = legendaryPower[g.legendaryPassive] ?? {};
-      for (const key of ["damage", "ap", "heal", "spellDamage", "intDiscount", "hp", "armor"]) {
+      for (const key of ["damage", "ap", "spellDamage", "intDiscount", "hp", "armor"]) {
         const v = legendaryMagnitude(g.legendaryPassive, key, itemLevel);
         if (v) cur[key] = Math.max(cur[key] ?? 0, v);
       }
