@@ -737,8 +737,8 @@ test("gear instances vary in damage multiplier R, stat multiplier and weapon tec
   assert.ok(seen.size > 3);
   assert.equal(skills.size, content.TECHNIQUE_POOL.rapier.length);
 
-  const fixed = content.createGearItem({ baseId: "sword", skillId: "sweeping_cut", identified: true });
-  assert.equal(content.weaponSkillFor(fixed).id, "sweeping_cut");
+  const fixed = content.createGearItem({ baseId: "sword", skillId: "advance", identified: true });
+  assert.equal(content.weaponSkillFor(fixed).id, "advance");
 });
 
 test("recipe must be purchased, repeated ingredients are counted, failure consumes them", () => {
@@ -1375,6 +1375,7 @@ test("every gear base declares its kind, weight class and affinity", () => {
     staff: ["weapon", "medium", "int", "staff"],
     axe: ["weapon", "medium", "str", "axe"],
     hammer: ["weapon", "medium", "str", "hammer"],
+    greataxe: ["weapon", "heavy", "str", "greataxe"],
     abyss: ["weapon", "medium", "int", "sword"],
     rag: ["armor", "medium", "str", "-"],
     mail: ["armor", "medium", "str", "-"],
@@ -3325,7 +3326,7 @@ test("каждый приём оружия выпадает вместе с пр
   }
   const missing = Object.keys(techniques).filter((id) => !seen.has(id));
   assert.deepEqual(missing, [], `приёмы не выпадают: ${missing.join(", ")}`);
-  assert.equal(Object.keys(techniques).length, 47);
+  assert.equal(Object.keys(techniques).length, 53, "34 новых + архетипные + Жатва бездны");
 });
 
 test("приём всегда считает от той характеристики, которую требует предмет", () => {
@@ -3378,18 +3379,18 @@ test("оружие с единственным приёмом тоже полу�
 });
 
 test("выбранный приём переживает миграцию сохранения", () => {
-  const item = content.createGearItem({ baseId: "sword", skillId: "sundering_blade", rarity: "rare", wear: "worn", identified: true });
-  assert.equal(item.skillId, "sundering_blade");
+  const item = content.createGearItem({ baseId: "sword", skillId: "breach", rarity: "rare", wear: "worn", identified: true });
+  assert.equal(item.skillId, "breach");
   const migrated = content.migrateGearItem(item);
-  assert.equal(migrated.skillId, "sundering_blade");
-  assert.equal(content.weaponSkillFor(migrated).id, "sundering_blade");
+  assert.equal(migrated.skillId, "breach");
+  assert.equal(content.weaponSkillFor(migrated).id, "breach");
   /* чужой линейке приём не подсунуть */
-  const mismatch = content.createGearItem({ baseId: "sword", skillId: "quick_cut", rarity: "rare", wear: "worn", identified: true });
+  const mismatch = content.createGearItem({ baseId: "sword", skillId: "snake_bite", rarity: "rare", wear: "worn", identified: true });
   assert.ok(content.TECHNIQUE_POOL.sword.includes(mismatch.skillId));
 });
 
 test("старый приём чужой характеристики меняется при миграции", () => {
-  const broken = { ...content.createGearItem({ baseId: "abyss", wear: "worn", rarity: "rare", identified: true }), skillId: "shadow_rend" };
+  const broken = { ...content.createGearItem({ baseId: "abyss", wear: "worn", rarity: "rare", identified: true }), skillId: "snake_bite" };
   const fixed = content.migrateGearItem(broken);
   const stat = content.gearStatReq(fixed).stat;
   assert.equal(stat, "int");
@@ -3434,16 +3435,7 @@ function withTechnique(skillId, baseId = "sword") {
   return b;
 }
 
-test("истощение врага накладывают приём на каждую характеристику, свиток и прах", () => {
-  const breaks = Object.values(content.WEAPON_TECHNIQUES).filter((t) => t.effect === "buff_break");
-  assert.deepEqual(breaks.map((t) => t.scaleStat).sort(), ["agi", "int", "str"], "нужен приём на каждую характеристику");
-  for (const t of breaks) {
-    const owners = Object.values(content.GEAR_BASES).filter((b) => (content.TECHNIQUE_POOL[b.id] ?? []).includes(t.id));
-    assert.equal(owners.length, 1, `${t.id}: приём должен выпадать с одной моделью`);
-    const stat = owners[0].stat ?? (owners[0].gearClass === "heavy" ? "str" : owners[0].gearClass === "light" ? "int" : "agi");
-    assert.equal(stat, t.scaleStat, `${t.id}: линейка чужой характеристики`);
-    assert.equal(t.cooldown, 3);
-  }
+test("свиток и расходник истощения держат ровно 2 хода", () => {
   const scroll = content.ITEMS.scroll_dispel;
   const powder = content.ITEMS.dispel_powder;
   assert.ok(scroll && powder, "свиток и расходник должны существовать");
@@ -3456,34 +3448,9 @@ test("истощение врага накладывают приём на ка�
   }
 });
 
-test("приём накладывает истощение на два хода", () => {
-  const rnd = Math.random;
-  const b = withTechnique("ward_shatter");
-  Math.random = () => 0.9;
-  b.p.concentration = 5; // приём требует концентрацию
-  const after = battle.playerAct(b, { type: "weapon_skill" });
-  Math.random = rnd;
-  assert.equal(after.enemy.depleted, 2);
-  assert.ok(after.log.some((l) => l.text.includes("Истощение")), "нет сообщения об истощении");
-});
-
-test("истощение снимает ярость и костяной щит врага, продление гасит оставшиеся", () => {
-  const rnd = Math.random;
-  const b = withTechnique("ward_shatter");
-  b.enemy.fury = 3;
-  b.enemy.shield = true;
-  b.p.concentration = 5;
-  Math.random = () => 0.9;
-  const after = battle.playerAct(b, { type: "weapon_skill" });
-  Math.random = rnd;
-  assert.equal(after.enemy.fury, 0, "ярость снята");
-  assert.equal(after.enemy.shield, false, "щит снят");
-  assert.equal(after.enemy.depleted, 2);
-});
-
 /** Бой с истощённым или обычным врагом: общая заготовка для сравнений. */
 function depletionSeed() {
-  const b = withTechnique("ward_shatter");
+  const b = withTechnique("advance");
   b.enemy.maxHp = 5000;
   b.enemy.hp = 5000;
   b.enemy.armor = 0;
@@ -3860,7 +3827,7 @@ test("истощённый враг по-прежнему выбирает уд�
 test("истощение спадает через два раунда, свиток и прах накладывают его сразу", () => {
   const rnd = Math.random;
   Math.random = () => 0.9;
-  let b = withTechnique("ward_shatter");
+  let b = withTechnique("advance");
   b.enemy.depleted = 2;
   const startRound = b.round;
   let steps = 0;
@@ -3875,12 +3842,12 @@ test("истощение спадает через два раунда, свит
   }
   assert.equal(b.enemy.depleted, 0, "через два раунда эффекты возвращаются");
 
-  const scroll = withTechnique("ward_shatter");
+  const scroll = withTechnique("advance");
   scroll.bag = { scroll_dispel: 1 };
   const scrollHit = battle.playerAct(scroll, { type: "item", id: "scroll_dispel" });
   assert.equal(scrollHit.enemy.depleted, 2, "свиток накладывает истощение");
 
-  const powder = withTechnique("ward_shatter");
+  const powder = withTechnique("advance");
   powder.bag = { dispel_powder: 1 };
   const powderHit = battle.playerAct(powder, { type: "item", id: "dispel_powder" });
   assert.equal(powderHit.enemy.depleted, 2, "прах накладывает истощение");
@@ -3915,14 +3882,14 @@ function applyWithoutLuck(b, act) {
 
 test("шипы врага ранят за физический приём, но не за магический", () => {
   /* «Истощающий удар» — приём меча, бьёт физикой. */
-  const physical = thornsBattle("ward_shatter", "sword");
+  const physical = thornsBattle("advance", "sword");
   physical.p.concentration = 5; // приём требует концентрацию
   const afterPhys = applyWithoutLuck(physical, () => battle.playerAct(physical, { type: "weapon_skill" }));
   assert.ok(afterPhys.p.hp < physical.p.hp, "физический приём задел шипы");
   assert.ok(afterPhys.log.some((l) => l.text.includes("Шипы противника")), "нет сообщения о шипах врага");
 
   /* «Истощающее слово» — приём посоха, урон магический. */
-  const magic = thornsBattle("ward_unravel", "staff");
+  const magic = thornsBattle("eruption", "staff");
   magic.p.concentration = 5; // приём требует концентрацию
   const afterMagic = applyWithoutLuck(magic, () => battle.playerAct(magic, { type: "weapon_skill" }));
   assert.equal(afterMagic.p.hp, magic.p.hp, "магический приём шипы не задевает");
@@ -3930,7 +3897,7 @@ test("шипы врага ранят за физический приём, но 
 });
 
 test("шипы врага молчат на свиток и магический урон", () => {
-  const b = thornsBattle("ward_shatter", "sword");
+  const b = thornsBattle("advance", "sword");
   b.bag = { scroll_fire: 2 };
   const after = applyWithoutLuck(b, () => battle.playerAct(b, { type: "item", id: "scroll_fire" }));
   assert.ok(after.enemy.hp < b.enemy.hp, "свиток нанёс урон");

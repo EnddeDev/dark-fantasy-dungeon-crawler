@@ -7,6 +7,7 @@
  */
 import type { EnemyDef, GearBaseDef, ItemDef, Recipe } from "./content";
 import type { RarityTier, WearTier } from "./types";
+import { techniqueFor } from "./weaponTechniques";
 
 /* ═══════════════  ЛАВКА: 10 УРОВНЕЙ  ═══════════════ */
 
@@ -78,33 +79,29 @@ export const EXTRA_GEAR: GearBaseDef[] = [
     dmg: [18, 30], level: 3, minFloor: 3, idIntReq: 5, idGoldCost: 80,
     desc: "Метр ржавой стали: медленно, но вскрывает латы вместе с тем, кто в них стоит.",
     preferredEpic: "blood_lance",
-    weaponSkill: {
-      id: "cleave_double", name: "Рассечение надвое", intReq: 4, cooldown: 3,
-      scaleStat: "str", scaleMult: 2.6, effect: "sunder",
-      desc: "Двуручный взмах: урон оружия + 2.6×СИЛ, броня врага −3.",
-    },
+    weaponSkill: techniqueFor("no_verdict"),
   }),
   G({
     id: "spear", name: "Копьё пещерного охотника", slot: "mainHand", hands: 2,
     dmg: [15, 24], level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 70,
     desc: "Древко обмотано сухожилиями, наконечник точен в один уклон.",
     preferredEpic: "shadow_volley",
-    weaponSkill: {
-      id: "long_reach", name: "Дальний выпад", intReq: 3, cooldown: 2,
-      scaleStat: "agi", scaleMult: 2.2, effect: "pierce",
-      desc: "Выпад с дистанции: урон оружия + 2.2×ЛОВ, игнорирует броню.",
-    },
+    weaponSkill: techniqueFor("spear_forward"),
   }),
   G({
     id: "warhammer2", name: "Осадный молот", slot: "mainHand", hands: 2,
     dmg: [30, 48], level: 5, minFloor: 5, idIntReq: 6, idGoldCost: 110,
     desc: "Собран из баллистиры. Ломает стены, если до них дотянуться.",
     preferredEpic: "frost_nova",
-    weaponSkill: {
-      id: "quake", name: "Толчок", intReq: 5, cooldown: 3,
-      scaleStat: "str", scaleMult: 3.0, effect: "stun",
-      desc: "Удар в землю: урон оружия + 3.0×СИЛ и враг теряет ход.",
-    },
+    weaponSkill: techniqueFor("sledge"),
+  }),
+
+  G({
+    id: "greataxe", name: "Двуручный топор гильдии", slot: "mainHand", hands: 2, stat: "str",
+    dmg: [24, 38], level: 4, minFloor: 4, idIntReq: 5, idGoldCost: 95,
+    desc: "Топорище в три ладони, лезвие с клеймом гильдии дровосеков.",
+    preferredEpic: "blood_lance",
+    weaponSkill: techniqueFor("guillotine"),
   }),
 
   /* ── ЛЕВАЯ РУКА: кинжалы и щиты ── */
@@ -113,11 +110,7 @@ export const EXTRA_GEAR: GearBaseDef[] = [
     dmg: [3, 5], level: 1, minFloor: 1, idIntReq: 2, idGoldCost: 30,
     desc: "Вторая рука не должна бездельничать.",
     preferredEpic: "shadow_volley",
-    weaponSkill: {
-      id: "offhand_riposte", name: "Подхват", intReq: 3, cooldown: 2,
-      scaleStat: "agi", scaleMult: 1.6, effect: "pierce",
-      desc: "Второй удар наотмашь: +1.6×ЛОВ сквозь броню.",
-    },
+    weaponSkill: techniqueFor("snake_bite"),
   }),
   G({
     id: "shield_round", name: "Круглый щит", slot: "offHand", shield: true,
@@ -264,11 +257,7 @@ export const EXTRA_GEAR: GearBaseDef[] = [
     dmg: [6, 10], level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 65,
     desc: "Обгоревший кончик всё ещё держит искру.",
     preferredEpic: "fireball",
-    weaponSkill: {
-      id: "ash_spark", name: "Пепельная искра", intReq: 3, cooldown: 2,
-      scaleStat: "int", scaleMult: 2.2, effect: "chill",
-      desc: "Взмах палочки: урон оружия + 2.2×ИНТ магией сквозь броню и озноб на 2 раунда.",
-    },
+    weaponSkill: techniqueFor("repeat_last"),
   }),
 ];
 

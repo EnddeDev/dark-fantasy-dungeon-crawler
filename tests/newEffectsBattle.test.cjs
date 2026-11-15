@@ -121,7 +121,7 @@ test("Ослабление: урон от СИЛ и ЛОВ в сводке бо�
 });
 
 test("Ослабление: бонус приёма от ИНТ падает на 25%", () => {
-  const ws = content.WEAPON_TECHNIQUES.ward_shatter;
+  const ws = content.WEAPON_TECHNIQUES.repeat_last;
   const plain = fight("husk");
   plain.p.stats = { str: 5, agi: 5, int: 30 };
   plain.p.statuses.weaken = 0;
