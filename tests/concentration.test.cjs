@@ -104,12 +104,12 @@ test("спец-приём без 5 концентрации отклоняетс
 });
 
 test("спец-приём блокирует страх и печать забвения, концентрация сохраняется", () => {
-  const feared = fightFor({ archetype: "sage" });
+  const feared = fightFor({ archetype: "archmage" });
   feared.p.concentration = 5;
   feared.p.statuses.fear = 1;
   assert.equal(battle.playerAct(feared, { type: "archetype_skill" }).p.concentration, 5);
 
-  const sealed = fightFor({ archetype: "sage" });
+  const sealed = fightFor({ archetype: "archmage" });
   sealed.p.concentration = 5;
   sealed.p.statuses.sealSkills = 1;
   assert.equal(battle.playerAct(sealed, { type: "archetype_skill" }).p.concentration, 5);
@@ -158,19 +158,15 @@ test("ассасин: удар всегда крит и даёт вампири�
   assert.ok(next.p.hp > b.p.hp, "вампиризм возвращает здоровье");
 });
 
-test("ниндзя: 5 расходников, 2 брошены, 3 остаются временными; приём бесплатный, ход не заканчивает", () => {
-  const b = fightFor({ archetype: "ninja" });
+test("дуэлянт: ответный залп — контратака по врагу и раскол −3 брони на 2 раунда; тратит 5 концентрации", () => {
+  const b = fightFor({ archetype: "duelist" });
   b.p.concentration = 5;
-  const bagBefore = { ...battle.persistentBag(b) };
   const next = withRandom(0.45, () => battle.playerAct(b, { type: "archetype_skill" }));
   assert.equal(next.p.concentration, 0);
-  const conjuredLeft = Object.values(next.conjured).reduce((s, n) => s + n, 0);
-  assert.equal(conjuredLeft, 3, "5 созданы, 2 брошены");
-  assert.deepEqual(battle.persistentBag(next), bagBefore, "личный запас не меняется");
-  assert.equal(next.idx, 0, "приём бесплатный: ход героя продолжается");
-  assert.equal(next.p.stamina, b.p.stamina, "выносливость не тратится");
-  assert.equal(next.round, 1);
-  assert.ok(next.log.some((l) => l.text.includes("Град снарядов")));
+  assert.equal(next.enemy.statuses.breakFlat, 3, "раскол −3");
+  assert.equal(next.enemy.statuses.breakRounds, 2, "на 2 раунда");
+  assert.ok(next.log.some((l) => l.text.includes("Ответный залп")));
+  assert.equal(next.p.stamina, b.p.stamina, "спец-приём не тратит выносливость");
 });
 
 test("колдун: здоровье становится ровно 50% и герой неуязвим на 1 ход", () => {
@@ -184,11 +180,12 @@ test("колдун: здоровье становится ровно 50% и ге
 
   const hitBefore = next.p.hp;
   const enemyTurn = withRandom(0.45, () => battle.enemyStep({ ...next, idx: 1, queue: ["p", "e"] }));
-  assert.equal(enemyTurn.p.hp, hitBefore, "удар врага не проходит");
+  /* Иссушение Жертвенного пакта тоже тикает в ход врага и лечит героя: проверяем, что удар не прошёл (ОЗ не падают). */
+  assert.ok(enemyTurn.p.hp >= hitBefore, "удар врага не проходит");
 });
 
-test("мудрец: 2 временных свитка, один сразу применён, второй остаётся временным", () => {
-  const b = fightFor({ archetype: "sage" });
+test("архимаг: 2 временных свитка, один сразу применён, второй остаётся временным", () => {
+  const b = fightFor({ archetype: "archmage" });
   b.p.concentration = 5;
   const next = withRandom(0.45, () => battle.playerAct(b, { type: "archetype_skill" }));
   assert.equal(next.p.concentration, 0);
@@ -208,7 +205,7 @@ test("созданное в бою не переходит герою: расх�
 });
 
 test("состояние боя не меняется: спец-приём не трогает исходный рюкзак", () => {
-  const b = fightFor({ archetype: "sage", bag: {} });
+  const b = fightFor({ archetype: "archmage", bag: {} });
   b.p.concentration = 5;
   const snapshotBag = JSON.stringify(b.bag);
   const snapshotConj = JSON.stringify(b.conjured);

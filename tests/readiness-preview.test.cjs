@@ -57,7 +57,7 @@ function fightFor(extra = {}) {
 }
 
 test("спец-приём светится только при полной концентрации и в свой ход", () => {
-  const b = fightFor({ archetype: "sage" });
+  const b = fightFor({ archetype: "archmage" });
   b.p.concentration = 4;
   assert.equal(readiness.skillReadiness(b, true, false).special, false, "не хватает концентрации");
   b.p.concentration = 5;

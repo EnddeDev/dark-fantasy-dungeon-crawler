@@ -1,5 +1,6 @@
 import { derived } from "../game/battle";
 import { DEFAULT_CHARACTER_NAME } from "../game/characterName";
+import { migrateLegacyId, migrateLegacyPassives, migrateSkillRanks } from "../game/archetypeMigration";
 import { GEAR_BASES, ITEMS, RECIPES, createGearItem, isStarterItem, migrateGearItem } from "../game/content";
 import { initialQuestLog, normalizeQuestLog } from "../game/quests";
 import { normalizeStatMilestones } from "../game/statMilestones";
@@ -74,10 +75,13 @@ export class PlayerFactory {
         const armory = saved.armory
           .filter((g) => !(isOldStarterRapier && g.baseId === "rapier"))
           .map((g) => {
-            const base = GEAR_BASES[g.baseId];
+            /* Переименованные базы переводим до поиска в GEAR_BASES: иначе предмет станет ножом. */
+            const baseId = migrateLegacyId(g.baseId);
+            const base = GEAR_BASES[baseId];
             const level = g.level ?? Math.max(1, Math.min(SHOP_MAX_LEVEL, base?.level ?? base?.minFloor ?? 1));
             return migrateGearItem({
               ...g,
+              baseId,
               /* Старые сохранения могли не знать о состоянии и редкости — подставляем базовые. */
               wear: g.wear ?? "worn",
               rarity: g.rarity ?? "common",
@@ -130,9 +134,10 @@ export class PlayerFactory {
           },
           knownRecipes,
           shopLevel: Math.max(1, Math.min(SHOP_MAX_LEVEL, Number(saved.shopLevel) || 1)),
-          archetype: saved.archetype ?? null,
+          archetype: (saved.archetype ? migrateLegacyId(saved.archetype) : null) as Player["archetype"],
+          passives: migrateLegacyPassives(saved.passives),
           statMilestones: saved.statMilestones ?? {},
-          skillRanks: saved.skillRanks ?? {},
+          skillRanks: migrateSkillRanks(saved.skillRanks, saved.archetype ? migrateLegacyId(saved.archetype) : null),
           /* Старое сохранение без заданий получает стартовый набор; журнал дополняется недостающими полями. */
           questLog: saved.questLog
             ? normalizeQuestLog(saved.questLog)

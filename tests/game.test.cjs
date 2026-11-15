@@ -1415,9 +1415,9 @@ test("every gear base declares its kind, weight class and affinity", () => {
     barbarian_greataxe: ["weapon", "heavy", "str", "greataxe"],
     blood_hide: ["armor", "medium", "str", "-"],
     assassin_stiletto: ["weapon", "light", "agi", "dagger"],
-    ninja_kusarigama: ["weapon", "light", "agi", "dagger"],
+    duelist_kusarigama: ["weapon", "light", "agi", "dagger"],
     warlock_scepter: ["weapon", "light", "int", "wand"],
-    sage_censer: ["weapon", "light", "int", "wand"],
+    archmage_censer: ["weapon", "light", "int", "wand"],
     start_mace: ["weapon", "medium", "str", "hammer"],
     start_wand: ["weapon", "light", "int", "wand"],
     start_offknife: ["weapon", "light", "agi", "dagger"],
@@ -1757,7 +1757,7 @@ test("six archetypes: two per stat, milestones at 5 and 10", () => {
 test("archetype gear keeps its legendary passive and type pool", () => {
   for (const [baseId, arch] of [
     ["bulwark_mace", "bulwark"], ["barbarian_greataxe", "barbarian"], ["assassin_stiletto", "assassin"],
-    ["ninja_kusarigama", "ninja"], ["warlock_scepter", "warlock"], ["sage_censer", "sage"],
+    ["duelist_kusarigama", "duelist"], ["warlock_scepter", "warlock"], ["archmage_censer", "archmage"],
   ]) {
     const g = content.createGearItem({ baseId, rarity: "legendary", wear: "new", identified: true, level: 5 });
     assert.equal(content.GEAR_BASES[baseId].archetype, arch);
@@ -1833,30 +1833,31 @@ test("assassin: first attack stuns the enemy at milestone 10, and only the first
   }
 });
 
-test("ninja 10: первый расходник за ход не тратит ход, второй тратит", () => {
-  const { p } = withGear("ninja_kusarigama", { archetype: "ninja", passives: ["arch_ninja_5", "arch_ninja_10"] });
-  p.bag = { throwing_knife: 2 };
-  const b = quietEnemy(freshBattle(p, 1));
-  b.enemy.hp = 9999;
-  b.enemy.maxHp = 9999;
-  const first = withRandom(() => battle.playerAct({ ...b, queue: ["p", "e"], idx: 0 }, { type: "item", id: "throwing_knife" }), 0.45);
-  assert.equal(first.idx, 0, "первый расходник не заканчивает ход");
-  assert.equal(first.bag.throwing_knife, 1);
-  assert.equal(first.p.stamina, b.p.stamina, "первый расходник бесплатный");
-  const second = withRandom(() => battle.playerAct({ ...first, queue: ["p", "e"], idx: 0 }, { type: "item", id: "throwing_knife" }), 0.45);
-  assert.equal(second.p.stamina, first.p.stamina - 5, "второй расходник тратит 5 выносливости");
+test("duelist 10: при 5 стаках комбо следующий удар ×1,5 и стаки тратятся", () => {
+  const { p } = withGear("duelist_kusarigama", { archetype: "duelist", passives: ["arch_duelist_10"] });
+  const make = (stacks) => {
+    const b = quietEnemy(freshBattle(p, 1));
+    b.enemy.hp = 99999;
+    b.enemy.maxHp = 99999;
+    b.p.statuses.comboStacks = stacks;
+    return b;
+  };
+  const plain = withRandom(() => battle.playerAct(make(0), { type: "attack" }), 0.45);
+  const burst = withRandom(() => battle.playerAct(make(5), { type: "attack" }), 0.45);
+  const plainDmg = 99999 - plain.enemy.hp;
+  const burstDmg = 99999 - burst.enemy.hp;
+  assert.ok(burstDmg > plainDmg * 1.5, `удар с полным комбо сильнее: ${burstDmg} против ${plainDmg}`);
+  assert.equal(burst.p.statuses.comboStacks, 0, "стаки потрачены");
 });
 
-test("sage 10: первый удар по герою в бою полностью блокируется, второй проходит", () => {
-  const b = monsterBattle("beast", "agile", ["attack"], { player: { passives: ["arch_sage_10"] } });
+test("archmage 10: библиотека душ убрана — первый удар по герою проходит", () => {
+  const b = monsterBattle("beast", "agile", ["attack"], { player: { passives: ["arch_archmage_10"] } });
   b.enemy.hp = 9999;
   b.enemy.maxHp = 9999;
   const hp0 = b.p.hp;
   const r1 = withRandom(() => battle.enemyStep({ ...b, queue: ["e", "p"], idx: 0 }), 0.45);
-  assert.equal(r1.p.hp, hp0, "первый удар заблокирован");
-  assert.equal(r1.p.sageWardUsed, true);
-  const r2 = withRandom(() => battle.enemyStep({ ...r1, queue: ["e", "p"], idx: 0 }), 0.45);
-  assert.ok(r2.p.hp < hp0, "второй удар проходит");
+  assert.ok(r1.p.hp < hp0, "первый удар проходит");
+  assert.equal(r1.p.sageWardUsed, undefined, "старого флага блокировки нет");
 });
 
 test("бастион 5: регенерация 3 + защита / 10; колдун 10: скейл приёмов +0.5 и через ИНТ", () => {
@@ -1870,7 +1871,7 @@ test("бастион 5: регенерация 3 + защита / 10; колду
   const attacked = withRandom(() => battle.playerAct({ ...b, queue: ["p"], idx: 0 }, { type: "attack" }), 0.45);
   const after = battle.playerAct(attacked, { type: "end_turn" });
   assert.equal(after.p.hp, Math.min(after.p.maxHp, hp0 + 3 + 2), "3 + 25 / 10 = 5 за ход героя (регенерация идёт при его окончании)");
-  assert.equal(battle.techniqueSkillScale({}, ["arch_warlock_10"]), 0.5, "колдун 10: +0.5 к множителю");
+  assert.equal(battle.techniqueSkillScale({}, ["arch_warlock_10"]), 0, "колдун 10: +0.5 к множителю убрано");
 });
 
 test("варвар 10: регенерация 1% макс. ОЗ за каждые 10% недостающего здоровья", () => {
@@ -1889,8 +1890,8 @@ test("варвар 10: регенерация 1% макс. ОЗ за кажды�
   assert.equal(extra, Math.round(b.p.maxHp * 0.05), "50% потерь = 5% регенерации");
 });
 
-test("ninja: consumables scale with AGI bonuses and grant lifesteal", () => {
-  const { p } = withGear("ninja_kusarigama", { archetype: "ninja", passives: ["arch_ninja_5", "arch_ninja_10"] });
+test("duelist: consumables scale with AGI bonuses and grant lifesteal", () => {
+  const { p } = withGear("duelist_kusarigama", { archetype: "duelist", passives: ["arch_duelist_5", "arch_duelist_10"] });
   p.bag = { throwing_knife: 2, smoke_bomb: 1 };
   const b = freshBattle(p, 5, true);
   b.queue = ["p", "e"]; b.idx = 0;
@@ -1900,7 +1901,8 @@ test("ninja: consumables scale with AGI bonuses and grant lifesteal", () => {
   const after = battle.playerAct(b, { type: "item", id: "throwing_knife" });
   Math.random = rnd;
   assert.ok(after.enemy.hp < b.enemy.hp);
-  assert.ok(after.log.some((l) => l.text.includes("Похищение жизни")));
+  /* Встречный клинок больше не лечит расходники: лечение давал старый фантом. */
+  assert.ok(!after.log.some((l) => l.text.includes("Похищение жизни")), "расходники без лечения от фантома");
   const b2 = freshBattle(p, 5, true);
   b2.queue = ["p", "e"]; b2.idx = 0;
   const smoke = battle.playerAct(b2, { type: "item", id: "smoke_bomb" });
@@ -1922,8 +1924,8 @@ test("warlock: skill damage, cooldown reduction and lifesteal", () => {
   assert.ok(after.log.some((l) => l.text.includes("Похищение жизни")));
 });
 
-test("sage: scroll creation, scroll damage and scroll save", () => {
-  const { p } = withGear("sage_censer", { archetype: "sage", passives: ["arch_sage_5", "arch_sage_10"] });
+test("archmage: scroll creation, scroll damage and scroll save", () => {
+  const { p } = withGear("archmage_censer", { archetype: "archmage", passives: ["arch_archmage_5", "arch_archmage_10"] });
   p.bag = { scroll_creation: 1, scroll_bolt: 1 };
   const b = freshBattle(p, 5, true);
   b.queue = ["p", "e"]; b.idx = 0;
@@ -1979,7 +1981,7 @@ test("stat milestone choice is locked below threshold and cannot be taken twice"
 
 test("cross-archetype milestone passive works without matching main archetype", () => {
   const [barb] = statMilestones.statMilestoneOptions("str", 5).filter((o) => o.archetype === "barbarian");
-  const p = mkP({ archetype: "sage", stats: { str: 5, agi: 1, int: 8 }, passives: [barb.id] });
+  const p = mkP({ archetype: "archmage", stats: { str: 5, agi: 1, int: 8 }, passives: [barb.id] });
   const g = content.createGearItem({ baseId: "barbarian_greataxe", rarity: "common", wear: "new", identified: true, level: 5 });
   p.armory = [g];
   p.equip = { ...p.equip, mainHand: g.uid };
@@ -1992,7 +1994,7 @@ test("cross-archetype milestone passive works without matching main archetype", 
   const after = battle.playerAct(b, { type: "attack" });
   Math.random = rnd;
   assert.ok(after.enemy.hp < b.enemy.hp);
-  assert.ok(after.log.some((l) => l.text.includes("Похищение жизни")), "варварский вампиризм должен работать у мудреца");
+  assert.ok(after.log.some((l) => l.text.includes("Похищение жизни")), "варварский вампиризм должен работать у архимага");
 });
 
 test("normalizeStatMilestones migrates old automatic archetype passives into stat choices", () => {
@@ -2681,7 +2683,7 @@ test("weapon effects bleed, poison and sunder trigger on a plain hit", () => {
 });
 
 test("staff and wand techniques are magic, steel techniques are not", () => {
-  const magicIds = ["staff", "wand_ash", "warlock_scepter", "sage_censer"];
+  const magicIds = ["staff", "wand_ash", "warlock_scepter", "archmage_censer"];
   for (const baseId of magicIds) {
     const item = content.createGearItem({ baseId, level: 3, wear: "worn", rarity: "common", identified: true });
     const ws = content.weaponSkillFor(item);

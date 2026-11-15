@@ -16,7 +16,7 @@ export class BattleController {
   act(action: PlayerAction): void {
     const battle = this.model.getSnapshot().battle;
     if (!battle) return;
-    /* Созданное в бою (свитки мудреца, расходники ниндзя) не считается личным запасом. */
+    /* Созданное в бою (свитки архимага и другие предметы боя) не считается личным запасом. */
     const bagBefore = persistentBag(battle);
     const next = playerAct(battle, action);
     this.model.setBattle(next);

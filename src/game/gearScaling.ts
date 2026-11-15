@@ -251,9 +251,9 @@ export const GEAR_PASSIVE_BASE: Record<GearPassiveId, Record<string, NumericDef>
   bulwark_wall: { regen: { value: 4 }, thorns: { value: 6 }, guard: { value: 20 } },
   barbarian_rage: { vamp: { value: 12 }, damage: { value: 20 }, stun: { value: 15 } },
   assassin_shadow: { ap: { value: 1 }, crit: { value: 25 }, critMult: { value: 50 } },
-  ninja_phantom: { evade: { value: 10 }, vamp: { value: 12 }, dodge: { value: 25 } },
+  duelist_phantom: { counter: { value: 12 }, stack: { value: 25 }, shatter: { value: 1 } },
   warlock_pact: { skillDamage: { value: 25 }, cd: { value: 1 }, vamp: { value: 12 } },
-  sage_library: { scrollDamage: { value: 25 }, save: { value: 20 }, create: { value: 1 } },
+  archmage_library: { magic: { value: 12 }, round: { value: 1 }, reapply: { value: 15 } },
 };
 
 export function passiveMagnitude(id: GearPassiveId, key: string, level: number): number {
