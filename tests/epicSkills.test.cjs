@@ -108,7 +108,8 @@ test("Дыхание склепа: урон 16 + 3×ИНТ, холод 3 рау�
 
 test("Описания эпиков без «×СТАТ»", () => {
   for (const id of Object.keys(content.EPIC_SKILLS)) {
-    const text = content.epicSkillDesc(id, 1);
-    assert.ok(!/×(СИЛ|ИНТ|ЛОВ)/.test(text), `${id}: остался множитель «${text}»`);
+    for (const text of [content.epicSkillDesc(id, 1), content.EPIC_SKILLS[id].desc]) {
+      assert.ok(!/×(СИЛ|ИНТ|ЛОВ)/.test(text), `${id}: остался множитель «${text}»`);
+    }
   }
 });
