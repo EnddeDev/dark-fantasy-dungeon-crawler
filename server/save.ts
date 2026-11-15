@@ -29,6 +29,7 @@ import { GEAR_EFFECTS, GEAR_PASSIVES, type GearEffectId, type GearPassiveId } fr
 import { statMilestoneById } from "../src/game/statMilestones";
 import { SKILL_RANK_MAX, skillBranchById, skillPointsEarned, skillPointsSpent } from "../src/game/archetypeSkills";
 import { ARCHETYPE_ORDER, type ArchetypeId } from "../src/game/archetypes";
+import { migrateLegacyId, migrateLegacyPassives } from "../src/game/archetypeMigration";
 import { totalStatPoints } from "../src/game/progression";
 import { derived } from "../src/game/battle";
 import { CHARACTER_NAME_MAX, DEFAULT_CHARACTER_NAME } from "../src/game/characterName";
@@ -126,7 +127,7 @@ function uidOf(value: unknown): string {
 /** Снаряжение: известная база, допустимые редкость/состояние и только известные свойства. */
 function sanitizeGear(raw: unknown, index: number): GearItem {
   const item = asObject(raw, `предмет #${index}`);
-  const baseId = String(item.baseId ?? "");
+  const baseId = migrateLegacyId(String(item.baseId ?? ""));
   const base = GEAR_BASES[baseId];
   if (!base) bad(`неизвестный предмет «${baseId}»`);
 
@@ -140,7 +141,8 @@ function sanitizeGear(raw: unknown, index: number): GearItem {
 
   const skillId = typeof item.skillId === "string" && WEAPON_TECHNIQUES[item.skillId] ? item.skillId : undefined;
   const epicSkill = typeof item.epicSkill === "string" && EPIC_IDS.has(item.epicSkill) ? (item.epicSkill as GearItem["epicSkill"]) : undefined;
-  const passive = typeof item.passive === "string" && PASSIVE_IDS.has(item.passive) ? (item.passive as GearPassiveId) : undefined;
+  const passiveId = typeof item.passive === "string" ? migrateLegacyId(item.passive) : "";
+  const passive = PASSIVE_IDS.has(passiveId) ? (passiveId as GearPassiveId) : undefined;
   const legendaryPassive = typeof item.legendaryPassive === "string" && LEGENDARY_IDS.has(item.legendaryPassive)
     ? (item.legendaryPassive as LegendaryPassiveId)
     : undefined;
@@ -357,7 +359,7 @@ export function sanitizePlayer(raw: unknown, floors = 1): Player {
   }
 
   const passives = Array.isArray(input.passives)
-    ? [...new Set(input.passives.filter((id): id is string => typeof id === "string" && PASSIVE_RE.test(id)))].slice(0, 60)
+    ? [...new Set(migrateLegacyPassives(input.passives).filter((id) => PASSIVE_RE.test(id)))].slice(0, 60)
     : [];
 
   const milestonesRaw = input.statMilestones === undefined || input.statMilestones === null ? null : asObject(input.statMilestones, "рубежи");
@@ -384,9 +386,8 @@ export function sanitizePlayer(raw: unknown, floors = 1): Player {
     if (value > 0) (statuses as Record<string, number>)[key] = value;
   }
 
-  const archetype = typeof input.archetype === "string" && ARCHETYPE_ORDER.includes(input.archetype as ArchetypeId)
-    ? (input.archetype as ArchetypeId)
-    : null;
+  const archetypeId = typeof input.archetype === "string" ? migrateLegacyId(input.archetype) : "";
+  const archetype = ARCHETYPE_ORDER.includes(archetypeId as ArchetypeId) ? (archetypeId as ArchetypeId) : null;
 
   /* Ранги веток навыков: только ветки основного архетипа, сумма не больше очков уровня. */
   const skillsRaw = input.skillRanks === undefined || input.skillRanks === null ? null : asObject(input.skillRanks, "навыки");

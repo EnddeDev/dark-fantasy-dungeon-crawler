@@ -14,11 +14,11 @@ export type GearEffectId =
   | "stun_chance" | "vamp_str" | "missing_hp_damage" | "enemy_missing_damage" | "two_hand_damage"
   // ЛОВ / Ассасин
   | "evade" | "counter" | "crit_chance" | "crit_mult" | "vamp" | "ap" | "first_strike"
-  // ЛОВ / Ниндзя
+  // ЛОВ / Дуэлянт
   | "consumable_damage" | "consumable_scale" | "consumable_vamp" | "debuff_damage" | "dodge_action"
   // ИНТ / Колдун
   | "skill_damage" | "skill_cd" | "skill_vamp" | "status_duration" | "skill_scale"
-  // ИНТ / Мудрец
+  // ИНТ / Архимаг
   | "scroll_damage" | "scroll_scale" | "scroll_vamp" | "scroll_save" | "scroll_create"
   // Оружейные свойства: яд, кровотечение, раскол
   | "poison_damage" | "bleed" | "sunder"
@@ -186,7 +186,7 @@ export function effectCountForGear(q: {
 
 export type GearPassiveId =
   | "heavy_blow" | "fortress" | "dance" | "precision" | "spell_echo" | "time_warp"
-  | "bulwark_wall" | "barbarian_rage" | "assassin_shadow" | "ninja_phantom" | "warlock_pact" | "sage_library";
+  | "bulwark_wall" | "barbarian_rage" | "assassin_shadow" | "duelist_phantom" | "warlock_pact" | "archmage_library";
 
 export interface GearPassiveDef {
   id: GearPassiveId;
@@ -206,9 +206,9 @@ export const GEAR_PASSIVES: Record<GearPassiveId, GearPassiveDef> = {
   bulwark_wall: { id: "bulwark_wall", stat: "str", name: "Живая стена", desc: "Бастион превращает бой в осаду.", detail: "+4 регенерации, +6 шипов против физических атак, защита снижает урон ещё на 20%" },
   barbarian_rage: { id: "barbarian_rage", stat: "str", name: "Ярость мясника", desc: "Варвар живёт, пока бьёт.", detail: "+12% вампиризма, +20% урона при ОЗ < 50%, +15% шанс оглушения" },
   assassin_shadow: { id: "assassin_shadow", stat: "agi", name: "Тень убийцы", desc: "Первый удар решает бой.", detail: "+1 ход в первом раунде, +25% шанса крита и +50% силы крита в первые 2 раунда" },
-  ninja_phantom: { id: "ninja_phantom", stat: "agi", name: "Фантом", desc: "Ниндзя исчезает между ударами.", detail: "+10% уклонения, расходники лечат на 12%, после уклонения 25% шанс +1 хода" },
-  warlock_pact: { id: "warlock_pact", stat: "int", name: "Печать пакта", desc: "Колдун платит кровью за силу.", detail: "+25% урона приёмов, −1 откат, приёмы лечат на 12%" },
-  sage_library: { id: "sage_library", stat: "int", name: "Запретная библиотека", desc: "Мудрец читает мир как книгу.", detail: "+25% урона свитков, +20% шанс не потратить свиток, +1 свиток при создании" },
+  duelist_phantom: { id: "duelist_phantom", stat: "agi", name: "Встречный клинок", desc: "Дуэлянт отвечает на удар и раскалывает броню.", detail: "+12% шанса контратаки, после удачной контратаки 25% шанс +1 стак комбо, раскол снимает ещё 1 броню до конца раунда" },
+  warlock_pact: { id: "warlock_pact", stat: "int", name: "Печать пакта", desc: "Колдун платит кровью за силу.", detail: "+25% урона приёмов, −1 откат, приёмы с иссушением лечат на 12% урона" },
+  archmage_library: { id: "archmage_library", stat: "int", name: "Запретный канон", desc: "Архимаг усиливает огонь и холод знанием старых книг.", detail: "+12% магического урона, горение и обморожение от приёмов и свитков +1 раунд, 15% шанс повторно применить созданный свиток без траты" },
 };
 
 /** Описание эффекта с учётом уровня предмета. */
@@ -298,9 +298,9 @@ export function passiveDetail(id: GearPassiveId, level = 1): string {
     case "bulwark_wall": return `+${n("regen")} регенерации, +${n("thorns")} шипов, защита снижает урон ещё на ${n("guard")}%`;
     case "barbarian_rage": return `+${n("vamp")}% вампиризма, +${n("damage")}% урона при ОЗ < 50%, +${n("stun")}% шанс оглушения`;
     case "assassin_shadow": return `+${n("ap")} ход в первом раунде, +${n("crit")}% шанса крита и +${n("critMult")}% силы крита в первые 2 раунда`;
-    case "ninja_phantom": return `+${n("evade")}% уклонения, расходники лечат на ${n("vamp")}%, после уклонения ${n("dodge")}% шанс +1 хода`;
-    case "warlock_pact": return `+${n("skillDamage")}% урона приёмов, −${n("cd")} откат, приёмы лечат на ${n("vamp")}%`;
-    case "sage_library": return `+${n("scrollDamage")}% урона свитков, +${n("save")}% шанс не потратить свиток, +${n("create")} свиток при создании`;
+    case "duelist_phantom": return `+${n("counter")}% шанса контратаки, после удачной контратаки ${n("stack")}% шанс +1 стак комбо, раскол снимает ещё ${n("shatter")} броню до конца раунда`;
+    case "warlock_pact": return `+${n("skillDamage")}% урона приёмов, −${n("cd")} откат, приёмы с иссушением лечат на ${n("vamp")}% урона`;
+    case "archmage_library": return `+${n("magic")}% магического урона, горение и обморожение от приёмов и свитков +${n("round")} раунд, ${n("reapply")}% шанс повторно применить созданный свиток без траты`;
   }
 }
 
@@ -308,18 +308,18 @@ const ARCHETYPE_EFFECTS: Record<ArchetypeId, GearEffectId[]> = {
   bulwark: ["fortify", "thorns", "armor_damage", "might", "magic_resist"],
   barbarian: ["rage", "vamp", "might", "thorns", "fortify"],
   assassin: ["crit_chance", "crit_mult", "vamp", "ap", "precision", "might"],
-  ninja: ["ap", "precision", "crit_chance", "vamp", "magic_vamp", "thorns"],
+  duelist: ["ap", "precision", "crit_chance", "vamp", "magic_vamp", "thorns"],
   warlock: ["wisdom", "magic_vamp", "magic_resist", "rage", "might"],
-  sage: ["wisdom", "magic_resist", "magic_vamp", "ap", "fortify"],
+  archmage: ["wisdom", "magic_resist", "magic_vamp", "ap", "fortify"],
 };
 
 const ARCHETYPE_PASSIVES: Record<ArchetypeId, GearPassiveId> = {
   bulwark: "bulwark_wall",
   barbarian: "barbarian_rage",
   assassin: "assassin_shadow",
-  ninja: "ninja_phantom",
+  duelist: "duelist_phantom",
   warlock: "warlock_pact",
-  sage: "sage_library",
+  archmage: "archmage_library",
 };
 
 export function effectPoolFor(stat: StatKey, archetype?: ArchetypeId | null): GearEffectId[] {

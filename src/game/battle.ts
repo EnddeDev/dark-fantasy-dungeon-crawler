@@ -262,6 +262,8 @@ export interface BattleState {
       oilTick: number;
       /** Печать тишины: враг применяет только атаку и стойку. */
       sealMoves: number;
+      breakExtra?: number;
+      emberShred?: number;
       cursePower: number; sundered: number;
       /** Наложения кровотечения и яда: урон за тик складывается. */
       bleedStacks?: number;
@@ -358,8 +360,6 @@ export interface BattleState {
     turnPouch: number;
     /** Концентрация 0–7: мощная атака −1, обычная 0, безопасная +1, приём −1, расходник +1, защита +2; при 5 — спец-приём архетипа. */
     concentration: number;
-    /** Библиотека душ: первый удар по герою в бою уже заблокирован. */
-    sageWardUsed: boolean;
     /** Регенерация за ход героя из снаряжения (срабатывает в начале каждого хода). */
     regenTurn?: number;
     statuses: {
@@ -384,19 +384,18 @@ export interface BattleState {
       /** Тень 5: раунд, в котором уже был контрудар. Уклонение в раунде: dodgedRound. */
       shadowCounterRound?: number;
       dodgedRound?: number;
-      /** Незаметность 3: раунд первого расходника (+2 концентрации). */
-      quickHandRound?: number;
       /** Непреклонность 5: использован ли «Последний рубеж». */
       lastStandUsed?: number;
-      /** Эпик без перезарядки (Откат 5): использован. */
-      epicFreeUsed?: number;
-      /** Переписывание: бесплатный свиток (копия). Переписывание 3: копия выдана. */
-      freeScroll?: number;
-      rewriteUsed?: number;
+      /** Чтение вслух (Списки B): первый созданный свиток в бою уже применён дважды. */
+      readAloudUsed?: number;
       /** Раунды действия зелья скорости: +1 ход в раунде. */
       haste: number;
       /** Приёмы героя: таймеры и флаги между ходами (живут в statuses, клонируются вместе с ним). */
       fencingTurns?: number; counterNext?: number; counterTurns?: number; shadowCharges?: number;
+      /** Комбо Дуэлянта: стаки 0–5 и раунд, в котором герой последний раз бил. */
+      comboStacks?: number; comboRound?: number;
+      /** Раунд, в котором враг последний раз атаковал героя (приём «Встречный выпад»). */
+      incomingRound?: number;
       wallRounds?: number; prepRounds?: number; prepared?: number; bubbleTurns?: number; bubbleAbsorbed?: number;
       rainRounds?: number; halfDmg?: number; noEvade?: number; nextPierce?: number; gripTurn?: number;
       throwPending?: number; turnActs?: number; turnDealt?: number; ignoreArmorNow?: number;
@@ -421,7 +420,7 @@ export interface BattleState {
       oilRounds: number;
       /** Колдун: эликсир пакта (урон приёмов). */
       pactElixir: number;
-      /** Полная защита от урона (свитки/приёмы мудреца). */
+      /** Полная защита от урона (свитки/приёмы архимага). */
       fullGuard: number;
       /** Неуязвимость (спец-приём колдуна): поглощает удары, приёмы и периодический урон. */
       invulnerable: number;
@@ -472,7 +471,7 @@ export interface BattleState {
   bag: Record<string, number>;
   /** Зелья из сумки (до трёх видов): не тратят выносливость. */
   pouch: string[];
-  /** Созданное в бою (свитки мудреца, расходники ниндзя): лежит в bag, герою после боя не переходит. */
+  /** Созданное в бою (свитки архимага, расходники дуэлянт): лежит в bag, герою после боя не переходит. */
   conjured: Record<string, number>;
   queue: ("p" | "e")[];
   idx: number;
@@ -485,12 +484,8 @@ export interface BattleState {
   skillNoMiss?: boolean;
   /** Ветки навыков: доля брони врага, которую игнорирует атака (Таран 3). */
   armorIgnore?: number;
-  /** Расходники, использованные в бою (Отравитель 5). */
-  consumablesUsed?: number;
-  /** Следующий свиток получает +1 урона от предыдущего (Библиотека 3). */
-  libraryCharge?: number;
-  /** Свитки, применённые в бою (Библиотека 5). */
-  scrollsCast?: number;
+  /** Созданные в бою свитки (Пожар B: горение от свитков +1 за каждый, до 5). */
+  scrollsMade?: number;
   repeatSkill?: boolean;
   /** Плачущая тень: броня поглощает не больше половины удара. */
   piercing?: boolean;
@@ -740,7 +735,9 @@ export function derived(pl: Player): DerivedStats {
   /* Благословение священника на поход: здоровье, броня и шансы из blessingEffect. */
   const bless = blessingEffect(pl.blessing);
   const baseHp = statHealth(pl.stats.str, pl.passives) + hpBonus + (hasPassive("iron_will") ? 22 : 0) + mightHp + titanHp;
-  const maxHp = baseHp + (bless.hpPct ? Math.round(baseHp * bless.hpPct) : 0);
+  /* Колдун 5 «Тёмный пакт»: живучесть +10% от базы здоровья. */
+  const pactLife = hasPassive("arch_warlock_5") ? Math.round(baseHp * 0.1) : 0;
+  const maxHp = baseHp + (bless.hpPct ? Math.round(baseHp * bless.hpPct) : 0) + pactLife;
 
   const chanceLayers = emptyChanceLayers();
   chanceLayers.evade.stats.push(statEvasion(pl.stats.agi));
@@ -770,8 +767,6 @@ export function derived(pl: Player): DerivedStats {
   // Слой эффектов: пассивы, архетипы и легендарные свойства.
   if (hasPassive("shadow_dance")) chanceLayers.evade.effects.push(0.15);
   if (swiftEvade > 0) chanceLayers.evade.effects.push(swiftEvade);
-  if (passivePower.ninja_phantom?.evade) chanceLayers.evade.effects.push(passivePower.ninja_phantom.evade / 100);
-  if (hasPassive("arch_ninja_10")) chanceLayers.evade.effects.push(0.15);
   if (hasPassive("saboteur")) chanceLayers.crit.effects.push(0.2);
   if (rareAffixPower.crit?.chance) chanceLayers.crit.effects.push(rareAffixPower.crit.chance / 100);
   if (passivePower.precision?.crit) chanceLayers.crit.effects.push(passivePower.precision.crit / 100);
@@ -1282,7 +1277,6 @@ export function newBattle(
       turnScrolls: 0,
       turnPouch: 0,
       concentration: 0,
-      sageWardUsed: false,
       statuses: {
         wound: pl.statuses.wound,
         woundStacks: pl.statuses.wound > 0 ? 1 : 0,
@@ -1393,7 +1387,7 @@ const BURN_UNTIL_END = 999;
  * Возвращает урон сверх удара (искра). Вызывается до устаревшей цепочки эффектов.
  */
 /** Слабость не приговор: снимает негативные эффекты героя, возвращает их число. */
-function clearHeroNegatives(b: BattleState): number {
+function clearHeroNegatives(b: BattleState, silent = false): number {
   const keys = ["wound", "curse", "poison", "sundered", "rot", "stunAp", "sealItems", "beat", "weaken", "shatter", "slow", "drain", "burn", "chill"] as const;
   const st = b.p.statuses as unknown as Record<string, number>;
   let n = 0;
@@ -1403,13 +1397,62 @@ function clearHeroNegatives(b: BattleState): number {
       n += 1;
     }
   }
-  if (n > 0) push(b, `Слабость не приговор: снято ${n} негативных эффектов, +${n * 25} урона.`, "p");
+  if (n > 0 && !silent) push(b, `Слабость не приговор: снято ${n} негативных эффектов, +${n * 25} урона.`, "p");
   return n;
+}
+
+/** Комбо Дуэлянта: до 5 стаков; каждый даёт +5% урона героя, сгорают в конце раунда без удара героя. */
+export const DUELIST_COMBO_MAX = 5;
+export const DUELIST_COMBO_STEP = 0.05;
+/** Расколотый строй (рубеж 10): при полном комбо следующий удар ×1,5 и стаки тратятся. */
+const DUELIST_COMBO_BURST = 1.5;
+
+function isDuelist(b: BattleState): boolean {
+  return b.p.archetype === "duelist";
+}
+function comboStacks(b: BattleState): number {
+  return b.p.statuses.comboStacks ?? 0;
+}
+function addCombo(b: BattleState, n = 1) {
+  if (!isDuelist(b) || b.p.hp <= 0) return;
+  const before = comboStacks(b);
+  const after = Math.min(DUELIST_COMBO_MAX, before + n);
+  if (after === before) return;
+  b.p.statuses.comboStacks = after;
+  push(b, `Комбо: ${after}/${DUELIST_COMBO_MAX} стаков (+${Math.round(after * DUELIST_COMBO_STEP * 100)}% урона).`, "p");
+}
+/** Контратака Дуэлянта: ветка «Ответ» — A: 20% брони врага игнорируется, B: без промаха. */
+function duelistCounterHit(b: BattleState, cd: number, note: string, accuracy?: number): number {
+  const prevIgnore = b.armorIgnore;
+  const prevNoMiss = b.skillNoMiss;
+  if (isDuelist(b) && hasPassive(b, "skill_riposte_a")) b.armorIgnore = 0.2;
+  if (isDuelist(b) && hasPassive(b, "skill_riposte_b")) b.skillNoMiss = true;
+  const dealt = hitEnemy(b, cd, "phys", note, true, undefined, accuracy);
+  b.armorIgnore = prevIgnore;
+  b.skillNoMiss = prevNoMiss;
+  return dealt;
+}
+/** Контратака Дуэлянта: удачная даёт стак; с рубежом 5 стак даёт каждая, даже промах. */
+function comboOnCounter(b: BattleState, dealt: number) {
+  if (!isDuelist(b)) return;
+  if (dealt > 0 || hasPassive(b, "arch_duelist_5")) addCombo(b);
+  /* Встречный клинок: после удачной контратаки шанс +1 стак. */
+  if (dealt > 0 && hasGearPassive(b, "duelist_phantom") && Math.random() < passivePower(b, "duelist_phantom", "stack") / 100) addCombo(b);
 }
 
 /** Раскол брони врага: плоское снижение на раунды. Босс не поддаётся, как и прежний раскол. */
 function applyEnemyBreak(b: BattleState, flat: number, pct: number, rounds: number, label: string) {
   if (bossResists(b) || b.enemy.hp <= 0) return;
+  /* Расколотый строй (рубеж 10): каждый раскол героя снимает ещё 2 брони на 2 раунда. */
+  if (isDuelist(b) && hasPassive(b, "arch_duelist_10")) {
+    flat += 2;
+    rounds = Math.max(rounds, 2);
+  }
+  /* Ветка «Раскол» A «Трещина»: каждый раскол героя снимает ещё 1 броню. */
+  if (isDuelist(b) && hasPassive(b, "skill_split_a")) flat += 1;
+  /* Встречный клинок: раскол снимает ещё броню до конца раунда. */
+  if (isDuelist(b) && hasGearPassive(b, "duelist_phantom")) b.enemy.statuses.breakExtra = passivePower(b, "duelist_phantom", "shatter");
+  addCombo(b);
   b.enemy.statuses.breakFlat = flat;
   b.enemy.statuses.breakPct = pct;
   b.enemy.statuses.breakRounds = rounds;
@@ -1578,12 +1621,13 @@ function techniqueDirectEffect(b: BattleState, ws: WeaponSkillDef, executeNow: b
     /* Искра: магический удар без броска оружия, горение на себя и на врага. */
     const dealt = hitEnemy(b, 25 + bonus, "magic", ` [Приём: ${ws.name}]`, true);
     const tick = 3 + bonus;
+    const enemyBurn = magicDot(b, "burn", BURN_UNTIL_END, tick, false);
     /* Горение без срока: держится до конца боя. */
     setPlayerTick(b, "burn", BURN_UNTIL_END, tick);
     push(b, `Искра жжёт тебя: ${tick} за раунд, до конца боя.`, "p");
     if (b.enemy.hp > 0) {
-      applyEnemyStatus(b, "burn", BURN_UNTIL_END, tick);
-      push(b, `${b.enemy.def.name} горит: ${tick} за раунд, до конца боя.`, "p");
+      applyEnemyStatus(b, "burn", enemyBurn.rounds, enemyBurn.tick);
+      push(b, `${b.enemy.def.name} горит: ${enemyBurn.tick} за раунд, до конца боя.`, "p");
     }
     return dealt;
   }
@@ -1600,8 +1644,6 @@ function skillCd(b: BattleState, base: number) {
 /** Перезарядка приёма сразу после использования. Колдун 5: 20% шанс −1 перезарядки этого приёма. */
 function skillCdAfterUse(b: BattleState, base: number) {
   let cd = skillCd(b, base);
-  /* Ускоренный откат (ранг 3): приём с перезарядкой 3+ раунда сокращает её на 1. */
-  if (hasPassive(b, "skill_cooldown_a") && base >= 3) cd = Math.max(1, cd - 1);
   if (hasPassive(b, "arch_warlock_5") && Math.random() < 0.2) cd = Math.max(1, cd - 1);
   return cd;
 }
@@ -1627,17 +1669,18 @@ export function techniqueBonusNow(b: BattleState, ws: WeaponSkillDef): number {
   return bonus;
 }
 function skillDamageMult(b: BattleState) {
+  const lordOfPact = hasPassive(b, "arch_warlock_10") && b.p.hp < b.p.maxHp * 0.5 ? 0.30 : 0;
   return 1 + effectPower(b, "skill_damage") / 100 + passivePower(b, "warlock_pact", "skillDamage") / 100 +
-    (hasPassive(b, "arch_warlock_5") ? 0.20 : 0) + (b.p.statuses.pactElixir > 0 ? 0.25 : 0) +
+    (hasPassive(b, "arch_warlock_5") ? 0.20 : 0) + lordOfPact + (b.p.statuses.pactElixir > 0 ? 0.25 : 0) +
     ((b.p.stats.int * effectPower(b, "wisdom")) / 100) * weakMult(b);
 }
 /** База приёмов и свитков: 10 + 2×ИНТ. Коэффициент задаёт конкретный приём. */
 export function techniqueDamage(int: number, coefficient = 1): number {
   return statTechniqueDamage(int) * coefficient;
 }
-/** Добавка «бонус навыков» к множителю приёма: свойство предметов и арх. чернокнижника 10. */
-export function techniqueSkillScale(effectPower: Partial<Record<GearEffectId, number>>, passives: readonly string[]): number {
-  return (effectPower.skill_scale ?? 0) + (passives.includes("arch_warlock_10") ? 0.5 : 0);
+/** Добавка «бонус навыков» к множителю приёма: свойство предметов. */
+export function techniqueSkillScale(effectPower: Partial<Record<GearEffectId, number>>, _passives: readonly string[] = []): number {
+  return effectPower.skill_scale ?? 0;
 }
 /** Предел ХАР в формуле бонуса приёма оружия. */
 export const TECHNIQUE_STAT_CAP = 10;
@@ -1664,8 +1707,7 @@ function rageBonus(b: BattleState): number {
   return (effectPower(b, "rage") / 100) * steps + (b.p.statuses.rage > 0 ? 0.10 * steps : 0);
 }
 function statusRounds(b: BattleState, base: number) {
-  return base + effectPower(b, "status_duration") + passivePower(b, "time_warp", "duration") +
-    (hasPassive(b, "arch_warlock_10") ? 2 : 0);
+  return base + effectPower(b, "status_duration") + passivePower(b, "time_warp", "duration");
 }
 export function playerResistChance(b: BattleState) {
   const extra = [
@@ -1721,6 +1763,18 @@ function applyDepletion(b: BattleState): string[] {
   const names: Record<string, string> = { fury: "ярость", shield: "костяной щит" };
   push(b, removed.length ? `Истощение: у ${e.def.name} снято ${removed.map((r) => names[r]).join(", ")}.` : `Истощение ${e.def.name}: положительных эффектов нет, но они гаснут на ${e.depleted} хода.`, "p");
   return removed;
+}
+
+/**
+ * Колдун: иссушение врага. Тик — 5% макс. ОЗ врага (как «Вытягивание жизни»); герой получает столько же.
+ * Рубеж 10 «Владыка пакта» даёт +2 раунда. Наложение не сокращает уже идущее иссушение.
+ */
+function applyPactDrain(b: BattleState, rounds: number) {
+  if (b.enemy.hp <= 0) return;
+  const total = rounds + (hasPassive(b, "arch_warlock_10") ? 2 : 0);
+  b.enemy.statuses.drainRounds = Math.max(b.enemy.statuses.drainRounds ?? 0, total);
+  b.enemy.statuses.drainTick = Math.max(1, Math.round(b.enemy.maxHp * PACT_DRAIN_SHARE));
+  push(b, `Иссушение: ${b.enemy.def.name} теряет ${b.enemy.statuses.drainTick} ОЗ за раунд на ${total} раунда, ты получаешь столько же.`, "p");
 }
 
 /** Иссушение: в конце раунда герой теряет долю макс. ОЗ (мимо брони), враг лечится на половину. */
@@ -1894,6 +1948,8 @@ function applyEnemyStatus(
     b.enemy.statuses[tk] = refreshedTick(wasActive, b.enemy.statuses[tk], t);
   }
   b.enemy.statuses[key] = Math.max(b.enemy.statuses[key], statusRounds(b, rounds));
+  /* Тлеющие угли (Пожар A): горящий враг −2 брони, пока горит. */
+  if (key === "burn" && hasPassive(b, "skill_ember_a")) b.enemy.statuses.emberShred = 2;
   /* Яд и кровотечение складываются: каждое новое наложение усиливает урон за тик. */
   if (key === "poison" || key === "bleed") {
     const stackKey = key === "poison" ? "poisonStacks" : "bleedStacks";
@@ -2026,11 +2082,8 @@ function healPlayer(b: BattleState, amount: number, isPotion = false): number {
   return actual;
 }
 function grantDodgeAction(b: BattleState) {
-  const chance = Math.min(1, effectPower(b, "dodge_action") / 100 + passivePower(b, "ninja_phantom", "dodge") / 100);
-  if (hasPassive(b, "arch_ninja_10")) {
-    b.p.statuses.shadowStep += 1;
-    push(b, "Пустое тело: уклонение открывает +1 ход в следующем раунде.", "p");
-  } else if (chance > 0 && Math.random() < chance) {
+  const chance = Math.min(1, effectPower(b, "dodge_action") / 100);
+  if (chance > 0 && Math.random() < chance) {
     b.p.statuses.shadowStep += 1;
     push(b, "Шаг в тень: в следующем раунде +1 ход.", "p");
   }
@@ -2142,7 +2195,6 @@ function calcWeaponRoll(
   }
   const debuffs = enemyDebuffCount(b);
   damageMult += (effectPower(b, "debuff_damage") / 100) * Math.min(4, debuffs);
-  if (hasPassive(b, "arch_ninja_10")) damageMult += Math.min(0.4, debuffs * 0.10);
   if (opts.skill) damageMult *= skillDamageMult(b);
 
   d *= damageMult;
@@ -2183,16 +2235,12 @@ export function applyVamp(b: BattleState, dealt: number, extraRatio = 0, source:
   if (source === "skill") {
     ratio += effectPower(b, "skill_vamp") / 100;
     if (hasPassive(b, "arch_warlock_5")) ratio += 0.10;
-    if (hasGearPassive(b, "warlock_pact")) ratio += passivePower(b, "warlock_pact", "vamp") / 100;
   }
   if (source === "consumable") {
     ratio += effectPower(b, "consumable_vamp") / 100;
-    if (hasPassive(b, "arch_ninja_5")) ratio += 0.15;
-    if (hasGearPassive(b, "ninja_phantom")) ratio += passivePower(b, "ninja_phantom", "vamp") / 100;
   }
   if (source === "scroll") {
     ratio += effectPower(b, "scroll_vamp") / 100;
-    if (hasPassive(b, "arch_sage_5")) ratio += 0.08;
   }
   if (dealt > 0 && b.p.statuses.vampHits > 0 && (source === "weapon" || source === "skill")) {
     ratio += 0.25;
@@ -2208,12 +2256,16 @@ export function enemyArmorNow(e: {
   armor: number;
   revived?: boolean;
   guard?: boolean;
-  statuses?: { breakFlat?: number; breakPct?: number; breakRounds?: number; shatterRounds?: number };
+  statuses?: { breakFlat?: number; breakPct?: number; breakRounds?: number; shatterRounds?: number; burn?: number; emberShred?: number; breakExtra?: number };
 }): number {
   let base = e.revived ? Math.round(e.armor * (1 - REVIVE_DEBUFF)) : e.armor;
   const brk = e.statuses;
   if (brk && (brk.breakRounds ?? 0) > 0) {
     base = Math.round(Math.max(0, base - (brk.breakFlat ?? 0)) * (1 - (brk.breakPct ?? 0)));
+  }
+  /* Фантом (Встречный клинок): раскол снимает ещё броню до конца раунда. Тлеющие угли (Пожар A): горящий враг −2 брони. */
+  if (brk) {
+    base = Math.max(0, base - (brk.breakExtra ?? 0) - ((brk.burn ?? 0) > 0 ? (brk.emberShred ?? 0) : 0));
   }
   /* Разрушение: укрепление брони врага ×0,5. */
   return e.guard ? Math.round(base * GUARD_ARMOR_MULT) : base;
@@ -2265,6 +2317,14 @@ function tryRevive(b: BattleState): boolean {
 export function magicPowerMult(effectPower: Partial<Record<GearEffectId, number>>): number {
   return 1 + (effectPower.magic_power ?? 0) / 100;
 }
+/**
+ * Магический множитель героя: все магические добавки складываются в один:
+ * магическое усиление предметов, Пылающий канон (+10%), Вечная стужа (+25%), Запретный канон (+12%).
+ */
+function magicMultNow(b: BattleState): number {
+  return magicPowerMult(b.p.effectPower) + (hasPassive(b, "arch_archmage_5") ? 0.10 : 0) +
+    (hasPassive(b, "arch_archmage_10") ? 0.25 : 0) + (hasGearPassive(b, "archmage_library") ? passivePower(b, "archmage_library", "magic") / 100 : 0);
+}
 
 function hitEnemy(
   b: BattleState,
@@ -2275,8 +2335,23 @@ function hitEnemy(
   element?: DamageElement,
   accuracy?: number,
 ): number {
+  /* Любая попытка удара героя отмечает раунд: без ударов комбо Дуэлянта сгорает в конце раунда. */
+  b.p.statuses.comboRound = b.round;
   /* Магическое усиление: любой магический удар героя, включая свитки и расходники. */
-  if (kind === "magic") raw = Math.round(raw * magicPowerMult(b.p.effectPower));
+  if (kind === "magic") raw = Math.round(raw * magicMultNow(b));
+  /* Комбо Дуэлянта: +5% за стак; при полном комбо и рубеже 10 удар ×1,5, стаки тратятся. */
+  if (isDuelist(b) && comboStacks(b) > 0) {
+    raw = Math.round(raw * (1 + DUELIST_COMBO_STEP * comboStacks(b)));
+    if (hasPassive(b, "arch_duelist_10") && comboStacks(b) >= DUELIST_COMBO_MAX) {
+      raw = Math.round(raw * DUELIST_COMBO_BURST);
+      b.p.statuses.comboStacks = 0;
+      push(b, "Расколотый строй: удар ×1,5, стаки комбо потрачены.", "p");
+    }
+  }
+  /* Ветка «Серия» B «Ритм»: при 3+ стаках каждый удар с шансом 25% даёт +1 стак. */
+  if (isDuelist(b) && hasPassive(b, "skill_combo_b") && comboStacks(b) >= 3 && strike && Math.random() < 0.25) {
+    addCombo(b);
+  }
   /* Побои: враг получает больше урона от героя, пока эффект действует. */
   if ((b.enemy.statuses.beatRounds ?? 0) > 0) raw = Math.round(raw * (1 + (b.enemy.statuses.beatMult ?? 0)));
   /* Обратный хват: в этом ходу весь урон героя ÷2. */
@@ -2578,6 +2653,8 @@ function incoming(
   /** Пробивает броню, сопротивление и уклонение (холодное касание призрака). */
   ignoreDefense = false,
 ): boolean {
+  /* Раунд последней атаки врага по герою: нужен приёму «Встречный выпад». */
+  b.p.statuses.incomingRound = b.round;
   /* Побои: урон по герою +20%, пока эффект держится. */
   raw = beatenDamage(raw, b.p.statuses.beat);
   const darkMiss = (b.torchTurns ?? 0) > 0 ? 0 : biomeMissChance(b.biome);
@@ -2635,13 +2712,6 @@ function incoming(
     }
     return false;
   }
-  /* Библиотека душ (Мудрец 10): первый удар по герою в бою полностью блокируется. */
-  if (hasPassive(b, "arch_sage_10") && !b.p.sageWardUsed) {
-    b.p.sageWardUsed = true;
-    flash(b, "p", "miss", 0);
-    push(b, `Библиотека душ блокирует первый удар (${src}).`, "p");
-    return false;
-  }
   let d = damageAfterPlayerDefense(b, raw, kind, strike, ignoreDefense);
   /* Маг. барьер первым принимает удар, до стены щитов. */
   d = absorbBarrier(b, d);
@@ -2695,11 +2765,12 @@ function incoming(
   }
 
   /* Контратака / ответный выпад */
-  const counterChance = Math.min(1, effectPower(b, "counter") / 100 + passivePower(b, "dance", "counter") / 100 +
-    (hasPassive(b, "arch_assassin_10") ? 0.10 : 0));
+  const counterChance = Math.min(1, effectPower(b, "counter") / 100 + passivePower(b, "dance", "counter") / 100 + passivePower(b, "duelist_phantom", "counter") / 100 +
+    (hasPassive(b, "arch_assassin_10") ? 0.10 : 0) + (isDuelist(b) && hasPassive(b, "arch_duelist_5") ? 0.10 : 0));
   if (b.p.hp > 0 && b.enemy.hp > 0 && counterChance > 0 && Math.random() < counterChance) {
     const { d: cd } = calcWeaponRoll(b, 0.6);
-    const dealt = hitEnemy(b, cd, "phys", " [Контратака]");
+    const dealt = duelistCounterHit(b, cd, " [Контратака]");
+    comboOnCounter(b, dealt);
     applyVamp(b, dealt, 0, "weapon");
   }
   /* Выпад и Копьё вперёд: ответ на первые физические удары врага. */
@@ -2821,15 +2892,15 @@ function beginTurn(b: BattleState) {
     const rainHeal = healPlayer(b, 5 + 2 * Math.min(TECHNIQUE_STAT_CAP, b.p.stats.int));
     if (rainHeal > 0) push(b, `Целебный дождь: +${rainHeal} здоровья.`, "p");
   }
+  /* Жизнь пакта (Колдун, ветка «Обет» B): ниже 30% ОЗ — лечение 2% макс. ОЗ в начале хода героя. */
+  if (side === "p" && hasPassive(b, "skill_vow_b") && b.p.hp > 0 && b.p.hp < b.p.maxHp * 0.3) {
+    const heal = healPlayer(b, Math.round(b.p.maxHp * 0.02));
+    if (heal > 0) push(b, `Жизнь пакта: +${heal} здоровья.`, "p");
+  }
   /* Непреклонность (ранг 3): ниже 30% ОЗ — лечение 5% макс. ОЗ в начале хода героя. */
   if (side === "p" && hasPassive(b, "skill_fortitude_a") && b.p.hp > 0 && b.p.hp < b.p.maxHp * 0.3) {
     const heal = healPlayer(b, Math.round(b.p.maxHp * 0.05));
     if (heal > 0) push(b, `Упорство: +${heal} здоровья.`, "p");
-  }
-  /* Ржавчина (Проклятие 5): пока на враге проклятие, его броня −1 за каждый его ход. */
-  if (side === "e" && b.enemy.hp > 0 && b.enemy.statuses.curse > 0 && hasPassive(b, "skill_curse_b") && b.enemy.armor > 0) {
-    b.enemy.armor -= 1;
-    push(b, `Ржавчина съедает броню ${b.enemy.def.name}: −1 (осталось ${b.enemy.armor}).`, "p");
   }
   if (b.biome === "ice" && side === "p") {
     b.p.hp = Math.max(0, b.p.hp - absorbBarrier(b, ICE_TURN_DAMAGE));
@@ -3134,6 +3205,7 @@ function advance(b: BattleState) {
     b.enemy.statuses.burn = Math.max(0, b.enemy.statuses.burn - 1);
     b.enemy.statuses.sealMoves = Math.max(0, b.enemy.statuses.sealMoves - 1);
     b.enemy.statuses.curse = Math.max(0, b.enemy.statuses.curse - 1);
+    b.enemy.statuses.breakExtra = 0;
     if ((b.enemy.statuses.breakRounds ?? 0) > 0) {
       b.enemy.statuses.breakRounds = (b.enemy.statuses.breakRounds ?? 0) - 1;
       if (b.enemy.statuses.breakRounds === 0) {
@@ -3206,20 +3278,26 @@ function advance(b: BattleState) {
       if (b.p.armorCds[k] > 0) b.p.armorCds[k] -= 1;
     }
 
+    /* Комбо Дуэлянта сгорает, если герой в этом раунде не ударил. Ветка «Серия» A — после 2 раундов без удара. */
+    const comboIdle = b.round - (b.p.statuses.comboRound ?? 0);
+    const comboGrace = hasPassive(b, "skill_combo_a") ? 2 : 1;
+    if (isDuelist(b) && comboStacks(b) > 0 && comboIdle >= comboGrace) {
+      b.p.statuses.comboStacks = 0;
+      push(b, "Комбо сгорело: в раунде не было ни одного удара.", "p");
+    }
+
     b.round += 1;
     b.idx = 0;
     /* Выносливость восстанавливается в начале раунда наполовину от максимума, не выше максимума. */
     b.p.stamina = Math.min(b.p.staminaMax, b.p.stamina + Math.floor(b.p.staminaMax * STAMINA_ROUND_RECOVERY));
     const hasteBonus = b.p.statuses.haste > 0 ? 1 : 0;
-    const sageAp = hasPassive(b, "arch_sage_10") ? 1 : 0;
     const shadowAp = b.p.statuses.shadowStep;
     /* Дополнительных ходов не бывает больше трёх за раунд. */
-    const extraAp = Math.min(MAX_EXTRA_AP, hasteBonus + sageAp + shadowAp);
+    const extraAp = Math.min(MAX_EXTRA_AP, hasteBonus + shadowAp);
     const pAp = Math.max(1, b.p.ap + extraAp);
     const eAp = Math.max(1, b.enemy.ap);
     if (hasteBonus > 0) push(b, `Зелье скорости: в этом раунде у тебя +1 ход (осталось ${b.p.statuses.haste}).`, "p");
     if (shadowAp > 0) push(b, `Шаг в тень даёт +${shadowAp} ход в этом раунде.`, "p");
-    if (sageAp > 0) push(b, "Библиотека душ: +1 ход в этом раунде.", "p");
     b.p.statuses.shadowStep = 0;
     const prevHaste = b.p.statuses.haste;
     const prevStone = b.p.statuses.stone;
@@ -3285,13 +3363,16 @@ export function persistentBag(b: BattleState): Record<string, number> {
 export const MAX_CONCENTRATION = 7;
 /** Спец-приём архетипа открывается при этом порогу концентрации и тратит ровно столько же. */
 export const SPECIAL_CONCENTRATION = 5;
-/** Пул расходников ниндзя: метательные, дымовая бомба исключена — она не наносит урона. */
-const NINJA_CONJURE_POOL = ["serrated_knife", "poison_dart", "acid_vial", "blast_bomb"];
-const NINJA_CONJURED = 5;
-const NINJA_THROWS = 2;
-const SAGE_CONJURED = 2;
-const SAGE_VAMP_BONUS = 0.25;
+/** Слово созидания создаёт 2 свитка. */
+const SPECIAL_SCROLLS = 2;
 const WARLOCK_HP_SHARE = 0.5;
+/** Колдун: цена каждого приёма — доля макс. ОЗ героя. */
+const PACT_HP_COST = 0.03;
+/** Колдун: иссушение обычного приёма и спец-приёма (раунды); рубеж 10 добавляет +2. */
+const PACT_DRAIN_ROUNDS = 2;
+/** Колдун: тик иссушения — доля макс. ОЗ врага за раунд (как DRAIN_SHARE текущего иссушения). */
+const PACT_DRAIN_SHARE = 0.06;
+const PACT_SPECIAL_DRAIN_ROUNDS = 3;
 /** Любой приём (оружия, эпический, брони) требует концентрации и тратит её на использование (−1). */
 const TECHNIQUE_CONCENTRATION = 1;
 /** Мощный удар тратит 1 концентрации и без неё недоступен: кнопка заблокирована, сервер отказывает. */
@@ -3361,49 +3442,86 @@ function runArchetypeSpecial(b: BattleState, arch: ArchetypeId) {
     applyVamp(b, dealt, 0.2, "weapon");
     if (dealt > 0) oilOnHit(b, dealt);
     weaponHitEffects(b);
-  } else if (arch === "ninja") {
-    ninjaVolley(b);
+  } else if (arch === "duelist") {
+    duelistCounterVolley(b);
   } else if (arch === "warlock") {
     b.p.hp = Math.max(1, Math.round(b.p.maxHp * WARLOCK_HP_SHARE));
     b.p.statuses.invulnerable = Math.max(b.p.statuses.invulnerable, 1);
     push(b, `Жертвенный пакт: здоровье ${b.p.hp}/${b.p.maxHp}, неуязвимость на 1 ход.`, "p");
-  } else if (arch === "sage") {
-    const created = createScrolls(b, SAGE_CONJURED);
+    applyPactDrain(b, PACT_SPECIAL_DRAIN_ROUNDS);
+    /* Обряд (ветка A): пакт возвращает 2 концентрации. */
+    if (hasPassive(b, "skill_rite_a")) {
+      b.p.concentration = Math.min(MAX_CONCENTRATION, b.p.concentration + 2);
+      push(b, "Ритуал: концентрация +2.", "p");
+    }
+    /* Кровь пакта (ветка B): пакт снимает все негативные эффекты героя. */
+    if (hasPassive(b, "skill_rite_b")) {
+      const cleared = clearHeroNegatives(b, true);
+      if (cleared > 0) push(b, `Кровь пакта: снято негативных эффектов: ${cleared}.`, "p");
+    }
+  } else if (arch === "archmage") {
+    const created = createScrolls(b, SPECIAL_SCROLLS);
     push(b, `Слово созидания создаёт свитки: ${created.join(", ")}.`, "p");
-    if (created.length > 0) castCreatedScroll(b, created[0], SAGE_VAMP_BONUS);
+    if (created.length > 0) castCreatedScroll(b, created[0]);
+    /* Слово созидания сразу накладывает на врага горение или обморожение на 3 раунда (случайно). */
+    if (b.enemy.hp > 0) {
+      const kind = Math.random() < 0.5 ? "burn" : "chill";
+      const dot = magicDot(b, kind, 3, skillDotTick(kind, b.p.level, b.enemy.maxHp), true);
+      applyEnemyStatus(b, kind, dot.rounds, dot.tick);
+      push(b, `Слово созидания: ${b.enemy.def.name} ${kind === "burn" ? "горит" : "скован холодом"} на 3 раунда.`, "p");
+    }
   }
 }
 
-/** Град снарядов: 5 расходников в боевой рюкзак, 2 из них сразу бросаются во врага по обычным правилам. */
-function ninjaVolley(b: BattleState) {
-  const made: string[] = [];
-  for (let i = 0; i < NINJA_CONJURED; i++) {
-    const id = pick(NINJA_CONJURE_POOL);
-    addConjured(b, id);
-    made.push(id);
-  }
-  push(b, `Град снарядов: в рюкзак легли ${made.map((id) => ITEMS[id]?.name ?? id).join(", ")}.`, "p");
-  const left = made.filter((id) => b.p.stats.int >= consumableIntReq(ITEMS[id], b.p.intDiscount));
-  for (let i = 0; i < NINJA_THROWS && left.length > 0 && !b.over; i++) {
-    const id = pick(left);
-    left.splice(left.indexOf(id), 1);
-    Object.assign(b, actInternal(b, { type: "item", id }, false));
-  }
+/** Ответный залп: контратака по врагу, затем раскол брони −3 на 2 раунда. */
+function duelistCounterVolley(b: BattleState) {
+  const { d } = calcWeaponRoll(b, 0.6);
+  const dealt = duelistCounterHit(b, d, " [Ответный залп]");
+  comboOnCounter(b, dealt);
+  applyEnemyBreak(b, 3, 0, 2, "Ответный залп");
 }
 
+/**
+ * Архимаг: горение и обморожение от приёмов и свитков.
+ * Пылающий канон (рубеж 5): тик +25% (с округлением вверх). Запретный канон: +1 раунд.
+ * Вечная стужа (рубеж 10): горение держится до конца боя. Пожар B: горение от свитка +1 за каждый свиток в бою (до 5).
+ */
+function magicDot(b: BattleState, kind: "burn" | "chill", rounds: number, tick: number, fromScroll: boolean): { rounds: number; tick: number } {
+  let r = rounds + (hasGearPassive(b, "archmage_library") ? passivePower(b, "archmage_library", "round") : 0);
+  let t = hasPassive(b, "arch_archmage_5") ? Math.ceil(tick * 1.25) : tick;
+  if (fromScroll && kind === "burn" && hasPassive(b, "skill_ember_b")) t += Math.min(5, b.scrollsMade ?? 0);
+  if (kind === "burn" && hasPassive(b, "arch_archmage_10")) r = BURN_UNTIL_END;
+  return { rounds: r, tick: t };
+}
 function createScrolls(b: BattleState, count: number): string[] {
   const out: string[] = [];
   for (let i = 0; i < count; i++) {
     const id = pick(CREATED_SCROLLS);
-    addConjured(b, id);
-    out.push(ITEMS[id]?.name ?? id);
+    /* Вторая строка (Списки A): созданный свиток с 20% шансом создаётся дважды. */
+    const copies = hasPassive(b, "skill_scribe_a") && Math.random() < 0.2 ? 2 : 1;
+    for (let c = 0; c < copies; c++) {
+      addConjured(b, id);
+      b.scrollsMade = (b.scrollsMade ?? 0) + 1;
+      out.push(ITEMS[id]?.name ?? id);
+    }
   }
   return out;
 }
-function castCreatedScroll(b: BattleState, name: string, extraMagicVamp = 0) {
+/** Применение созданного свитка. Чтение вслух (Списки B): первый в бою — дважды. Запретный канон: 15% без траты. */
+function castCreatedScroll(b: BattleState, name: string) {
   const id = CREATED_SCROLLS.find((x) => ITEMS[x]?.name === name);
   if (!id || !b.bag[id]) return;
   const def = ITEMS[id];
+  const readAloud = hasPassive(b, "skill_scribe_b") && !b.p.statuses.readAloudUsed;
+  if (readAloud) b.p.statuses.readAloudUsed = 1;
+  const reapply = hasGearPassive(b, "archmage_library") && Math.random() < passivePower(b, "archmage_library", "reapply") / 100;
+  if (readAloud) push(b, `Чтение вслух: свиток «${def.name}» применяется дважды.`, "p");
+  if (reapply) push(b, `Запретный канон: свиток «${def.name}» применяется ещё раз без траты.`, "p");
+  const times = 1 + (readAloud ? 1 : 0) + (reapply ? 1 : 0);
+  for (let i = 0; i < times; i++) resolveCreatedScroll(b, def);
+  spendBagItem(b, id);
+}
+function resolveCreatedScroll(b: BattleState, def: ItemDef) {
   const power = consumablePower(def, b.p.stats);
   const mult = consumableDamageMult(b, def);
   if (def.use?.type === "heal") {
@@ -3411,33 +3529,28 @@ function castCreatedScroll(b: BattleState, name: string, extraMagicVamp = 0) {
     push(b, `${def.name} сразу применяется: +${amt} здоровья.`, "p");
   } else if (def.use?.type === "chill") {
     const dealt = elementalHit(b, Math.round(power * mult), ` [${def.name}, сотворён]`, def.use?.element ?? "ice");
-    applyEnemyStatus(b, "chill", 3, dotBaseTick("chill", b.p.level));
-    applyVamp(b, dealt, extraMagicVamp, "scroll", "magic");
+    const chill = magicDot(b, "chill", 3, dotBaseTick("chill", b.p.level), true);
+    applyEnemyStatus(b, "chill", chill.rounds, chill.tick);
+    applyVamp(b, dealt, 0, "scroll", "magic");
   } else if (def.use?.type === "terror") {
     b.enemy.forceGuard = Math.max(b.enemy.forceGuard, 2);
     push(b, `${def.name} сразу применяется: враг держит защиту.`, "p");
   } else {
     const dealt = elementalHit(b, Math.round(power * mult), ` [${def.name}, сотворён]`, def.use?.element);
-    applyVamp(b, dealt, extraMagicVamp, "scroll", "magic");
+    applyVamp(b, dealt, 0, "scroll", "magic");
   }
-  spendBagItem(b, id);
 }
 function consumableDamageMult(b: BattleState, def: { kind: string; use?: { type: string } }) {
   const isScroll = def.kind === "scroll";
   const spellPowerMult = (hasPassive(b, "resonance") ? 1.4 : 1) * (1 + legPower(b, "archmage_blood", "spellDamage") / 100);
   let m = isScroll ? spellPowerMult : 1;
   if (isScroll) {
-    m *= 1 + ((b.p.stats.int * effectPower(b, "wisdom")) / 100) * weakMult(b) +
-      effectPower(b, "scroll_damage") / 100 + passivePower(b, "sage_library", "scrollDamage") / 100;
-    if (hasPassive(b, "arch_sage_5")) m *= 1.25;
+    m *= 1 + ((b.p.stats.int * effectPower(b, "wisdom")) / 100) * weakMult(b) + effectPower(b, "scroll_damage") / 100;
   } else if (def.use?.type !== "heal" && def.use?.type !== "cleanse") {
-    m *= 1 + ((b.p.stats.agi * effectPower(b, "precision")) / 100) * weakMult(b) + effectPower(b, "consumable_damage") / 100 +
-      (hasPassive(b, "arch_ninja_5") ? 0.1 * b.p.stats.agi * weakMult(b) : 0);
-    if (hasPassive(b, "arch_ninja_5")) m *= 1.25;
+    m *= 1 + ((b.p.stats.agi * effectPower(b, "precision")) / 100) * weakMult(b) + effectPower(b, "consumable_damage") / 100;
   }
   const debuffs = enemyDebuffCount(b);
   m *= 1 + (effectPower(b, "debuff_damage") / 100) * Math.min(4, debuffs);
-  if (hasPassive(b, "arch_ninja_10")) m *= 1 + Math.min(0.4, debuffs * 0.10);
   return m;
 }
 function consumablePowerWithGear(b: BattleState, def: ItemDef) {
@@ -3465,7 +3578,10 @@ function applyArmorSkill(b: BattleState, sk: ArmorSkillView) {
   }
   if (e.bleed && b.enemy.hp > 0) applyEnemyStatus(b, "bleed", e.bleed, skillDotTick("bleed", b.p.level, b.enemy.maxHp));
   if (e.poison && b.enemy.hp > 0) applyEnemyStatus(b, "poison", e.poison, skillDotTick("poison", b.p.level, b.enemy.maxHp));
-  if (e.chill && b.enemy.hp > 0) applyEnemyStatus(b, "chill", e.chill, skillDotTick("chill", b.p.level, b.enemy.maxHp));
+  if (e.chill && b.enemy.hp > 0) {
+    const chill = magicDot(b, "chill", e.chill, skillDotTick("chill", b.p.level, b.enemy.maxHp), false);
+    applyEnemyStatus(b, "chill", chill.rounds, chill.tick);
+  }
 
   const s = sk.self ?? {};
   if (s.guard) b.p.guard = true;
@@ -3552,7 +3668,7 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
   return actInternal(b0, a, true);
 }
 
-/** takeTurn=false — внутренний розыгрыш (бросок расходника приёмом ниндзя): ход не тратится, концентрация не меняется. */
+/** takeTurn=false — внутренний розыгрыш (бросок расходника приёмом дуэлянт): ход не тратится, концентрация не меняется. */
 function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): BattleState {
   if (b0.over || b0.queue[b0.idx] !== "p") return b0;
   const b = clone(b0);
@@ -3605,7 +3721,11 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
       const afterGuardAttack = b.p.guard && !b.p.guardStrikeUsed;
       if (afterGuardAttack) b.p.guardStrikeUsed = true;
       b.skillNoMiss = (!b.p.firstAttackDone && hasPassive(b, "skill_shadow_a")) || (hasPassive(b, "skill_beast_b") && enemyBelowShare(b, 0.2));
-      b.armorIgnore = hasPassive(b, "skill_ram_a") && afterGuardAttack ? 0.2 : 0;
+      /* Таран A — 20% брони после защиты; Пролом B — 10% по врагу с расколом. Не складываются. */
+      b.armorIgnore = Math.max(
+        hasPassive(b, "skill_ram_a") && afterGuardAttack ? 0.2 : 0,
+        hasPassive(b, "skill_split_b") && (b.enemy.statuses.breakRounds ?? 0) > 0 ? 0.1 : 0,
+      );
       const ramStun = hasPassive(b, "skill_ram_b") && afterGuardAttack && Math.random() < 0.25;
       const strikes = (b.p.hands ?? []).length ? b.p.hands : [undefined];
       const kind: AttackKind = a.kind ?? "normal";
@@ -3665,10 +3785,11 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
           b.enemy.statuses.stunAp = Math.min(2, b.enemy.statuses.stunAp + 1);
           push(b, `${b.enemy.def.name} оглушён и потеряет 1 ход в следующем раунде!`, "p");
         }
-        const counterChance = Math.min(1, effectPower(b, "counter") / 100 + passivePower(b, "dance", "counter") / 100);
+        const counterChance = Math.min(1, effectPower(b, "counter") / 100 + passivePower(b, "dance", "counter") / 100 + passivePower(b, "duelist_phantom", "counter") / 100 + (isDuelist(b) && hasPassive(b, "arch_duelist_5") ? 0.10 : 0));
         if (b.enemy.hp > 0 && counterChance > 0 && Math.random() < counterChance) {
           const { d: cd } = calcWeaponRoll(b, 0.6, 0, { hand, kind });
-          const dealt2 = hitEnemy(b, cd, "phys", " [Второй удар]", true, undefined, acc);
+          const dealt2 = duelistCounterHit(b, cd, " [Второй удар]", acc);
+          comboOnCounter(b, dealt2);
           applyVamp(b, dealt2, 0, "weapon");
         }
       }
@@ -3716,6 +3837,13 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
       const hits = eff === "double_attack" ? scaleIntegerByLevel(2, ws.level ?? 1) : eff === "double_cut" ? 2 : NO_ATTACK_EFFECTS.has(eff ?? "") ? 0 : 1;
       /* Казнь: при ОЗ врага ниже половины удар сильнее. Проверка до удара. */
       const executeNow = eff === "execute" && b.enemy.hp < b.enemy.maxHp * 0.5;
+      /* Колдун: каждый приём платит 3% макс. ОЗ (не меньше 1). Плата не убивает: ОЗ не ниже 1. */
+      const hpBeforePact = b.p.hp;
+      if (b.p.archetype === "warlock") {
+        const cost = Math.max(1, Math.round(b.p.maxHp * PACT_HP_COST));
+        b.p.hp = Math.max(1, b.p.hp - cost);
+        if (b.p.hp < hpBeforePact) push(b, `Плата пакта: −${hpBeforePact - b.p.hp} ОЗ.`, "p");
+      }
       heroAttackStart(b, eff);
       /* Последний приём, который можно повторить (не сам Повтор). */
       b.lastRepeat = { kind: "tech", ws: { ...ws } };
@@ -3763,10 +3891,11 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
             b.enemy.statuses.stunAp = Math.min(2, b.enemy.statuses.stunAp + 1);
             push(b, `${b.enemy.def.name} оглушён ударом ${i + 1}/${hits}!`, "p");
           }
-          const counterChance = Math.min(1, effectPower(b, "counter") / 100 + passivePower(b, "dance", "counter") / 100);
+          const counterChance = Math.min(1, effectPower(b, "counter") / 100 + passivePower(b, "dance", "counter") / 100 + passivePower(b, "duelist_phantom", "counter") / 100 + (isDuelist(b) && hasPassive(b, "arch_duelist_5") ? 0.10 : 0));
           if (b.enemy.hp > 0 && counterChance > 0 && Math.random() < counterChance) {
             const { d: cd } = calcWeaponRoll(b, 0.6);
-            const dealt2 = hitEnemy(b, cd, "phys", ` [Второй удар ${i + 1}/${hits}]`);
+            const dealt2 = duelistCounterHit(b, cd, ` [Второй удар ${i + 1}/${hits}]`);
+            comboOnCounter(b, dealt2);
             applyVamp(b, dealt2, 0, "weapon");
           }
         }
@@ -3794,7 +3923,8 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
         b.p.statuses.tempArmor += wallArmor;
         push(b, `Стена щитов: Защита и +${wallArmor} брони до конца боя.`, "p");
       } else if (eff === "chill") {
-        applyEnemyStatus(b, "chill", techValue(ws, 2), skillDotTick("chill", b.p.level, b.enemy.maxHp));
+        const chill = magicDot(b, "chill", techValue(ws, 2), skillDotTick("chill", b.p.level, b.enemy.maxHp), false);
+        applyEnemyStatus(b, "chill", chill.rounds, chill.tick);
         push(b, `${b.enemy.def.name} обморожен: лечение −50% и периодический урон (${b.enemy.statuses.chill} раунда).`, "p");
       } else if (eff === "sunder") {
         const breakAmount = techValue(ws, ws.id === "crushing_blow" ? 3 : 2);
@@ -3808,17 +3938,21 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
           b.enemy.statuses.stunAp = Math.min(4, b.enemy.statuses.stunAp + stunAp);
           push(b, `${b.enemy.def.name} оглушён и потеряет ${stunAp} ход в следующем раунде!`, "p");
         }
-      } else if (eff === "dodge_action") {
-        b.p.statuses.dodgeNext += techValue(ws, 1);
-        b.p.statuses.shadowStep += techValue(ws, 1);
-        push(b, "Пустой шаг: следующая атака ускользнёт, в следующем раунде +1 ход.", "p");
+      } else if (eff === "counter_thrust") {
+        /* Встречный выпад: если враг атаковал в прошлом раунде — контратака по нему. */
+        if (b.p.statuses.incomingRound === b.round - 1 && b.enemy.hp > 0) {
+          const { d: cd } = calcWeaponRoll(b, 0.6);
+          const dealt = hitEnemy(b, cd, "phys", " [Встречный выпад]");
+          comboOnCounter(b, dealt);
+          push(b, "Встречный выпад: враг атаковал в прошлом раунде — ответный удар.", "p");
+        }
       } else if (eff === "curse_brand") {
-        applyEnemyStatus(b, "curse", techValue(ws, 3), skillDotTick("curse", b.p.level, b.enemy.maxHp));
+        applyEnemyStatus(b, "curse", techValue(ws, 3) + (hasPassive(b, "skill_curse_b") ? 2 : 0), skillDotTick("curse", b.p.level, b.enemy.maxHp));
         b.enemy.statuses.cursePower = 30;
         b.enemy.statuses.fear = Math.max(b.enemy.statuses.fear, statusRounds(b, techValue(ws, 1)));
         push(b, `${b.enemy.def.name} скован печатью проклятия: урон −30% и периодический магический урон.`, "p");
       } else if (eff === "full_guard") {
-        const rounds = techValue(ws, 2) + (hasPassive(b, "arch_sage_10") ? 1 : 0);
+        const rounds = techValue(ws, 2);
         b.p.statuses.fullGuard = Math.max(b.p.statuses.fullGuard, rounds);
         push(b, `Слово защиты: полная защита от урона на ${rounds} хода.`, "p");
       } else if (eff === "buff_break") {
@@ -3829,9 +3963,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
           push(b, `Истощение ${b.enemy.def.name} на ${rounds} хода: его положительные эффекты гаснут.`, "p");
         }
       } else if (eff === "create_scroll") {
-        const count = scaleIntegerByLevel(ws.id === "scroll_tempest" ? 2 : 1, ws.level ?? 1) + effectPower(b, "scroll_create") +
-          passivePower(b, "sage_library", "create") +
-          (hasPassive(b, "arch_sage_10") ? 1 : 0);
+        const count = scaleIntegerByLevel(ws.id === "scroll_tempest" ? 2 : 1, ws.level ?? 1) + effectPower(b, "scroll_create");
         const created = createScrolls(b, count);
         push(b, `Слово творения создаёт свитки: ${created.join(", ")}.`, "p");
         if (created.length > 0) castCreatedScroll(b, created[0]);
@@ -3841,26 +3973,25 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
       if (eff !== "double_attack") applyVamp(b, dealtTotal, leech, "skill", trueDamage ? "magic" : "phys");
       else if (leech > 0) applyVamp(b, dealtTotal, leech, "skill", "phys");
 
-      /* Ветки навыков: Цена крови — приём стоит 5% ОЗ и возвращает концентрацию; Питание пакта — лечение 10% урона;
-         Порча приёмом — проклятие на враге (−30% урона). */
-      if (hasPassive(b, "skill_price_a")) {
-        const cost = Math.max(1, Math.round(b.p.maxHp * 0.05));
-        b.p.hp = Math.max(1, b.p.hp - cost);
-        b.p.concentration = Math.min(MAX_CONCENTRATION, b.p.concentration + 1);
-        push(b, `Цена крови: −${cost} ОЗ, концентрация +1.`, "p");
+      /* Колдун: удачный приём накладывает иссушение на врага. Печать пакта лечит 12% урона таких приёмов. */
+      if (b.p.archetype === "warlock" && dealtTotal > 0 && b.enemy.hp > 0) {
+        applyPactDrain(b, PACT_DRAIN_ROUNDS);
+        if (hasGearPassive(b, "warlock_pact")) {
+          const heal = healPlayer(b, Math.round(dealtTotal * passivePower(b, "warlock_pact", "vamp") / 100));
+          if (heal > 0) push(b, `Печать пакта: +${heal} здоровья.`, "p");
+        }
       }
-      if (hasPassive(b, "skill_price_b") && dealtTotal > 0) {
-        const heal = healPlayer(b, Math.max(1, Math.round(dealtTotal * 0.1)));
-        if (heal > 0) push(b, `Питание пакта: +${heal} здоровья.`, "p");
-      }
+      /* Порча приёмом (Колдун, ветка «Порча» A): проклятие на 2 раунда, −10% урона врага. */
       if (hasPassive(b, "skill_curse_a") && b.enemy.hp > 0) {
-        applyEnemyStatus(b, "curse", 2, skillDotTick("curse", b.p.level, b.enemy.maxHp));
-        b.enemy.statuses.cursePower = 30;
-        push(b, `Порча приёмом: ${b.enemy.def.name} проклят на 2 раунда (урон −30%).`, "p");
+        applyEnemyStatus(b, "curse", 2 + (hasPassive(b, "skill_curse_b") ? 2 : 0), skillDotTick("curse", b.p.level, b.enemy.maxHp));
+        b.enemy.statuses.cursePower = 10;
+        push(b, `Порча приёмом: ${b.enemy.def.name} проклят (урон −10%).`, "p");
       }
-      const noCd = hasPassive(b, "echo") && Math.random() < 0.35;
+      /* Обет крови (ветка «Обет» A): приём, который довёл ОЗ героя ниже 30%, не тратит перезарядку. */
+      const vowFree = hasPassive(b, "skill_vow_a") && hpBeforePact >= b.p.maxHp * 0.3 && b.p.hp < b.p.maxHp * 0.3;
+      const noCd = vowFree || (hasPassive(b, "echo") && Math.random() < 0.35);
       if (noCd) {
-        push(b, "Приём не ушёл на перезарядку!", "p");
+        push(b, vowFree ? "Обет крови: ОЗ ниже 30%, перезарядки нет!" : "Приём не ушёл на перезарядку!", "p");
       } else {
         let cd = skillCdAfterUse(b, ws.cooldown);
         /* Тень за спиной с оставшимися зарядами перезарядки не получает. */
@@ -3933,14 +4064,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
         push(b, `${b.enemy.def.name} скован стужей и теряет 1 ход в следующем раунде.`, "p");
       }
 
-      /* Однократный эпик (ранг 5): один раз за бой без перезарядки. */
-      if (hasPassive(b, "skill_cooldown_b") && !b.p.statuses.epicFreeUsed) {
-        b.p.statuses.epicFreeUsed = 1;
-        b.p.epicCds[sk.id] = 0;
-        push(b, `${sk.name}: без перезарядки в этом бою.`, "p");
-      } else {
-        b.p.epicCds[sk.id] = skillCdAfterUse(b, sk.cooldown);
-      }
+      b.p.epicCds[sk.id] = skillCdAfterUse(b, sk.cooldown);
       break;
     }
 
@@ -3975,9 +4099,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
       const u = def.use;
       const req = consumableIntReq(def, b.p.intDiscount);
       if (b.p.stats.int < req) return err(`Для «${def.name}» нужен Интеллект ${req}.`);
-      /* Библиотека 3: следующий свиток получает +1 урона от предыдущего. */
-      const libraryBonus = def.kind === "scroll" && hasPassive(b, "skill_library_a") ? (b.libraryCharge ?? 0) : 0;
-      const itemPower = consumablePowerWithGear(b, def) + libraryBonus;
+      const itemPower = consumablePowerWithGear(b, def);
       const scrollMult = consumableDamageMult(b, def);
       if (u.type === "fear" && isImmuneTo(b.enemy.def.race, "fear")) {
         return err(`${b.enemy.def.name} не знает страха: флакон здесь бесполезен.`);
@@ -4053,7 +4175,8 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
           const dmg = Math.round(itemPower * scrollMult);
           const dealt = elementalHit(b, dmg, ` [${def.name}]`, u.element ?? "ice");
           applyVamp(b, dealt, 0, def.kind === "scroll" ? "scroll" : "consumable", def.kind === "scroll" ? "magic" : "phys");
-          applyEnemyStatus(b, "chill", u.rounds ?? 3, dotBaseTick("chill", b.p.level));
+          const chill = def.kind === "scroll" ? magicDot(b, "chill", u.rounds ?? 3, dotBaseTick("chill", b.p.level), true) : { rounds: u.rounds ?? 3, tick: dotBaseTick("chill", b.p.level) };
+          applyEnemyStatus(b, "chill", chill.rounds, chill.tick);
           push(b, `${b.enemy.def.name} обморожен: лечение −50% и периодический урон.`, "p");
           break;
         }
@@ -4115,13 +4238,9 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
           break;
         }
         case "smoke": {
-          b.p.statuses.smoke = Math.max(b.p.statuses.smoke, (u.rounds ?? 2) + (hasPassive(b, "skill_smokeveil_a") ? 1 : 0));
+          b.p.statuses.smoke = Math.max(b.p.statuses.smoke, u.rounds ?? 2);
           flash(b, "p", "guard", 0);
           push(b, `${def.name}: следующие ${b.p.statuses.smoke} атаки противника пройдут мимо тебя.`, "p");
-          /* Страх тени (Дымовая завеса 5): дым пугает врага с меньшей ЛОВ. */
-          if (hasPassive(b, "skill_smokeveil_b") && b.enemy.hp > 0 && enemyStats(b).agi < b.p.stats.agi) {
-            applyEnemyStatus(b, "fear", 1);
-          }
           break;
         }
         case "explosion": {
@@ -4205,8 +4324,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
           break;
         }
         case "scroll_creation": {
-          const count = 2 + effectPower(b, "scroll_create") + passivePower(b, "sage_library", "create") +
-            (hasPassive(b, "arch_sage_10") ? 1 : 0);
+          const count = 2 + effectPower(b, "scroll_create");
           const created = createScrolls(b, count);
           push(b, `${def.name}: созданы свитки (${created.join(", ")}).`, "p");
           if (created.length > 0) castCreatedScroll(b, created[0]);
@@ -4276,77 +4394,23 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
         }
       }
 
-      /* Отравитель 3: расходники накладывают яд на 2 раунда; Печать знания 3: свиток печатает врага (запрет приёмов). */
-      const offensiveUse = ["damage", "chill", "sunder_damage", "poison", "explosion"].includes(u.type);
-      if (takeTurn && def.kind !== "scroll") b.consumablesUsed = (b.consumablesUsed ?? 0) + 1;
-      if (offensiveUse && hasPassive(b, "skill_poisoner_a") && b.enemy.hp > 0 && !isImmuneTo(b.enemy.def.race, "poison")) {
-        const extraTick = hasPassive(b, "skill_poisoner_b") ? (b.consumablesUsed ?? 0) : 0;
-        applyEnemyStatus(b, "poison", 2, dotBaseTick("poison", b.p.level) + extraTick);
-      }
-      if (def.kind === "scroll" && hasPassive(b, "skill_sealknow_a") && b.enemy.hp > 0) {
-        const rounds = hasPassive(b, "skill_sealknow_b") ? 2 : 1;
-        b.enemy.statuses.sealMoves = Math.max(b.enemy.statuses.sealMoves, rounds);
-        push(b, `Печать свитка: ${b.enemy.def.name} не применит приёмы ${rounds} ход.`, "p");
-      }
-      if (def.kind === "scroll") b.libraryCharge = hasPassive(b, "skill_library_a") ? 1 : 0;
       const scrollSaveChance = (hasPassive(b, "echo") ? 0.35 : 0) + effectPower(b, "scroll_save") / 100 +
-        (hasPassive(b, "arch_sage_5") ? 0.25 : 0) +
-        (hasPassive(b, "arch_sage_10") ? 0.25 : 0) +
-        passivePower(b, "sage_library", "save") / 100;
+        (hasPassive(b, "arch_archmage_5") ? 0.25 : 0);
       const saveScroll = def.kind === "scroll" && scrollSaveChance > 0 && Math.random() < scrollSaveChance;
       if (!saveScroll) {
         spendBagItem(b, a.id);
       } else {
         push(b, "Эхо мысли сохраняет свиток — он не истлел!", "p");
-        /* Переписывание 3: свиток, не истлевший при использовании, копируется (раз за бой). */
-        if (def.kind === "scroll" && hasPassive(b, "skill_rewrite_a") && !b.p.statuses.rewriteUsed) {
-          b.p.statuses.rewriteUsed = 1;
-          b.bag[a.id] = (b.bag[a.id] ?? 0) + 1;
-          b.p.statuses.freeScroll = hasPassive(b, "skill_rewrite_b") ? 1 : 0;
-          push(b, `Переписывание: копия свитка «${def.name}» готова.`, "p");
-        }
       }
-      /* Ниндзя 10: первый расходник за ход бесплатен. Мудрец 10: первый свиток за ход бесплатен.
-         Сумка: зелье из слотов бесплатно. Сумка и ниндзя считаются независимо. */
+      /* Сумка: зелье из слотов бесплатно. */
       const isScroll = def.kind === "scroll";
-      /* Предмет из сумки не тратит выносливость. Ниндзя 10 и Мудрец 10: первый расходник (свиток) за ход тоже бесплатен. */
       const pouchFree = def.kind === "potion" && b.pouch.includes(a.id);
-      const ninjaFree = !isScroll && hasPassive(b, "arch_ninja_10") && b.p.turnConsumables < 1;
-      /* Переписывание 5: копия свитка не тратит выносливость; Библиотека 5: каждый третий свиток в бою — бесплатен. */
-      const copyFree = isScroll && (b.p.statuses.freeScroll ?? 0) > 0;
-      if (copyFree) b.p.statuses.freeScroll = (b.p.statuses.freeScroll ?? 0) - 1;
-      const scrollNo = isScroll ? (b.scrollsCast ?? 0) + 1 : 0;
-      if (isScroll) b.scrollsCast = scrollNo;
-      const libraryFree = isScroll && hasPassive(b, "skill_library_b") && scrollNo % 3 === 0;
-      const freeUse = isScroll
-        ? (hasPassive(b, "arch_sage_10") && b.p.turnScrolls < 1) || copyFree || libraryFree
-        : ninjaFree;
       if (pouchFree) b.p.turnPouch += 1;
       else b.p.turnConsumables += 1;
       if (isScroll) b.p.turnScrolls += 1;
-      /* Незаметность 5: расходник после уклонения в этом раунде не тратит выносливость. */
-      if (takeTurn && hasPassive(b, "skill_stealth_b") && b.p.statuses.dodgedRound === b.round && !pouchFree) {
-        spent = 0;
-        push(b, "Бесшумно: расходник после уклонения не тратит выносливость.", "p");
-      }
-      /* Незаметность 3: первый расходник в раунд даёт +2 концентрации (adjustConcentration даёт +1). */
-      if (takeTurn && hasPassive(b, "skill_stealth_a") && (b.p.statuses.quickHandRound ?? 0) !== b.round) {
-        b.p.statuses.quickHandRound = b.round;
-        b.p.concentration = Math.min(MAX_CONCENTRATION, b.p.concentration + 1);
-      }
       if (pouchFree) {
         spent = 0;
         push(b, "Зелье из сумки не тратит выносливость.", "p");
-      }
-      if (freeUse) {
-        spent = 0;
-        push(
-          b,
-          isScroll
-            ? "Свиток не тратит выносливость: можно применить ещё один."
-            : "Первый расходник за ход не тратит выносливость.",
-          "p",
-        );
       }
       break;
     }
@@ -4509,7 +4573,11 @@ const ENEMY_MOVE_SHAPE: Partial<Record<EnemyMove, { mult: number; kind: "phys" |
 
 /** Ослабление/усиление удара от состояния врага (ледяное проклятие, порча). */
 function enemyChill(b: BattleState): number {
-  return (b.enemy.statuses.blight > 0 ? 0.8 : 1) * (b.enemy.statuses.curse > 0 ? 1 - (b.enemy.statuses.cursePower ?? 30) / 100 : 1);
+  /* Холодный след (Стужа A): обморожённый враг −10% урона. Вечная стужа (рубеж 10): обморожение −20%. */
+  const frostTrail = hasPassive(b, "skill_frost_a") && b.enemy.statuses.chill > 0 ? 0.9 : 1;
+  const eternalFrost = hasPassive(b, "arch_archmage_10") && b.enemy.statuses.chill > 0 ? 0.8 : 1;
+  return (b.enemy.statuses.blight > 0 ? 0.8 : 1) * (b.enemy.statuses.curse > 0 ? 1 - (b.enemy.statuses.cursePower ?? 30) / 100 : 1) *
+    frostTrail * eternalFrost;
 }
 
 /** Усиления базового удара от эффектов врага, по шагам. Истощение эффектов их отключает. */
@@ -4913,6 +4981,12 @@ export function enemyStep(b0: BattleState): BattleState {
     advance(b);
     return b;
   }
+  /* Ледяная клеть (Стужа B): обморожение 3+ раунда — враг пропускает ход с шансом 20%. */
+  if (e.statuses.chill >= 3 && hasPassive(b, "skill_frost_b") && Math.random() < 0.2) {
+    push(b, `${e.def.name} скован ледяной клетью и пропускает ход.`, "p");
+    advance(b);
+    return b;
+  }
   /* Целебный дождь: один ход врага пропущен. */
   if ((e.statuses.skipTurn ?? 0) > 0) {
     e.statuses.skipTurn = 0;
@@ -5305,7 +5379,7 @@ export function combatReadout(b: BattleState): CombatReadout {
   if (b.round <= 2 && effectPower(b, "first_strike") > 0)
     dmgMods.push({ id: "first_strike", label: "Первый удар", mult: 1 + effectPower(b, "first_strike") / 100, good: true, detail: `+${effectPower(b, "first_strike")}% урона в первые 2 раунда.` });
   const debuffBonus = (effectPower(b, "debuff_damage") / 100) * Math.min(4, enemyDebuffCount(b)) +
-    (hasPassive(b, "arch_ninja_10") ? Math.min(0.4, enemyDebuffCount(b) * 0.10) : 0);
+    0;
   if (debuffBonus > 0) dmgMods.push({ id: "debuff_damage", label: "Удар по слабому", mult: 1 + debuffBonus, good: true, detail: "Негативные эффекты врага усиливают твой урон." });
   if (might)
     dmgMods.push({ id: "might", label: "Тяжесть стали", flat: mightDamage, good: true, detail: `+${mightDamage} к урону (свойств: ${might}).` });
@@ -5384,7 +5458,7 @@ export function combatReadout(b: BattleState): CombatReadout {
       /* Прямой магический урон приёма, без броска оружия: как в бою — усиление магии, потом защита врага. */
       const tech = techniqueBonusNow(b, techSkill);
       const raw = techSkill.effect === "eruption" ? 40 : techSkill.effect === "life_draw" ? 10 + tech : 25 + tech;
-      const boosted = Math.round(raw * magicPowerMult(b.p.effectPower));
+      const boosted = Math.round(raw * magicMultNow(b));
       techMin = damageAfterEnemyDefense(b, boosted, "magic");
       techMax = techMin;
     } else {
@@ -5577,8 +5651,7 @@ export function combatReadout(b: BattleState): CombatReadout {
   const apBase = b.p.ap;
   const stamina = b.p.stamina;
   const staminaMax = b.p.staminaMax;
-  const sageAp = hasPassive(b, "arch_sage_10") ? 1 : 0;
-  const ap = Math.max(1, apBase + (haste > 0 ? 1 : 0) + sageAp + b.p.statuses.shadowStep);
+  const ap = Math.max(1, apBase + (haste > 0 ? 1 : 0) + b.p.statuses.shadowStep);
 
   return {
     biome: b.biome,

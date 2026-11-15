@@ -71,6 +71,7 @@ import {
 } from "./gearScaling";
 import { statConsumableDamage, statTechniqueDamage } from "./statFormulas";
 import type { ArchetypeId } from "./archetypes";
+import { migrateLegacyId } from "./archetypeMigration";
 export { ARCHETYPES, ARCHETYPE_ORDER, archetypeForStat, archetypeMilestoneIds, archetypeByMilestone } from "./archetypes";
 export type { ArchetypeId } from "./archetypes";
 
@@ -652,7 +653,7 @@ export interface WeaponSkillDef {
   effect?:
     | "bleed" | "pierce" | "guard" | "chill" | "sunder" | "stun" | "leech" | "poison"
     | "armor_damage" | "guard_wall" | "missing_hp" | "enemy_missing" | "double_attack"
-    | "guaranteed_crit" | "first_strike" | "debuff_damage" | "dodge_action"
+    | "guaranteed_crit" | "first_strike" | "debuff_damage" | "counter_thrust"
     | "skill_leech" | "curse_brand" | "create_scroll" | "full_guard" | "buff_break"
     | TechniqueEffect;
   desc: string;
@@ -957,7 +958,7 @@ export const WEAPON_TYPE_META: Record<WeaponType, WeaponTypeDef> = {
 /** Вид оружия для каждой базы. */
 const WEAPON_TYPE_FIX: Record<string, WeaponType> = {
   knife: "dagger", dagger: "dagger", start_offknife: "dagger",
-  assassin_stiletto: "dagger", ninja_kusarigama: "dagger",
+  assassin_stiletto: "dagger", duelist_kusarigama: "dagger",
   rapier: "rapier",
   sword: "sword", abyss: "sword",
   spear: "spear",
@@ -968,7 +969,7 @@ const WEAPON_TYPE_FIX: Record<string, WeaponType> = {
   warhammer2: "warhammer", greataxe: "greataxe",
   staff: "staff",
   wand: "wand", start_wand: "wand", wand_ash: "wand",
-  warlock_scepter: "wand", sage_censer: "wand",
+  warlock_scepter: "wand", archmage_censer: "wand",
 };
 
 /** Тип снаряжения для каждой базы. */
@@ -977,8 +978,8 @@ const GEAR_KIND_FIX: Record<string, GearKind> = {
   knife: "weapon", dagger: "weapon", rapier: "weapon", sword: "weapon", spear: "weapon",
   axe: "weapon", hammer: "weapon", abyss: "weapon", staff: "weapon", greatsword: "weapon",
   warhammer2: "weapon", bulwark_mace: "weapon", barbarian_greataxe: "weapon",
-  assassin_stiletto: "weapon", ninja_kusarigama: "weapon", warlock_scepter: "weapon",
-  sage_censer: "weapon", start_mace: "weapon", start_wand: "weapon", start_offknife: "weapon",
+  assassin_stiletto: "weapon", duelist_kusarigama: "weapon", warlock_scepter: "weapon",
+  archmage_censer: "weapon", start_mace: "weapon", start_wand: "weapon", start_offknife: "weapon",
   /* Броня и щиты */
   rag: "armor", mail: "armor", shroud: "armor", plate: "armor", blood_hide: "armor",
   coif: "armor", helm: "armor", greathelm: "armor", crown_husk: "armor",
@@ -1305,7 +1306,7 @@ const ARCHETYPE_GEAR: GearBaseDef[] = [
     weaponSkill: { id: "death_mark", name: "Метка смерти", intReq: 3, cooldown: 3, scaleStat: "agi", scaleMult: 2.2, effect: "guaranteed_crit", desc: "Урон оружия + 2.2×ЛОВ; в первые 2 раунда крит гарантирован." },
   },
   {
-    id: "ninja_kusarigama", name: "Кусаригама тени", slot: "mainHand", gearClass: "light", stat: "agi", archetype: "ninja",
+    id: "duelist_kusarigama", name: "Кусаригама тени", slot: "mainHand", gearClass: "light", stat: "agi", archetype: "duelist",
     dmg: [5, 7], level: 3, minFloor: 3, idIntReq: 4, idGoldCost: 85,
     desc: "Серп на цепи. Не сильнее меча, но оставляет руку свободной для порохов и ядов.",
     preferredEpic: "shadow_volley",
@@ -1319,9 +1320,9 @@ const ARCHETYPE_GEAR: GearBaseDef[] = [
     weaponSkill: { id: "pact_drain", name: "Отток пакта", intReq: 4, cooldown: 2, scaleStat: "int", scaleMult: 3.0, effect: "skill_leech", desc: "Урон оружия + 3.0×ИНТ сквозь броню; лечит на 25% нанесённого урона и сокращает откат этого приёма на 1." },
   },
   {
-    id: "sage_censer", name: "Кадило живого слова", slot: "mainHand", gearClass: "light", stat: "int", archetype: "sage",
+    id: "archmage_censer", name: "Кадило живого слова", slot: "mainHand", gearClass: "light", stat: "int", archetype: "archmage",
     dmg: [5, 8], level: 4, minFloor: 4, idIntReq: 5, idGoldCost: 100,
-    desc: "Дым от кадла складывается в строки. Мудрец творит свитки прямо в бою.",
+    desc: "Дым от кадла складывается в строки. Архимаг творит свитки прямо в бою.",
     preferredEpic: "ash_aegis",
     weaponSkill: { id: "word_creation", name: "Слово творения", intReq: 4, cooldown: 3, scaleStat: "int", scaleMult: 2.4, effect: "create_scroll", desc: "Урон оружия + 2.4×ИНТ; создаёт 1 случайный свиток и сразу применяет его без траты хода." },
   },
@@ -1344,7 +1345,7 @@ const ARCHETYPE_TECHNIQUES: WeaponSkillDef[] = [
   { id: "twin_fangs", name: "Парные клыки", intReq: 3, cooldown: 2, scaleStat: "agi", scaleMult: 1.7, effect: "double_attack", desc: "Два обычных удара подряд без дополнительного бонуса; каждый отдельно бросает крит, оглушение и эффекты от удара." },
   { id: "opening_strike", name: "Удар открытия", intReq: 4, cooldown: 3, scaleStat: "agi", scaleMult: 2.4, effect: "first_strike", desc: "Урон оружия + 2.4×ЛОВ; в первые 2 раунда урон приёма удваивается." },
   { id: "venom_chain", name: "Ядовитая цепь", intReq: 3, cooldown: 2, scaleStat: "agi", scaleMult: 1.6, effect: "poison", desc: "Урон оружия + 1.6×ЛОВ и отравление на 3 раунда." },
-  { id: "empty_step", name: "Пустой шаг", intReq: 4, cooldown: 3, scaleStat: "agi", scaleMult: 1.5, effect: "dodge_action", desc: "Урон оружия + 1.5×ЛОВ; следующая атака врага полностью ускользает, а в следующем раунде +1 ход." },
+  { id: "empty_step", name: "Встречный выпад", intReq: 4, cooldown: 3, scaleStat: "agi", scaleMult: 1.5, effect: "counter_thrust", desc: "Урон оружия + 1.5×ЛОВ; если враг атаковал в прошлом раунде — контратака по нему." },
   { id: "curse_brand", name: "Печать проклятия", intReq: 4, cooldown: 3, scaleStat: "int", scaleMult: 2.6, effect: "curse_brand", desc: "Урон оружия + 2.6×ИНТ; проклятие и холод на 3 раунда." },
   { id: "soul_reprise", name: "Реприза души", intReq: 5, cooldown: 4, scaleStat: "int", scaleMult: 3.4, effect: "skill_leech", desc: "Урон оружия + 3.4×ИНТ сквозь броню; лечит на 35% урона и сокращает откат на 2." },
   { id: "warding_word", name: "Слово защиты", intReq: 4, cooldown: 4, scaleStat: "int", scaleMult: 2.0, effect: "full_guard", desc: "Урон оружия + 2.0×ИНТ; полная защита от урона на 2 хода." },
@@ -1379,9 +1380,9 @@ export const TECHNIQUE_POOL: Record<string, string[]> = {
   bulwark_mace: ["bulwark_answer", "bulwark_wall", "bulwark_verdict"],
   barbarian_greataxe: ["blood_reckoning", "rage_sweep", "skull_split"],
   assassin_stiletto: ["death_mark", "twin_fangs", "opening_strike"],
-  ninja_kusarigama: ["shadow_snare", "venom_chain", "empty_step"],
+  duelist_kusarigama: ["shadow_snare", "venom_chain", "empty_step"],
   warlock_scepter: ["pact_drain", "curse_brand", "soul_reprise"],
-  sage_censer: ["word_creation", "warding_word", "scroll_tempest"],
+  archmage_censer: ["word_creation", "warding_word", "scroll_tempest"],
   ...NEW_POOL_BY_BASE,
 };
 
@@ -1899,7 +1900,13 @@ function seededRng(seed: string): () => number {
 }
 
 /** Переводит старый предмет на новый набор характеристик и свойств. */
-export function migrateGearItem(item: GearItem): GearItem {
+export function migrateGearItem(source: GearItem): GearItem {
+  /* Переименованные базы и пассивы переводим до любого поиска по baseId. */
+  const item: GearItem = {
+    ...source,
+    baseId: migrateLegacyId(source.baseId),
+    passive: source.passive ? (migrateLegacyId(source.passive) as GearItem["passive"]) : source.passive,
+  };
   const base = GEAR_BASES[item.baseId] ?? GEAR_BASES.knife;
   const gearClass = base.gearClass ?? item.gearClass ?? "medium";
   const kind = gearKindOfBase(base);
@@ -2244,7 +2251,7 @@ export const ITEMS: Record<string, ItemDef> = Object.fromEntries(
       desc: "Колдун: сбрасывает перезарядку приёмов и даёт +25% урона приёмов на 3 раунда." }),
     I({ id: "scroll_creation", name: "Свиток сотворения", kind: "scroll", price: 160,
       use: { type: "scroll_creation", intReq: 5 },
-      desc: "Мудрец: создаёт 2 случайных свитка в рюкзак и сразу применяет один из них." }),
+      desc: "Архимаг: создаёт 2 случайных свитка в рюкзак и сразу применяет один из них." }),
   ].map((it) => [it.id, it]),
 );
 

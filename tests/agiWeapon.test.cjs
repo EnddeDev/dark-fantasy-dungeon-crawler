@@ -53,7 +53,7 @@ test("под правило попадают лёгкое оружие с осн
   const item = (baseId) => ({ baseId, level: 1, rarity: "common", uid: baseId, identified: true });
   const qualifies = (baseId) => content.gearClassFor(item(baseId)) === "light" && content.gearAffinity(item(baseId)) === "agi";
   assert.equal(qualifies("assassin_stiletto"), true);
-  assert.equal(qualifies("ninja_kusarigama"), true);
+  assert.equal(qualifies("duelist_kusarigama"), true);
   assert.equal(qualifies("warlock_scepter"), false, "лёгкое, но с ИНТ");
   assert.equal(qualifies("barbarian_greataxe"), false, "тяжёлое с СИЛ");
 });
