@@ -3881,16 +3881,24 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
       if (b.p.stats.int < req) return err(`Для «${sk.name}» требуется ИНТ ${req}.`);
 
       const skLevel = b.p.epicSkillLevels[sk.id] ?? 1;
+      /* Урон эпика = база + коэффициент × свой стат (scaleStat), как в EPIC_SKILL_BASE. */
+      const epicStat = b.p.stats[sk.scaleStat];
+      const epicDmg = epicMagnitude(sk.id, "base", skLevel) + epicMagnitude(sk.id, "scale", skLevel) * epicStat;
       if (sk.id === "fireball") {
-        const dmg = Math.round((techniqueDamage(b.p.stats.int, epicMagnitude(sk.id, "scale", skLevel) / 2) * weakMult(b)) * spellPowerMult * skillDamageMult(b));
+        const dmg = Math.round(epicDmg * weakMult(b) * spellPowerMult * skillDamageMult(b));
         const dealt = elementalHit(b, dmg, " [Огненный шар]", "fire");
         applyVamp(b, dealt, 0, "skill", "magic");
         const burnRounds = epicMagnitude(sk.id, "rounds", skLevel);
         setEnemyTick(b, "burn", burnRounds, skillDotTick("burn", b.p.level, b.enemy.maxHp));
         push(b, `${b.enemy.def.name} объят пламенем (${burnRounds} раунда).`, "p");
       } else if (sk.id === "blood_lance") {
-        const dmg = Math.round((techniqueDamage(b.p.stats.int, epicMagnitude(sk.id, "scale", skLevel) / 2) * weakMult(b)) * spellPowerMult * skillDamageMult(b));
-        const dealt = hitEnemy(b, dmg, "magic", " [Кровавое копьё]");
+        /* Физический навык: пробивает броню, но не считается ударом оружия (без крита и оглушения). */
+        const dmg = Math.round(epicDmg * weakMult(b) * skillDamageMult(b));
+        b.p.statuses.ignoreArmorNow = 1;
+        b.skillNoMiss = true;
+        const dealt = hitEnemy(b, dmg, "phys", " [Кровавое копьё]", false);
+        b.skillNoMiss = false;
+        b.p.statuses.ignoreArmorNow = 0;
         const heal = healPlayer(b, Math.max(2, Math.round(dealt * (epicMagnitude(sk.id, "leech", skLevel) / 100))));
         flash(b, "p", "heal", heal);
         push(b, `Кровавое копьё возвращает тебе +${heal} здоровья.`, "p");
@@ -3906,13 +3914,19 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
         flash(b, "p", "heal", heal);
         push(b, `Эгида пепла: +${heal} ОЗ, раны сняты, включена Защита.`, "p");
       } else if (sk.id === "shadow_volley") {
-        const dmg = Math.round((techniqueDamage(b.p.stats.int, epicMagnitude(sk.id, "scale", skLevel) / 2) * weakMult(b)) * spellPowerMult * skillDamageMult(b));
-        const dealt = hitEnemy(b, dmg, "magic", " [Теневой росчерк]");
-        setEnemyTick(b, "chill", epicMagnitude(sk.id, "rounds", skLevel), skillDotTick("chill", b.p.level, b.enemy.maxHp));
-        applyVamp(b, dealt, 0, "skill", "magic");
+        /* Физический навык: сквозь броню, без удара оружия; враг слабее атакует на время порчи. */
+        const dmg = Math.round(epicDmg * weakMult(b) * skillDamageMult(b));
+        b.p.statuses.ignoreArmorNow = 1;
+        b.skillNoMiss = true;
+        const dealt = hitEnemy(b, dmg, "phys", " [Теневой росчерк]", false);
+        b.skillNoMiss = false;
+        b.p.statuses.ignoreArmorNow = 0;
+        applyEnemyStatus(b, "blight", epicMagnitude(sk.id, "rounds", skLevel));
+        applyVamp(b, dealt, 0, "skill", "phys");
       } else if (sk.id === "frost_nova") {
-        const dmg = Math.round((techniqueDamage(b.p.stats.int, epicMagnitude(sk.id, "scale", skLevel) / 2) * weakMult(b)) * spellPowerMult * skillDamageMult(b));
-        const dealt = elementalHit(b, dmg, " [Дыхание склепа]", "ice");
+        /* Холод без стихии: урон магией, без уязвимости и сопротивления стихии. */
+        const dmg = Math.round(epicDmg * weakMult(b) * spellPowerMult * skillDamageMult(b));
+        const dealt = hitEnemy(b, dmg, "magic", " [Дыхание склепа]", false);
         applyVamp(b, dealt, 0, "skill", "magic");
         setEnemyTick(b, "chill", epicMagnitude(sk.id, "rounds", skLevel), skillDotTick("chill", b.p.level, b.enemy.maxHp));
         b.enemy.statuses.stunAp = Math.min(4, b.enemy.statuses.stunAp + epicMagnitude(sk.id, "stun", skLevel));
