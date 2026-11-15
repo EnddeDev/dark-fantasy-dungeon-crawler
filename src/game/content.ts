@@ -281,9 +281,9 @@ export function legendaryPassiveDesc(id: LegendaryPassiveId, level = 1): string 
     case "executioner":
       return `По врагам с менее чем 50% здоровья весь твой урон увеличен на ${n("damage")}%.`;
     case "time_weaver":
-      return `Даёт +${n("ap")} дополнительный ход в каждом раунде боя.`;
+      return `Даёт +${n("ap")} дополнительный ход только в первом раунде боя.`;
     case "immortal_pact":
-      return `Один раз за бой спасает от смерти и восстанавливает ${n("heal")}% максимального здоровья.`;
+      return `Один раз за бой спасает от смерти и оставляет тебя с 18 здоровья и в Защите.`;
     case "archmage_blood":
       return `Урон свитков и заклинаний +${n("spellDamage")}%; требования ИНТ снижены на ${n("intDiscount")}.`;
     case "titan_heart":
@@ -360,7 +360,7 @@ export const EPIC_SKILLS: Record<EpicSkillId, EpicSkillDef> = {
     intReq: 4,
     scaleStat: "int",
     cooldown: 3,
-    desc: "Взрыв пламени: 20 + 3.5×ИНТ чистого урона и поджог врага (4 урона/раунд на 3 раунда).",
+    desc: "Взрыв пламени: огненный урон от ИНТ и поджог врага (4 урона/раунд на 3 раунда).",
   },
   blood_lance: {
     id: "blood_lance",
@@ -368,7 +368,7 @@ export const EPIC_SKILLS: Record<EpicSkillId, EpicSkillDef> = {
     intReq: 4,
     scaleStat: "str",
     cooldown: 3,
-    desc: "Пронзает броню на 16 + 2.5×СИЛ урона и восстанавливает тебе 50% от этого урона.",
+    desc: "Пронзает броню на урон от СИЛ и восстанавливает тебе 50% от этого урона.",
   },
   ash_aegis: {
     id: "ash_aegis",
@@ -376,7 +376,7 @@ export const EPIC_SKILLS: Record<EpicSkillId, EpicSkillDef> = {
     intReq: 3,
     scaleStat: "int",
     cooldown: 3,
-    desc: "Восстанавливает 16 + 2.5×ИНТ здоровья, снимает кровотечение/проклятие и ставит в Защиту.",
+    desc: "Восстанавливает здоровье от ИНТ, снимает кровотечение, проклятие и яд и ставит в Защиту.",
   },
   shadow_volley: {
     id: "shadow_volley",
@@ -384,7 +384,7 @@ export const EPIC_SKILLS: Record<EpicSkillId, EpicSkillDef> = {
     intReq: 4,
     scaleStat: "agi",
     cooldown: 2,
-    desc: "Серия выпадов на 16 + 3×ЛОВ урона сквозь броню и ослабление атаки врага на 2 раунда.",
+    desc: "Серия выпадов на урон от ЛОВ сквозь броню и ослабление атаки врага на 2 раунда.",
   },
   frost_nova: {
     id: "frost_nova",
@@ -392,7 +392,7 @@ export const EPIC_SKILLS: Record<EpicSkillId, EpicSkillDef> = {
     intReq: 5,
     scaleStat: "int",
     cooldown: 3,
-    desc: "Наносит 16 + 3×ИНТ урона, сковывает врага холодом на 3 раунда и отнимает у него 1 ход.",
+    desc: "Наносит урон от ИНТ, сковывает врага холодом на 3 раунда и отнимает у него 1 ход.",
   },
 };
 
@@ -614,12 +614,12 @@ export const LEGENDARY_PASSIVES: Record<LegendaryPassiveId, LegendaryPassiveDef>
   executioner: {
     id: "executioner",
     name: "Приговор слабым",
-    desc: "По врагам с менее чем 50% здоровья весь твой урон увеличен на 35%.",
+    desc: "По врагам с менее чем 50% здоровья весь твой урон увеличен (сила растёт с уровнем предмета).",
   },
   time_weaver: {
     id: "time_weaver",
     name: "Поступь вне времени",
-    desc: "Даёт дополнительные ходы только в первом раунде боя (скейлится от уровня предмета).",
+    desc: "Даёт дополнительные ходы только в первом раунде боя (число растёт с уровнем предмета).",
   },
   immortal_pact: {
     id: "immortal_pact",
@@ -629,12 +629,12 @@ export const LEGENDARY_PASSIVES: Record<LegendaryPassiveId, LegendaryPassiveDef>
   archmage_blood: {
     id: "archmage_blood",
     name: "Кровь архимага",
-    desc: "Свитки и способности снаряжения бьют на 30% сильнее, а их требования к ИНТ снижены на 1.",
+    desc: "Свитки и способности снаряжения бьют сильнее, а их требования к ИНТ снижены (сила растёт с уровнем предмета).",
   },
   titan_heart: {
     id: "titan_heart",
     name: "Сердце колосса",
-    desc: "+24 к максимальному здоровью, +2 к броне и полный иммунитет к кровотечению.",
+    desc: "Увеличивает максимальное здоровье и броню, даёт полный иммунитет к кровотечению и яду.",
   },
 };
 
@@ -792,7 +792,7 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
       scaleStat: "int",
       scaleMult: 2.8,
       effect: "leech",
-      desc: "Разрез сквозь броню (+2.8×ИНТ урона), похищающий 40% нанесённого урона в здоровье.",
+      desc: "Разрез сквозь броню (урон от ИНТ), похищающий 40% нанесённого урона в здоровье.",
     },
   },
 
