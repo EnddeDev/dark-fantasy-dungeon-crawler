@@ -17,6 +17,7 @@ const GLYPHS: Record<string, string> = {
   abyss: `<path d="M12 42 c7-12 5-22 15-34 c2 14-5 26-12 34 z" /><path d="M20 30 c3 3 5 5 9 6" /><path d="M30 12 c3 2 5 1 7-2" />`,
 
   greatsword: `<path d="M24 3 L30 14 L27 34 H21 L18 14 Z" /><path d="M11 34 h26" /><path d="M24 34 v9" />`,
+  greataxe: `<path d="M14 8 Q30 2 34 14 Q30 26 16 22 Z" /><path d="M22 22 V44" />`,
   spear: `<path d="M24 3 L28 13 L24 24 L20 13 Z" /><path d="M24 24 V44" /><path d="M19 15 h10" />`,
   warhammer2: `<path d="M24 8 V44" /><path d="M10 6 h28 v13 h-28 z" /><path d="M15 6 v-3 h18 v3" /><path d="M14 19 h20" />`,
   dagger: `<path d="M24 6 L27 24 L24 30 L21 24 Z" /><path d="M17 30 h14" /><path d="M24 30 v8" />`,

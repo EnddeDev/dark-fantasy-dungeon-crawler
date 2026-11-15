@@ -1,4 +1,6 @@
 import { SHOP_STARTER_GEAR } from "./shopStarters";
+import { NEW_WEAPON_TECHNIQUES, TECHNIQUES_BY_WEAPON_TYPE, techniqueFor } from "./weaponTechniques";
+import type { TechniqueEffect } from "./weaponTechniques";
 import { raceImmuneTo } from "./monsters";
 import type { DamageElement, EffectKind, MonsterRace, MonsterType } from "./monsters";
 import type { ImmunityEffect, OilKind } from "./statusEffects";
@@ -651,7 +653,8 @@ export interface WeaponSkillDef {
     | "bleed" | "pierce" | "guard" | "chill" | "sunder" | "stun" | "leech" | "poison"
     | "armor_damage" | "guard_wall" | "missing_hp" | "enemy_missing" | "double_attack"
     | "guaranteed_crit" | "first_strike" | "debuff_damage" | "dodge_action"
-    | "skill_leech" | "curse_brand" | "create_scroll" | "full_guard" | "buff_break";
+    | "skill_leech" | "curse_brand" | "create_scroll" | "full_guard" | "buff_break"
+    | TechniqueEffect;
   desc: string;
   /** Приём магический: урон считается магическим (посох и волшебная палочка). */
   magic?: boolean;
@@ -709,16 +712,7 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
     idGoldCost: 30,
     desc: "Короткий клинок с зазубриной. Кто знает анатомию — режет глубже.",
     preferredEpic: "shadow_volley",
-    weaponSkill: {
-      id: "artery_cut",
-      name: "Удар в артерию",
-      intReq: 2,
-      cooldown: 2,
-      scaleStat: "agi",
-      scaleMult: 1.5,
-      effect: "bleed",
-      desc: "Урон оружия + 1.5×ЛОВ и глубокое кровотечение врагу (4 урона/раунд, 3 раунда).",
-    },
+    weaponSkill: techniqueFor("snake_bite"),
   },
   rapier: {
     id: "rapier",
@@ -730,16 +724,7 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
     idGoldCost: 45,
     desc: "Узкая сталь для тех, кто считает шаги и чужие вдохи.",
     preferredEpic: "shadow_volley",
-    weaponSkill: {
-      id: "fencing",
-      name: "Фехтование",
-      intReq: 3,
-      cooldown: 2,
-      scaleStat: "agi",
-      scaleMult: 2.4,
-      effect: "pierce",
-      desc: "Точный выпад: урон оружия + 2.4×ЛОВ дополнительного урона, полностью игнорирует броню.",
-    },
+    weaponSkill: techniqueFor("lunge"),
   },
   sword: {
     id: "sword",
@@ -751,16 +736,7 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
     idGoldCost: 50,
     desc: "Прямой полуторный клинок с потёртым яблоком.",
     preferredEpic: "blood_lance",
-    weaponSkill: {
-      id: "riposte_stance",
-      name: "Ответная стойка",
-      intReq: 3,
-      cooldown: 2,
-      scaleStat: "str",
-      scaleMult: 1.6,
-      effect: "guard",
-      desc: "Рубящий удар + 1.6×СИЛ и мгновенный переход в Защиту (броня +25%).",
-    },
+    weaponSkill: techniqueFor("advance"),
   },
   staff: {
     id: "staff",
@@ -772,16 +748,7 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
     idGoldCost: 50,
     desc: "Окованный медью ясень с рунами внутри сердцевины.",
     preferredEpic: "fireball",
-    weaponSkill: {
-      id: "arcane_pulse",
-      name: "Тайный разряд",
-      intReq: 3,
-      cooldown: 2,
-      scaleStat: "int",
-      scaleMult: 2.5,
-      effect: "chill",
-      desc: "Удар посохом с выбросом разума (+2.5×ИНТ урона сквозь броню) и ослаблением врага на 2 раунда.",
-    },
+    weaponSkill: techniqueFor("eruption"),
   },
   axe: {
     id: "axe",
@@ -793,16 +760,7 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
     idGoldCost: 70,
     desc: "За один замах открывает не только двери, но и латы.",
     preferredEpic: "blood_lance",
-    weaponSkill: {
-      id: "bone_cleave",
-      name: "Рассечение кости",
-      intReq: 4,
-      cooldown: 2,
-      scaleStat: "str",
-      scaleMult: 2.0,
-      effect: "sunder",
-      desc: "Сокрушительный удар (+2.0×СИЛ урона), раскалывающий броню врага на −2 до конца боя.",
-    },
+    weaponSkill: techniqueFor("hew"),
   },
   hammer: {
     id: "hammer",
@@ -814,16 +772,7 @@ const CORE_GEAR_BASES: Record<string, LegacyGear> = {
     idGoldCost: 90,
     desc: "Освящён чем-то, что больше не канонизируют.",
     preferredEpic: "frost_nova",
-    weaponSkill: {
-      id: "verdict_bell",
-      name: "Колокол приговора",
-      intReq: 5,
-      cooldown: 3,
-      scaleStat: "str",
-      scaleMult: 2.4,
-      effect: "stun",
-      desc: "Тяжёлый удар (+2.4×СИЛ), оглушающий врага: он теряет 1 ход в следующем раунде.",
-    },
+    weaponSkill: techniqueFor("ring"),
   },
   abyss: {
     id: "abyss",
@@ -1016,7 +965,7 @@ const WEAPON_TYPE_FIX: Record<string, WeaponType> = {
   hammer: "hammer", bulwark_mace: "hammer", start_mace: "hammer",
   greatsword: "greatsword",
   barbarian_greataxe: "greataxe",
-  warhammer2: "warhammer",
+  warhammer2: "warhammer", greataxe: "greataxe",
   staff: "staff",
   wand: "wand", start_wand: "wand", wand_ash: "wand",
   warlock_scepter: "wand", sage_censer: "wand",
@@ -1387,179 +1336,6 @@ export const GEAR_BASES: Record<string, GearBaseDef> = normalizeGearBases([
 
 /* ─────────────  ВАРИАНТЫ ПРИЁМОВ ОРУЖИЯ  ───────────── */
 
-const EXTRA_TECHNIQUES: WeaponSkillDef[] = [
-  {
-    id: "quick_cut",
-    name: "Быстрый порез",
-    intReq: 2,
-    cooldown: 1,
-    scaleStat: "agi",
-    scaleMult: 1.8,
-    effect: "pierce",
-    desc: "Короткий укол сквозь броню: урон оружия + 1.8×ЛОВ.",
-  },
-  {
-    id: "venom_edge",
-    name: "Ядовитая кромка",
-    intReq: 3,
-    cooldown: 2,
-    scaleStat: "agi",
-    scaleMult: 1.4,
-    effect: "poison",
-    desc: "Режущий удар + 1.4×ЛОВ и отравление живой цели на 3 раунда.",
-  },
-  {
-    id: "disarming_thrust",
-    name: "Обезоруживающий выпад",
-    intReq: 3,
-    cooldown: 2,
-    scaleStat: "agi",
-    scaleMult: 1.7,
-    effect: "sunder",
-    desc: "Выпад + 1.7×ЛОВ, раскалывающий броню врага на −2.",
-  },
-  {
-    id: "duelist_guard",
-    name: "Стойка дуэлянта",
-    intReq: 4,
-    cooldown: 2,
-    scaleStat: "agi",
-    scaleMult: 1.9,
-    effect: "guard",
-    desc: "Укол + 1.9×ЛОВ и переход в Защиту до следующего хода.",
-  },
-  {
-    id: "sweeping_cut",
-    name: "Секущий удар",
-    intReq: 3,
-    cooldown: 2,
-    scaleStat: "str",
-    scaleMult: 1.5,
-    effect: "bleed",
-    desc: "Широкий взмах + 1.5×СИЛ и кровотечение на 3 раунда.",
-  },
-  {
-    id: "ward_shatter",
-    name: "Истощающий удар",
-    intReq: 3,
-    cooldown: 3,
-    scaleStat: "str",
-    scaleMult: 1.9,
-    effect: "buff_break",
-    desc: "Урон оружия + 1.9×СИЛ и истощение на 2 хода: положительные эффекты врага гаснут.",
-  },
-  {
-    id: "ward_slice",
-    name: "Истощающий срез",
-    intReq: 3,
-    cooldown: 3,
-    scaleStat: "agi",
-    scaleMult: 1.7,
-    effect: "buff_break",
-    desc: "Точный порез + 1.7×ЛОВ сквозь броню и истощение на 2 хода: эффекты врага гаснут.",
-  },
-  {
-    id: "ward_unravel",
-    name: "Истощающее слово",
-    intReq: 3,
-    cooldown: 3,
-    scaleStat: "int",
-    scaleMult: 1.8,
-    effect: "buff_break",
-    desc: "Разряд + 1.8×ИНТ сквозь броню и истощение на 2 хода: эффекты врага гаснут.",
-  },
-  {
-    id: "sundering_blade",
-    name: "Раскол лат",
-    intReq: 4,
-    cooldown: 2,
-    scaleStat: "str",
-    scaleMult: 1.9,
-    effect: "sunder",
-    desc: "Тяжёлый рубящий удар + 1.9×СИЛ, снижающий броню врага на −2.",
-  },
-  {
-    id: "ember_strike",
-    name: "Удар углей",
-    intReq: 3,
-    cooldown: 2,
-    scaleStat: "int",
-    scaleMult: 2.2,
-    effect: "bleed",
-    desc: "Разряд посоха + 2.2×ИНТ и горение врага на 3 раунда.",
-  },
-  {
-    id: "warding_strike",
-    name: "Оберегающий взмах",
-    intReq: 4,
-    cooldown: 2,
-    scaleStat: "int",
-    scaleMult: 1.8,
-    effect: "guard",
-    desc: "Удар + 1.8×ИНТ и Защитная стойка до следующего хода.",
-  },
-  {
-    id: "reckless_swing",
-    name: "Безрассудный замах",
-    intReq: 4,
-    cooldown: 3,
-    scaleStat: "str",
-    scaleMult: 2.3,
-    effect: "stun",
-    desc: "Мощный замах + 2.3×СИЛ, оглушающий врага на 1 ход.",
-  },
-  {
-    id: "rending_axe",
-    name: "Рваная рана",
-    intReq: 4,
-    cooldown: 2,
-    scaleStat: "str",
-    scaleMult: 1.8,
-    effect: "bleed",
-    desc: "Рубящий удар + 1.8×СИЛ и кровотечение на 3 раунда.",
-  },
-  {
-    id: "crushing_blow",
-    name: "Сокрушение",
-    intReq: 5,
-    cooldown: 3,
-    scaleStat: "str",
-    scaleMult: 2.7,
-    effect: "sunder",
-    desc: "Удар молотом + 2.7×СИЛ, раскалывающий броню на −3.",
-  },
-  {
-    id: "bulwark_smash",
-    name: "Удар оплота",
-    intReq: 5,
-    cooldown: 2,
-    scaleStat: "str",
-    scaleMult: 2.0,
-    effect: "guard",
-    desc: "Размашистый удар + 2.0×СИЛ и переход в Защиту.",
-  },
-  {
-    id: "shadow_rend",
-    name: "Разрез тени",
-    intReq: 6,
-    cooldown: 2,
-    scaleStat: "agi",
-    scaleMult: 2.6,
-    effect: "pierce",
-    desc: "Теневой выпад + 2.6×ЛОВ, полностью игнорирующий броню.",
-  },
-  {
-    id: "soul_drink",
-    name: "Питьё душ",
-    intReq: 7,
-    cooldown: 3,
-    scaleStat: "str",
-    scaleMult: 2.4,
-    effect: "leech",
-    desc: "Удар + 2.4×СИЛ, похищающий 40% нанесённого урона в здоровье.",
-  },
-];
-
 const ARCHETYPE_TECHNIQUES: WeaponSkillDef[] = [
   { id: "bulwark_wall", name: "Стена щитов", intReq: 3, cooldown: 3, scaleStat: "str", scaleMult: 1.6, effect: "guard_wall", desc: "Урон оружия + 1.6×СИЛ; Защита на 2 хода и +4 брони до конца боя." },
   { id: "bulwark_verdict", name: "Приговор лат", intReq: 4, cooldown: 2, scaleStat: "str", scaleMult: 2.2, effect: "armor_damage", desc: "Урон оружия + 2.2×СИЛ и +75% брони к урону." },
@@ -1579,30 +1355,34 @@ export const WEAPON_TECHNIQUES: Record<string, WeaponSkillDef> = Object.fromEntr
   ...Object.values(GEAR_BASES)
     .filter((b) => b.weaponSkill)
     .map((b) => [b.weaponSkill!.id, b.weaponSkill!]),
-  ...EXTRA_TECHNIQUES.map((s) => [s.id, s]),
   ...ARCHETYPE_TECHNIQUES.map((s) => [s.id, s]),
+  ...NEW_WEAPON_TECHNIQUES.map((s) => [s.id, { ...s }]),
 ]);
 
 /**
  * Линейки приёмов по моделям. В линейке только приёмы с одним множителем —
  * тем самым, что требуется предмету: клинок на СИЛ не получит приём на ЛОВ.
  */
+/** Базы, которые получают линейку своего типа оружия (вид берётся из WEAPON_TYPE_FIX). */
+const NEW_POOL_BASE_TYPE: Record<string, WeaponType> = {
+  knife: "dagger", dagger: "dagger", rapier: "rapier", sword: "sword", staff: "staff", axe: "axe",
+  hammer: "hammer", greatsword: "greatsword", greataxe: "greataxe", spear: "spear", warhammer2: "warhammer", wand_ash: "wand",
+};
+
+/** Линейки новых приёмов по базам: база получает приёмы своего типа оружия. */
+const NEW_POOL_BY_BASE: Record<string, string[]> = Object.fromEntries(
+  Object.entries(NEW_POOL_BASE_TYPE).map(([baseId, type]) => [baseId, TECHNIQUES_BY_WEAPON_TYPE[type]]),
+);
+
 export const TECHNIQUE_POOL: Record<string, string[]> = {
-  knife: ["artery_cut", "quick_cut", "venom_edge", "ward_slice"],
-  rapier: ["fencing", "disarming_thrust", "duelist_guard"],
-  sword: ["riposte_stance", "sweeping_cut", "sundering_blade", "ward_shatter"],
-  staff: ["arcane_pulse", "ember_strike", "warding_strike", "ward_unravel"],
-  axe: ["bone_cleave", "reckless_swing", "rending_axe"],
-  hammer: ["verdict_bell", "crushing_blow", "bulwark_smash"],
   abyss: ["void_reap", "pact_drain", "soul_reprise"],
-  greatsword: ["cleave_double", "soul_drink"],
-  dagger: ["offhand_riposte", "shadow_rend"],
   bulwark_mace: ["bulwark_answer", "bulwark_wall", "bulwark_verdict"],
   barbarian_greataxe: ["blood_reckoning", "rage_sweep", "skull_split"],
   assassin_stiletto: ["death_mark", "twin_fangs", "opening_strike"],
   ninja_kusarigama: ["shadow_snare", "venom_chain", "empty_step"],
   warlock_scepter: ["pact_drain", "curse_brand", "soul_reprise"],
   sage_censer: ["word_creation", "warding_word", "scroll_tempest"],
+  ...NEW_POOL_BY_BASE,
 };
 
 /**

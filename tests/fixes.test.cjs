@@ -440,7 +440,9 @@ test("число урона у приёма в меню совпадает с у
     });
     assert.ok(!b.over, `${baseId}: герой погиб до хода`);
     const readout = battle.combatReadout(b);
-    assert.ok(readout.techMin !== null && readout.techMin <= readout.techMax, `${baseId}: диапазон приёма`);
+    /* Приём без удара (например, Подготовка): в превью урона нет, в бою удара тоже нет. */
+    const techNoStrike = readout.techMax === null;
+    if (!techNoStrike) assert.ok(readout.techMin !== null && readout.techMin <= readout.techMax, `${baseId}: диапазон приёма`);
     /* Бросок 0.45 даст середину диапазона: сравниваем максимум меню с ударом при максимальном уроне оружия. */
     b.p.hit = [b.p.hit[1], b.p.hit[1]];
     b.p.concentration = 5; // приём требует концентрацию
@@ -448,6 +450,10 @@ test("число урона у приёма в меню совпадает с у
     const hits = after.log
       .filter((l) => l.text.includes("[Приём:") && l.text.includes("получает"))
       .map((l) => Number(/получает (\d+) урона/.exec(l.text)[1]));
+    if (techNoStrike) {
+      assert.equal(hits.length, 0, `${baseId}: приём без удара не должен бить`);
+      continue;
+    }
     assert.ok(hits.length > 0, `${baseId}: приём не ударил`);
     const ws = content.weaponSkillFor(item);
     if (ws.effect === "double_attack") {

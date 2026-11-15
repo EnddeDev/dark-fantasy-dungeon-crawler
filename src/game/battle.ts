@@ -164,6 +164,7 @@ import {
   STAMINA_ROUND_RECOVERY,
   STAMINA_BACKPACK,
   STAMINA_TECHNIQUE_EXTRA,
+  SECOND_WIND_COST,
   STAMINA_UNARMED,
   staminaMax,
   weaponStaminaCost,
@@ -268,6 +269,17 @@ export interface BattleState {
       /** Урон масла с клинка: один слот, новое масло заменяет старое. */
       oilType: OilKind | null;
       oilRounds: number;
+      /** Раскол врага: плоское снижение брони и доля брони, раунды. Приёмы первой партии. */
+      breakFlat?: number;
+      breakPct?: number;
+      breakRounds?: number;
+      /** Побои: прибавка к получаемому врагом урону (накапливается), раунды. */
+      beatMult?: number;
+      beatRounds?: number;
+      /** Приёмы первой партии и второй: таймеры и флаги врага. */
+      noGuard?: number; throwDown?: number; shatterRounds?: number; skipTurn?: number; feint?: number; noEvade?: number;
+      swingDmg?: number; echoDue?: number; eruptRounds?: number; eruptTick?: number; eruptDown?: number; eruptWither?: number;
+      drainRounds?: number; drainTick?: number;
     };
     guard: boolean;
     /** Раунды, в которые враг вынужден держать защиту (свиток ужаса, бомба). */
@@ -383,6 +395,11 @@ export interface BattleState {
       rewriteUsed?: number;
       /** Раунды действия зелья скорости: +1 ход в раунде. */
       haste: number;
+      /** Приёмы героя: таймеры и флаги между ходами (живут в statuses, клонируются вместе с ним). */
+      fencingTurns?: number; counterNext?: number; counterTurns?: number; shadowCharges?: number;
+      wallRounds?: number; prepRounds?: number; prepared?: number; bubbleTurns?: number; bubbleAbsorbed?: number;
+      rainRounds?: number; halfDmg?: number; noEvade?: number; nextPierce?: number; gripTurn?: number;
+      throwPending?: number; turnActs?: number; turnDealt?: number; ignoreArmorNow?: number;
       /** Раунды каменной кожи: входящий урон −30%. */
       stone: number;
       /** Бастион: тоник железной кожи. */
@@ -462,6 +479,8 @@ export interface BattleState {
   round: number;
   /** Пророк: последний приём героя и повтор подряд. */
   lastSkill?: string | null;
+  /** Повторение: последний приём героя или свиток. */
+  lastRepeat?: { kind: "tech"; ws: WeaponSkillDef } | { kind: "item"; id: string } | null;
   /** Ветки навыков: удар не промахивается и не уклоняется (Тень 3, Зверь 5). Ставится на один ход атаки. */
   skillNoMiss?: boolean;
   /** Ветки навыков: доля брони врага, которую игнорирует атака (Таран 3). */
@@ -1365,6 +1384,212 @@ function enemyDebuffCount(b: BattleState) {
   const s = b.enemy.statuses;
   return (s.chill > 0 ? 1 : 0) + (s.bleed > 0 ? 1 : 0) + (s.poison > 0 ? 1 : 0) + (s.fear > 0 ? 1 : 0) + (s.stunAp > 0 ? 1 : 0) + (s.blight > 0 ? 1 : 0) + (s.wither > 0 ? 1 : 0) + (s.burn > 0 ? 1 : 0) + (s.curse > 0 ? 1 : 0) + (s.oilRounds > 0 ? 1 : 0);
 }
+/** Горение без срока: держится до конца боя (число раундов больше любого боя). */
+const BURN_UNTIL_END = 999;
+
+/**
+ * Приёмы первой партии: эффекты, которые не ждут следующего хода.
+ * М(X) в значениях эффектов — характеристика героя по этому приёму, но не больше 10.
+ * Возвращает урон сверх удара (искра). Вызывается до устаревшей цепочки эффектов.
+ */
+/** Слабость не приговор: снимает негативные эффекты героя, возвращает их число. */
+function clearHeroNegatives(b: BattleState): number {
+  const keys = ["wound", "curse", "poison", "sundered", "rot", "stunAp", "sealItems", "beat", "weaken", "shatter", "slow", "drain", "burn", "chill"] as const;
+  const st = b.p.statuses as unknown as Record<string, number>;
+  let n = 0;
+  for (const k of keys) {
+    if ((st[k] ?? 0) > 0) {
+      st[k] = 0;
+      n += 1;
+    }
+  }
+  if (n > 0) push(b, `Слабость не приговор: снято ${n} негативных эффектов, +${n * 25} урона.`, "p");
+  return n;
+}
+
+/** Раскол брони врага: плоское снижение на раунды. Босс не поддаётся, как и прежний раскол. */
+function applyEnemyBreak(b: BattleState, flat: number, pct: number, rounds: number, label: string) {
+  if (bossResists(b) || b.enemy.hp <= 0) return;
+  b.enemy.statuses.breakFlat = flat;
+  b.enemy.statuses.breakPct = pct;
+  b.enemy.statuses.breakRounds = rounds;
+  push(b, `${label}: броня ${b.enemy.def.name} ${pct > 0 ? `−${Math.round(pct * 100)}%` : `−${flat}`} на ${rounds} раунда (сейчас ${enemyArmorNow(b.enemy)}).`, "p");
+}
+
+/** Приёмы, которые не атакуют сами: их нет в цикле ударов. */
+const NO_ATTACK_EFFECTS = new Set<string>([
+  "fencing_pierce", "prepare", "bubble", "healing_rain", "wall", "reverse_grip", "eruption", "life_draw", "spear_forward",
+  "spark",
+]);
+/** Прямой урон без броска оружия: Искра, Выброс, Вытягивание жизни. */
+const DIRECT_DAMAGE_EFFECTS = new Set<string>(["spark", "eruption", "life_draw"]);
+/** Приёмы, которые заканчивают ход героя. */
+const ENDING_TECH_EFFECTS = new Set<string>([
+  "snake_bite", "double_cut", "lunge", "feint", "prepare", "echo", "execute", "spear_forward",
+]);
+
+/** Начало удара героя: Бросок, за которым продолжили атаки, даёт кровотечение; Стена снимается. */
+function heroAttackStart(b: BattleState, eff: string | undefined) {
+  if ((b.p.statuses.throwPending ?? 0) > 0 && b.enemy.hp > 0) {
+    b.p.statuses.throwPending = 0;
+    const tick = 5 + Math.min(TECHNIQUE_STAT_CAP, b.p.stats.agi);
+    applyEnemyStatus(b, "bleed", 3, tick);
+    push(b, `Бросок продолжен: ${b.enemy.def.name} истекает кровью — ${tick} за раунд на 3 раунда.`, "p");
+  }
+  if ((b.p.statuses.wallRounds ?? 0) > 0 && !NO_ATTACK_EFFECTS.has(eff ?? "")) {
+    b.p.statuses.wallRounds = 0;
+    push(b, "Стена опущена: удар героя снимает её.", "p");
+  }
+}
+
+function techniqueDirectEffect(b: BattleState, ws: WeaponSkillDef, executeNow: boolean): number {
+  const eff = ws.effect;
+  const m = Math.min(TECHNIQUE_STAT_CAP, b.p.stats[ws.scaleStat]);
+  if (eff === "breach") applyEnemyBreak(b, 10, 0, 3, "Пробитие");
+  if (eff === "plank") applyEnemyBreak(b, 0, 0.25, 3, "Дробящая доска");
+  if (eff === "hew") applyEnemyBreak(b, 5, 0, 3, "Крушение");
+  if (eff === "guillotine") applyEnemyBreak(b, 0, 1, 3, "Гильотина");
+  if (eff === "sweep" || eff === "snake_lunge") {
+    /* Побои: каждый удар накладывает ещё +20% (Снос) или +10% (Змеиный выпад), до +60%. */
+    const add = eff === "sweep" ? 0.2 : 0.1;
+    const prev = (b.enemy.statuses.beatRounds ?? 0) > 0 ? (b.enemy.statuses.beatMult ?? 0) : 0;
+    b.enemy.statuses.beatMult = Math.min(0.6, prev + add);
+    b.enemy.statuses.beatRounds = 3;
+    push(b, `Побои на ${b.enemy.def.name}: +${Math.round((b.enemy.statuses.beatMult ?? 0) * 100)}% урона на 3 раунда.`, "p");
+  }
+  if (eff === "second_wind") {
+    const gain = Math.round(b.p.staminaMax * 0.25);
+    b.p.stamina = Math.min(b.p.staminaMax, b.p.stamina + gain);
+    push(b, `Второе дыхание: +${gain} выносливости.`, "p");
+  }
+  if (eff === "funnel" && b.enemy.hp > 0) {
+    const cut = Math.round(b.p.staminaMax * 0.25);
+    b.p.stamina = Math.max(0, b.p.stamina - cut);
+    push(b, `Воронка: удар не убил врага, выносливость −${cut}.`, "p");
+  }
+  const bonus = techniqueBonusNow(b, ws);
+  if (eff === "hew" && !bossResists(b)) b.enemy.statuses.noGuard = 1;
+  if (eff === "snake_bite") {
+    applyEnemyStatus(b, "poison", 3, 2 + bonus);
+    push(b, `${b.enemy.def.name} отравлен укусом: 3 раунда, ${2 + bonus} за раунд.`, "p");
+    return 0;
+  }
+  if (eff === "double_cut") {
+    applyEnemyStatus(b, "bleed", 3, 3 + bonus);
+    push(b, `${b.enemy.def.name} истекает кровью от двойного пореза: 3 раунда, ${3 + bonus} за раунд.`, "p");
+    return 0;
+  }
+  if (eff === "lunge") {
+    /* Выпад: первая атака врага в этом раунде контратакуется. */
+    b.p.statuses.counterNext = 1;
+    b.p.statuses.counterTurns = 1;
+    push(b, "Выпад: первая атака врага в этом раунде получит ответ.", "p");
+  }
+  if (eff === "spear_forward") {
+    /* Копьё вперёд: первые 2 атаки врага контратакуются, до тех пор пока не сработают. */
+    b.p.statuses.counterNext = 2;
+    b.p.statuses.counterTurns = 999;
+    push(b, "Копьё вперёд: первые две атаки врага получат ответ.", "p");
+  }
+  if (eff === "fencing_pierce") {
+    /* Фехтование: этот ход и следующий — удары героя сквозь защиту. */
+    b.p.statuses.fencingTurns = 2;
+    push(b, "Фехтование: удары сквозь защиту до конца следующего хода.", "p");
+  }
+  if (eff === "feint") {
+    b.enemy.statuses.feint = 1;
+    push(b, `Обманка: следующее действие ${b.enemy.def.name} может сорваться.`, "p");
+  }
+  if (eff === "prepare") {
+    b.p.statuses.prepRounds = 2;
+    b.p.statuses.prepared = 1;
+    push(b, "Подготовка: +25 брони на 2 раунда; следующая атака получит +25% брони.", "p");
+  }
+  if (eff === "echo") {
+    /* Эхо: в конце хода врага — 20% от урона героя за его ход (уже включая этот приём). */
+    b.enemy.statuses.echoDue = Math.round((b.p.statuses.turnDealt ?? 0) * 0.2);
+    push(b, `Эхо: в конце хода ${b.enemy.def.name} придёт ${b.enemy.statuses.echoDue}.`, "p");
+  }
+  if (eff === "bubble") {
+    b.p.barrier = (b.p.barrier ?? 0) + 10 + bonus;
+    b.p.statuses.bubbleTurns = 3;
+    b.p.statuses.bubbleAbsorbed = 0;
+    push(b, `Пузырь: барьер ${10 + bonus} на 3 хода; поглощённое вернётся врагу.`, "p");
+  }
+  if (eff === "swing") {
+    if (!bossResists(b)) b.enemy.statuses.shatterRounds = 3;
+    b.enemy.statuses.swingDmg = 3 * m;
+    push(b, `Размах: разрушение ${b.enemy.def.name} на 3 раунда; в начале его хода — удар ${3 * m}.`, "p");
+  }
+  if (eff === "wall") {
+    b.p.statuses.wallRounds = 3;
+    push(b, "Стена: +25% брони и +15% стойкости на 3 раунда; снимается после следующей атаки.", "p");
+  }
+  if (eff === "reverse_grip") {
+    b.p.statuses.halfDmg = 1;
+    b.p.statuses.gripTurn = 1;
+    push(b, "Обратный хват: в этом ходу урон ÷2, удары сквозь броню, шанс оглушить 25%.", "p");
+  }
+  if (eff === "healing_rain") {
+    b.p.statuses.rainRounds = 3;
+    b.enemy.statuses.skipTurn = 1;
+    push(b, `Целебный дождь: лечение 5 + 2×ИНТ в начале хода, ${b.enemy.def.name} пропустит ход.`, "p");
+  }
+  if (eff === "eruption") {
+    const dealt = hitEnemy(b, 40, "magic", " [Выброс]", false);
+    if (b.enemy.hp > 0) {
+      applyEnemyStatus(b, "burn", 3, m);
+      b.enemy.statuses.eruptRounds = 3;
+      b.enemy.statuses.eruptTick = Math.max(1, m - 3) + 1 + 3;
+      b.enemy.statuses.eruptDown = 0.2;
+      b.enemy.statuses.eruptWither = 1;
+      push(b, `Выброс: горение ${m}, обморожение, проклятие и увядание на 3 раунда.`, "p");
+    }
+    return dealt;
+  }
+  if (eff === "life_draw") {
+    /* Вытягивание жизни: удар 10 + бонус, затем кража: 5% макс. ОЗ врага за раунд на 3 раунда, герой получает столько же. */
+    const dealt = hitEnemy(b, 10 + bonus, "magic", " [Вытягивание жизни]", false);
+    if (b.enemy.hp > 0) {
+      b.enemy.statuses.drainRounds = 3;
+      b.enemy.statuses.drainTick = Math.max(1, Math.round(b.enemy.maxHp * 0.05));
+      push(b, `Иссушение: ${b.enemy.def.name} теряет ${b.enemy.statuses.drainTick} ОЗ за раунд на 3 раунда, ты получаешь столько же.`, "p");
+    }
+    return dealt;
+  }
+  if (eff === "throw" && b.enemy.hp > 0) {
+    /* Бросок: если ход закончится — враг не уходит в защиту; если продолжим атаки — кровотечение. */
+    b.p.statuses.throwPending = 1;
+  }
+  if (eff === "snake_lunge") b.p.statuses.nextPierce = 1;
+  if (eff === "execute" && executeNow && b.enemy.hp > 0) {
+    applyEnemyStatus(b, "bleed", 3, Math.max(1, Math.round(b.enemy.maxHp * 0.05)));
+    push(b, `Казнь: ${b.enemy.def.name} истекает кровью: 3 раунда, 5% макс. ОЗ за раунд.`, "p");
+    return 0;
+  }
+  if (eff === "ring" || eff === "meteor") {
+    if (!bossResists(b) && b.enemy.hp > 0) {
+      b.enemy.statuses.stunAp = Math.min(4, b.enemy.statuses.stunAp + 1);
+      push(b, `${b.enemy.def.name} оглушён и потеряет ход в следующем раунде!`, "p");
+    }
+    return 0;
+  }
+  if (eff === "spark") {
+    /* Искра: магический удар без броска оружия, горение на себя и на врага. */
+    const dealt = hitEnemy(b, 25 + bonus, "magic", ` [Приём: ${ws.name}]`, true);
+    const tick = 3 + bonus;
+    /* Горение без срока: держится до конца боя. */
+    setPlayerTick(b, "burn", BURN_UNTIL_END, tick);
+    push(b, `Искра жжёт тебя: ${tick} за раунд, до конца боя.`, "p");
+    if (b.enemy.hp > 0) {
+      applyEnemyStatus(b, "burn", BURN_UNTIL_END, tick);
+      push(b, `${b.enemy.def.name} горит: ${tick} за раунд, до конца боя.`, "p");
+    }
+    return dealt;
+  }
+  return 0;
+}
+
 function techValue(ws: WeaponSkillDef, base: number, precision = 1): number {
   return scaleByLevel(base, ws.level ?? 1, precision);
 }
@@ -1394,6 +1619,7 @@ export function techniqueBonusNow(b: BattleState, ws: WeaponSkillDef): number {
   bonus = Math.round(bonus * weakenedMult(1, b.p.statuses.weaken));
   const eff = ws.effect;
   if (eff === "armor_damage") bonus += Math.round(b.p.armor * techValue(ws, ws.id === "bulwark_verdict" ? 0.75 : 0.5, 100));
+  if (eff === "advance") bonus += Math.round(b.p.armor * 0.5);
   if (eff === "missing_hp") bonus = Math.round(bonus * (1 + Math.min(10, Math.floor(missingHpRatio(b) * 10)) * techValue(ws, 0.06, 100)));
   if (eff === "enemy_missing") bonus = Math.round(bonus * (1 + Math.min(10, Math.floor(enemyMissingRatio(b) * 10)) * techValue(ws, 0.06, 100)));
   if (eff === "debuff_damage") bonus = Math.round(bonus * (1 + Math.min(4, enemyDebuffCount(b)) * techValue(ws, 0.10, 100)));
@@ -1445,6 +1671,7 @@ export function playerResistChance(b: BattleState) {
   const extra = [
     ...(hasPassive(b, "stone_skin") ? [0.15] : []),
     ...(b.p.statuses.resistPotion > 0 ? [0.25] : []),
+    ...((b.p.statuses.wallRounds ?? 0) > 0 ? [0.15] : []),
   ];
   return heroChance(b, b.p.chanceLayers.tenacity, extra);
 }
@@ -1514,6 +1741,7 @@ const MAGIC_TECH_EFFECTS: readonly string[] = ["pierce", "chill", "leech", "skil
 
 /** Уклонение твари: тип плюс род, всегда от текущего определения. */
 function enemyEvade(b: BattleState): number {
+  if ((b.p.statuses.noEvade ?? 0) > 0 || (b.enemy.statuses.noEvade ?? 0) > 0) return 0;
   return combineChances([monsterEvade(b.enemy.def.race, b.enemy.mtype), monsterEvasionBonus(enemyStats(b).agi)]);
 }
 
@@ -1535,7 +1763,8 @@ function enemyCritMult(b: BattleState): number {
 /* Магическое сопротивление врага: ИНТ плюс эффекты. gated — эффекты при истощении не работают. */
 function enemyMagicResist(b: BattleState, gated = false): number {
   const effect = gated && effectsDepleted(b) ? 0 : eChance(b, "magic_resist");
-  return combineChances([monsterMagicResist(enemyStats(b).int), effect]);
+  const r = combineChances([monsterMagicResist(enemyStats(b).int), effect]);
+  return (b.enemy.statuses.shatterRounds ?? 0) > 0 ? r * 0.5 : r;
 }
 
 /* Ум врага: прибавка к урону приёмов за очко ИНТ (обычный удар — без прибавки). */
@@ -1651,7 +1880,8 @@ function applyEnemyStatus(
     return;
   }
   if (bossResists(b)) return;
-  const resist = combineChances([monsterTenacity(enemyStats(b).str), effectsDepleted(b) ? 0 : eChance(b, "resist")]);
+  const resist = combineChances([monsterTenacity(enemyStats(b).str), effectsDepleted(b) ? 0 : eChance(b, "resist")]) *
+    ((b.enemy.statuses.shatterRounds ?? 0) > 0 ? 0.5 : 1);
   if (resist > 0 && Math.random() < resist) {
     push(b, `${b.enemy.def.name} сопротивляется эффекту.`, "e");
     return;
@@ -1740,6 +1970,7 @@ function weaponHitEffects(b: BattleState) {
 }
 
 function healEnemy(b: BattleState, amount: number): number {
+  if ((b.enemy.statuses.eruptWither ?? 0) > 0) amount = Math.round(amount * 0.8);
   if (effectsDepleted(b)) {
     push(b, `${b.enemy.def.name} не может лечиться: истощение (ещё ${b.enemy.depleted} ход.).`, "e");
     return 0;
@@ -1771,6 +2002,7 @@ export function absorbBarrier(b: BattleState, dmg: number): number {
   if (dmg <= 0 || pool <= 0) return dmg;
   const absorbed = Math.min(pool, dmg);
   b.p.barrier = pool - absorbed;
+  if ((b.p.statuses.bubbleTurns ?? 0) > 0) b.p.statuses.bubbleAbsorbed = (b.p.statuses.bubbleAbsorbed ?? 0) + absorbed;
   push(b, `Маг. барьер поглощает ${absorbed} урона${b.p.barrier <= 0 ? ", барьер разрушен" : ""}.`, "p");
   return dmg - absorbed;
 }
@@ -1811,6 +2043,7 @@ function mainHandClass(b: BattleState): GearClass {
 
 /** Уклонение врага в долях: его собственное и от эффектов. Меткость героя сравнивается с ним. */
 function heroEvasion(b: BattleState): number {
+  if ((b.p.statuses.noEvade ?? 0) > 0 || (b.enemy.statuses.noEvade ?? 0) > 0) return 0;
   const effectEvade = effectsDepleted(b) ? 0 : eChance(b, "evade");
   return Math.min(0.95, effectEvade + enemyEvade(b));
 }
@@ -1871,6 +2104,10 @@ function calcWeaponRoll(
   bonusFlat = 0,
   opts: { skill?: boolean; forceCrit?: boolean; multi?: boolean; hand?: HandStrike; kind?: AttackKind } = {},
 ) {
+  if (mult === 1 && (b.p.statuses.prepared ?? 0) > 0) {
+    bonusFlat += Math.round(playerArmorNow(b) * 0.25);
+    b.p.statuses.prepared = 0;
+  }
   const hand = opts.hand ?? { lo: b.p.hit[0], hi: b.p.hit[1], agi: b.p.weaponAgi, cls: "light" as GearClass };
   /* Рискованная бьёт по максимуму оружия, безопасная — по минимуму, обычная — по разбросу. */
   const base = opts.kind === "risky" ? hand.hi : opts.kind === "safe" ? hand.lo : randInt(hand.lo, hand.hi);
@@ -1967,8 +2204,18 @@ export function applyVamp(b: BattleState, dealt: number, extraRatio = 0, source:
 }
 
 /** Броня врага сейчас: воскресшая нежить теряет половину; в стойке (как у героя) — ×1.25 до его следующего хода. */
-export function enemyArmorNow(e: { armor: number; revived?: boolean; guard?: boolean }): number {
-  const base = e.revived ? Math.round(e.armor * (1 - REVIVE_DEBUFF)) : e.armor;
+export function enemyArmorNow(e: {
+  armor: number;
+  revived?: boolean;
+  guard?: boolean;
+  statuses?: { breakFlat?: number; breakPct?: number; breakRounds?: number; shatterRounds?: number };
+}): number {
+  let base = e.revived ? Math.round(e.armor * (1 - REVIVE_DEBUFF)) : e.armor;
+  const brk = e.statuses;
+  if (brk && (brk.breakRounds ?? 0) > 0) {
+    base = Math.round(Math.max(0, base - (brk.breakFlat ?? 0)) * (1 - (brk.breakPct ?? 0)));
+  }
+  /* Разрушение: укрепление брони врага ×0,5. */
   return e.guard ? Math.round(base * GUARD_ARMOR_MULT) : base;
 }
 
@@ -1983,14 +2230,18 @@ export function damageAfterEnemyDefense(b: BattleState, raw: number, kind: "phys
   }
   if (kind === "phys") {
     const pierce = rarePower(b, "pierce", "armor");
-    const effArmor = Math.round(Math.max(0, enemyArmorNow(b.enemy) - pierce - enemyOilArmorCut(b)) * (1 - (b.armorIgnore ?? 0)));
+    /* Сквозь броню: приёмы Тень, Обратный хват, Змеиный выпад (следующий), Фехтование. */
+    const ignoreNow = (b.p.statuses.ignoreArmorNow ?? 0) > 0 || (b.p.statuses.fencingTurns ?? 0) > 0 ||
+      (b.p.statuses.gripTurn ?? 0) > 0 || (b.p.statuses.nextPierce ?? 0) > 0;
+    const effArmor = Math.round(Math.max(0, enemyArmorNow(b.enemy) - pierce - enemyOilArmorCut(b)) * (1 - (ignoreNow ? 1 : (b.armorIgnore ?? 0))));
+    if ((b.p.statuses.nextPierce ?? 0) > 0) b.p.statuses.nextPierce = 0;
     d -= effArmor;
     /* Каменная шкура и укрепление рода — врождённые свойства породы,
        а не эффекты: истощение их не снимает. */
     if (b.enemy.passive?.id === "stone_hide") d = Math.round(d * 0.75);
-    const fortify = raceFortify(b.enemy.def.race);
+    const fortify = raceFortify(b.enemy.def.race) * ((b.enemy.statuses.shatterRounds ?? 0) > 0 ? 0.5 : 1);
     if (fortify > 0) d = Math.round(d * (1 - fortify));
-    if (!effectsDepleted(b)) d = Math.round(d * (1 - eChance(b, "fortify")));
+    if (!effectsDepleted(b)) d = Math.round(d * (1 - eChance(b, "fortify") * ((b.enemy.statuses.shatterRounds ?? 0) > 0 ? 0.5 : 1)));
   } else {
     d = Math.round(d * (1 - enemyMagicResist(b, true)));
   }
@@ -2026,6 +2277,10 @@ function hitEnemy(
 ): number {
   /* Магическое усиление: любой магический удар героя, включая свитки и расходники. */
   if (kind === "magic") raw = Math.round(raw * magicPowerMult(b.p.effectPower));
+  /* Побои: враг получает больше урона от героя, пока эффект действует. */
+  if ((b.enemy.statuses.beatRounds ?? 0) > 0) raw = Math.round(raw * (1 + (b.enemy.statuses.beatMult ?? 0)));
+  /* Обратный хват: в этом ходу весь урон героя ÷2. */
+  if ((b.p.statuses.halfDmg ?? 0) > 0) raw = Math.round(raw / 2);
   /* Ловкий «без рода»: часть физических ударов он уводит и сам контратакует без урона для себя.
      Контратака героя сюда не попадает — иначе цепочка ударов не кончится. */
   if (
@@ -2089,6 +2344,12 @@ function hitEnemy(
   b.enemy.hp -= d;
   flash(b, "e", "hit", d);
   push(b, `${b.enemy.def.name} получает ${d} урона.${note}`, "p", element);
+  /* Урон героя за его ход (для Эхо) и оглушение Обратного хвата (шанс 25%). */
+  if (b.queue[b.idx] === "p") b.p.statuses.turnDealt = (b.p.statuses.turnDealt ?? 0) + d;
+  if ((b.p.statuses.gripTurn ?? 0) > 0 && strike && kind === "phys" && d > 0 && b.enemy.hp > 0 && !bossResists(b) && Math.random() < 0.25) {
+    b.enemy.statuses.stunAp = Math.min(4, b.enemy.statuses.stunAp + 1);
+    push(b, `Обратный хват: ${b.enemy.def.name} оглушён!`, "p");
+  }
   /* Ветки навыков: Жажда крови — 10% урона возвращается; Трофей — убийство лечит 20% макс. ОЗ. */
   if (d > 0 && b.p.hp > 0 && hasPassive(b, "skill_thirst_a")) {
     const heal = healPlayer(b, Math.max(1, Math.round(d * 0.1)));
@@ -2168,7 +2429,9 @@ export const GUARD_ARMOR_FLAT = 10;
 /** Броня героя в бою сейчас: надетая, временная, тоник и раскол; в защите — +10. */
 export function playerArmorNow(b: BattleState): number {
   const base = Math.max(0, b.p.armor + b.p.statuses.tempArmor + (b.p.statuses.ironTonic > 0 ? 4 : 0) - b.p.statuses.sundered - (b.p.statuses.rot ?? 0) - (skillRageOn(b) ? 5 : 0));
-  return b.p.guard ? base + GUARD_ARMOR_FLAT : base;
+  const withPrep = base + ((b.p.statuses.prepRounds ?? 0) > 0 ? 25 : 0);
+  const walled = (b.p.statuses.wallRounds ?? 0) > 0 ? Math.round(withPrep * 1.25) : withPrep;
+  return b.p.guard ? walled + GUARD_ARMOR_FLAT : walled;
 }
 
 /** false означает, что враг промахнулся: побочные эффекты атаки тоже не срабатывают. */
@@ -2439,6 +2702,13 @@ function incoming(
     const dealt = hitEnemy(b, cd, "phys", " [Контратака]");
     applyVamp(b, dealt, 0, "weapon");
   }
+  /* Выпад и Копьё вперёд: ответ на первые физические удары врага. */
+  if (kind === "phys" && (b.p.statuses.counterNext ?? 0) > 0 && (b.p.statuses.counterTurns ?? 0) > 0 && b.p.hp > 0 && b.enemy.hp > 0) {
+    b.p.statuses.counterNext = (b.p.statuses.counterNext ?? 0) - 1;
+    const { d: cd } = calcWeaponRoll(b, 0.6);
+    const dealt = hitEnemy(b, cd, "phys", " [Контратака]");
+    applyVamp(b, dealt, 0, "weapon");
+  }
   /* Ответный замах: каждый физический удар, который прошёл, получает ответ. */
   if (kind === "phys" && b.p.statuses.counterTurn > 0 && b.p.hp > 0 && b.enemy.hp > 0) {
     const { d: cd } = calcWeaponRoll(b, 0.6);
@@ -2546,6 +2816,11 @@ function beginTurn(b: BattleState) {
     b.p.stamina += gain;
     push(b, `Передышка: +${gain} выносливости.`, "p");
   }
+  /* Целебный дождь: в начале каждого хода героя лечит 5 + 2×ИНТ, пока держится. */
+  if (side === "p" && (b.p.statuses.rainRounds ?? 0) > 0 && b.p.hp > 0) {
+    const rainHeal = healPlayer(b, 5 + 2 * Math.min(TECHNIQUE_STAT_CAP, b.p.stats.int));
+    if (rainHeal > 0) push(b, `Целебный дождь: +${rainHeal} здоровья.`, "p");
+  }
   /* Непреклонность (ранг 3): ниже 30% ОЗ — лечение 5% макс. ОЗ в начале хода героя. */
   if (side === "p" && hasPassive(b, "skill_fortitude_a") && b.p.hp > 0 && b.p.hp < b.p.maxHp * 0.3) {
     const heal = healPlayer(b, Math.round(b.p.maxHp * 0.05));
@@ -2603,7 +2878,60 @@ function prepareRoundRules(b: BattleState) {
   }
 }
 
+/** Пузырь заканчивается: поглощённый урон возвращается врагу магическим уроном. */
+function endBubble(b: BattleState) {
+  const absorbed = b.p.statuses.bubbleAbsorbed ?? 0;
+  b.p.statuses.bubbleAbsorbed = 0;
+  b.p.barrier = 0;
+  push(b, "Пузырь лопается: барьер пропал.", "p");
+  if (absorbed > 0 && b.enemy.hp > 0) hitEnemy(b, absorbed, "magic", " [Пузырь]", false);
+}
+
+/** Враг пал от приёма вне основного пути боя (эхо, пузырь, обманка). */
+function finishIfEnemyDead(b: BattleState): boolean {
+  if (b.over || b.enemy.hp > 0) return false;
+  if (tryRevive(b)) return false;
+  b.enemy.hp = 0;
+  b.over = "win";
+  gainLoot(b);
+  push(b, `${b.enemy.def.name} повержен! (+${enemyXpFor(b)} опыта)`, "sys");
+  return true;
+}
+
+/** Приёмы: что кончается вместе с ходом героя и ходом врага. */
+function endTurnTechniques(b: BattleState) {
+  if (b.queue[b.idx] === "p") {
+    const st = b.p.statuses;
+    if ((st.fencingTurns ?? 0) > 0) st.fencingTurns = (st.fencingTurns ?? 0) - 1;
+    st.halfDmg = 0;
+    st.gripTurn = 0;
+    st.turnActs = 0;
+    st.turnDealt = 0;
+    if ((st.bubbleTurns ?? 0) > 0) {
+      st.bubbleTurns = (st.bubbleTurns ?? 0) - 1;
+      if (st.bubbleTurns === 0) endBubble(b);
+    }
+    if ((st.throwPending ?? 0) > 0) {
+      st.throwPending = 0;
+      b.enemy.statuses.throwDown = 1;
+      push(b, `${b.enemy.def.name} не уходит в защиту до конца своего хода: его удары вдвое слабее.`, "p");
+    }
+  } else if (b.queue[b.idx] === "e") {
+    const es = b.enemy.statuses;
+    es.throwDown = 0;
+    es.feint = 0;
+    if ((es.echoDue ?? 0) > 0) {
+      const amount = es.echoDue ?? 0;
+      es.echoDue = 0;
+      if (b.enemy.hp > 0) hitEnemy(b, amount, "phys", " [Эхо]", false);
+      finishIfEnemyDead(b);
+    }
+  }
+}
+
 function advance(b: BattleState) {
+  if (b.over) return;
+  endTurnTechniques(b);
   if (b.over) return;
   /* Счётчики хода героя начинаются заново, когда очередь уходит дальше. */
   b.p.turnConsumables = 0;
@@ -2806,12 +3134,71 @@ function advance(b: BattleState) {
     b.enemy.statuses.burn = Math.max(0, b.enemy.statuses.burn - 1);
     b.enemy.statuses.sealMoves = Math.max(0, b.enemy.statuses.sealMoves - 1);
     b.enemy.statuses.curse = Math.max(0, b.enemy.statuses.curse - 1);
+    if ((b.enemy.statuses.breakRounds ?? 0) > 0) {
+      b.enemy.statuses.breakRounds = (b.enemy.statuses.breakRounds ?? 0) - 1;
+      if (b.enemy.statuses.breakRounds === 0) {
+        b.enemy.statuses.breakFlat = 0;
+        b.enemy.statuses.breakPct = 0;
+        push(b, `Раскол брони ${b.enemy.def.name} спадает.`, "e");
+      }
+    }
+    if ((b.enemy.statuses.beatRounds ?? 0) > 0) {
+      b.enemy.statuses.beatRounds = (b.enemy.statuses.beatRounds ?? 0) - 1;
+      if (b.enemy.statuses.beatRounds === 0) b.enemy.statuses.beatMult = 0;
+    }
     if (b.enemy.depleted > 0) {
       b.enemy.depleted -= 1;
       if (b.enemy.depleted === 0) push(b, `Истощение спадает: ${b.enemy.def.name} снова чувствует свои эффекты.`, "e");
     }
 
-    if (b.p.weaponCd > 0) b.p.weaponCd -= 1;
+    /* Приёмы: таймеры раунда героя. */
+    if ((b.p.statuses.wallRounds ?? 0) > 0) {
+      b.p.statuses.wallRounds = (b.p.statuses.wallRounds ?? 0) - 1;
+      if (b.p.statuses.wallRounds === 0) push(b, "Стена: броня и стойкость вернулись к обычным.", "sys");
+    }
+    if ((b.p.statuses.prepRounds ?? 0) > 0) b.p.statuses.prepRounds = (b.p.statuses.prepRounds ?? 0) - 1;
+    if ((b.p.statuses.rainRounds ?? 0) > 0) b.p.statuses.rainRounds = (b.p.statuses.rainRounds ?? 0) - 1;
+    if ((b.p.statuses.counterTurns ?? 0) > 0) {
+      b.p.statuses.counterTurns = (b.p.statuses.counterTurns ?? 0) - 1;
+      if (b.p.statuses.counterTurns === 0) b.p.statuses.counterNext = 0;
+    }
+    if ((b.p.statuses.noEvade ?? 0) > 0) b.p.statuses.noEvade = (b.p.statuses.noEvade ?? 0) - 1;
+    /* Приёмы: таймеры раунда врага. */
+    if ((b.enemy.statuses.noEvade ?? 0) > 0) b.enemy.statuses.noEvade = (b.enemy.statuses.noEvade ?? 0) - 1;
+    if ((b.enemy.statuses.shatterRounds ?? 0) > 0) b.enemy.statuses.shatterRounds = (b.enemy.statuses.shatterRounds ?? 0) - 1;
+    if ((b.enemy.statuses.noGuard ?? 0) > 0) b.enemy.statuses.noGuard = (b.enemy.statuses.noGuard ?? 0) - 1;
+    /* Выброс: горение, обморожение, проклятие и увядание держатся 3 раунда; тики — в конце раунда. */
+    if ((b.enemy.statuses.eruptRounds ?? 0) > 0) {
+      const tick = b.enemy.statuses.eruptTick ?? 0;
+      if (tick > 0 && b.enemy.hp > 0) {
+        b.enemy.hp -= tick;
+        push(b, `Выброс жжёт ${b.enemy.def.name}: −${tick} ОЗ.`, "p");
+      }
+      b.enemy.statuses.eruptRounds = (b.enemy.statuses.eruptRounds ?? 0) - 1;
+      if (b.enemy.statuses.eruptRounds === 0) {
+        b.enemy.statuses.eruptTick = 0;
+        b.enemy.statuses.eruptDown = 0;
+        b.enemy.statuses.eruptWither = 0;
+        push(b, `Выброс иссяк: ${b.enemy.def.name} снова в силе.`, "p");
+      }
+    }
+    /* Вытягивание жизни: кража ОЗ у врага в конце раунда; герой получает столько же. */
+    if ((b.enemy.statuses.drainRounds ?? 0) > 0) {
+      const stolen = b.enemy.statuses.drainTick ?? 0;
+      if (stolen > 0 && b.enemy.hp > 0) {
+        const taken = Math.min(stolen, b.enemy.hp);
+        b.enemy.hp -= taken;
+        const got = b.p.hp > 0 ? healPlayer(b, taken) : 0;
+        push(b, `Иссушение: ${b.enemy.def.name} −${taken} ОЗ, ты +${got} здоровья.`, "p");
+      }
+      b.enemy.statuses.drainRounds = (b.enemy.statuses.drainRounds ?? 0) - 1;
+      if (b.enemy.statuses.drainRounds === 0) b.enemy.statuses.drainTick = 0;
+    }
+    if (b.p.weaponCd > 0) {
+      b.p.weaponCd -= 1;
+      /* Тень за спиной: заряды возвращаются, когда кончается перезарядка. */
+      if (b.p.weaponCd === 0 && b.p.weaponSkill?.effect === "shadow_behind") b.p.statuses.shadowCharges = 2;
+    }
     for (const k of Object.keys(b.p.epicCds)) {
       if (b.p.epicCds[k] > 0) b.p.epicCds[k] -= 1;
     }
@@ -3125,6 +3512,8 @@ export function attackStaminaCost(b: BattleState): number {
 
 /** Приём: вес сильнейшего оружия (по среднему урону) + добавка. */
 export function techniqueStaminaCost(b: BattleState): number {
+  /* Второе дыхание стоит фиксированно, остальные приёмы — по весу оружия. */
+  if (b.p.weaponSkill?.effect === "second_wind") return SECOND_WIND_COST;
   const hands = b.p.hands ?? [];
   const base = hands.length ? hands.reduce((best, h) => (h.power > best.power ? h : best)).cost : STAMINA_UNARMED;
   return base + STAMINA_TECHNIQUE_EXTRA;
@@ -3207,6 +3596,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
 
   switch (a.type) {
     case "attack": {
+      heroAttackStart(b, undefined);
       const firstStrike = !b.p.firstAttackDone && hasPassive(b, "arch_assassin_10");
       /* Каждое оружие в руках — отдельный удар: свой бросок, свой крит, свои эффекты. Кулаки — один удар. */
       /* Ветки навыков на один ход атаки: Тень 3 — первый удар не уклоняется; Зверь 5 — добивание не промахивается;
@@ -3292,21 +3682,66 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
       if (!ws) return err("У этого оружия нет особого приёма.");
       if (b.p.concentration < TECHNIQUE_CONCENTRATION) return err(techniqueConcentrationMsg(b));
       if (b.p.weaponCd > 0) return err(`Приём «${ws.name}» перезаряжается ещё ${b.p.weaponCd} р.`);
+      if (ws.effect === "shadow_behind") {
+        if ((b.p.statuses.turnActs ?? 0) > 0) return err("Тень за спиной работает только первым действием хода.");
+        if ((b.p.statuses.shadowCharges ?? 2) <= 0) return err("Тень за спиной: заряды ещё восстанавливаются.");
+      }
+      if (ws.effect === "repeat_last" && !b.lastRepeat) return err("Повторять пока нечего: ни приёма, ни свитка ещё не было.");
       const req = Math.max(1, ws.intReq - b.p.intDiscount);
       if (b.p.stats.int < req) return err(`Для приёма «${ws.name}» требуется ИНТ ${req}.`);
 
-      const bonus = techniqueBonusNow(b, ws);
+      /* Повторение: розыгрыш последнего приёма или свитка; своей стоимости у повтора нет, перезарядка повтора не мешает. */
+      if (ws.effect === "repeat_last") {
+        const last = b.lastRepeat;
+        if (!last) return err("Повторять пока нечего.");
+        const savedSkill = b.p.weaponSkill;
+        b.p.weaponCd = 0;
+        if (last.kind === "tech") b.p.weaponSkill = last.ws;
+        const repeated = actInternal(b, last.kind === "tech" ? { type: "weapon_skill" } : { type: "item", id: last.id }, false);
+        Object.assign(b, repeated);
+        b.p.weaponSkill = savedSkill;
+        push(b, `Повторение: ${last.kind === "tech" ? last.ws.name : (ITEMS[last.id]?.name ?? last.id)}.`, "p");
+        b.p.weaponCd = ws.cooldown;
+        break;
+      }
+      /* Слабость не приговор: снимает свои негативные эффекты, за каждый +25 урона в этом ударе. */
+      const cleared = ws.effect === "no_verdict" ? clearHeroNegatives(b) : 0;
+      /* Воронка: плюс СИЛ × М(СИЛ). */
+      const funnelBonus = ws.effect === "funnel" ? b.p.stats.str * Math.min(TECHNIQUE_STAT_CAP, b.p.stats.str) : 0;
+      const bonus = techniqueBonusNow(b, ws) + cleared * 25 + funnelBonus;
       const eff = ws.effect;
-      if (b.p.statuses.sealItems > 0 && MAGIC_TECH_EFFECTS.includes(eff ?? "")) return err("Немота запрещает магические приёмы в этот ход.");
+      if (b.p.statuses.sealItems > 0 && (ws.magic || MAGIC_TECH_EFFECTS.includes(eff ?? ""))) return err("Немота запрещает магические приёмы в этот ход.");
       const trueDamage = eff === "pierce" || eff === "chill" || eff === "leech" || eff === "skill_leech";
       const magicSkill = !!ws.magic;
-      const hits = eff === "double_attack" ? scaleIntegerByLevel(2, ws.level ?? 1) : 1;
+      const hits = eff === "double_attack" ? scaleIntegerByLevel(2, ws.level ?? 1) : eff === "double_cut" ? 2 : NO_ATTACK_EFFECTS.has(eff ?? "") ? 0 : 1;
+      /* Казнь: при ОЗ врага ниже половины удар сильнее. Проверка до удара. */
+      const executeNow = eff === "execute" && b.enemy.hp < b.enemy.maxHp * 0.5;
+      heroAttackStart(b, eff);
+      /* Последний приём, который можно повторить (не сам Повтор). */
+      b.lastRepeat = { kind: "tech", ws: { ...ws } };
+      /* Тень за спиной: удар сквозь броню; заряд тратится, перезарядка — когда заряды кончились. */
+      if (eff === "shadow_behind") {
+        b.p.statuses.shadowCharges = (b.p.statuses.shadowCharges ?? 2) - 1;
+        b.p.statuses.ignoreArmorNow = 1;
+        if ((b.p.statuses.shadowCharges ?? 0) <= 0) b.p.weaponCd = ws.cooldown;
+      }
+      /* Захват: без уклонения героя и врага на 2 раунда. */
+      if (eff === "seize") {
+        b.p.statuses.noEvade = 2;
+        b.enemy.statuses.noEvade = 2;
+      }
+      /* Кувалда и Метеор: удар без промаха; у Кувалды промах всё равно даёт половину урона. */
+      if (eff === "sledge" || eff === "meteor") b.skillNoMiss = true;
       let dealtTotal = 0;
       const firstStrike = !b.p.firstAttackDone && hasPassive(b, "arch_assassin_10");
       for (let i = 0; i < hits; i++) {
         //.Multi-hit: каждый удар — отдельная обычная атака без бонуса приёма.
         const isMulti = eff === "double_attack";
-        const { d, crit } = calcWeaponRoll(b, 1, isMulti ? 0 : bonus, { skill: !isMulti, multi: isMulti, forceCrit: !isMulti && eff === "guaranteed_crit" && b.round <= 2 });
+        const rolled = calcWeaponRoll(b, 1, isMulti ? 0 : bonus, { skill: !isMulti, multi: isMulti, forceCrit: !isMulti && eff === "guaranteed_crit" && b.round <= 2 });
+        const crit = rolled.crit;
+        const halfAttack = eff === "sweep" || eff === "snake_lunge" || eff === "seize";
+        const sledgeMiss = eff === "sledge" && !rollHeroHit(heroAccuracy(b, mainHandClass(b), "normal"), heroEvasion(b));
+        const d = Math.round(rolled.d * (executeNow ? 1.5 : 1) * (halfAttack || sledgeMiss ? 0.5 : 1));
         /* Пробивающие приёмы (пронзить, холод, высасывание) — магические удары, но вампиризм считают физическим. */
         const hitKind: "phys" | "magic" = trueDamage || magicSkill ? "magic" : "phys";
         const dealt = hitEnemy(b, d, hitKind, ` [Приём: ${ws.name}${crit ? ", КРИТ!" : ""}${hits > 1 ? ` ${i + 1}/${hits}` : ""}]`, true);
@@ -3338,7 +3773,11 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
         if (b.enemy.hp <= 0) break;
       }
       b.p.firstAttackDone = true;
+      b.skillNoMiss = false;
+      b.p.statuses.ignoreArmorNow = 0;
       if (firstStrike) firstStrikeStun(b);
+
+      dealtTotal += techniqueDirectEffect(b, ws, executeNow);
 
       if (eff === "bleed") {
         applyEnemyStatus(b, "bleed", techValue(ws, 3), skillDotTick("bleed", b.p.level, b.enemy.maxHp));
@@ -3424,6 +3863,8 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
         push(b, "Приём не ушёл на перезарядку!", "p");
       } else {
         let cd = skillCdAfterUse(b, ws.cooldown);
+        /* Тень за спиной с оставшимися зарядами перезарядки не получает. */
+        if (eff === "shadow_behind" && (b.p.statuses.shadowCharges ?? 0) > 0) cd = 0;
         if (eff === "skill_leech") cd = Math.max(1, cd - techValue(ws, ws.id === "soul_reprise" ? 2 : 1));
         b.p.weaponCd = cd;
       }
@@ -3916,6 +4357,8 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
     }
   }
 
+  if (takeTurn) b.p.statuses.turnActs = (b.p.statuses.turnActs ?? 0) + 1;
+  if (takeTurn && a.type === "item" && ITEMS[a.id]?.kind === "scroll") b.lastRepeat = { kind: "item", id: a.id };
   if (takeTurn) b.p.stamina = Math.max(0, b.p.stamina - spent);
   if (takeTurn && !b.over && a.type !== "end_turn") adjustConcentration(b, a.type, a.type === "attack" ? a.kind ?? "normal" : undefined);
   if (!b.over && b.enemy.hp <= 0 && !tryRevive(b)) {
@@ -3929,7 +4372,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
   if (!b.over) heroDeathCheck(b);
   if (b.over) return b;
   /* Ход заканчивается кнопкой «Пропуск хода» либо когда выносливость иссякла. Защита ход не заканчивает. */
-  const endsTurn = a.type === "end_turn";
+  const endsTurn = a.type === "end_turn" || (a.type === "weapon_skill" && ENDING_TECH_EFFECTS.has(b.p.weaponSkill?.effect ?? ""));
   if (takeTurn && (endsTurn || !canKeepActing(b))) advance(b);
   return b;
 }
@@ -4456,6 +4899,32 @@ export function enemyStep(b0: BattleState): BattleState {
     advance(b);
     return b;
   }
+  /* Целебный дождь: один ход врага пропущен. */
+  if ((e.statuses.skipTurn ?? 0) > 0) {
+    e.statuses.skipTurn = 0;
+    push(b, `${e.def.name} не может действовать: Целебный дождь держит его.`, "p");
+    advance(b);
+    return b;
+  }
+  /* Обманка: на один ход — с шансом 20% удар героя вдвое слабее атаки и ход врага окончен. */
+  if ((e.statuses.feint ?? 0) > 0) {
+    e.statuses.feint = 0;
+    if (Math.random() < 0.2) {
+      const { d: fd } = calcWeaponRoll(b, 0.5);
+      push(b, `Обманка: ${e.def.name} ловится на ложный замах.`, "p");
+      hitEnemy(b, fd, "phys", " [Обманка]");
+      if (!finishIfEnemyDead(b)) advance(b);
+      return b;
+    }
+  }
+  /* Размах: удар врага в начале его хода по герою, 3×М(СИЛ). */
+  if ((e.statuses.swingDmg ?? 0) > 0) {
+    const swing = e.statuses.swingDmg ?? 0;
+    e.statuses.swingDmg = 0;
+    push(b, `${e.def.name} отвечает ударом Размаха.`, "e");
+    incoming(b, swing, "phys", `${e.def.name} бьёт Размахом`);
+    if (b.over) return b;
+  }
   if (e.statuses.fear > 0) {
     e.statuses.fear--;
     e.guard = true;
@@ -4483,7 +4952,9 @@ export function enemyStep(b0: BattleState): BattleState {
   }
   const chill = enemyChill(b);
   /* Пророк уже объявил ход в начале раунда; остальные выбирают ход сейчас. */
-  const move = e.announced ?? chooseEnemyMove(b);
+  const move0 = e.announced ?? chooseEnemyMove(b);
+  /* Крушение и Бросок: защиты нет — вместо неё обычный удар. */
+  const move = move0 === "guard" && ((e.statuses.noGuard ?? 0) > 0 || (e.statuses.throwDown ?? 0) > 0) ? "attack" : move0;
   e.announced = null;
   armEnemyCooldown(b, move);
   const isStrikeMove = STRIKE_MOVES.includes(move);
@@ -4498,6 +4969,10 @@ export function enemyStep(b0: BattleState): BattleState {
     push(b, `${e.def.name} наносит критический удар!`, "e");
   }
   base = enemyMoveDamage(b, move, isStrikeMove, base);
+  /* Выброс: обморожение и проклятие −10% каждое. */
+  if ((e.statuses.eruptDown ?? 0) > 0) base = Math.round(base * (1 - (e.statuses.eruptDown ?? 0)));
+  /* Бросок: физические удары врага вдвое слабее до конца его хода. */
+  if ((e.statuses.throwDown ?? 0) > 0 && isStrikeMove) base = Math.round(base / 2);
   /* Огр-мясник звереет, когда герой ранен. */
   if (e.def.id === "brute") base = Math.round(base * ogreRageMult(b.p.hp, b.p.maxHp));
   const resistChance = playerResistChance(b);
@@ -4887,13 +5362,28 @@ export function combatReadout(b: BattleState): CombatReadout {
       const hitMax = damageAfterEnemyDefense(b, Math.max(1, Math.round((baseMax + totalFlat) * totalMult)), "phys");
       techMin = hitMin * hits;
       techMax = hitMax * hits;
+    } else if (NO_ATTACK_EFFECTS.has(techSkill.effect ?? "") && !DIRECT_DAMAGE_EFFECTS.has(techSkill.effect ?? "")) {
+      /* Приём без удара (Подготовка, Пузырь, Целебный дождь и т. п.): урона в превью нет. */
+      techMin = null;
+      techMax = null;
+    } else if (DIRECT_DAMAGE_EFFECTS.has(techSkill.effect ?? "")) {
+      /* Прямой магический урон приёма, без броска оружия: как в бою — усиление магии, потом защита врага. */
+      const tech = techniqueBonusNow(b, techSkill);
+      const raw = techSkill.effect === "eruption" ? 40 : techSkill.effect === "life_draw" ? 10 + tech : 25 + tech;
+      const boosted = Math.round(raw * magicPowerMult(b.p.effectPower));
+      techMin = damageAfterEnemyDefense(b, boosted, "magic");
+      techMax = techMin;
     } else {
       const magicHit = !!techSkill.magic || techSkill.effect === "pierce" || techSkill.effect === "chill" || techSkill.effect === "leech" || techSkill.effect === "skill_leech";
       const kind = magicHit ? "magic" : "phys";
       const tech = techniqueBonusNow(b, techSkill);
       const skillM = skillDamageMult(b);
+      /* Тень за спиной бьёт сквозь броню: превью считает так же, как удар в бою. */
+      const savedIgnore = b.p.statuses.ignoreArmorNow;
+      if (techSkill.effect === "shadow_behind") b.p.statuses.ignoreArmorNow = 1;
       techMin = damageAfterEnemyDefense(b, Math.max(1, Math.round((baseMin + totalFlat + tech) * totalMult * skillM)), kind);
       techMax = damageAfterEnemyDefense(b, Math.max(1, Math.round((baseMax + totalFlat + tech) * totalMult * skillM)), kind);
+      b.p.statuses.ignoreArmorNow = savedIgnore;
     }
   }
 

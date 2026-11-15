@@ -254,7 +254,8 @@ test("приём оружия с 1 концентрацией применяет
   const b = swordFor();
   b.p.concentration = 1;
   const next = withRandom(0.45, () => battle.playerAct(b, { type: "weapon_skill" }));
-  assert.ok(next.enemy.hp < b.enemy.hp, "приём ударил");
+  /* У этого меча приём — Подготовка (без удара): применение видно по её таймеру. */
+  assert.ok(b.p.weaponSkill.effect === "prepare" ? next.p.statuses.prepRounds === 2 : next.enemy.hp < b.enemy.hp, "приём применён");
   assert.equal(next.p.concentration, 0, "−1 за приём");
 });
 

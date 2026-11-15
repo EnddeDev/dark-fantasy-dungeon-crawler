@@ -15,6 +15,8 @@ export const STAMINA_BY_WEIGHT: Record<"light" | "medium" | "heavy", number> = {
 export const STAMINA_UNARMED = STAMINA_BY_WEIGHT.light;
 /** Приём = вес оружия (или брони) + эта добавка. */
 export const STAMINA_TECHNIQUE_EXTRA = 10;
+/** Второе дыхание: фиксированная стоимость, не зависит от веса оружия. */
+export const SECOND_WIND_COST = 5;
 /** Защита: тратит выносливость и заканчивает ход. */
 export const STAMINA_GUARD = 10;
 /** Предмет из рюкзака. Предмет из сумки (слоты для зелий) бесплатен. */
