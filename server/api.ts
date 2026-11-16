@@ -6,7 +6,7 @@ import { HttpError, field, num, text, type Ctx } from "./http";
 import type { GearItem, Player } from "../src/game/types";
 import { GEAR_BASES } from "../src/game/content";
 import { PlayerFactory } from "../src/model/PlayerFactory";
-import { createDuel, duelAction, duelActionError, duelTimeout, DUEL_TURN_MS, type DuelAction, type DuelState } from "../src/game/duel";
+import { createDuel, duelAction, duelActionError, duelTimeout, DUEL_TURN_MS, normalizeDuel, type DuelAction, type DuelState } from "../src/game/duel";
 import { sanitizePlayer } from "./save";
 import { notify, markRead, listNotifications } from "./notify";
 import { publish, publishAll } from "./events";
@@ -735,7 +735,8 @@ function settleDuel(db: Db, row: Row, state: DuelState): void {
 }
 
 function refreshDuel(db: Db, row: Row): { row: Row; state: DuelState } {
-  const state = JSON.parse(String(row.state)) as DuelState;
+  /* normalizeDuel дополняет дуэли, начатые до появления выносливости и концентрации. */
+  const state = normalizeDuel(JSON.parse(String(row.state)) as DuelState);
   if (String(row.status) === "active" && !state.winner) {
     const timed = duelTimeout(state, Date.now());
     if (timed.seq !== state.seq) {
