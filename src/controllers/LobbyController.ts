@@ -24,7 +24,7 @@ import {
 import { forgeUpgrade, type ForgeUpgradeKind } from "../game/forge";
 import { ritualReplace, ritualStrip, type RitualReplaceKind } from "../game/ritual";
 import type { GearEffectId } from "../game/gearEffects";
-import { resetStats } from "../game/progression";
+import { hpAfterGearChange, resetStats } from "../game/progression";
 import { chooseStatMilestone, type StatMilestoneTier } from "../game/statMilestones";
 import { setSkillRank, type SkillBranchId } from "../game/archetypeSkills";
 import type { ArchetypeId } from "../game/archetypes";
@@ -293,7 +293,7 @@ export class LobbyController {
     const { player: next, note } = equipItem(player, item.uid, slot, grip);
     if (next === player) return note ?? "Не удалось надеть предмет.";
     const after = derived(next).maxHp;
-    this.model.setPlayer({ ...next, hp: Math.min(after, next.hp + Math.max(0, after - before)) });
+    this.model.setPlayer({ ...next, hp: hpAfterGearChange(player.hp, before, after) });
     playSfx("equip");
     return note ?? `Надето: ${scaledGearStats(item).base.name} · ${SLOT_META[slot].name}`;
   }
@@ -301,8 +301,9 @@ export class LobbyController {
   takeOff(slot: Slot): string {
     if (this.player.equip[slot]) playSfx("unequip");
     this.model.updatePlayer((p) => {
+      const before = derived(p).maxHp;
       const next = unequipSlot(p, slot);
-      return { ...next, hp: Math.min(derived(next).maxHp, next.hp) };
+      return { ...next, hp: hpAfterGearChange(p.hp, before, derived(next).maxHp) };
     });
     return `${SLOT_META[slot].name}: снято`;
   }
