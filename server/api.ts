@@ -340,13 +340,24 @@ function removeFriend(ctx: Ctx, db: Db) {
 function chatRead(ctx: Ctx, db: Db, channel: string) {
   requireUser(db, ctx);
   const after = Number(ctx.url.searchParams.get("after") ?? 0) || 0;
-  const rows = db.all<Row>(
-    `SELECT m.*, p.name AS from_name FROM messages m
-     LEFT JOIN profiles p ON p.user_id = m.from_id
-     WHERE m.channel = ? AND m.id > ? ORDER BY m.id ASC LIMIT 200`,
-    channel,
-    after,
-  );
+  /* Без after (первая загрузка) отдаём последние 200 сообщений, а не самые старые:
+     иначе длинная история прячет свежие сообщения. Дальше клиент просит только новые. */
+  const rows = after > 0
+    ? db.all<Row>(
+        `SELECT m.*, p.name AS from_name FROM messages m
+         LEFT JOIN profiles p ON p.user_id = m.from_id
+         WHERE m.channel = ? AND m.id > ? ORDER BY m.id ASC LIMIT 200`,
+        channel,
+        after,
+      )
+    : db.all<Row>(
+        `SELECT * FROM (
+           SELECT m.id, m.channel, m.from_id, m.body, m.created_at, p.name AS from_name FROM messages m
+           LEFT JOIN profiles p ON p.user_id = m.from_id
+           WHERE m.channel = ? ORDER BY m.id DESC LIMIT 200
+         ) ORDER BY id ASC`,
+        channel,
+      );
   return { messages: rows.map(messageRow) };
 }
 

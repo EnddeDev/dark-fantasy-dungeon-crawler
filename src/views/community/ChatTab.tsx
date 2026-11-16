@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { OnlineSession } from "../../net/online";
 import type { ChatMessage, PlayerSummary } from "../../net/protocol";
 import { EmptyNote, ErrorBar, OnlineDot, Panel, useLoader, useSync } from "./shared";
+import { lastMessageId, mergeMessages } from "./chatMessages";
 
 /** Общий чат и личные сообщения — личные доступны только друзьям. */
 export function ChatTab({ online, initialPeer = null }: { online: OnlineSession; initialPeer?: string | null }) {
@@ -9,6 +10,12 @@ export function ChatTab({ online, initialPeer = null }: { online: OnlineSession;
   const [scope, setScope] = useState<"global" | string>(initialPeer ?? "global");
   const [global, setGlobal] = useState<ChatMessage[]>([]);
   const [dm, setDm] = useState<ChatMessage[]>([]);
+  /* Загрузчики читают список из ref: иначе они видят устаревшую копию из замыкания
+     и просят лишнее (раньше из-за этого после отправки пропадала история). */
+  const globalRef = useRef<ChatMessage[]>([]);
+  const dmRef = useRef<ChatMessage[]>([]);
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -17,11 +24,19 @@ export function ChatTab({ online, initialPeer = null }: { online: OnlineSession;
 
   const peer = scope === "global" ? null : friends.data.friends.find((f) => f.id === scope) ?? null;
 
+  const setGlobalList = (next: ChatMessage[]) => {
+    globalRef.current = next;
+    setGlobal(next);
+  };
+  const setDmList = (next: ChatMessage[]) => {
+    dmRef.current = next;
+    setDm(next);
+  };
+
   const loadGlobal = async () => {
     try {
-      const last = global[global.length - 1]?.id ?? 0;
-      const res = await online.api.chat(last);
-      if (res.messages.length) setGlobal((cur) => [...cur, ...res.messages].slice(-200));
+      const res = await online.api.chat(lastMessageId(globalRef.current));
+      if (res.messages.length) setGlobalList(mergeMessages(globalRef.current, res.messages));
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Чат недоступен");
@@ -30,10 +45,12 @@ export function ChatTab({ online, initialPeer = null }: { online: OnlineSession;
 
   const loadDm = async () => {
     if (!scope || scope === "global") return;
+    const target = scope;
     try {
-      const last = dm[dm.length - 1]?.id ?? 0;
-      const res = await online.api.dm(scope, last);
-      if (res.messages.length) setDm((cur) => [...cur, ...res.messages].slice(-200));
+      const res = await online.api.dm(target, lastMessageId(dmRef.current));
+      // Пока ждали ответ, игрок мог переключить чат: чужие сообщения в список не кладём.
+      if (scopeRef.current !== target) return;
+      if (res.messages.length) setDmList(mergeMessages(dmRef.current, res.messages));
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Личные сообщения недоступны");
@@ -49,7 +66,7 @@ export function ChatTab({ online, initialPeer = null }: { online: OnlineSession;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    setDm([]);
+    setDmList([]);
     if (peer) void loadDm();
   }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -66,11 +83,9 @@ export function ChatTab({ online, initialPeer = null }: { online: OnlineSession;
     try {
       if (scope !== "global" && peer) {
         await online.api.sendDm(peer.id, body);
-        setDm([]);
         await loadDm();
       } else {
         await online.api.sendChat(body);
-        setGlobal([]);
         await loadGlobal();
       }
       setText("");

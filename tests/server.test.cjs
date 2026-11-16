@@ -397,3 +397,19 @@ test("server: event stream receives chat events from other players", async () =>
   assert.match(seen, /event: chat/);
   await reader.cancel();
 });
+
+test("server: first chat load returns the newest messages, not the oldest", async () => {
+  const author = await account("chat_long");
+  for (let i = 1; i <= 205; i++) {
+    await api("POST", "/chat/global", author.token, { body: `м${i}` });
+  }
+  const first = await api("GET", "/chat/global?after=0", author.token);
+  assert.equal(first.data.messages.length, 200);
+  assert.equal(first.data.messages.at(-1).body, "м205", "последнее сообщение на месте");
+  assert.equal(first.data.messages[0].body, "м6", "самые старые из лишних отброшены");
+  const ids = first.data.messages.map((m) => m.id);
+  assert.deepEqual(ids, [...ids].sort((a, b) => a - b), "порядок по времени");
+
+  const next = await api("GET", `/chat/global?after=${ids.at(-1)}`, author.token);
+  assert.equal(next.data.messages.length, 0, "дальше приходят только новые");
+});
