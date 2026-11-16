@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import { GearNote, HiddenGearNote } from "../../components/GearNote";
+import { ItemArt } from "../../components/ItemArt";
 import { PlayerPortrait } from "../../components/PlayerPortrait";
 import type { Player } from "../../game/types";
 import type { OnlineSession } from "../../net/online";
-import type { FriendRequestView, PlayerProfileView, PlayerSummary } from "../../net/protocol";
-import { EmptyNote, ErrorBar, GearPicker, OnlineDot, Panel, useLoader, useSync } from "./shared";
+import type { FriendRequestView, PlayerProfileView, PlayerSummary, ProfileGear } from "../../net/protocol";
+import { EmptyNote, ErrorBar, GearPicker, OnlineDot, Panel, gearName, useLoader, useSync } from "./shared";
 
 const PAGE = 20;
 
@@ -376,6 +378,8 @@ function ProfilePanel({
 }) {
   const [profile, setProfile] = useState<PlayerProfileView | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Предмет, открытый на подробный просмотр из экипировки. */
+  const [inspect, setInspect] = useState<ProfileGear | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -447,17 +451,42 @@ function ProfilePanel({
             <div className="sc mb-2 text-flamedim">Экипировка</div>
             <ul className="grid gap-1.5 sm:grid-cols-2">
               {PROFILE_SLOTS.map(({ key, label: slotLabel }) => {
-                const item = profile.equip[key];
+                const gear = profile.equip[key] ?? null;
+                const name = gear ? (gear.identified ? gearName(gear.item) : gear.item.name) : null;
+                const level = gear ? (gear.identified ? gear.item.level ?? 1 : gear.item.level) : 0;
                 return (
-                  <li key={key} className="flex min-w-0 items-center justify-between gap-2 border border-line bg-black/30 px-2 py-1.5">
-                    <span className="font-mono text-[0.8rem] text-mute">{slotLabel}</span>
-                    <span className={`truncate font-display text-[0.95rem] uppercase ${item ? "text-parch" : "italic text-mute/70"}`}>
-                      {item ? `${item.name} · ур. ${item.level}` : "пусто"}
-                    </span>
+                  <li key={key} className="min-w-0">
+                    <button
+                      type="button"
+                      disabled={!gear}
+                      onClick={() => gear && setInspect(gear)}
+                      title={gear ? "Открыть подробности" : undefined}
+                      className="flex w-full min-w-0 items-center gap-2.5 border border-line bg-black/30 px-2 py-1.5 text-left hover:border-flamedim disabled:cursor-default disabled:hover:border-line"
+                    >
+                      <span className="w-[4.5rem] shrink-0 font-mono text-[0.78rem] text-mute">{slotLabel}</span>
+                      {gear ? (
+                        <ItemArt
+                          id={gear.item.baseId}
+                          name={name ?? undefined}
+                          size={40}
+                          rarity={gear.identified ? gear.item.rarity : undefined}
+                        />
+                      ) : (
+                        <span aria-hidden className="inline-block h-10 w-10 shrink-0 border border-dashed border-line/70" />
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <span className={`block truncate font-display text-[0.95rem] uppercase ${gear ? "text-parch" : "italic text-mute/70"}`}>
+                          {name ?? "пусто"}
+                        </span>
+                        {gear && <span className="block font-mono text-[0.8rem] text-mute">ур. {level}</span>}
+                      </span>
+                    </button>
                   </li>
                 );
               })}
             </ul>
+            {inspect?.identified && <GearNote item={inspect.item} onClose={() => setInspect(null)} />}
+            {inspect && !inspect.identified && <HiddenGearNote item={inspect.item} onClose={() => setInspect(null)} />}
           </div>
 
           <div className="flex flex-wrap gap-1.5 border-t border-line pt-3">

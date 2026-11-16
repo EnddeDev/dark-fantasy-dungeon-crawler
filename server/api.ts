@@ -4,7 +4,8 @@ import { readProfile, writeProfile } from "./db";
 import { isOnline, createSession, hashPassword, sessionUser, validateCredentials, verifyPassword, type UserRow } from "./auth";
 import { HttpError, field, num, text, type Ctx } from "./http";
 import type { GearItem, Player } from "../src/game/types";
-import { GEAR_BASES } from "../src/game/content";
+import { GEAR_BASES, gearClassLabel, gearKindFor } from "../src/game/content";
+import { GEAR_EFFECTS, effectDetail } from "../src/game/gearEffects";
 import { PlayerFactory } from "../src/model/PlayerFactory";
 import { createDuel, duelAction, duelActionError, duelTimeout, DUEL_TURN_MS, normalizeDuel, type DuelAction, type DuelState } from "../src/game/duel";
 import { sanitizePlayer } from "./save";
@@ -208,18 +209,41 @@ function playerList(ctx: Ctx, db: Db) {
   return { players, hasMore: offset + limit < all.length };
 }
 
-/** Профиль игрока для просмотра: только экипировка и характеристики. Золото, сундук, сумка, архетип и рекорд не отдаём. */
+/**
+ * Предмет в профиле. Опознанный отдаём целиком (как у владельца). Неопознанный — только то, что
+ * владелец видит без исследования: база, уровень, класс и износ. Редкость, характеристики и
+ * ролл первого эффекта аксессуара скрыты; эффект отдаём без значения.
+ */
+function profileGear(item: GearItem) {
+  if (item.identified) return { identified: true as const, item };
+  const level = item.level ?? 1;
+  const peekId = gearKindFor(item) === "accessory" && item.effects[0] ? item.effects[0] : null;
+  const def = peekId ? GEAR_EFFECTS[peekId] : undefined;
+  return {
+    identified: false as const,
+    item: {
+      uid: item.uid,
+      baseId: item.baseId,
+      slot: item.slot,
+      name: itemName(item),
+      level,
+      classLabel: gearClassLabel(item),
+      wear: item.wear,
+      peek: peekId && def ? { name: def.name, detail: effectDetail(peekId, level) } : null,
+    },
+  };
+}
+
+/** Профиль игрока для просмотра: экипировка и характеристики. Золото, сундук, сумка, архетип и рекорд не отдаём. */
 function playerProfile(ctx: Ctx, db: Db, target: string) {
   const user = requireUser(db, ctx);
   const profile = readProfile(db, target);
   if (!profile) throw new HttpError(404, "Игрок не найден");
   const player = profile.player;
-  const equipped: Record<string, { baseId: string; name: string; level: number; rarity: string; identified: boolean; wear: string } | null> = {};
+  const equipped: Record<string, ReturnType<typeof profileGear> | null> = {};
   for (const [slot, uid] of Object.entries(player.equip ?? {})) {
     const item = typeof uid === "string" ? (player.armory ?? []).find((g) => g.uid === uid) : undefined;
-    equipped[slot] = item
-      ? { baseId: item.baseId, name: itemName(item), level: item.level ?? 1, rarity: item.rarity, identified: !!item.identified, wear: item.wear }
-      : null;
+    equipped[slot] = item ? profileGear(item) : null;
   }
   return {
     profile: {

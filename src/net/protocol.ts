@@ -37,6 +37,26 @@ export interface FriendRequestView {
   player: PlayerSummary;
 }
 
+/**
+ * Неопознанный предмет у другого игрока: только то, что владелец видит без исследования.
+ * Редкость, характеристики и значения эффектов скрыты.
+ */
+export interface HiddenGear {
+  uid: string;
+  baseId: string;
+  slot: GearItem["slot"];
+  name: string;
+  level: number;
+  /** Подпись класса и вида, уже собранная сервером («Среднее · клинок»). */
+  classLabel: string;
+  wear: GearItem["wear"];
+  /** Первый эффект аксессуара без значения, как у владельца до исследования. */
+  peek: { name: string; detail: string } | null;
+}
+
+/** Предмет в профиле: опознанный — целиком, неопознанный — `HiddenGear`. */
+export type ProfileGear = { identified: true; item: GearItem } | { identified: false; item: HiddenGear };
+
 /** Профиль для просмотра: без золота, сундука, сумки, архетипа и рекорда. */
 export interface PlayerProfileView {
   id: string;
@@ -45,7 +65,7 @@ export interface PlayerProfileView {
   online: boolean;
   stats: { str: number; agi: number; int: number };
   portrait: number | null;
-  equip: Record<string, { baseId: string; name: string; level: number; rarity: string; identified: boolean; wear: string } | null>;
+  equip: Record<string, ProfileGear | null>;
   friend: boolean;
   requestState: RequestState;
 }
