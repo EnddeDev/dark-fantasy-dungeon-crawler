@@ -9,7 +9,7 @@ export const STAT_FORMULAS = {
   str: {
     /** Базовое здоровье: 10 ОЗ есть даже при нулевой Силе. */
     healthBase: 10,
-    healthPerPoint: 10,
+    healthPerPoint: 20,
     damageBase: 2,
     damagePerPoint: 1,
     tenacityPerPoint: 0.05,
@@ -31,8 +31,8 @@ export const STAT_FORMULAS = {
 } as const;
 
 /**
- * Здоровье = базовые 10 + 10 за каждое очко Силы.
- * Сила 0 — 10 ОЗ, Сила 1 — 20 ОЗ, Сила 10 — 110 ОЗ.
+ * Здоровье = базовые 10 + 20 за каждое очко Силы.
+ * Сила 0 — 10 ОЗ, Сила 1 — 30 ОЗ, Сила 10 — 210 ОЗ.
  */
 /** Варвар на 10 рубеже: от СИЛ здоровье ×3, урон ×2. База (10 ОЗ, 2 урона) не меняется. */
 export const BARBARIAN_10_ID = "arch_barbarian_10";

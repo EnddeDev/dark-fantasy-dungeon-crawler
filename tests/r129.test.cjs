@@ -23,16 +23,16 @@ const factory = loadGameModule("model/PlayerFactory");
 const BARB = ["arch_barbarian_10"];
 
 test("варвар на 10 рубеже: от СИЛ здоровье ×3, урон ×2, база не меняется", () => {
-  assert.equal(statFormulas.statHealth(10, BARB), 310, "10 + 30×10");
+  assert.equal(statFormulas.statHealth(10, BARB), 610, "10 + 60×10");
   assert.equal(statFormulas.statDamage(10, BARB), 22, "2 + 2×10");
   assert.equal(statFormulas.statHealth(0, BARB), 10, "база 10 ОЗ сохраняется");
   assert.equal(statFormulas.statDamage(0, BARB), 2, "база 2 урона сохраняется");
 });
 
 test("без пассива варвара формулы прежние", () => {
-  assert.equal(statFormulas.statHealth(10), 110);
+  assert.equal(statFormulas.statHealth(10), 210);
   assert.equal(statFormulas.statDamage(10), 12);
-  assert.equal(statFormulas.statHealth(10, []), 110);
+  assert.equal(statFormulas.statHealth(10, []), 210);
   assert.equal(statFormulas.statDamage(10, ["other"]), 12);
 });
 

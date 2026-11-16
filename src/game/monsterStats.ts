@@ -72,7 +72,7 @@ export function rollMonsterStats(mtype: MonsterType, level: number, rng: () => n
 
 /* ── Что дают характеристики монстру: те же формулы, что у героя ── */
 
-/** СИЛ: очки здоровья (×10 за очко, без базы: база уже есть у монстра). */
+/** СИЛ: очки здоровья (×20 за очко, без базы: база уже есть у монстра). */
 export function monsterHealthBonus(str: number): number {
   return STAT_FORMULAS.str.healthPerPoint * Math.max(0, str);
 }
