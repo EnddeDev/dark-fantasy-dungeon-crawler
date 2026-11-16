@@ -51,14 +51,25 @@ test("attack, guard, potion and turn order follow the 20 second rules", () => {
   assert.equal(duel.duelActionError(state, "b", { type: "attack" }), "Сейчас ход соперника");
   assert.equal(duel.duelActionError(state, "a", { type: "attack" }), null);
 
+  /* Защита не заканчивает ход и не тратит действие: ход остаётся у игрока. */
   const guard = duel.duelAction(state, "a", { type: "guard" }, Date.now());
-  assert.equal(guard.turn, "b");
+  assert.equal(guard.turn, "a", "защита не заканчивает ход");
+  assert.equal(guard.apLeft, 1, "защита не тратит действие");
   assert.equal(guard.a.guard, true);
-  assert.equal(guard.b.guard, false, "защита снимается при переходе хода");
-  assert.ok(guard.deadline > Date.now());
+  assert.equal(guard.a.stamina, state.a.stamina - 10, "защита тратит выносливость");
 
-  guard.a.hp = 40;
-  const healed = duel.duelAction(guard, "b", { type: "potion" }, Date.now());
+  /* Защита снимается, когда ход переходит к самому игроку. */
+  const passed = duel.duelAction(guard, "a", { type: "pass" }, Date.now());
+  assert.equal(passed.turn, "b");
+  assert.equal(passed.a.guard, true, "защита держится весь ход соперника");
+  const back = duel.duelAction(passed, "b", { type: "pass" }, Date.now());
+  assert.equal(back.turn, "a");
+  assert.equal(back.a.guard, false, "защита снимается в начале собственного хода");
+
+  const hurt = { ...guard, turn: "b", apLeft: 4 };
+  hurt.a.hp = 40;
+  hurt.b.potions = 2;
+  const healed = duel.duelAction(hurt, "b", { type: "potion" }, Date.now());
   assert.equal(healed.b.potions, 1);
   assert.ok(healed.b.hp >= healed.b.maxHp - 1 || healed.b.hp > 40);
 

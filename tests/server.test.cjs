@@ -290,7 +290,8 @@ test("server: duel challenge, 20 second turn and actions", async () => {
   const guard = await api("POST", `/duels/${pending.id}/action`, b.token, { action: { type: "guard" } });
   assert.equal(guard.status, 200);
   assert.match(guard.data.duel.state.log.join(" "), /закрывается/);
-  assert.equal(guard.data.duel.state.turn, "a", "ход вернулся к первому игроку");
+  assert.equal(guard.data.duel.state.turn, "b", "защита не заканчивает ход");
+  assert.equal(guard.data.duel.state.b.guard, true);
 });
 
 test("server: global chat is public and ordered", async () => {
