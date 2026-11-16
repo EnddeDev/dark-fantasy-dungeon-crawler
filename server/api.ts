@@ -8,6 +8,8 @@ import { GEAR_BASES } from "../src/game/content";
 import { PlayerFactory } from "../src/model/PlayerFactory";
 import { createDuel, duelAction, duelActionError, duelTimeout, DUEL_TURN_MS, type DuelAction, type DuelState } from "../src/game/duel";
 import { sanitizePlayer } from "./save";
+import { notify, markRead, listNotifications } from "./notify";
+import { publish, publishAll } from "./events";
 
 type Row = Record<string, unknown>;
 
@@ -15,6 +17,7 @@ const ONLINE_MS = 60_000;
 const MAX_MESSAGE = 400;
 const MARKET_MAX_ITEMS_PER_PLAYER = 10;
 const TRADE_MAX_ITEMS = 6;
+const FRIEND_REQUEST_LIMIT = 50;
 
 function requireUser(db: Db, ctx: Ctx): UserRow {
   const user = sessionUser(db, ctx.token);
@@ -76,7 +79,8 @@ function publicProfile(profile: StoredProfile, db: Db, now = Date.now()) {
 function playerSummary(db: Db, userId: string, viewerId: string, now = Date.now()) {
   const profile = readProfile(db, userId);
   if (!profile) return null;
-  const friend = !!db.one<Row>("SELECT 1 AS x FROM friends WHERE user_id = ? AND friend_id = ?", viewerId, userId);
+  const friend = areFriends(db, viewerId, userId);
+  const requestState = relationState(db, viewerId, userId);
   return {
     id: profile.userId,
     login: profile.login,
@@ -85,6 +89,7 @@ function playerSummary(db: Db, userId: string, viewerId: string, now = Date.now(
     bestFloor: profile.bestFloor,
     online: isOnline(db, profile.userId, now),
     friend,
+    requestState,
     kills: profile.player.kills,
   };
 }
@@ -95,6 +100,23 @@ function dmChannel(a: string, b: string): string {
 
 function areFriends(db: Db, a: string, b: string): boolean {
   return !!db.one<Row>("SELECT 1 AS x FROM friends WHERE user_id = ? AND friend_id = ?", a, b);
+}
+
+function nameOf(db: Db, userId: string): string {
+  return readProfile(db, userId)?.player.name ?? "Игрок";
+}
+
+/** Отношение viewer к другому игроку: друг, входящая или исходящая заявка, либо ничего. */
+function relationState(db: Db, viewerId: string, userId: string): "friend" | "incoming" | "outgoing" | "none" {
+  if (areFriends(db, viewerId, userId)) return "friend";
+  if (pendingRequest(db, userId, viewerId)) return "incoming";
+  if (pendingRequest(db, viewerId, userId)) return "outgoing";
+  return "none";
+}
+
+/** Открытая заявка от fromId к toId, если есть. */
+function pendingRequest(db: Db, fromId: string, toId: string): Row | undefined {
+  return db.one<Row>("SELECT * FROM friend_requests WHERE from_id = ? AND to_id = ? AND status = 'pending'", fromId, toId);
 }
 
 function messageRow(row: Row) {
@@ -120,6 +142,7 @@ function register(ctx: Ctx, db: Db) {
   db.run("INSERT INTO users (id, login, pass, created_at) VALUES (?, ?, ?, ?)", id, login, hashPassword(password), Date.now());
   const player: Player = { ...PlayerFactory.createInitial(), name: login.slice(0, 16) };
   writeProfile(db, { userId: id, player, bestFloor: 1, unlockedFloor: 1 });
+  publishAll("players");
   const token = createSession(db, id);
   return { token, profile: publicProfile(profileOf(db, id), db) };
 }
@@ -155,9 +178,17 @@ function me(ctx: Ctx, db: Db) {
 
 /* ─────────────────────────── игроки, друзья, чат ─────────────────────────── */
 
+/** Порция из `limit` записей со сдвигом `offset`: клиент подгружает список при прокрутке. */
+function pageParams(ctx: Ctx, max = 20): { limit: number; offset: number } {
+  const limit = Math.min(max, Math.max(1, Math.round(Number(ctx.url.searchParams.get("limit"))) || max));
+  const offset = Math.max(0, Math.round(Number(ctx.url.searchParams.get("offset"))) || 0);
+  return { limit, offset };
+}
+
 function playerList(ctx: Ctx, db: Db) {
   const user = requireUser(db, ctx);
   const search = (ctx.url.searchParams.get("q") ?? "").trim().toLowerCase().slice(0, 32);
+  const { limit, offset } = pageParams(ctx);
   const now = Date.now();
   const rows = db.all<Row>(
     `SELECT p.user_id, p.name, p.level, p.best_floor, u.login
@@ -165,12 +196,40 @@ function playerList(ctx: Ctx, db: Db) {
      WHERE p.user_id <> ?`,
     user.id,
   );
-  const players = rows
+  const all = rows
     .map((row) => playerSummary(db, String(row.user_id), user.id, now))
     .filter((p): p is NonNullable<typeof p> => !!p)
     .filter((p) => !search || p.name.toLowerCase().includes(search) || p.login.toLowerCase().includes(search))
     .sort((a, b) => b.bestFloor - a.bestFloor || a.name.localeCompare(b.name));
-  return { players };
+  const players = all.slice(offset, offset + limit);
+  return { players, hasMore: offset + limit < all.length };
+}
+
+/** Профиль игрока для просмотра: только экипировка и характеристики. Золото, сундук, сумка, архетип и рекорд не отдаём. */
+function playerProfile(ctx: Ctx, db: Db, target: string) {
+  const user = requireUser(db, ctx);
+  const profile = readProfile(db, target);
+  if (!profile) throw new HttpError(404, "Игрок не найден");
+  const player = profile.player;
+  const equipped: Record<string, { baseId: string; name: string; level: number; rarity: string; identified: boolean; wear: string } | null> = {};
+  for (const [slot, uid] of Object.entries(player.equip ?? {})) {
+    const item = typeof uid === "string" ? (player.armory ?? []).find((g) => g.uid === uid) : undefined;
+    equipped[slot] = item
+      ? { baseId: item.baseId, name: itemName(item), level: item.level ?? 1, rarity: item.rarity, identified: !!item.identified, wear: item.wear }
+      : null;
+  }
+  return {
+    profile: {
+      id: profile.userId,
+      name: player.name,
+      level: player.level,
+      online: isOnline(db, profile.userId),
+      stats: { str: player.stats?.str ?? 0, agi: player.stats?.agi ?? 0, int: player.stats?.int ?? 0 },
+      equip: equipped,
+      friend: areFriends(db, user.id, profile.userId),
+      requestState: relationState(db, user.id, profile.userId),
+    },
+  };
 }
 
 function friendList(ctx: Ctx, db: Db) {
@@ -183,21 +242,97 @@ function friendList(ctx: Ctx, db: Db) {
   return { friends };
 }
 
+function makeFriends(db: Db, a: string, b: string): void {
+  const now = Date.now();
+  db.run("INSERT OR IGNORE INTO friends (user_id, friend_id, created_at) VALUES (?, ?, ?)", a, b, now);
+  db.run("INSERT OR IGNORE INTO friends (user_id, friend_id, created_at) VALUES (?, ?, ?)", b, a, now);
+}
+
+/** Принимает входящую заявку: дружба появляется у обоих, автор получает уведомление. */
+function acceptRequest(db: Db, row: Row): void {
+  const fromId = String(row.from_id);
+  const toId = String(row.to_id);
+  db.transaction(() => {
+    makeFriends(db, fromId, toId);
+    db.run("UPDATE friend_requests SET status = 'accepted', updated_at = ? WHERE id = ?", Date.now(), String(row.id));
+  });
+  notify(db, fromId, "friend_accepted", toId, `${nameOf(db, toId)} принял(а) заявку в друзья`);
+  publish([fromId, toId], "friend");
+}
+
+/** Заявка в друзья: при встречной заявке дружба возникает сразу, иначе ждёт подтверждения. */
 function addFriend(ctx: Ctx, db: Db) {
   const user = requireUser(db, ctx);
   const target = text(ctx.body, "id", 64);
   if (!target || target === user.id) throw new HttpError(400, "Нельзя добавить себя");
   if (!readProfile(db, target)) throw new HttpError(404, "Игрок не найден");
+  if (areFriends(db, user.id, target)) return { status: "friend", friend: playerSummary(db, target, user.id) };
+  const incoming = pendingRequest(db, target, user.id);
+  if (incoming) {
+    acceptRequest(db, incoming);
+    return { status: "friend", friend: playerSummary(db, target, user.id) };
+  }
+  if (pendingRequest(db, user.id, target)) return { status: "requested", friend: null };
+  const sent = db.one<Row>("SELECT COUNT(*) AS n FROM friend_requests WHERE from_id = ? AND status = 'pending'", user.id);
+  if (Number(sent?.n ?? 0) >= FRIEND_REQUEST_LIMIT) throw new HttpError(429, "Слишком много исходящих заявок");
   const now = Date.now();
-  db.run("INSERT OR IGNORE INTO friends (user_id, friend_id, created_at) VALUES (?, ?, ?)", user.id, target, now);
-  db.run("INSERT OR IGNORE INTO friends (user_id, friend_id, created_at) VALUES (?, ?, ?)", target, user.id, now);
-  return { friend: playerSummary(db, target, user.id) };
+  db.run(
+    "INSERT INTO friend_requests (id, from_id, to_id, status, created_at, updated_at) VALUES (?, ?, ?, 'pending', ?, ?)",
+    randomUUID(),
+    user.id,
+    target,
+    now,
+    now,
+  );
+  notify(db, target, "friend_request", user.id, `${nameOf(db, user.id)} хочет добавить вас в друзья`);
+  publish([user.id, target], "friend");
+  return { status: "requested", friend: null };
+}
+
+function friendRequestList(ctx: Ctx, db: Db) {
+  const user = requireUser(db, ctx);
+  const now = Date.now();
+  const incoming = db
+    .all<Row>("SELECT * FROM friend_requests WHERE to_id = ? AND status = 'pending' ORDER BY created_at DESC", user.id)
+    .map((row) => ({ requestId: String(row.id), player: playerSummary(db, String(row.from_id), user.id, now) }))
+    .filter((x): x is { requestId: string; player: NonNullable<typeof x.player> } => !!x.player);
+  const outgoing = db
+    .all<Row>("SELECT * FROM friend_requests WHERE from_id = ? AND status = 'pending' ORDER BY created_at DESC", user.id)
+    .map((row) => ({ requestId: String(row.id), player: playerSummary(db, String(row.to_id), user.id, now) }))
+    .filter((x): x is { requestId: string; player: NonNullable<typeof x.player> } => !!x.player);
+  return { incoming, outgoing };
+}
+
+function friendRequestAction(ctx: Ctx, db: Db, method: string, id: string | null, action: string | null) {
+  const user = requireUser(db, ctx);
+  if (method === "GET") return friendRequestList(ctx, db);
+  if (method === "POST" && !id) return addFriend(ctx, db);
+  const row = db.one<Row>("SELECT * FROM friend_requests WHERE id = ?", id ?? "");
+  if (!row || String(row.status) !== "pending") throw new HttpError(404, "Заявка не найдена");
+  if (method === "DELETE") {
+    if (String(row.from_id) !== user.id) throw new HttpError(403, "Отозвать может только автор заявки");
+    db.run("UPDATE friend_requests SET status = 'cancelled', updated_at = ? WHERE id = ?", Date.now(), String(row.id));
+    publish([String(row.from_id), String(row.to_id)], "friend");
+    return { ok: true };
+  }
+  if (String(row.to_id) !== user.id) throw new HttpError(403, "Ответить может только получатель заявки");
+  if (action === "accept") {
+    acceptRequest(db, row);
+    return { ok: true, friend: playerSummary(db, String(row.from_id), user.id) };
+  }
+  if (action === "decline") {
+    db.run("UPDATE friend_requests SET status = 'declined', updated_at = ? WHERE id = ?", Date.now(), String(row.id));
+    publish([String(row.from_id), String(row.to_id)], "friend");
+    return { ok: true };
+  }
+  throw new HttpError(404, "Неизвестное действие");
 }
 
 function removeFriend(ctx: Ctx, db: Db) {
   const user = requireUser(db, ctx);
   const target = ctx.params.id;
   db.run("DELETE FROM friends WHERE user_id = ? AND friend_id = ?", user.id, target);
+  publish([user.id, target], "friend");
   db.run("DELETE FROM friends WHERE user_id = ? AND friend_id = ?", target, user.id);
   return { ok: true };
 }
@@ -215,11 +350,17 @@ function chatRead(ctx: Ctx, db: Db, channel: string) {
   return { messages: rows.map(messageRow) };
 }
 
-function chatPost(ctx: Ctx, db: Db, channel: string) {
+function chatPost(ctx: Ctx, db: Db, channel: string, peer: string | null) {
   const user = requireUser(db, ctx);
   const body = text(ctx.body, "body", MAX_MESSAGE);
   if (!body) throw new HttpError(400, "Пустое сообщение");
   db.run("INSERT INTO messages (channel, from_id, body, created_at) VALUES (?, ?, ?, ?)", channel, user.id, body, Date.now());
+  if (!peer) {
+    publishAll("chat", { channel });
+  } else {
+    publish([user.id, peer], "chat", { channel });
+    notify(db, peer, "dm", user.id, `Новое сообщение от ${nameOf(db, user.id)}`);
+  }
   return { ok: true };
 }
 
@@ -243,6 +384,27 @@ export function handlePlayers(ctx: Ctx, db: Db) {
   return playerList(ctx, db);
 }
 
+export function handlePlayerProfile(ctx: Ctx, db: Db, id: string) {
+  return playerProfile(ctx, db, id);
+}
+
+export function handleFriendRequests(ctx: Ctx, db: Db, method: string, id: string | null, action: string | null) {
+  return friendRequestAction(ctx, db, method, id, action);
+}
+
+export function handleNotifications(ctx: Ctx, db: Db, method: string, action: string | null) {
+  const user = requireUser(db, ctx);
+  if (method === "GET") return listNotifications(db, user.id, Math.max(0, Math.round(num(ctx.body, "since")) || 0));
+  if (method === "POST" && action === "read") {
+    const raw = field<unknown>(ctx.body, "kinds");
+    const kinds = Array.isArray(raw) ? raw.filter((k): k is string => typeof k === "string").slice(0, 10) : undefined;
+    const upTo = Math.round(num(ctx.body, "upTo"));
+    markRead(db, user.id, { upTo: upTo > 0 ? upTo : undefined, kinds });
+    return { ok: true };
+  }
+  throw new HttpError(405, "Метод не поддерживается");
+}
+
 export function handleFriends(ctx: Ctx, db: Db, method: string) {
   if (method === "GET") return friendList(ctx, db);
   if (method === "POST") return addFriend(ctx, db);
@@ -252,12 +414,12 @@ export function handleFriends(ctx: Ctx, db: Db, method: string) {
 
 export function handleChat(ctx: Ctx, db: Db, method: string, scope: string, peer: string | null) {
   if (scope === "global") {
-    return method === "GET" ? chatRead(ctx, db, "global") : chatPost(ctx, db, "global");
+    return method === "GET" ? chatRead(ctx, db, "global") : chatPost(ctx, db, "global", null);
   }
   const user = requireUser(db, ctx);
   if (!peer || !readProfile(db, peer)) throw new HttpError(404, "Игрок не найден");
   if (!areFriends(db, user.id, peer)) throw new HttpError(403, "Личные сообщения доступны только друзьям");
-  return method === "GET" ? chatRead(ctx, db, dmChannel(user.id, peer)) : chatPost(ctx, db, dmChannel(user.id, peer));
+  return method === "GET" ? chatRead(ctx, db, dmChannel(user.id, peer)) : chatPost(ctx, db, dmChannel(user.id, peer), peer);
 }
 
 export { requireUser, profileOf, savePlayer, escrowItem, giveItem, itemName, publicProfile, playerSummary, areFriends, dmChannel, messageRow, equippedUids, ONLINE_MS, MARKET_MAX_ITEMS_PER_PLAYER, TRADE_MAX_ITEMS, GEAR_BASES, randomUUID, readProfile, writeProfile, DUEL_TURN_MS, createDuel, duelAction, duelActionError, duelTimeout };
@@ -282,11 +444,14 @@ function listingView(row: Row, viewerId: string) {
 export function handleMarket(ctx: Ctx, db: Db, method: string, id: string | null) {
   const user = requireUser(db, ctx);
   if (method === "GET") {
+    const { limit, offset } = pageParams(ctx);
     const rows = db.all<Row>(
       `SELECT m.*, p.name AS seller_name FROM market m LEFT JOIN profiles p ON p.user_id = m.seller_id
-       WHERE m.status = 'active' ORDER BY m.created_at DESC LIMIT 200`,
+       WHERE m.status = 'active' ORDER BY m.created_at DESC LIMIT ? OFFSET ?`,
+      limit + 1,
+      offset,
     );
-    return { listings: rows.map((row) => listingView(row, user.id)) };
+    return { listings: rows.slice(0, limit).map((row) => listingView(row, user.id)), hasMore: rows.length > limit };
   }
 
   if (method === "POST" && !id) {
@@ -311,6 +476,7 @@ export function handleMarket(ctx: Ctx, db: Db, method: string, id: string | null
         Date.now(),
       );
     });
+    publishAll("market");
     return { ok: true };
   }
 
@@ -331,6 +497,8 @@ export function handleMarket(ctx: Ctx, db: Db, method: string, id: string | null
       savePlayer(db, buyer, { ...giveItem(buyer.player, item), gold: buyer.player.gold - price });
       savePlayer(db, seller, { ...seller.player, gold: seller.player.gold + price });
     });
+    notify(db, sellerId, "market_sale", id, `${buyer.player.name} купил ваш лот за ${price} золотых`);
+    publishAll("market");
     return { ok: true, item };
   }
 
@@ -345,6 +513,7 @@ export function handleMarket(ctx: Ctx, db: Db, method: string, id: string | null
       db.run("UPDATE market SET status = 'cancelled', sold_at = ? WHERE id = ?", Date.now(), id);
       savePlayer(db, profile, giveItem(profile.player, item));
     });
+    publishAll("market");
     return { ok: true };
   }
 
@@ -413,11 +582,12 @@ export function handleTrades(ctx: Ctx, db: Db, method: string, id: string | null
     const profile = profileOf(db, user.id);
     const { player, items } = takeEscrow(profile, uids);
     const now = Date.now();
+    const tradeId = randomUUID();
     db.transaction(() => {
       savePlayer(db, profile, player);
       db.run(
         "INSERT INTO trades (id, from_id, to_id, status, offer, request, message, created_at, updated_at) VALUES (?, ?, ?, 'offered', ?, '[]', ?, ?, ?)",
-        randomUUID(),
+        tradeId,
         user.id,
         to,
         JSON.stringify(items),
@@ -426,6 +596,8 @@ export function handleTrades(ctx: Ctx, db: Db, method: string, id: string | null
         now,
       );
     });
+    notify(db, to, "trade", tradeId, `${nameOf(db, user.id)} предлагает обмен`);
+    publish([user.id, to], "trade");
     return { ok: true };
   }
 
@@ -447,6 +619,8 @@ export function handleTrades(ctx: Ctx, db: Db, method: string, id: string | null
     returnEscrow(db, fromId, offer);
     returnEscrow(db, toId, request);
     close("declined");
+    notify(db, user.id === fromId ? toId : fromId, "trade", id ?? null, `${nameOf(db, user.id)} отклонил(а) обмен`);
+    publish([fromId, toId], "trade");
     return { ok: true };
   }
 
@@ -456,6 +630,8 @@ export function handleTrades(ctx: Ctx, db: Db, method: string, id: string | null
     returnEscrow(db, fromId, offer);
     returnEscrow(db, toId, request);
     close("cancelled");
+    notify(db, toId, "trade", id ?? null, `${nameOf(db, user.id)} отменил(а) обмен`);
+    publish([fromId, toId], "trade");
     return { ok: true };
   }
 
@@ -475,6 +651,8 @@ export function handleTrades(ctx: Ctx, db: Db, method: string, id: string | null
         id,
       );
     });
+    notify(db, fromId, "trade", id ?? null, `${nameOf(db, user.id)} предложил встречный обмен`);
+    publish([fromId, toId], "trade");
     return { ok: true };
   }
 
@@ -497,6 +675,8 @@ export function handleTrades(ctx: Ctx, db: Db, method: string, id: string | null
       savePlayer(db, toProfile, toPlayer);
       db.run("UPDATE trades SET status = 'accepted', updated_at = ? WHERE id = ?", Date.now(), id);
     });
+    notify(db, user.id === fromId ? toId : fromId, "trade", id ?? null, `${nameOf(db, user.id)} принял(а) обмен`);
+    publish([fromId, toId], "trade");
     return { ok: true };
   }
 
@@ -604,6 +784,8 @@ export function handleDuels(ctx: Ctx, db: Db, method: string, id: string | null,
       now,
       now,
     );
+    notify(db, opponent, "duel", state.id, `${nameOf(db, user.id)} вызывает вас на дуэль`);
+    publish([user.id, opponent], "duel");
     return { ok: true, id: state.id };
   }
 
@@ -624,6 +806,8 @@ export function handleDuels(ctx: Ctx, db: Db, method: string, id: string | null,
     const opponent = profileOf(db, user.id);
     const state = createDuel(randomUUID(), { userId: challenger.userId, player: challenger.player }, { userId: opponent.userId, player: opponent.player });
     db.run("UPDATE duels SET status = 'active', state = ?, updated_at = ? WHERE id = ?", JSON.stringify(state), Date.now(), String(row.id));
+    notify(db, String(row.challenger), "duel", String(row.id), `${nameOf(db, user.id)} принял(а) вызов на дуэль`);
+    publish([String(row.challenger), user.id], "duel");
     return { ok: true };
   }
 
@@ -632,6 +816,8 @@ export function handleDuels(ctx: Ctx, db: Db, method: string, id: string | null,
     if (action === "decline" && String(row.opponent) !== user.id) throw new HttpError(403, "Отклонить вызов может соперник");
     if (action === "cancel" && String(row.challenger) !== user.id) throw new HttpError(403, "Снять вызов может автор");
     db.run("UPDATE duels SET status = ?, updated_at = ? WHERE id = ?", action === "decline" ? "declined" : "cancelled", Date.now(), String(row.id));
+    if (action === "decline") notify(db, String(row.challenger), "duel", String(row.id), `${nameOf(db, user.id)} отклонил(а) вызов`);
+    publish([String(row.challenger), String(row.opponent)], "duel");
     return { ok: true };
   }
 
@@ -651,6 +837,7 @@ export function handleDuels(ctx: Ctx, db: Db, method: string, id: string | null,
       Date.now(),
       String(row.id),
     );
+    publish([String(row.challenger), String(row.opponent)], "duel");
     return { duel: { ...duelRowView({ ...refreshed.row, status: next.winner ? "finished" : "active" }, user.id), state: next } };
   }
 

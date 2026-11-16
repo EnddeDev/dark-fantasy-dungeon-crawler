@@ -8,12 +8,16 @@ import {
   handleAuth,
   handleChat,
   handleDuels,
+  handleFriendRequests,
   handleFriends,
+  handlePlayerProfile,
   handleMarket,
   handleMe,
+  handleNotifications,
   handlePlayers,
   handleTrades,
 } from "./api";
+import { handleEvents } from "./events";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const DB_FILE = process.env.DB_FILE ?? "server/data/sumrak.db";
@@ -32,6 +36,13 @@ const routes: { method: string; re: RegExp; keys: string[]; run: (ctx: Ctx, db: 
   { method: "GET", re: /^\/api\/friends$/, keys: [], run: (ctx, d) => handleFriends(ctx, d, "GET") },
   { method: "POST", re: /^\/api\/friends$/, keys: [], run: (ctx, d) => handleFriends(ctx, d, "POST") },
   { method: "DELETE", re: /^\/api\/friends\/([\w-]+)$/, keys: ["id"], run: (ctx, d, p) => handleFriends({ ...ctx, params: p }, d, "DELETE") },
+  { method: "GET", re: /^\/api\/friends\/requests$/, keys: [], run: (ctx, d) => handleFriendRequests(ctx, d, "GET", null, null) },
+  { method: "POST", re: /^\/api\/friends\/requests$/, keys: [], run: (ctx, d) => handleFriendRequests(ctx, d, "POST", null, null) },
+  { method: "POST", re: /^\/api\/friends\/requests\/([\w-]+)\/(accept|decline)$/, keys: ["id", "action"], run: (ctx, d, p) => handleFriendRequests(ctx, d, "POST", p.id, p.action) },
+  { method: "DELETE", re: /^\/api\/friends\/requests\/([\w-]+)$/, keys: ["id"], run: (ctx, d, p) => handleFriendRequests(ctx, d, "DELETE", p.id, null) },
+  { method: "GET", re: /^\/api\/players\/([\w-]+)\/profile$/, keys: ["id"], run: (ctx, d, p) => handlePlayerProfile(ctx, d, p.id) },
+  { method: "GET", re: /^\/api\/notifications$/, keys: [], run: (ctx, d) => handleNotifications(ctx, d, "GET", null) },
+  { method: "POST", re: /^\/api\/notifications\/read$/, keys: [], run: (ctx, d) => handleNotifications(ctx, d, "POST", "read") },
   { method: "GET", re: /^\/api\/market$/, keys: [], run: (ctx, d) => handleMarket(ctx, d, "GET", null) },
   { method: "POST", re: /^\/api\/market$/, keys: [], run: (ctx, d) => handleMarket(ctx, d, "POST", null) },
   { method: "POST", re: /^\/api\/market\/([\w-]+)$/, keys: ["id"], run: (ctx, d, p) => handleMarket(ctx, d, "POST", p.id) },
@@ -62,6 +73,11 @@ const server = createServer(async (req, res) => {
   if ((method === "GET" || method === "HEAD") && serveStatic(req, res)) return;
 
   const token = (req.headers.authorization ?? "").replace(/^Bearer\s+/i, "") || null;
+
+  if (method === "GET" && url.pathname === "/api/events") {
+    handleEvents(req, res, db, token);
+    return;
+  }
 
   try {
     for (const route of routes) {

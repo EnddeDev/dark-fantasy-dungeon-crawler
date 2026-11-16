@@ -2,7 +2,7 @@ import { useState, type ReactElement } from "react";
 import type { Player } from "../../game/types";
 import type { OnlineSession } from "../../net/online";
 import type { TradeOffer } from "../../net/protocol";
-import { EmptyNote, ErrorBar, GearChip, GearPicker, Panel, usePoll } from "./shared";
+import { EmptyNote, ErrorBar, GearChip, GearPicker, Panel, useSync } from "./shared";
 
 const STATUS_LABEL: Record<TradeOffer["status"], string> = {
   offered: "ждёт ответа",
@@ -35,7 +35,7 @@ export function TradesTab({ online, player }: { online: OnlineSession; player: P
       setError(err instanceof Error ? err.message : "Не удалось загрузить обмены");
     }
   };
-  usePoll(load, 4000, !!myId);
+  useSync(load, { live: online.live, scopes: ["trade"], ms: 4000, enabled: !!myId });
 
   const run = async (fn: () => Promise<unknown>, ok: string) => {
     setBusy(true);

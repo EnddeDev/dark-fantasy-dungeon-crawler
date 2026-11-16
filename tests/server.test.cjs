@@ -99,7 +99,7 @@ test("server: login, password hashing and profile persistence", async () => {
   assert.equal(noAuth.status, 401);
 });
 
-test("server: players list, friends and private chat only for friends", async () => {
+test("server: players list, friend requests and private chat only for friends", async () => {
   const a = await account("friend_a");
   const b = await account("friend_b");
   const list = await api("GET", "/players", a.token);
@@ -108,8 +108,22 @@ test("server: players list, friends and private chat only for friends", async ()
   const blocked = await api("POST", `/chat/dm/${b.id}`, a.token, { body: "привет" });
   assert.equal(blocked.status, 403);
 
-  const added = await api("POST", "/friends", a.token, { id: b.id });
-  assert.equal(added.status, 200);
+  const requested = await api("POST", "/friends", a.token, { id: b.id });
+  assert.equal(requested.status, 200);
+  assert.equal(requested.data.status, "requested");
+  const notFriendYet = await api("GET", "/friends", b.token);
+  assert.equal(notFriendYet.data.friends.some((p) => p.id === a.id), false, "до подтверждения дружбы нет");
+
+  const incoming = await api("GET", "/friends/requests", b.token);
+  assert.equal(incoming.data.incoming.length, 1);
+  const requestId = incoming.data.incoming[0].requestId;
+  assert.equal(incoming.data.incoming[0].player.id, a.id);
+
+  const stillBlocked = await api("POST", `/chat/dm/${b.id}`, a.token, { body: "привет" });
+  assert.equal(stillBlocked.status, 403, "заявка не даёт личных сообщений");
+
+  const accepted = await api("POST", `/friends/requests/${requestId}/accept`, b.token);
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
   const friends = await api("GET", "/friends", b.token);
   assert.ok(friends.data.friends.some((p) => p.id === a.id), "дружба двусторонняя");
 
@@ -122,6 +136,67 @@ test("server: players list, friends and private chat only for friends", async ()
   assert.equal(removed.status, 200);
   const after = await api("POST", `/chat/dm/${b.id}`, a.token, { body: "ещё раз" });
   assert.equal(after.status, 403);
+});
+
+test("server: friend request can be declined, cancelled and crossed requests make friends", async () => {
+  const a = await account("req_a");
+  const b = await account("req_b");
+  const c = await account("req_c");
+
+  await api("POST", "/friends", a.token, { id: b.id });
+  const bReq = (await api("GET", "/friends/requests", b.token)).data.incoming[0];
+  const declined = await api("POST", `/friends/requests/${bReq.requestId}/decline`, b.token);
+  assert.equal(declined.status, 200);
+  assert.equal((await api("GET", "/friends/requests", b.token)).data.incoming.length, 0);
+
+  await api("POST", "/friends", a.token, { id: c.id });
+  const aOut = (await api("GET", "/friends/requests", a.token)).data.outgoing;
+  assert.equal(aOut.length, 1, "отклонённая заявка не числится исходящей");
+  assert.equal(aOut[0].player.id, c.id);
+  const cancelled = await api("DELETE", `/friends/requests/${aOut.find((r) => r.player.id === c.id).requestId}`, a.token);
+  assert.equal(cancelled.status, 200);
+  assert.equal((await api("GET", "/friends/requests", c.token)).data.incoming.length, 0);
+
+  await api("POST", "/friends", b.token, { id: a.id });
+  await api("POST", "/friends", a.token, { id: b.id });
+  const friends = await api("GET", "/friends", a.token);
+  assert.ok(friends.data.friends.some((p) => p.id === b.id), "встречные заявки дают дружбу");
+});
+
+test("server: notifications for messages, friend requests and trades", async () => {
+  const a = await account("note_a");
+  const b = await account("note_b");
+  await api("POST", "/friends", a.token, { id: b.id });
+  const request = (await api("GET", "/friends/requests", b.token)).data.incoming[0];
+  await api("POST", `/friends/requests/${request.requestId}/accept`, b.token);
+
+  await api("POST", `/chat/dm/${b.id}`, a.token, { body: "один" });
+  await api("POST", `/chat/dm/${b.id}`, a.token, { body: "два" });
+  const feed = await api("GET", "/notifications", b.token);
+  const dms = feed.data.items.filter((n) => n.kind === "dm");
+  assert.equal(dms.length, 1, "повторные сообщения от одного игрока не плодят уведомления");
+  assert.ok(feed.data.unread >= 1);
+
+  const requestFeed = await api("GET", "/notifications", a.token);
+  assert.ok(requestFeed.data.items.some((n) => n.kind === "friend_accepted"), "автор заявки узнаёт о принятии");
+
+  const read = await api("POST", "/notifications/read", b.token, {});
+  assert.equal(read.status, 200);
+  const cleared = await api("GET", "/notifications", b.token);
+  assert.equal(cleared.data.unread, 0);
+});
+
+test("server: event stream requires login and sends hello", async () => {
+  const anon = await fetch(`${BASE}/events`);
+  assert.equal(anon.status, 401);
+  const user = await account("sse_user");
+  const res = await fetch(`${BASE}/events`, { headers: { Authorization: `Bearer ${user.token}` } });
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-type") ?? "", /text\/event-stream/);
+  const reader = res.body.getReader();
+  const { value } = await reader.read();
+  assert.match(new TextDecoder().decode(value), /event: hello/);
+  await reader.cancel();
 });
 
 test("server: market escrow, purchase and gold transfer", async () => {
@@ -260,4 +335,65 @@ test("server: сохранение героя проверяется на сер
   assert.ok(saved.gold <= 1_000_000, `золото ограничено потолком: ${saved.gold}`);
   assert.equal(saved.hacked, undefined, "посторонние поля не сохраняются");
   assert.ok(saved.hp > 0 && saved.hp <= me.data.profile.player.hp + 1000);
+});
+
+test("server: player profile shows equipment and stats, hides gold, chest, bag and record", async () => {
+  const owner = await account("prof_owner");
+  const viewer = await account("prof_viewer");
+  await savePlayer(owner.token, (p) => {
+    p.gold = 4242;
+    p.armory = [gear("blade-1")];
+    p.equip = { ...p.equip, mainHand: "blade-1" };
+  });
+  const ownerSaved = (await api("GET", "/me", owner.token)).data.profile.player;
+  const res = await api("GET", `/players/${owner.id}/profile`, viewer.token);
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  const { profile } = res.data;
+  assert.deepEqual(profile.stats, { str: ownerSaved.stats.str, agi: ownerSaved.stats.agi, int: ownerSaved.stats.int });
+  assert.equal(profile.equip.mainHand.baseId, "sword", "надетый предмет виден");
+  assert.equal(profile.equip.offHand, null, "пустой слот пуст");
+  const text = JSON.stringify(res.data);
+  for (const hidden of ["gold", "bag", "pouch", "bestFloor", "archetype", "armory", "statMilestones"]) {
+    assert.equal(text.includes(`"${hidden}"`), false, `поле ${hidden} не отдаётся`);
+  }
+  const anon = await api("GET", `/players/${owner.id}/profile`, null);
+  assert.equal(anon.status, 401);
+});
+
+test("server: players and market are paged by 20", async () => {
+  const many = [];
+  for (let i = 0; i < 23; i++) many.push(await account(`page_${String(i).padStart(2, "0")}`));
+  const viewer = many[0];
+  const all = [];
+  for (let offset = 0; ; offset += 20) {
+    const page = await api("GET", `/players?limit=20&offset=${offset}`, viewer.token);
+    assert.equal(page.status, 200);
+    assert.ok(page.data.players.length <= 20);
+    all.push(...page.data.players);
+    if (!page.data.hasMore) break;
+    assert.equal(page.data.players.length, 20, "полная порция до конца списка");
+  }
+  const ids = all.map((p) => p.id);
+  assert.equal(new Set(ids).size, ids.length, "без повторов между порциями");
+  assert.ok(many.slice(1).every((u) => ids.includes(u.id)), "все новые игроки попали в список");
+  assert.equal(ids.includes(viewer.id), false, "себя в списке нет");
+});
+
+test("server: event stream receives chat events from other players", async () => {
+  const listener = await account("stream_listener");
+  const speaker = await account("stream_speaker");
+  const res = await fetch(`${BASE}/events`, { headers: { Authorization: `Bearer ${listener.token}` } });
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let seen = "";
+  const sent = await api("POST", "/chat/global", speaker.token, { body: "привет всем" });
+  assert.equal(sent.status, 200);
+  const deadline = Date.now() + 3000;
+  while (!seen.includes("event: chat") && Date.now() < deadline) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    seen += decoder.decode(value);
+  }
+  assert.match(seen, /event: chat/);
+  await reader.cancel();
 });

@@ -84,6 +84,26 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS messages_channel ON messages (channel, id);
+CREATE TABLE IF NOT EXISTS friend_requests (
+  id TEXT PRIMARY KEY,
+  from_id TEXT NOT NULL,
+  to_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS friend_requests_to ON friend_requests (to_id, status);
+CREATE INDEX IF NOT EXISTS friend_requests_from ON friend_requests (from_id, status);
+CREATE TABLE IF NOT EXISTS notifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  ref_id TEXT,
+  body TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  read_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS notifications_user ON notifications (user_id, id);
 CREATE INDEX IF NOT EXISTS sessions_user ON sessions (user_id);
 `;
 

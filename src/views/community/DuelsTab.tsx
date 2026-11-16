@@ -3,7 +3,7 @@ import { Btn, Meter } from "../../components/ui";
 import type { DuelAction, DuelState } from "../../game/duel";
 import type { OnlineSession } from "../../net/online";
 import type { DuelDetail, DuelSummary } from "../../net/protocol";
-import { EmptyNote, ErrorBar, Panel, usePoll } from "./shared";
+import { EmptyNote, ErrorBar, Panel, useSync } from "./shared";
 
 const STATUS_LABEL: Record<DuelSummary["status"], string> = {
   pending: "вызов",
@@ -53,7 +53,8 @@ function DuelRoom({
       setError(err instanceof Error ? err.message : "Не удалось получить дуэль");
     }
   };
-  usePoll(load, 1200, true);
+  // Таймер хода на сервере истекает без события, поэтому комнату опрашиваем часто и всегда.
+  useSync(load, { live: online.live, scopes: ["duel"], ms: 1200, liveMs: 1200 });
 
   const act = async (action: DuelAction) => {
     setBusy(true);
@@ -189,7 +190,7 @@ export function DuelsTab({ online, openId, setOpenId }: { online: OnlineSession;
       setError(err instanceof Error ? err.message : "Не удалось загрузить дуэли");
     }
   };
-  usePoll(load, 3000, !!myId && !openId);
+  useSync(load, { live: online.live, scopes: ["duel"], ms: 3000, enabled: !!myId && !openId });
 
   const run = async (fn: () => Promise<unknown>, ok?: string) => {
     setBusy(true);

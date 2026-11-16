@@ -14,6 +14,9 @@ export interface OnlineProfile {
   player?: Player;
 }
 
+/** Отношение к игроку: друг, входящая или исходящая заявка, либо ничего. */
+export type RequestState = "friend" | "incoming" | "outgoing" | "none";
+
 export interface PlayerSummary {
   id: string;
   login: string;
@@ -22,7 +25,42 @@ export interface PlayerSummary {
   bestFloor: number;
   online: boolean;
   friend: boolean;
+  requestState: RequestState;
   kills: number;
+}
+
+export interface FriendRequestView {
+  requestId: string;
+  player: PlayerSummary;
+}
+
+/** Профиль для просмотра: без золота, сундука, сумки, архетипа и рекорда. */
+export interface PlayerProfileView {
+  id: string;
+  name: string;
+  level: number;
+  online: boolean;
+  stats: { str: number; agi: number; int: number };
+  equip: Record<string, { baseId: string; name: string; level: number; rarity: string; identified: boolean; wear: string } | null>;
+  friend: boolean;
+  requestState: RequestState;
+}
+
+export type NotificationKind = "dm" | "friend_request" | "friend_accepted" | "trade" | "duel" | "market_sale";
+
+export interface NotificationItem {
+  id: number;
+  kind: NotificationKind;
+  refId: string | null;
+  body: string;
+  createdAt: number;
+  readAt: number | null;
+}
+
+export interface NotificationFeed {
+  unread: number;
+  byKind: Partial<Record<NotificationKind, number>>;
+  items: NotificationItem[];
 }
 
 export interface ChatMessage {

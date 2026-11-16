@@ -14,11 +14,14 @@ export function GameView({
   state,
   onOpenCommunity,
   onOpenAuth,
+  communityUnread = 0,
 }: {
   game: GameController;
   state: GameState;
   onOpenCommunity?: () => void;
   onOpenAuth?: () => void;
+  /** Непрочитанные уведомления сообщества: значок на кнопке. */
+  communityUnread?: number;
 }) {
   useDungeonInput(game, state);
   const { screen, player, run, battle, shopStock, best, unlockedFloor, lobbyEntry, path, pathPaused } = state;
@@ -26,7 +29,7 @@ export function GameView({
   const lobby = screen === "lobby";
   /* Вход или сообщество: в лобби и на карте с боем — в верхней панели. */
   const account = onOpenCommunity
-    ? { label: "Сообщество", title: "Сообщество: игроки, рынок, обмены, дуэли, чат", onClick: onOpenCommunity }
+    ? { label: "Сообщество", title: "Сообщество: игроки, рынок, обмены, дуэли, чат", onClick: onOpenCommunity, badge: communityUnread }
     : onOpenAuth
       ? { label: "Войти", title: "Войти в аккаунт", onClick: onOpenAuth }
       : undefined;

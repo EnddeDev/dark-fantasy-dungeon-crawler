@@ -1,8 +1,40 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApiClient, ApiError } from "./api";
-import type { OnlineProfile } from "./protocol";
+import { LiveStream } from "./live";
+import type { NotificationItem, NotificationKind, OnlineProfile } from "./protocol";
 
 export type OnlineStatus = "checking" | "offline" | "guest" | "online";
+export type NotifyPermission = "granted" | "denied" | "default" | "unsupported";
+
+/** Счётчики непрочитанного по типам: вкладки сообщества и кнопка «Сообщество». */
+export type UnreadByKind = Partial<Record<NotificationKind, number>>;
+
+/** Подпись уведомления для браузера и всплывающей подсказки. */
+export const NOTIFY_TITLE: Record<NotificationKind, string> = {
+  dm: "Новое личное сообщение",
+  friend_request: "Заявка в друзья",
+  friend_accepted: "Заявка принята",
+  trade: "Обмен",
+  duel: "Дуэль",
+  market_sale: "Рынок",
+};
+
+/** Какой раздел сообщества отвечает за тип уведомления. */
+export const KIND_TAB: Record<NotificationKind, string> = {
+  dm: "chat",
+  friend_request: "players",
+  friend_accepted: "players",
+  trade: "trades",
+  duel: "duels",
+  market_sale: "market",
+};
+
+const COUNT_POLL_MS = 30_000;
+
+function currentPermission(): NotifyPermission {
+  if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
+  return window.Notification.permission;
+}
 
 export interface OnlineSession {
   status: OnlineStatus;
@@ -22,6 +54,17 @@ export interface OnlineSession {
   closeAuth: () => void;
   clearError: () => void;
   reload: () => Promise<void>;
+  /** Поток событий сервера; `connected` = false значит, что разделы опрашивают сервер сами. */
+  live: LiveStream;
+  unread: number;
+  unreadByKind: UnreadByKind;
+  /** Пометить прочитанными уведомления разделов, которые игрок открыл. */
+  markRead: (kinds: NotificationKind[]) => Promise<void>;
+  notifyPermission: NotifyPermission;
+  requestNotifyPermission: () => Promise<void>;
+  /** Последнее новое уведомление для всплывающей подсказки. */
+  toast: NotificationItem | null;
+  dismissToast: () => void;
 }
 
 const OnlineContext = createContext<OnlineSession | null>(null);
@@ -37,6 +80,112 @@ export function OnlineProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
+  const [unread, setUnread] = useState(0);
+  const [unreadByKind, setUnreadByKind] = useState<UnreadByKind>({});
+  const [toast, setToast] = useState<NotificationItem | null>(null);
+  const [notifyPermission, setNotifyPermission] = useState<NotifyPermission>(currentPermission);
+  /** Последний уведомление, о котором уже знает клиент: новые показываем, старые — нет. */
+  const lastNoticeId = useRef(0);
+  const live = useMemo(() => new LiveStream(api.eventsUrl, () => api.getToken()), [api]);
+
+  /** Обновляет только счётчики (дёшево) — для запасного опроса и после отметки прочитанного. */
+  const refreshCounts = useCallback(async () => {
+    try {
+      const feed = await api.notifications(0);
+      setUnread(feed.unread);
+      setUnreadByKind(feed.byKind);
+      if (lastNoticeId.current === 0 && feed.items.length) lastNoticeId.current = Math.max(...feed.items.map((n) => n.id));
+    } catch {
+      /* сервер недоступен: счётчики остаются прежними */
+    }
+  }, [api]);
+
+  /** Новые уведомления с прошлой проверки: подсказка в игре и, если вкладка скрыта, браузерное. */
+  const pullNotices = useCallback(async () => {
+    try {
+      const feed = await api.notifications(lastNoticeId.current);
+      setUnread(feed.unread);
+      setUnreadByKind(feed.byKind);
+      // Базовой отметки ещё нет: всё известное считаем виденным, подсказок не показываем.
+      if (lastNoticeId.current === 0) {
+        if (feed.items.length) lastNoticeId.current = Math.max(...feed.items.map((n) => n.id));
+        return;
+      }
+      const fresh = feed.items.filter((n) => n.id > lastNoticeId.current).sort((a, b) => a.id - b.id);
+      if (!fresh.length) return;
+      lastNoticeId.current = Math.max(lastNoticeId.current, ...fresh.map((n) => n.id));
+      const newest = fresh[fresh.length - 1];
+      setToast(newest);
+      if (typeof document !== "undefined" && document.hidden && currentPermission() === "granted") {
+        try {
+          new window.Notification(NOTIFY_TITLE[newest.kind] ?? "СУМРАК", { body: newest.body, tag: newest.kind });
+        } catch {
+          /* браузер может запретить показ — подсказка в игре всё равно есть */
+        }
+      }
+    } catch {
+      /* сеть пропала: повторим при следующем событии или опросе */
+    }
+  }, [api]);
+
+  // Поток событий: открываем после входа, закрываем при выходе или при недоступном сервере.
+  const online = status === "online";
+  useEffect(() => {
+    if (!online) {
+      live.stop();
+      setUnread(0);
+      setUnreadByKind({});
+      lastNoticeId.current = 0;
+      return;
+    }
+    // Первая загрузка: помечаем всё известное как уже виденное, подсказок не показываем.
+    lastNoticeId.current = 0;
+    void refreshCounts();
+    live.start();
+    const offNotice = live.on("notification", (payload) => {
+      const next = payload as { unread?: number; byKind?: UnreadByKind };
+      if (typeof next.unread === "number") setUnread(next.unread);
+      if (next.byKind) setUnreadByKind(next.byKind);
+      void pullNotices();
+    });
+    const id = window.setInterval(() => {
+      // Запасной опрос только когда поток не работает: иначе счётчики и так приходят push-ом.
+      if (!live.connected) void pullNotices();
+    }, COUNT_POLL_MS);
+    return () => {
+      offNotice();
+      window.clearInterval(id);
+    };
+  }, [online, live, refreshCounts, pullNotices]);
+
+  const markRead = useCallback(
+    async (kinds: NotificationKind[]) => {
+      const present = kinds.filter((k) => (unreadByKind[k] ?? 0) > 0);
+      if (!present.length) return;
+      try {
+        await api.readNotifications(present);
+        await refreshCounts();
+      } catch {
+        /* счётчик обновится при следующем событии */
+      }
+    },
+    [api, refreshCounts, unreadByKind],
+  );
+
+  const requestNotifyPermission = useCallback(async () => {
+    if (currentPermission() === "unsupported") {
+      setNotifyPermission("unsupported");
+      return;
+    }
+    try {
+      const result = await window.Notification.requestPermission();
+      setNotifyPermission(result);
+    } catch {
+      setNotifyPermission(currentPermission());
+    }
+  }, []);
+
+  const dismissToast = useCallback(() => setToast(null), []);
 
   const reload = useCallback(async () => {
     if (!api.getToken()) {
@@ -121,9 +270,10 @@ export function OnlineProvider({ children }: { children: ReactNode }) {
       /* токен мог истечь */
     }
     api.setToken(null);
+    live.stop();
     setProfile(null);
     setStatus("guest");
-  }, [api]);
+  }, [api, live]);
 
   const goOffline = useCallback(() => {
     setAuthOpen(false);
@@ -158,6 +308,14 @@ export function OnlineProvider({ children }: { children: ReactNode }) {
     closeAuth,
     clearError,
     reload,
+    live,
+    unread,
+    unreadByKind,
+    markRead,
+    notifyPermission,
+    requestNotifyPermission,
+    toast,
+    dismissToast,
   };
   return <OnlineContext.Provider value={value}>{children}</OnlineContext.Provider>;
 }
