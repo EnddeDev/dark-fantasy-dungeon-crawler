@@ -219,6 +219,7 @@ test("server: market escrow, purchase and gold transfer", async () => {
   const market = await api("GET", "/market", buyer.token);
   const lot = market.data.listings.find((l) => l.sellerName === "market_seller");
   assert.ok(lot);
+  assert.equal(lot.gear.identified, true, "опознанный лот виден целиком");
   const bought = await api("POST", `/market/${lot.id}`, buyer.token);
   assert.equal(bought.status, 200);
 
@@ -360,6 +361,33 @@ test("server: player profile shows equipment and stats, hides gold, chest, bag a
   }
   const anon = await api("GET", `/players/${owner.id}/profile`, null);
   assert.equal(anon.status, 401);
+});
+
+test("server: неопознанный лот на рынке не раскрывает редкость и характеристики чужому игроку", async () => {
+  const seller = await account("hidden_seller");
+  const buyer = await account("hidden_buyer");
+  await savePlayer(seller.token, (p) => {
+    p.armory = [{ ...gear("h1"), identified: false, rarity: "epic", statRolls: { hp: 33, armor: 4 } }];
+    p.gold = 100;
+  });
+  await savePlayer(buyer.token, (p) => {
+    p.armory = [];
+    p.gold = 500;
+  });
+  const listed = await api("POST", "/market", seller.token, { itemUid: "h1", price: 90 });
+  assert.equal(listed.status, 200, JSON.stringify(listed.data));
+
+  const asBuyer = (await api("GET", "/market", buyer.token)).data.listings.find((l) => l.sellerName === "hidden_seller");
+  assert.ok(asBuyer);
+  assert.equal(asBuyer.gear.identified, false);
+  assert.equal(asBuyer.gear.item.rarity, undefined, "редкость скрыта");
+  assert.equal(asBuyer.gear.item.statRolls, undefined, "статы скрыты");
+  assert.equal(asBuyer.gear.item.baseId, "sword");
+  assert.equal(asBuyer.gear.item.level, 1);
+
+  const asSeller = (await api("GET", "/market", seller.token)).data.listings.find((l) => l.sellerName === "hidden_seller");
+  assert.equal(asSeller.gear.identified, true, "свой лот виден полностью");
+  assert.equal(asSeller.gear.item.rarity, "epic");
 });
 
 test("server: players and market are paged by 20", async () => {

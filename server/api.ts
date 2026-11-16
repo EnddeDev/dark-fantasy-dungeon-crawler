@@ -468,18 +468,20 @@ export type { DuelAction, DuelState, Row };
 
 /* ─────────────────────────── рынок ─────────────────────────── */
 
+/** Лот: свой отдаём целиком, чужой — как предмет в профиле (неопознанный без редкости и статов). */
 function listingView(row: Row, viewerId: string) {
   const item = JSON.parse(String(row.item)) as GearItem;
+  const mine = String(row.seller_id) === viewerId;
   return {
     id: String(row.id),
     sellerId: String(row.seller_id),
     sellerName: String(row.seller_name ?? ""),
     sellerPortrait: row.seller_portrait == null ? null : Number(row.seller_portrait),
-    item,
+    gear: mine ? { identified: true as const, item } : profileGear(item),
     itemName: itemName(item),
     price: Number(row.price),
     createdAt: Number(row.created_at),
-    mine: String(row.seller_id) === viewerId,
+    mine,
   };
 }
 

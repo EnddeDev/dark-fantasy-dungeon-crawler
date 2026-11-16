@@ -116,7 +116,7 @@ notifications(id, user_id, kind, ref_id, body, created_at, read_at)
 | `POST /api/friends/requests` | заявка `{id}`; встречная заявка сразу даёт дружбу |
 | `POST /api/friends/requests/:id/{accept,decline}` | ответ получателя |
 | `DELETE /api/friends/requests/:id` | отзыв заявки автором |
-| `GET /api/market?offset=&limit=`, `POST /api/market`, `POST /api/market/:id`, `DELETE /api/market/:id` | витрина порциями по 20, выставление, покупка, снятие лота |
+| `GET /api/market?offset=&limit=`, `POST /api/market`, `POST /api/market/:id`, `DELETE /api/market/:id` | витрина порциями по 20, выставление, покупка, снятие лота; чужой неопознанный лот отдаётся как предмет в профиле (без редкости и статов) |
 | `GET/POST /api/trades`, `POST /api/trades/:id/{counter,accept,decline,cancel}` | обмен снаряжением |
 | `GET/POST /api/duels`, `GET /api/duels/:id`, `POST /api/duels/:id/{accept,decline,cancel,action}` | дуэли |
 | `GET/POST /api/chat/global` | общий чат |

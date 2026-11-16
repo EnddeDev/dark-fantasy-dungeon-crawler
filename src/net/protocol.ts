@@ -102,7 +102,8 @@ export interface MarketListing {
   sellerId: string;
   sellerName: string;
   sellerPortrait: number | null;
-  item: GearItem;
+  /** Предмет лота: опознанный целиком, неопознанный — `HiddenGear` (как в профиле). */
+  gear: ProfileGear;
   itemName: string;
   price: number;
   createdAt: number;

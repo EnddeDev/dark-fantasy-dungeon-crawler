@@ -5,6 +5,8 @@ import type { OnlineSession } from "../../net/online";
 import type { MarketListing } from "../../net/protocol";
 import { EmptyNote, ErrorBar, Panel, gearName, useSync } from "./shared";
 import { PlayerPortrait } from "../../components/PlayerPortrait";
+import { GearNote, HiddenGearNote } from "../../components/GearNote";
+import type { ProfileGear } from "../../net/protocol";
 
 const PAGE = 20;
 
@@ -18,6 +20,7 @@ export function MarketTab({ online, player }: { online: OnlineSession; player: P
   countRef.current = allListings.length;
   const loadingRef = useRef(false);
   const sentinel = useRef<HTMLDivElement>(null);
+  const [inspect, setInspect] = useState<ProfileGear | null>(null);
 
   /** Первая порция: обновляет витрину, хвост уже подгруженных лотов не трогаем. */
   const loadFirst = async () => {
@@ -163,17 +166,22 @@ export function MarketTab({ online, player }: { online: OnlineSession; player: P
           <ul className="space-y-2">
             {listings.map((l) => (
               <li key={l.id} className="flex flex-wrap items-center justify-between gap-3 border border-line bg-black/30 px-2.5 py-2">
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <ItemArt id={l.item.baseId} name={l.itemName} size={38} rarity={l.item.identified ? l.item.rarity : undefined} />
+                <button
+                  type="button"
+                  onClick={() => setInspect(l.gear)}
+                  title="Подробнее о предмете"
+                  className="flex min-w-0 items-center gap-2.5 text-left hover:text-flamehi"
+                >
+                  <ItemArt id={l.gear.item.baseId} name={l.itemName} size={38} rarity={l.gear.identified ? l.gear.item.rarity : undefined} />
                   <div className="min-w-0">
                     <div className="truncate font-display text-[1rem] uppercase tracking-[0.04em] text-parch">{l.itemName}</div>
                     <div className="font-mono text-[0.82rem] text-mute">
-                      ур. {l.item.level ?? 1} · продаёт{" "}
+                      ур. {l.gear.item.level ?? 1} · продаёт{" "}
                       <PlayerPortrait id={l.sellerId} name={l.sellerName} version={l.sellerPortrait} size={20} className="mr-1 align-middle" />
                       {l.sellerName}
                     </div>
                   </div>
-                </div>
+                </button>
                 <div className="flex items-center gap-3">
                   <span className="font-mono text-[1.05rem] text-flamehi">{l.price} зол.</span>
                   {l.mine ? (
@@ -199,6 +207,8 @@ export function MarketTab({ online, player }: { online: OnlineSession; player: P
             ))}
           </ul>
         )}
+        {inspect?.identified && <GearNote item={inspect.item} onClose={() => setInspect(null)} />}
+        {inspect && !inspect.identified && <HiddenGearNote item={inspect.item} onClose={() => setInspect(null)} />}
         <div ref={sentinel} className="py-2 text-center font-mono text-[0.8rem] text-mute">
           {loadingMore ? "загружаем ещё…" : hasMore ? "прокрутите ниже, чтобы увидеть ещё" : allListings.length > 0 ? "это все лоты" : ""}
         </div>
