@@ -57,6 +57,11 @@ export function PlayTopBar({
               className="flex items-center gap-2 border border-flamedim bg-slab/95 px-3 py-2 font-display text-[0.85rem] uppercase tracking-[0.1em] text-flamehi shadow-[0_10px_30px_-12px_#000] hover:border-flame hover:bg-flame/15"
             >
               {account.label}
+              {!!account.badge && account.badge > 0 && (
+                <span className="rounded-sm bg-rubric px-1.5 font-mono text-[0.75rem] leading-5 normal-case tracking-normal text-parch" aria-label={`непрочитанных: ${account.badge}`}>
+                  {account.badge}
+                </span>
+              )}
             </button>
           )}
         </div>

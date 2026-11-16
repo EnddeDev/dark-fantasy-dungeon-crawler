@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import type { OnlineSession } from "../../net/online";
 import type { ChatMessage, PlayerSummary } from "../../net/protocol";
-import { EmptyNote, ErrorBar, OnlineDot, Panel, useLoader, usePoll } from "./shared";
+import { EmptyNote, ErrorBar, OnlineDot, Panel, useLoader, useSync } from "./shared";
 
 /** Общий чат и личные сообщения — личные доступны только друзьям. */
-export function ChatTab({ online }: { online: OnlineSession }) {
+export function ChatTab({ online, initialPeer = null }: { online: OnlineSession; initialPeer?: string | null }) {
   const me = online.profile;
-  const [scope, setScope] = useState<"global" | string>("global");
+  const [scope, setScope] = useState<"global" | string>(initialPeer ?? "global");
   const [global, setGlobal] = useState<ChatMessage[]>([]);
   const [dm, setDm] = useState<ChatMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -40,8 +40,9 @@ export function ChatTab({ online }: { online: OnlineSession }) {
     }
   };
 
-  usePoll(loadGlobal, 3000, !!me);
-  usePoll(loadDm, 3000, !!me && !!peer);
+  useSync(loadGlobal, { live: online.live, scopes: ["chat"], ms: 3000, enabled: !!me });
+  useSync(loadDm, { live: online.live, scopes: ["chat"], ms: 3000, enabled: !!me && !!peer });
+  useSync(() => void friends.refresh(), { live: online.live, scopes: ["friend"], ms: 15_000, enabled: !!me });
 
   useEffect(() => {
     friends.refresh();
@@ -59,9 +60,11 @@ export function ChatTab({ online }: { online: OnlineSession }) {
   const send = async () => {
     const body = text.trim();
     if (!body) return;
+    // Личный канал без найденного друга (список ещё грузится) — не отправляем в общий чат.
+    if (scope !== "global" && !peer) return;
     setBusy(true);
     try {
-      if (peer) {
+      if (scope !== "global" && peer) {
         await online.api.sendDm(peer.id, body);
         setDm([]);
         await loadDm();
@@ -78,7 +81,8 @@ export function ChatTab({ online }: { online: OnlineSession }) {
     }
   };
 
-  const messages = peer ? dm : global;
+  const isDm = scope !== "global";
+  const messages = isDm ? dm : global;
 
   return (
     <div className="grid gap-4 lg:grid-cols-[260px_1fr]">

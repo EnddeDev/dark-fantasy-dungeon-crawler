@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ItemArt } from "../../components/ItemArt";
+import type { LiveScope, LiveStream } from "../../net/live";
 import { Btn } from "../../components/ui";
 import { GEAR_BASES } from "../../game/content";
 import type { GearItem } from "../../game/types";
@@ -128,6 +129,48 @@ export function usePoll(fn: () => void | Promise<void>, ms: number, enabled = tr
       window.clearInterval(id);
     };
   }, [ms, enabled]);
+}
+
+/**
+ * Обновление раздела по событиям потока с опросом как запасным путём.
+ * Пока поток работает, опрос редкий (liveMs); если потока нет — обычный ms.
+ * Событие обновляет раздел не чаще раза в четверть секунды.
+ */
+export function useSync(
+  fn: () => void | Promise<void>,
+  {
+    live,
+    scopes,
+    ms,
+    liveMs = 30_000,
+    enabled = true,
+  }: { live: LiveStream; scopes: LiveScope[]; ms: number; liveMs?: number; enabled?: boolean },
+): void {
+  const ref = useRef(fn);
+  ref.current = fn;
+  const [connected, setConnected] = useState(live.connected);
+  const key = scopes.join(",");
+
+  useEffect(() => live.onStatus(setConnected), [live]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let timer: number | null = null;
+    const trigger = () => {
+      if (timer !== null) return;
+      timer = window.setTimeout(() => {
+        timer = null;
+        void ref.current();
+      }, 250);
+    };
+    const offs = key.split(",").map((scope) => live.on(scope as LiveScope, trigger));
+    return () => {
+      offs.forEach((off) => off());
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [live, enabled, key]);
+
+  usePoll(fn, connected ? Math.max(ms, liveMs) : ms, enabled);
 }
 
 /** Загрузка списка с ручным обновлением и текстом ошибки. */

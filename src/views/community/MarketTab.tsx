@@ -1,13 +1,66 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ItemArt } from "../../components/ItemArt";
 import type { Player } from "../../game/types";
 import type { OnlineSession } from "../../net/online";
 import type { MarketListing } from "../../net/protocol";
-import { EmptyNote, ErrorBar, Panel, gearName, useLoader } from "./shared";
+import { EmptyNote, ErrorBar, Panel, gearName, useSync } from "./shared";
+
+const PAGE = 20;
 
 /** Рынок: игроки выставляют снаряжение за золото, остальные покупают. */
 export function MarketTab({ online, player }: { online: OnlineSession; player: Player }) {
-  const market = useLoader(() => online.api.market(), { listings: [] as MarketListing[] });
+  const [allListings, setAllListings] = useState<MarketListing[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const countRef = useRef(0);
+  countRef.current = allListings.length;
+  const loadingRef = useRef(false);
+  const sentinel = useRef<HTMLDivElement>(null);
+
+  /** Первая порция: обновляет витрину, хвост уже подгруженных лотов не трогаем. */
+  const loadFirst = async () => {
+    try {
+      const res = await online.api.market(0, PAGE);
+      setAllListings((cur) => {
+        const rest = cur.slice(PAGE).filter((l) => !res.listings.some((r) => r.id === l.id));
+        return [...res.listings, ...rest];
+      });
+      if (countRef.current <= PAGE) setHasMore(res.hasMore);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Витрина недоступна");
+    }
+  };
+
+  const loadMore = async () => {
+    if (loadingRef.current || !hasMore) return;
+    loadingRef.current = true;
+    setLoadingMore(true);
+    try {
+      const res = await online.api.market(countRef.current, PAGE);
+      setAllListings((cur) => [...cur, ...res.listings.filter((l) => !cur.some((c) => c.id === l.id))]);
+      setHasMore(res.hasMore);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось подгрузить лоты");
+    } finally {
+      loadingRef.current = false;
+      setLoadingMore(false);
+    }
+  };
+
+  useSync(loadFirst, { live: online.live, scopes: ["market"], ms: 8_000, liveMs: 60_000 });
+
+  useEffect(() => {
+    const node = sentinel.current;
+    if (!node || !hasMore) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) void loadMore();
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMore, allListings.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [uid, setUid] = useState("");
   const [price, setPrice] = useState("");
   const [onlyMine, setOnlyMine] = useState(false);
@@ -16,18 +69,18 @@ export function MarketTab({ online, player }: { online: OnlineSession; player: P
 
   const equipped = new Set(Object.values(player.equip ?? {}).filter((x): x is string => typeof x === "string"));
   const sellable = player.armory.filter((item) => !equipped.has(item.uid));
-  const listings = market.data.listings.filter((l) => (onlyMine ? l.mine : true));
+  const listings = allListings.filter((l) => (onlyMine ? l.mine : true));
 
   const run = async (fn: () => Promise<unknown>, ok: string) => {
     setBusy(true);
     try {
       await fn();
       setNotice(ok);
-      await market.refresh();
+      await loadFirst();
       // Сервер уже изменил золото и арсенал — подтягиваем актуального героя.
       await online.reload();
     } catch (err) {
-      market.setError(err instanceof Error ? err.message : "Ошибка");
+      setError(err instanceof Error ? err.message : "Ошибка");
     } finally {
       setBusy(false);
     }
@@ -35,7 +88,7 @@ export function MarketTab({ online, player }: { online: OnlineSession; player: P
 
   return (
     <div className="space-y-4">
-      <ErrorBar error={market.error} onClose={() => market.setError(null)} />
+      <ErrorBar error={error} onClose={() => setError(null)} />
       {notice && <div className="border border-verd/50 bg-verd/10 px-3 py-2 text-[0.94rem] text-verd">{notice}</div>}
 
       <Panel title="Выставить лот" hint="Предмет уходит с витрины в эскроу и вернётся, если снять лот. Надетые вещи выставлять нельзя.">
@@ -69,7 +122,7 @@ export function MarketTab({ online, player }: { online: OnlineSession; player: P
             onClick={async () => {
               const value = Number(price);
               if (!uid || !value) {
-                market.setError("Выберите предмет и укажите цену");
+                setError("Выберите предмет и укажите цену");
                 return;
               }
               await run(() => online.api.sell(uid, value), "Лот выставлен на рынке");
@@ -87,7 +140,7 @@ export function MarketTab({ online, player }: { online: OnlineSession; player: P
 
       <Panel
         title="Рынок"
-        hint={`${listings.length} лотов · продавцы получают золото сразу после покупки`}
+        hint={`${listings.length}${hasMore ? "+" : ""} лотов · продавцы получают золото сразу после покупки`}
         actions={
           <div className="flex items-center gap-2 font-mono text-[0.82rem] text-mute">
             <button onClick={() => setOnlyMine(false)} className={onlyMine ? "hover:text-flamehi" : "text-flamehi"}>
@@ -97,7 +150,7 @@ export function MarketTab({ online, player }: { online: OnlineSession; player: P
             <button onClick={() => setOnlyMine(true)} className={onlyMine ? "text-flamehi" : "hover:text-flamehi"}>
               мои
             </button>
-            <button onClick={market.refresh} className="ml-2 hover:text-flamehi">
+            <button onClick={() => void loadFirst()} className="ml-2 hover:text-flamehi">
               обновить
             </button>
           </div>
@@ -143,6 +196,9 @@ export function MarketTab({ online, player }: { online: OnlineSession; player: P
             ))}
           </ul>
         )}
+        <div ref={sentinel} className="py-2 text-center font-mono text-[0.8rem] text-mute">
+          {loadingMore ? "загружаем ещё…" : hasMore ? "прокрутите ниже, чтобы увидеть ещё" : allListings.length > 0 ? "это все лоты" : ""}
+        </div>
       </Panel>
     </div>
   );

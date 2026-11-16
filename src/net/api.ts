@@ -5,7 +5,10 @@ import type {
   DuelDetail,
   DuelSummary,
   MarketListing,
+  FriendRequestView,
+  NotificationFeed,
   OnlineProfile,
+  PlayerProfileView,
   PlayerSummary,
   TradeOffer,
 } from "./protocol";
@@ -131,24 +134,49 @@ export class ApiClient {
     return this.request("PUT", "/me", { player, unlockedFloor, bestFloor });
   }
 
-  players(query = ""): Promise<{ players: PlayerSummary[] }> {
-    return this.request("GET", `/players${query ? `?q=${encodeURIComponent(query)}` : ""}`);
+  /** Порция игроков: по 20 при прокрутке, поиск по имени или логину. */
+  players(query = "", offset = 0, limit = 20): Promise<{ players: PlayerSummary[]; hasMore: boolean }> {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (query) params.set("q", query);
+    return this.request("GET", `/players?${params.toString()}`);
+  }
+
+  playerProfile(id: string): Promise<{ profile: PlayerProfileView }> {
+    return this.request("GET", `/players/${id}/profile`);
   }
 
   friends(): Promise<{ friends: PlayerSummary[] }> {
     return this.request("GET", "/friends");
   }
 
-  addFriend(id: string): Promise<{ friend: PlayerSummary }> {
-    return this.request("POST", "/friends", { id });
+  /** Заявка в друзья: дружба появится после подтверждения получателем. */
+  sendFriendRequest(id: string): Promise<{ status: "requested" | "friend"; friend: PlayerSummary | null }> {
+    return this.request("POST", "/friends/requests", { id });
+  }
+
+  friendRequests(): Promise<{ incoming: FriendRequestView[]; outgoing: FriendRequestView[] }> {
+    return this.request("GET", "/friends/requests");
+  }
+
+  acceptFriendRequest(requestId: string): Promise<{ ok: boolean }> {
+    return this.request("POST", `/friends/requests/${requestId}/accept`);
+  }
+
+  declineFriendRequest(requestId: string): Promise<{ ok: boolean }> {
+    return this.request("POST", `/friends/requests/${requestId}/decline`);
+  }
+
+  cancelFriendRequest(requestId: string): Promise<{ ok: boolean }> {
+    return this.request("DELETE", `/friends/requests/${requestId}`);
   }
 
   removeFriend(id: string): Promise<{ ok: boolean }> {
     return this.request("DELETE", `/friends/${id}`);
   }
 
-  market(): Promise<{ listings: MarketListing[] }> {
-    return this.request("GET", "/market");
+  /** Порция лотов: по 20 при прокрутке. */
+  market(offset = 0, limit = 20): Promise<{ listings: MarketListing[]; hasMore: boolean }> {
+    return this.request("GET", `/market?limit=${limit}&offset=${offset}`);
   }
 
   sell(itemUid: string, price: number): Promise<{ ok: boolean }> {
@@ -213,6 +241,24 @@ export class ApiClient {
 
   duelAction(id: string, action: DuelAction): Promise<{ duel: DuelDetail }> {
     return this.request("POST", `/duels/${id}/action`, { action });
+  }
+
+  notifications(since = 0): Promise<NotificationFeed> {
+    return this.request("GET", `/notifications?since=${since}`);
+  }
+
+  /** Отмечает прочитанными уведомления выбранных разделов (или все, если типы не заданы). */
+  readNotifications(kinds?: string[]): Promise<{ ok: boolean }> {
+    return this.request("POST", "/notifications/read", kinds ? { kinds } : {});
+  }
+
+  /** Адрес потока событий и токен для него: поток открывается через fetch с заголовком. */
+  get eventsUrl(): string {
+    return `${BASE}/events`;
+  }
+
+  get authToken(): string | null {
+    return this.token;
   }
 
   chat(after = 0): Promise<{ messages: ChatMessage[] }> {

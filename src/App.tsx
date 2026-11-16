@@ -3,6 +3,7 @@ import { useOnline } from "./net/online";
 import { useSaveSync } from "./net/useSaveSync";
 import { AuthView } from "./views/AuthView";
 import { CommunityView } from "./views/CommunityView";
+import { NotifyToast } from "./components/NotifyToast";
 import { AudioSettings } from "./components/AudioSettings";
 import { mazeBiome } from "./game/biomes";
 import { GameView } from "./views/GameView";
@@ -33,6 +34,7 @@ export default function App() {
           state={state}
           onOpenCommunity={online.status === "online" ? () => setCommunity(true) : undefined}
           onOpenAuth={online.status === "online" ? undefined : online.openAuth}
+          communityUnread={online.unread}
         />
       )}
       {community && online.status === "online" && (
@@ -48,6 +50,8 @@ export default function App() {
       {state.screen !== "lobby" && state.screen !== "dungeon" && <AudioSettings />}
       {/* Форма входа, а при недоступном сервере — объяснение, почему онлайн не работает. */}
       {online.authOpen && <AuthView />}
+      {/* Подсказка о новом уведомлении: видна в игре, пока её не закроют или не пройдёт время. */}
+      {online.status === "online" && online.toast && <NotifyToast toast={online.toast} onOpen={() => { online.dismissToast(); setCommunity(true); }} onClose={online.dismissToast} />}
     </>
   );
 }
