@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { createServer } from "node:http";
 import { Db } from "./db";
 import { createStaticHandler } from "./static";
-import { HttpError, readBody, send, type Ctx } from "./http";
+import { HttpError, RESPONDED, readBody, send, type Ctx } from "./http";
 import {
   handleAuth,
   handleChat,
@@ -18,6 +18,7 @@ import {
   handleTrades,
 } from "./api";
 import { handleEvents } from "./events";
+import { deletePortrait, getPortrait, uploadPortrait } from "./portrait";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const DB_FILE = process.env.DB_FILE ?? "server/data/sumrak.db";
@@ -27,7 +28,7 @@ const DIST_DIR = process.env.DIST_DIR ?? "dist";
 const db = new Db(DB_FILE);
 const serveStatic = createStaticHandler(DIST_DIR);
 
-const routes: { method: string; re: RegExp; keys: string[]; run: (ctx: Ctx, db: Db, p: Record<string, string>) => unknown }[] = [
+const routes: { method: string; re: RegExp; keys: string[]; raw?: boolean; run: (ctx: Ctx, db: Db, p: Record<string, string>) => unknown }[] = [
   { method: "GET", re: /^\/api\/health$/, keys: [], run: () => ({ ok: true, service: "sumrak-api" }) },
   { method: "POST", re: /^\/api\/auth\/(register|login|logout)$/, keys: ["action"], run: (ctx, d, p) => handleAuth(ctx, d, p.action) },
   { method: "GET", re: /^\/api\/me$/, keys: [], run: (ctx, d) => handleMe(ctx, d, "GET") },
@@ -41,6 +42,9 @@ const routes: { method: string; re: RegExp; keys: string[]; run: (ctx: Ctx, db: 
   { method: "POST", re: /^\/api\/friends\/requests\/([\w-]+)\/(accept|decline)$/, keys: ["id", "action"], run: (ctx, d, p) => handleFriendRequests(ctx, d, "POST", p.id, p.action) },
   { method: "DELETE", re: /^\/api\/friends\/requests\/([\w-]+)$/, keys: ["id"], run: (ctx, d, p) => handleFriendRequests(ctx, d, "DELETE", p.id, null) },
   { method: "GET", re: /^\/api\/players\/([\w-]+)\/profile$/, keys: ["id"], run: (ctx, d, p) => handlePlayerProfile(ctx, d, p.id) },
+  { method: "GET", re: /^\/api\/players\/([\w-]+)\/portrait$/, keys: ["id"], run: (ctx, d, p) => getPortrait(ctx, d, p.id) },
+  { method: "PUT", re: /^\/api\/me\/portrait$/, keys: [], raw: true, run: (ctx, d) => uploadPortrait(ctx, d) },
+  { method: "DELETE", re: /^\/api\/me\/portrait$/, keys: [], run: (ctx, d) => deletePortrait(ctx, d) },
   { method: "GET", re: /^\/api\/notifications$/, keys: [], run: (ctx, d) => handleNotifications(ctx, d, "GET", null) },
   { method: "POST", re: /^\/api\/notifications\/read$/, keys: [], run: (ctx, d) => handleNotifications(ctx, d, "POST", "read") },
   { method: "GET", re: /^\/api\/market$/, keys: [], run: (ctx, d) => handleMarket(ctx, d, "GET", null) },
@@ -86,9 +90,10 @@ const server = createServer(async (req, res) => {
       if (!match) continue;
       const params: Record<string, string> = {};
       route.keys.forEach((key, i) => (params[key] = match[i + 1]));
-      const body = method === "GET" || method === "DELETE" ? {} : await readBody(req);
+      const body = route.raw || method === "GET" || method === "DELETE" ? {} : await readBody(req);
       const ctx: Ctx = { req, res, url, params, body, token };
       const data = await Promise.resolve(route.run(ctx, db, params));
+      if (data === RESPONDED) return;
       send(res, 200, data);
       return;
     }

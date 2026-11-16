@@ -414,3 +414,96 @@ test("server: first chat load returns the newest messages, not the oldest", asyn
   const next = await api("GET", `/chat/global?after=${ids.at(-1)}`, author.token);
   assert.equal(next.data.messages.length, 0, "дальше приходят только новые");
 });
+
+/* ─────────────────────────── портреты ─────────────────────────── */
+
+async function rawUpload(token, buffer, type = "image/jpeg") {
+  const res = await fetch(BASE + "/me/portrait", {
+    method: "PUT",
+    headers: { "Content-Type": type, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: buffer,
+  });
+  const text = await res.text();
+  return { status: res.status, data: text ? JSON.parse(text) : {} };
+}
+
+async function sampleJpeg(width = 600, height = 400) {
+  const sharp = require("sharp");
+  return sharp({ create: { width, height, channels: 3, background: "#886644" } }).jpeg().toBuffer();
+}
+
+test("server: портрет: загрузка обрезается до 256×256 WEBP и виден в списке, профиле и чате", async () => {
+  const hero = await account("portrait_hero");
+  const other = await account("portrait_other");
+
+  const up = await rawUpload(hero.token, await sampleJpeg());
+  assert.equal(up.status, 200, JSON.stringify(up.data));
+  assert.equal(typeof up.data.portrait, "number");
+
+  const img = await fetch(`${BASE}/players/${hero.id}/portrait`, { headers: { Authorization: `Bearer ${other.token}` } });
+  assert.equal(img.status, 200);
+  assert.equal(img.headers.get("content-type"), "image/webp");
+  const meta = await require("sharp")(Buffer.from(await img.arrayBuffer())).metadata();
+  assert.equal(meta.format, "webp");
+  assert.equal(meta.width, 256);
+  assert.equal(meta.height, 256);
+
+  const list = await api("GET", "/players?q=portrait_hero", other.token);
+  const seen = list.data.players.find((p) => p.id === hero.id);
+  assert.equal(seen.portrait, up.data.portrait, "версия портрета в списке игроков");
+
+  const profile = await api("GET", `/players/${hero.id}/profile`, other.token);
+  assert.equal(profile.data.profile.portrait, up.data.portrait, "версия портрета в профиле");
+
+  const mine = await api("GET", "/me", hero.token);
+  assert.equal(mine.data.profile.portrait, up.data.portrait, "версия портрета в собственном профиле");
+
+  await api("POST", "/chat/global", hero.token, { body: "с портретом" });
+  const chat = await api("GET", "/chat/global?after=0", other.token);
+  const msg = chat.data.messages.find((m) => m.body === "с портретом");
+  assert.equal(msg.fromPortrait, up.data.portrait, "версия портрета автора в сообщении");
+});
+
+test("server: портрет: отказ по формату, размеру и без входа", async () => {
+  const user = await account("portrait_reject");
+  const text = await rawUpload(user.token, Buffer.from("это не картинка"), "image/png");
+  assert.equal(text.status, 415, "текст вместо картинки");
+
+  const big = Buffer.alloc(2_000_001);
+  big[0] = 0xff;
+  big[1] = 0xd8;
+  big[2] = 0xff;
+  const tooBig = await rawUpload(user.token, big);
+  assert.equal(tooBig.status, 413, "больше 2 МБ");
+
+  const anon = await rawUpload(null, await sampleJpeg());
+  assert.equal(anon.status, 401);
+  const open = await fetch(`${BASE}/players/${user.id}/portrait`);
+  assert.equal(open.status, 404, "без портрета картинки нет, но и вход не нужен");
+
+  const broken = Buffer.from([0xff, 0xd8, 0xff, 0x00, 0x01, 0x02]);
+  const bad = await rawUpload(user.token, broken);
+  assert.equal(bad.status, 415, "сигнатура есть, а декодировать нечего");
+});
+
+test("server: портрет: замена меняет версию, ETag даёт 304, удаление убирает картинку", async () => {
+  const user = await account("portrait_swap");
+  const first = await rawUpload(user.token, await sampleJpeg(300, 300));
+  await new Promise((r) => setTimeout(r, 5));
+  const second = await rawUpload(user.token, await sampleJpeg(200, 500), "image/jpeg");
+  assert.ok(second.data.portrait > first.data.portrait, "новая версия");
+
+  const url = `${BASE}/players/${user.id}/portrait`;
+  const img = await fetch(url, { headers: { Authorization: `Bearer ${user.token}` } });
+  const etag = img.headers.get("etag");
+  assert.ok(etag && etag.includes(String(second.data.portrait)));
+  const cached = await fetch(url, { headers: { Authorization: `Bearer ${user.token}`, "If-None-Match": etag } });
+  assert.equal(cached.status, 304);
+
+  const del = await api("DELETE", "/me/portrait", user.token);
+  assert.equal(del.status, 200);
+  const gone = await fetch(url, { headers: { Authorization: `Bearer ${user.token}` } });
+  assert.equal(gone.status, 404);
+  const mine = await api("GET", "/me", user.token);
+  assert.equal(mine.data.profile.portrait, null);
+});

@@ -3,6 +3,7 @@ import type { Player } from "../../game/types";
 import type { OnlineSession } from "../../net/online";
 import type { TradeOffer } from "../../net/protocol";
 import { EmptyNote, ErrorBar, GearChip, GearPicker, Panel, useSync } from "./shared";
+import { PlayerPortrait } from "../../components/PlayerPortrait";
 
 const STATUS_LABEL: Record<TradeOffer["status"], string> = {
   offered: "ждёт ответа",
@@ -118,7 +119,10 @@ export function TradesTab({ online, player }: { online: OnlineSession; player: P
         ) : (
           cards(incoming, (t) => (
             <>
-              <div className="mb-2 font-display text-[1.02rem] uppercase tracking-[0.04em] text-flamehi">{t.fromName} предлагает</div>
+              <div className="mb-2 flex items-center gap-2 font-display text-[1.02rem] uppercase tracking-[0.04em] text-flamehi">
+                <PlayerPortrait id={t.fromId} name={t.fromName} version={t.fromPortrait} size={32} />
+                {t.fromName} предлагает
+              </div>
               <div className="mb-2 flex flex-wrap gap-1.5">{t.offer.map((item) => <GearChip key={item.uid} item={item} />)}</div>
               {t.message && <p className="mb-2 text-[0.94rem] italic text-mute">«{t.message}»</p>}
               <div className="flex flex-wrap gap-2">
@@ -152,7 +156,8 @@ export function TradesTab({ online, player }: { online: OnlineSession; player: P
         ) : (
           cards(answered, (t) => (
             <>
-              <div className="mb-2 font-display text-[1.02rem] uppercase tracking-[0.04em] text-flamehi">
+              <div className="mb-2 flex items-center gap-2 font-display text-[1.02rem] uppercase tracking-[0.04em] text-flamehi">
+                <PlayerPortrait id={t.toId} name={t.toName} version={t.toPortrait} size={32} />
                 {t.toName} готов отдать
               </div>
               <div className="mb-2 flex flex-wrap gap-1.5">{t.request.map((item) => <GearChip key={item.uid} item={item} />)}</div>
@@ -185,7 +190,8 @@ export function TradesTab({ online, player }: { online: OnlineSession; player: P
         <Panel title="Ваши предложения" hint="Ждут ответа получателя">
           {cards(waiting, (t) => (
             <>
-              <div className="mb-2 font-display text-[1.02rem] uppercase tracking-[0.04em] text-parch">
+              <div className="mb-2 flex items-center gap-2 font-display text-[1.02rem] uppercase tracking-[0.04em] text-parch">
+                <PlayerPortrait id={t.toId} name={t.toName} version={t.toPortrait} size={32} />
                 Вы → {t.toName}
               </div>
               <div className="mb-2 flex flex-wrap gap-1.5">{t.offer.map((item) => <GearChip key={item.uid} item={item} />)}</div>

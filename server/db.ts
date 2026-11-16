@@ -105,6 +105,11 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 CREATE INDEX IF NOT EXISTS notifications_user ON notifications (user_id, id);
 CREATE INDEX IF NOT EXISTS sessions_user ON sessions (user_id);
+CREATE TABLE IF NOT EXISTS portraits (
+  user_id TEXT PRIMARY KEY,
+  data BLOB NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 `;
 
 export class Db {

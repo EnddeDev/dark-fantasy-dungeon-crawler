@@ -9,6 +9,7 @@ await build({
   platform: "node",
   target: "node22",
   format: "esm",
-  external: ["node:sqlite", "node:http", "node:crypto", "node:fs", "node:path", "node:os", "node:url"],
+  // sharp содержит нативный код: остаётся внешним и берётся из node_modules.
+  external: ["node:sqlite", "node:http", "node:crypto", "node:fs", "node:path", "node:os", "node:url", "sharp"],
   logLevel: "info",
 });

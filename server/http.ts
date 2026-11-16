@@ -14,6 +14,22 @@ export class HttpError extends Error {
   }
 }
 
+/** Маркер: обработчик сам записал ответ (например, бинарная картинка). */
+export const RESPONDED = Symbol("responded");
+
+/** Сырое тело (картинка): без JSON-разбора, с отдельным лимитом. */
+export async function readRaw(req: import("node:http").IncomingMessage, max: number): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    const buf = chunk as Buffer;
+    size += buf.length;
+    if (size > max) throw new HttpError(413, "Файл слишком большой");
+    chunks.push(buf);
+  }
+  return Buffer.concat(chunks);
+}
+
 export function send(res: import("node:http").ServerResponse, status: number, data?: unknown): void {
   const body = data === undefined ? "" : JSON.stringify(data);
   res.writeHead(status, {

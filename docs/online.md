@@ -74,6 +74,7 @@ sessions(token, user_id, created_at, seen_at) — сессии, «онлайн»
 profiles(user_id, name, level, best_floor, gold, save, updated_at)
                                             — герой целиком в save (JSON) + быстрые поля для витрин
 friends(user_id, friend_id, created_at)     — дружба двусторонняя, две строки
+portraits(user_id, data, updated_at)        — портрет: WEBP 256×256, BLOB; версия = updated_at
 trades(id, from_id, to_id, status, offer, request, message, …)
                                             — обмен: offer — вещи автора, request — встречный набор
 market(id, seller_id, item, price, status, buyer_id, …)
@@ -130,6 +131,25 @@ notifications(id, user_id, kind, ref_id, body, created_at, read_at)
 Правая и Левая рука, Кольца I и II, Ботинки) и состояние дружбы. Золото, сундук, сумку, архетип,
 рекорд этажа и историю боёв сервер не отдаёт: ответ собирается из отдельных полей, сырой JSON героя
 наружу не уходит. Из профиля можно написать (только друзьям), предложить обмен или вызвать на дуэль.
+
+## Портреты
+
+Игрок может загрузить портрет на вкладке «Профиль» сообщества. Портрет виден всем: в списке игроков,
+профиле, заявках, друзьях, чате, рынке, обменах и дуэлях (на карточках арены вместо инициала).
+
+- `PUT /api/me/portrait` — сырой файл (`Content-Type`: `image/jpeg`, `image/png` или `image/webp`), до 2 МБ.
+  Тип определяется по сигнатуре файла. Сервер через `sharp` поворачивает картинку по EXIF, обрезает
+  по центру до 256×256 и сохраняет WEBP. Ответы: 415 — не картинка, 413 — больше 2 МБ, 401 — нет входа.
+- `DELETE /api/me/portrait` — убрать портрет.
+- `GET /api/players/:id/portrait` — сама картинка. Открытая (тег `<img>` не шлёт `Authorization`),
+  кэш через `ETag`, адрес клиента добавляет версию `?v=` и сбрасывает кэш при замене.
+- В ответах с игроками поле `portrait` — версия (число) или `null`. У обмена, чата, рынка и дуэли
+  версии автора и участников: `fromPortrait`, `toPortrait`, `sellerPortrait`, `challengerPortrait`, `opponentPortrait`.
+- Модерации нет: портрет виден сразу, владелец может заменить или удалить его.
+
+**Важно для VPS:** nginx по умолчанию пропускает тело запроса до 1 МБ, а портрет может весить до 2 МБ.
+В блоке `server` сайта добавить `client_max_body_size 3m;` и выполнить `sudo nginx -t && sudo systemctl reload nginx`.
+Без этого загрузки больше 1 МБ получат ответ 413 от nginx, ещё до сервера.
 
 ## Друзья по заявкам
 

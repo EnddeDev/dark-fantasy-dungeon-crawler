@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Coins, Dice5, MessageSquare, Store, Users, X } from "lucide-react";
+import { Coins, Dice5, MessageSquare, Store, UserRound, Users, X } from "lucide-react";
 import type { Player } from "../game/types";
 import { useOnline } from "../net/online";
 import type { NotificationKind, PlayerSummary } from "../net/protocol";
@@ -7,9 +7,10 @@ import { ChatTab } from "./community/ChatTab";
 import { DuelsTab } from "./community/DuelsTab";
 import { MarketTab } from "./community/MarketTab";
 import { PlayersTab } from "./community/PlayersTab";
+import { ProfileTab } from "./community/ProfileTab";
 import { TradesTab } from "./community/TradesTab";
 
-export type CommunityTab = "players" | "market" | "trades" | "duels" | "chat";
+export type CommunityTab = "players" | "market" | "trades" | "duels" | "chat" | "profile";
 
 const TABS: { id: CommunityTab; label: string; Icon: typeof Users; kinds: NotificationKind[] }[] = [
   { id: "players", label: "Игроки", Icon: Users, kinds: ["friend_request", "friend_accepted"] },
@@ -17,6 +18,7 @@ const TABS: { id: CommunityTab; label: string; Icon: typeof Users; kinds: Notifi
   { id: "trades", label: "Обмены", Icon: Coins, kinds: ["trade"] },
   { id: "duels", label: "Дуэли", Icon: Dice5, kinds: ["duel"] },
   { id: "chat", label: "Чат", Icon: MessageSquare, kinds: ["dm"] },
+  { id: "profile", label: "Профиль", Icon: UserRound, kinds: [] },
 ];
 
 const PERMISSION_LABEL: Record<string, string> = {
@@ -147,6 +149,7 @@ export function CommunityView({
         {tab === "trades" && <TradesTab online={online} player={player} />}
         {tab === "duels" && <DuelsTab online={online} openId={openDuelId} setOpenId={setOpenDuelId} />}
         {tab === "chat" && <ChatTab online={online} initialPeer={chatPeer} />}
+        {tab === "profile" && <ProfileTab online={online} />}
       </div>
     </div>
   );
