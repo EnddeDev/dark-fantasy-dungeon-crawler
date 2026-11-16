@@ -351,7 +351,8 @@ test("server: player profile shows equipment and stats, hides gold, chest, bag a
   assert.equal(res.status, 200, JSON.stringify(res.data));
   const { profile } = res.data;
   assert.deepEqual(profile.stats, { str: ownerSaved.stats.str, agi: ownerSaved.stats.agi, int: ownerSaved.stats.int });
-  assert.equal(profile.equip.mainHand.baseId, "sword", "надетый предмет виден");
+  assert.equal(profile.equip.mainHand.item.baseId, "sword", "надетый предмет виден");
+  assert.equal(profile.equip.mainHand.identified, true, "опознанный предмет отдаётся целиком");
   assert.equal(profile.equip.offHand, null, "пустой слот пуст");
   const text = JSON.stringify(res.data);
   for (const hidden of ["gold", "bag", "pouch", "bestFloor", "archetype", "armory", "statMilestones"]) {
@@ -506,4 +507,50 @@ test("server: портрет: замена меняет версию, ETag да�
   assert.equal(gone.status, 404);
   const mine = await api("GET", "/me", user.token);
   assert.equal(mine.data.profile.portrait, null);
+});
+
+test("server: профиль: опознанный предмет отдаётся целиком, неопознанный — без характеристик и редкости", async () => {
+  const owner = await account("gear_owner");
+  const viewer = await account("gear_viewer");
+  await savePlayer(owner.token, (p) => {
+    p.armory = [
+      { ...gear("blade-known"), rarity: "rare", statRolls: { hp: 33, armor: 0 } },
+      {
+        uid: "amu-1",
+        baseId: "amulet",
+        slot: "amulet",
+        level: 1,
+        gearClass: "light",
+        kind: "accessory",
+        wear: "new",
+        wearMult: 1.325,
+        rarity: "rare",
+        identified: false,
+        statMult: 1,
+        effects: ["regen"],
+      },
+    ];
+    p.equip = { ...p.equip, mainHand: "blade-known", amulet: "amu-1" };
+  });
+
+  const res = await api("GET", `/players/${owner.id}/profile`, viewer.token);
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  const { equip } = res.data.profile;
+
+  const known = equip.mainHand;
+  assert.equal(known.identified, true);
+  assert.equal(known.item.rarity, "rare", "у опознанного видна редкость");
+  assert.deepEqual(known.item.statRolls, { hp: 33, armor: 0 }, "у опознанного видны броски");
+
+  const amulet = equip.amulet;
+  assert.equal(amulet.identified, false, "неопознанный отмечен");
+  assert.equal(amulet.item.baseId, "amulet");
+  assert.equal(typeof amulet.item.classLabel, "string", "подпись класса есть");
+  assert.equal(amulet.item.level, 1);
+  assert.equal(typeof amulet.item.peek.name, "string", "подсказка первого эффекта аксессуара");
+  assert.equal(typeof amulet.item.peek.detail, "string");
+  const amuletText = JSON.stringify(amulet);
+  for (const hidden of ["rarity", "statRolls", "wearMult", "statMult", "effects", "effectRolls"]) {
+    assert.equal(amuletText.includes(`"${hidden}"`), false, `поле ${hidden} неопознанного не отдаётся`);
+  }
 });
