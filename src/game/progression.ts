@@ -16,6 +16,17 @@ export function totalStatPoints(level: number): number {
   return START_STAT_POINTS + STAT_POINTS_PER_LEVEL * (lvl - 1);
 }
 
+/**
+ * Здоровье после смены снаряжения. Смена предметов не лечит: раненый герой
+ * сохраняет свои ОЗ (только не выше нового максимума), полностью здоровый
+ * остаётся полным. Иначе цикл «надеть — снять» с бонусом к ОЗ восстанавливал бы
+ * здоровье при каждом повторе.
+ */
+export function hpAfterGearChange(hp: number, maxBefore: number, maxAfter: number): number {
+  const wasFull = hp >= maxBefore;
+  return Math.max(0, Math.min(maxAfter, wasFull ? maxAfter : hp));
+}
+
 export function statResetCost(level: number): number {
   return 100 * Math.max(1, Math.floor(level));
 }

@@ -28,7 +28,6 @@ export type MapEffectKind =
   | "reagent"
   | "supply"
   | "gear"
-  | "stat"
   | "torch";
 
 export interface MapEffect {
@@ -427,9 +426,9 @@ export const NEUTRAL_EVENTS: MapEvent[] = [
         detail: "Характеристика за кровь",
         stat: "str",
         chance: 0.55,
-        good: [{ k: "stat", v: 1, stat: "str" }, { k: "hp", v: -24 }],
+        good: [{ k: "xp", v: 25 }, { k: "hp", v: -24 }],
         bad: [{ k: "xp", v: 40 }, { k: "curse", v: 3 }],
-        goodText: "Тело твердеет: сила в пригоршне, но шрам уже не сойдёт.",
+        goodText: "Тело твердеет, и шрам уже не сойдёт. Боль учит быстрее любой книги.",
         badText: "Клеймо не легло — осталась лишь печать усталости и чужое неудовольствие.",
       },
       {
@@ -458,7 +457,7 @@ export const NEUTRAL_EVENTS: MapEvent[] = [
         detail: "Продолжить чужую молитву",
         stat: "int",
         chance: 0.6,
-        good: [{ k: "xp", v: 50 }, { k: "stat", v: 1, stat: "int" }],
+        good: [{ k: "xp", v: 50 }, { k: "xp", v: 25 }],
         bad: [{ k: "xp", v: 20 }, { k: "curse", v: 3 }],
         goodText: "Ты называешь следующее число, и скелет разжимает пальцы. В голове становится яснее.",
         badText: "Счёт сбивается на третьей строке, и в ушах остаётся чужое бормотание.",
@@ -531,9 +530,9 @@ export const NEUTRAL_EVENTS: MapEvent[] = [
         detail: "Найти колокол без языка",
         stat: "int",
         chance: 0.55,
-        good: [{ k: "stat", v: 1, stat: "agi" }, { k: "xp", v: 25 }],
+        good: [{ k: "xp", v: 25 }, { k: "xp", v: 25 }],
         bad: [{ k: "xp", v: 18 }, { k: "poison", v: 2 }],
-        goodText: "Ты бьёшь в четвёртый — он единственный отзывается телом, а не слухом. Шаг становится легче.",
+        goodText: "Ты бьёшь в четвёртый — он единственный отзывается телом, а не слухом. Ритм остаётся в голове.",
         badText: "Отзывается не тот колокол. Дыхание сбивается, и в горле остаётся медный привкус.",
       },
       later("Обойти", "Тишина дороже"),

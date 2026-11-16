@@ -1,6 +1,7 @@
 import { derived, newBattle, rollConsumableLoot, rollGearDrop } from "../game/battle";
 import { biomeHealingAmount, mazeBiome } from "../game/biomes";
 import { playSfx } from "../audio/sfx";
+import { hpAfterGearChange } from "../game/progression";
 import { CHEST_RARITY_WEIGHTS, DUNGEON_GOLD_SHARE, GEAR_BASES, ITEMS, consumableIntReq, consumablePower, equipItem, grantXp, pick, reagentPoolForFloor, scaledGearStats, unequipSlot } from "../game/content";
 import { cellIdx, findPath, openDirs, trapsWithin, wallBetween } from "../game/maze";
 import { pruneRunLoot } from "../game/runLoot";
@@ -69,7 +70,7 @@ export class DungeonController {
     const item = player.armory.find((g) => g.uid === uid);
     const name = item ? GEAR_BASES[item.baseId]?.name ?? "предмет" : "предмет";
     const after = derived(res.player).maxHp;
-    this.model.setPlayer({ ...res.player, hp: Math.min(after, res.player.hp + Math.max(0, after - before)) });
+    this.model.setPlayer({ ...res.player, hp: hpAfterGearChange(player.hp, before, after) });
     if (res.player !== player) playSfx("equip");
     this.model.logRun(`Смена снаряжения: ${name} → ${SLOT_META[slot].name.toLowerCase()}${res.note ? `. ${res.note}` : "."}`);
   }
@@ -80,7 +81,7 @@ export class DungeonController {
       const before = derived(p).maxHp;
       const next = unequipSlot(p, slot);
       const after = derived(next).maxHp;
-      return { ...next, hp: Math.min(after, next.hp + Math.max(0, after - before)) };
+      return { ...next, hp: hpAfterGearChange(p.hp, before, after) };
     });
     this.model.logRun(`${SLOT_META[slot].name}: снято.`);
   }
@@ -127,7 +128,6 @@ export class DungeonController {
         case "reagent": for (let i = 0; i < (e.v ?? 1); i++) gainedItems.push(pick(reagentPoolForFloor(ctx.floor))); break;
         case "supply": for (let i = 0; i < (e.v ?? 1); i++) gainedItems.push(pick(["potion_s", "antidote", "scroll_spark", "throwing_knife"])); break;
         case "gear": for (let i = 0; i < (e.v ?? 1); i++) gainedGear.push(rollGearDrop(ctx.floor, CHEST_RARITY_WEIGHTS, ctx.floor)); break;
-        case "stat": if (e.stat) stats[e.stat] = Math.min(10, (stats[e.stat] ?? 1) + (e.v ?? 1)); break;
         case "torch": torchDelta += e.v ?? 0; break;
       }
     }
