@@ -51,8 +51,8 @@ test("обычные монстры: здоровье выше медианы р
     const race = s.def.race;
     const T = monsters.MONSTER_TYPE_META[s.mtype].hpMult;
     const str = s.stats.str;
-    /* Из итоговых значений восстанавливаем R: ОЗ = 35·T·R + 10·СИЛ, удар = 10·T·R + 1·СИЛ. */
-    const rHp = (s.baseHp - 10 * str) / (35 * T);
+    /* Из итоговых значений восстанавливаем R: ОЗ = 35·T·R + 20·СИЛ, удар = 10·T·R + 1·СИЛ. */
+    const rHp = (s.baseHp - 20 * str) / (35 * T);
     const rAtk = (s.baseAtk - 1 * str) / (10 * T);
     const [hpLo, hpHi] = monsters.RACE_HP_RANGE[race];
     const [atkLo, atkHi] = monsters.RACE_ATK_RANGE[race];

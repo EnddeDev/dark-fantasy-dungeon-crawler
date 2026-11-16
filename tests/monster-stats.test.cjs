@@ -259,7 +259,7 @@ test("здоровье: H = 35 × T × R + 10 × СИЛ, ОЗ = max(35, H × L �
     const s = battle.spawnEnemy(floor, false, lcg(i + 17));
     const [lo, hi] = RANGES[s.def.race];
     const T = monsters.MONSTER_TYPE_META[s.mtype].hpMult;
-    const R = (s.baseHp - 10 * s.stats.str) / (35 * T);
+    const R = (s.baseHp - 20 * s.stats.str) / (35 * T);
     assert.ok(R >= lo - 1e-9 && R <= hi + 1e-9, `${s.def.id}: R ${R} вне ${lo}–${hi}`);
     const L = scaling.enemyLevelMult(s.level);
     const threatMult = { normal: 1.3, horror: 1.625, catastrophe: 1.95 }[s.threat];
