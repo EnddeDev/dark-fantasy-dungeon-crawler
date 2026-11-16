@@ -1,0 +1,68 @@
+name: Deploy to VPS
+
+# Обновляет игру на VPS после каждого push в main.
+# Нужны секреты репозитория (Settings → Secrets and variables → Actions):
+#   VPS_HOST     — IP или домен сервера, например 5.63.152.189
+#   VPS_USER     — пользователь на сервере, например deploy
+#   VPS_SSH_KEY  — приватный SSH-ключ этого пользователя (целиком, с BEGIN/END)
+#   VPS_PORT     — порт SSH, необязательно (по умолчанию 22)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Проверка секретов
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          for v in VPS_HOST VPS_USER VPS_SSH_KEY; do
+            if [ -z "${!v}" ]; then
+              echo "Не задан секрет $v"
+              exit 1
+            fi
+          done
+
+      - name: Обновление на сервере
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+        run: |
+          PORT="${VPS_PORT:-22}"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$PORT" -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/deploy_key -p "$PORT" -o BatchMode=yes "$VPS_USER@$VPS_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd /var/www/sumrak
+          git fetch origin main
+          git checkout main
+          git pull --ff-only origin main
+          npm ci
+          npm run build
+          npm run server:build
+          pm2 restart sumrak
+          for _ in $(seq 1 20); do
+            curl -fsS http://127.0.0.1:8787/api/health >/dev/null && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8787/api/health
+          echo "Обновление завершено: $(git rev-parse --short HEAD)"
+          REMOTE
