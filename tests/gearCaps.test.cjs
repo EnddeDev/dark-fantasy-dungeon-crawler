@@ -25,6 +25,8 @@ const ROUNDS = 300;
 function armorBases(gearClass, stat) {
   return Object.values(content.GEAR_BASES).filter((b) => {
     if (content.gearKindOfBase(b) === "weapon") return false;
+    /* Части сетов берут свойства из пула сета (см. gearSets.test.cjs), а не из пула по характеристике. */
+    if (b.set) return false;
     const cls = b.gearClass ?? "medium";
     const st = b.stat ?? (cls === "heavy" ? "str" : cls === "light" ? "int" : "agi");
     return cls === gearClass && st === stat;

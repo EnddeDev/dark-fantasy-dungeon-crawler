@@ -6,6 +6,7 @@
 import type { ArchetypeId } from "./archetypes";
 import type { StatKey } from "./types";
 import { effectMagnitude, passiveMagnitude } from "./gearScaling";
+import { gearSetById } from "./gearSets";
 
 export type GearEffectId =
   // СИЛ / Бастион
@@ -149,10 +150,14 @@ export interface GearPoolQuery {
   /** Лёгкая броня без требования. */
   requiresNothing?: boolean;
   archetype?: ArchetypeId | null;
+  /** Сет части: пул свойств — только 6 свойств сета, без пула по характеристике. */
+  setId?: string | null;
 }
 
 /** Пул свойств предмета по его типу и требованию. */
 export function effectPoolForGear(q: GearPoolQuery): GearEffectId[] {
+  const set = gearSetById(q.setId);
+  if (set) return set.effects.filter((id) => ACTIVE_GEAR_EFFECTS.includes(id));
   if (q.kind === "weapon") {
     const pool = WEAPON_EFFECT_POOLS[q.weaponType ?? "sword"] ?? WEAPON_EFFECT_POOLS.sword;
     return pool.filter((id) => ACTIVE_GEAR_EFFECTS.includes(id));

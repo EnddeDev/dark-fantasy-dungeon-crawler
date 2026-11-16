@@ -72,6 +72,7 @@ import {
 import { statConsumableDamage, statTechniqueDamage } from "./statFormulas";
 import type { ArchetypeId } from "./archetypes";
 import { migrateLegacyId } from "./archetypeMigration";
+import { SET_GEAR_BASES } from "./gearSets";
 export { ARCHETYPES, ARCHETYPE_ORDER, archetypeForStat, archetypeMilestoneIds, archetypeByMilestone } from "./archetypes";
 export type { ArchetypeId } from "./archetypes";
 
@@ -695,6 +696,8 @@ export interface GearBaseDef {
   weaponType?: WeaponType;
   /** Лёгкая броня может не требовать характеристику вовсе. */
   noReq?: boolean;
+  /** Сет, которому принадлежит часть: задаёт пул свойств (см. gearSets.ts). */
+  set?: string;
 }
 
 /* До введения новых слотов базы использовали «weapon»/«armor»/«trinket»;
@@ -1333,6 +1336,7 @@ export const GEAR_BASES: Record<string, GearBaseDef> = normalizeGearBases([
   ...EXTRA_GEAR,
   ...ARCHETYPE_GEAR,
   ...SHOP_STARTER_GEAR,
+  ...SET_GEAR_BASES,
 ]);
 
 /* ─────────────  ВАРИАНТЫ ПРИЁМОВ ОРУЖИЯ  ───────────── */
@@ -1810,6 +1814,7 @@ export function createGearItem(opts: {
     stat: reqStat,
     requiresNothing: base.noReq === true,
     archetype: base.archetype,
+    setId: base.set ?? null,
   }).filter((id) => id !== "ap" || canRollExtraAp(rarity, itemLevelForAp));
   const effects: GearEffectId[] = [];
   const effectCount = Math.min(pool.length, effectCountForGear({ kind, rarity, weaponType, stat: reqStat }));
@@ -1926,6 +1931,7 @@ export function migrateGearItem(source: GearItem): GearItem {
     stat: reqStat,
     requiresNothing: base.noReq === true,
     archetype: base.archetype,
+    setId: base.set ?? null,
   }).filter((id) => id !== "ap" || canRollExtraAp(item.rarity ?? "common", item.level ?? 1));
   const effects: GearEffectId[] = [];
   for (const id of item.effects ?? []) {
