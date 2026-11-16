@@ -15,6 +15,9 @@ ENV DB_FILE=/data/sumrak.db
 ENV DIST_DIR=/app/dist
 COPY --from=build /app/server/.build/server.mjs ./server.mjs
 COPY --from=build /app/dist ./dist
+# sharp (обработка портретов) — нативный модуль, ставим production-зависимости рядом с сервером.
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 VOLUME ["/data"]
 EXPOSE 8787
 CMD ["node", "server.mjs"]

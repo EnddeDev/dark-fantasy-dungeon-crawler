@@ -3,6 +3,7 @@ import type { OnlineSession } from "../../net/online";
 import type { ChatMessage, PlayerSummary } from "../../net/protocol";
 import { EmptyNote, ErrorBar, OnlineDot, Panel, useLoader, useSync } from "./shared";
 import { lastMessageId, mergeMessages } from "./chatMessages";
+import { PlayerPortrait } from "../../components/PlayerPortrait";
 
 /** Общий чат и личные сообщения — личные доступны только друзьям. */
 export function ChatTab({ online, initialPeer = null }: { online: OnlineSession; initialPeer?: string | null }) {
@@ -124,6 +125,7 @@ export function ChatTab({ online, initialPeer = null }: { online: OnlineSession;
                   }`}
                 >
                   <OnlineDot online={f.online} />
+                  <PlayerPortrait id={f.id} name={f.name} version={f.portrait} size={28} />
                   <span className="min-w-0 truncate font-display text-[0.92rem] uppercase tracking-[0.03em]">{f.name}</span>
                 </button>
               </li>
@@ -146,6 +148,7 @@ export function ChatTab({ online, initialPeer = null }: { online: OnlineSession;
                 <span className="mr-2 font-mono text-[0.78rem] text-mute">
                   {new Date(m.createdAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
                 </span>
+                {!mine && <PlayerPortrait id={m.fromId} name={m.fromName} version={m.fromPortrait} size={20} className="mr-1.5 align-middle" />}
                 <span className={`mr-1 font-display text-[0.86rem] uppercase tracking-[0.04em] ${mine ? "text-verd" : "text-flame"}`}>
                   {mine ? "вы" : m.fromName}
                 </span>

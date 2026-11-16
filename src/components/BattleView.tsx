@@ -64,7 +64,7 @@ import { POUCH_SLOTS } from "../game/pouch";
 import { monsterActionsBonus, monsterDamageBonus, monsterEvasionBonus, monsterHealthBonus, monsterTechniqueBonus } from "../game/monsterStats";
 
 /** Римская нумерация для строк инициативы. */
-function roman(n: number): string {
+export function roman(n: number): string {
   const map: [number, string][] = [
     [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"],
   ];
@@ -240,7 +240,7 @@ export function EnemyMoveRow({ mv, meta }: { mv: EnemyMoveView; meta?: { name: s
 }
 
 /** Тег с подсказкой: при наводке или фокусе показывает, что даёт род, тип, угроза или особенность. */
-function InfoTag({
+export function InfoTag({
   label,
   title,
   lines,

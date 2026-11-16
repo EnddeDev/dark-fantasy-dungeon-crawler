@@ -29,6 +29,11 @@ const ENV = (import.meta as { env?: Record<string, string | undefined> }).env ??
 const BASE = ENV.VITE_API_URL ?? "/api";
 const TOKEN_KEY = "sumrak.token";
 
+/** Адрес портрета игрока. Версия в `?v=` сбрасывает кэш браузера после замены. */
+export function portraitUrl(playerId: string, version: number): string {
+  return `${BASE}/players/${encodeURIComponent(playerId)}/portrait?v=${version}`;
+}
+
 /** Сервер недоступен или ответил не тем, что ждём (например, HTML-страницей хостинга). */
 export const OFFLINE_MESSAGE = "Сервер недоступен";
 
@@ -86,16 +91,16 @@ export class ApiClient {
     }
   }
 
-  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  private async request<T>(method: string, path: string, body?: unknown, raw?: { type: string; data: Blob }): Promise<T> {
     let response: Response;
     try {
       response = await fetch(`${BASE}${path}`, {
         method,
         headers: {
-          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+          ...(raw ? { "Content-Type": raw.type } : body === undefined ? {} : { "Content-Type": "application/json" }),
           ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: raw ? raw.data : body === undefined ? undefined : JSON.stringify(body),
       });
     } catch {
       throw new ApiError(0, "Сервер недоступен");
@@ -135,6 +140,15 @@ export class ApiClient {
   }
 
   /** Порция игроков: по 20 при прокрутке, поиск по имени или логину. */
+  /** Загрузка портрета: сырой файл, сервер сам обрезает его до квадрата 256×256. */
+  uploadPortrait(file: Blob): Promise<{ ok: boolean; portrait: number }> {
+    return this.request("PUT", "/me/portrait", undefined, { type: file.type || "application/octet-stream", data: file });
+  }
+
+  deletePortrait(): Promise<{ ok: boolean }> {
+    return this.request("DELETE", "/me/portrait");
+  }
+
   players(query = "", offset = 0, limit = 20): Promise<{ players: PlayerSummary[]; hasMore: boolean }> {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     if (query) params.set("q", query);

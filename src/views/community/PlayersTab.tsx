@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { PlayerPortrait } from "../../components/PlayerPortrait";
 import type { Player } from "../../game/types";
 import type { OnlineSession } from "../../net/online";
 import type { FriendRequestView, PlayerProfileView, PlayerSummary } from "../../net/protocol";
@@ -169,7 +170,8 @@ export function PlayersTab({
           <ul className="divide-y divide-line/60">
             {requests.data.incoming.map((r) => (
               <li key={r.requestId} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                <span className="font-display text-[1rem] uppercase tracking-[0.04em] text-parch">
+                <span className="flex min-w-0 items-center gap-2 font-display text-[1rem] uppercase tracking-[0.04em] text-parch">
+                  <PlayerPortrait id={r.player.id} name={r.player.name} version={r.player.portrait} size={32} />
                   {r.player.name} <span className="font-mono text-[0.8rem] normal-case text-mute">хочет добавить вас</span>
                 </span>
                 <span className="flex gap-1.5">
@@ -192,7 +194,8 @@ export function PlayersTab({
             ))}
             {requests.data.outgoing.map((r) => (
               <li key={r.requestId} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                <span className="font-display text-[1rem] uppercase tracking-[0.04em] text-parch">
+                <span className="flex min-w-0 items-center gap-2 font-display text-[1rem] uppercase tracking-[0.04em] text-parch">
+                  <PlayerPortrait id={r.player.id} name={r.player.name} version={r.player.portrait} size={32} />
                   {r.player.name} <span className="font-mono text-[0.8rem] normal-case text-mute">ждёт ответа</span>
                 </span>
                 <button
@@ -288,6 +291,7 @@ export function PlayersTab({
                 <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                   <div className="flex min-w-0 items-center gap-3">
                     <OnlineDot online={p.online} />
+                    <PlayerPortrait id={p.id} name={p.name} version={p.portrait} size={44} />
                     <div className="min-w-0">
                       <button
                         onClick={() => setProfileId(p.id)}
@@ -397,6 +401,7 @@ function ProfilePanel({
           friend: profile.friend,
           requestState: profile.requestState,
           kills: 0,
+          portrait: profile.portrait,
         }
       : null;
 
@@ -417,6 +422,9 @@ function ProfilePanel({
       {!profile && !error && <p className="font-mono text-[0.9rem] text-mute">загружаем профиль…</p>}
       {profile && summary && (
         <div className="space-y-4">
+          <div className="flex justify-center">
+            <PlayerPortrait id={profile.id} name={profile.name} version={profile.portrait} size={160} />
+          </div>
           <div>
             <div className="sc mb-2 text-flamedim">Характеристики</div>
             <div className="grid grid-cols-3 gap-2">

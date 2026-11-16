@@ -10,6 +10,7 @@ import { createDuel, duelAction, duelActionError, duelTimeout, DUEL_TURN_MS, nor
 import { sanitizePlayer } from "./save";
 import { notify, markRead, listNotifications } from "./notify";
 import { publish, publishAll } from "./events";
+import { portraitVersion } from "./portrait";
 
 type Row = Record<string, unknown>;
 
@@ -91,6 +92,7 @@ function playerSummary(db: Db, userId: string, viewerId: string, now = Date.now(
     friend,
     requestState,
     kills: profile.player.kills,
+    portrait: portraitVersion(db, profile.userId),
   };
 }
 
@@ -124,6 +126,7 @@ function messageRow(row: Row) {
     id: Number(row.id),
     fromId: String(row.from_id),
     fromName: String(row.from_name ?? ""),
+    fromPortrait: row.from_portrait == null ? null : Number(row.from_portrait),
     body: String(row.body),
     createdAt: Number(row.created_at),
     channel: String(row.channel),
@@ -173,7 +176,7 @@ function saveProfile(ctx: Ctx, db: Db) {
 function me(ctx: Ctx, db: Db) {
   const user = requireUser(db, ctx);
   const profile = profileOf(db, user.id);
-  return { profile: { ...publicProfile(profile, db), player: profile.player } };
+  return { profile: { ...publicProfile(profile, db), player: profile.player, portrait: portraitVersion(db, user.id) } };
 }
 
 /* ─────────────────────────── игроки, друзья, чат ─────────────────────────── */
@@ -228,6 +231,7 @@ function playerProfile(ctx: Ctx, db: Db, target: string) {
       equip: equipped,
       friend: areFriends(db, user.id, profile.userId),
       requestState: relationState(db, user.id, profile.userId),
+      portrait: portraitVersion(db, profile.userId),
     },
   };
 }
@@ -344,16 +348,18 @@ function chatRead(ctx: Ctx, db: Db, channel: string) {
      иначе длинная история прячет свежие сообщения. Дальше клиент просит только новые. */
   const rows = after > 0
     ? db.all<Row>(
-        `SELECT m.*, p.name AS from_name FROM messages m
+        `SELECT m.*, p.name AS from_name, pt.updated_at AS from_portrait FROM messages m
          LEFT JOIN profiles p ON p.user_id = m.from_id
+           LEFT JOIN portraits pt ON pt.user_id = m.from_id
          WHERE m.channel = ? AND m.id > ? ORDER BY m.id ASC LIMIT 200`,
         channel,
         after,
       )
     : db.all<Row>(
         `SELECT * FROM (
-           SELECT m.id, m.channel, m.from_id, m.body, m.created_at, p.name AS from_name FROM messages m
+           SELECT m.id, m.channel, m.from_id, m.body, m.created_at, p.name AS from_name, pt.updated_at AS from_portrait FROM messages m
            LEFT JOIN profiles p ON p.user_id = m.from_id
+           LEFT JOIN portraits pt ON pt.user_id = m.from_id
            WHERE m.channel = ? ORDER BY m.id DESC LIMIT 200
          ) ORDER BY id ASC`,
         channel,
@@ -444,6 +450,7 @@ function listingView(row: Row, viewerId: string) {
     id: String(row.id),
     sellerId: String(row.seller_id),
     sellerName: String(row.seller_name ?? ""),
+    sellerPortrait: row.seller_portrait == null ? null : Number(row.seller_portrait),
     item,
     itemName: itemName(item),
     price: Number(row.price),
@@ -457,7 +464,7 @@ export function handleMarket(ctx: Ctx, db: Db, method: string, id: string | null
   if (method === "GET") {
     const { limit, offset } = pageParams(ctx);
     const rows = db.all<Row>(
-      `SELECT m.*, p.name AS seller_name FROM market m LEFT JOIN profiles p ON p.user_id = m.seller_id
+      `SELECT m.*, p.name AS seller_name, pt.updated_at AS seller_portrait FROM market m LEFT JOIN profiles p ON p.user_id = m.seller_id LEFT JOIN portraits pt ON pt.user_id = m.seller_id
        WHERE m.status = 'active' ORDER BY m.created_at DESC LIMIT ? OFFSET ?`,
       limit + 1,
       offset,
@@ -543,6 +550,8 @@ function tradeView(db: Db, row: Row) {
     fromName: name(fromId),
     toId,
     toName: name(toId),
+    fromPortrait: portraitVersion(db, fromId),
+    toPortrait: portraitVersion(db, toId),
     status: String(row.status),
     offer: JSON.parse(String(row.offer)) as GearItem[],
     request: JSON.parse(String(row.request)) as GearItem[],
@@ -696,7 +705,7 @@ export function handleTrades(ctx: Ctx, db: Db, method: string, id: string | null
 
 /* ─────────────────────────── дуэли ─────────────────────────── */
 
-function duelRowView(row: Row, viewerId: string) {
+function duelRowView(db: Db, row: Row, viewerId: string) {
   const state = JSON.parse(String(row.state)) as DuelState;
   const challenger = String(row.challenger);
   const side = challenger === viewerId ? "a" : "b";
@@ -706,6 +715,8 @@ function duelRowView(row: Row, viewerId: string) {
     challengerName: state.a.name,
     opponentId: String(row.opponent),
     opponentName: state.b.name,
+    challengerPortrait: portraitVersion(db, challenger),
+    opponentPortrait: portraitVersion(db, String(row.opponent)),
     status: String(row.status),
     winner: row.winner ? String(row.winner) : state.winner ? (state.winner === "a" ? challenger : String(row.opponent)) : null,
     yourSide: side as "a" | "b",
@@ -765,7 +776,7 @@ export function handleDuels(ctx: Ctx, db: Db, method: string, id: string | null,
     );
     const duels = rows.map((row) => {
       const refreshed = refreshDuel(db, row);
-      return duelRowView(refreshed.row, user.id);
+      return duelRowView(db, refreshed.row, user.id);
     });
     return { duels };
   }
@@ -808,7 +819,7 @@ export function handleDuels(ctx: Ctx, db: Db, method: string, id: string | null,
 
   if (method === "GET") {
     const refreshed = refreshDuel(db, row);
-    return { duel: { ...duelRowView(refreshed.row, user.id), state: refreshed.state } };
+    return { duel: { ...duelRowView(db, refreshed.row, user.id), state: refreshed.state } };
   }
 
   if (method === "POST" && action === "accept") {
@@ -850,7 +861,7 @@ export function handleDuels(ctx: Ctx, db: Db, method: string, id: string | null,
       String(row.id),
     );
     publish([String(row.challenger), String(row.opponent)], "duel");
-    return { duel: { ...duelRowView({ ...refreshed.row, status: next.winner ? "finished" : "active" }, user.id), state: next } };
+    return { duel: { ...duelRowView(db, { ...refreshed.row, status: next.winner ? "finished" : "active" }, user.id), state: next } };
   }
 
   throw new HttpError(404, "Неизвестное действие с дуэлью");

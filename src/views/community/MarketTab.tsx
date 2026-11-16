@@ -4,6 +4,7 @@ import type { Player } from "../../game/types";
 import type { OnlineSession } from "../../net/online";
 import type { MarketListing } from "../../net/protocol";
 import { EmptyNote, ErrorBar, Panel, gearName, useSync } from "./shared";
+import { PlayerPortrait } from "../../components/PlayerPortrait";
 
 const PAGE = 20;
 
@@ -167,7 +168,9 @@ export function MarketTab({ online, player }: { online: OnlineSession; player: P
                   <div className="min-w-0">
                     <div className="truncate font-display text-[1rem] uppercase tracking-[0.04em] text-parch">{l.itemName}</div>
                     <div className="font-mono text-[0.82rem] text-mute">
-                      ур. {l.item.level ?? 1} · продаёт {l.sellerName}
+                      ур. {l.item.level ?? 1} · продаёт{" "}
+                      <PlayerPortrait id={l.sellerId} name={l.sellerName} version={l.sellerPortrait} size={20} className="mr-1 align-middle" />
+                      {l.sellerName}
                     </div>
                   </div>
                 </div>

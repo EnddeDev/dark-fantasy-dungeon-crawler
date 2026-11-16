@@ -11,6 +11,8 @@ export interface OnlineProfile {
   unlockedFloor: number;
   online: boolean;
   kills: number;
+  /** Версия портрета (время загрузки) или null, если портрета нет. */
+  portrait?: number | null;
   player?: Player;
 }
 
@@ -27,6 +29,7 @@ export interface PlayerSummary {
   friend: boolean;
   requestState: RequestState;
   kills: number;
+  portrait: number | null;
 }
 
 export interface FriendRequestView {
@@ -41,6 +44,7 @@ export interface PlayerProfileView {
   level: number;
   online: boolean;
   stats: { str: number; agi: number; int: number };
+  portrait: number | null;
   equip: Record<string, { baseId: string; name: string; level: number; rarity: string; identified: boolean; wear: string } | null>;
   friend: boolean;
   requestState: RequestState;
@@ -67,6 +71,7 @@ export interface ChatMessage {
   id: number;
   fromId: string;
   fromName: string;
+  fromPortrait: number | null;
   body: string;
   createdAt: number;
   channel: string;
@@ -76,6 +81,7 @@ export interface MarketListing {
   id: string;
   sellerId: string;
   sellerName: string;
+  sellerPortrait: number | null;
   item: GearItem;
   itemName: string;
   price: number;
@@ -89,8 +95,10 @@ export interface TradeOffer {
   id: string;
   fromId: string;
   fromName: string;
+  fromPortrait: number | null;
   toId: string;
   toName: string;
+  toPortrait: number | null;
   status: TradeStatus;
   offer: GearItem[];
   request: GearItem[];
@@ -107,6 +115,8 @@ export interface DuelSummary {
   challengerName: string;
   opponentId: string;
   opponentName: string;
+  challengerPortrait: number | null;
+  opponentPortrait: number | null;
   status: DuelStatus;
   winner: string | null;
   yourSide: "a" | "b";
