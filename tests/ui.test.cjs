@@ -591,7 +591,7 @@ test("left panel shows main stats as icons with values; name and description app
   /* В закрытом состоянии подсказки нет, имя характеристики не выводится текстом. */
   assert.ok(!html.includes('role="tooltip"'), "подсказка открывается только по наведению");
   assert.ok(!html.includes(">Сила<") && !html.includes(">Ловкость<") && !html.includes(">Интеллект<"));
-  assert.ok(!html.includes("+10 ОЗ, +1 урона"), "описание прироста не выводится в карточке");
+  assert.ok(!html.includes("+20 ОЗ, +1 урона"), "описание прироста не выводится в карточке");
   assert.ok(!html.includes("Ходы в раунде"), "описание характеристики не выводится в карточке");
 });
 
