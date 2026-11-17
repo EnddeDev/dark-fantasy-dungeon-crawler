@@ -181,7 +181,8 @@ test("guide keeps the current combat and crafting numbers", () => {
   assert.ok(html.includes("+1 на уровнях 5–6"), "ускорение начинается с 5 уровня");
   assert.ok(html.includes("+2 на 7–8"));
   assert.ok(html.includes("+3 на 9–10"));
-  assert.match(html, /250 × текущий уровень/);
+  assert.match(html, /200 золота/);
+  assert.match(html, /каждый следующий уровень дороже на/);
   assert.match(html, /качество 100 \/ 500 \/ 1000 золота/);
   assert.match(html, /изношенность 100 \/ 375/);
   assert.match(html, /шанс успеха 80%/);

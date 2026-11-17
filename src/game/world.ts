@@ -13,9 +13,9 @@ import { techniqueFor } from "./weaponTechniques";
 
 export const SHOP_MAX_LEVEL = 10;
 
-/** Цена улучшения лавки: 250 × текущий уровень (1→2 = 250, 9→10 = 2250). */
+/** Цена улучшения лавки: 200 за первое (1→2), каждое следующее дороже на 75 (9→10 = 800). */
 export function shopUpgradeCost(level: number): number {
-  return 250 * Math.max(1, Math.floor(level));
+  return 200 + 75 * (Math.max(1, Math.floor(level)) - 1);
 }
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
