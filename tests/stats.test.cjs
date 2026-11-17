@@ -232,3 +232,14 @@ test("stun skips a turn, fear auto-guards, wither turns healing into damage, chi
   const afterChill = battle.playerAct(chilled, { type: "item", id: "potion_s" });
   assert.equal(afterChill.p.hp, 24); // 10 + 28/2
 });
+
+test("подсказки прироста характеристик совпадают с формулами", () => {
+  /* Текст в STAT_META пишется вручную: проверяем, что он не расходится с формулами. */
+  const str = content.STAT_META.str.gain;
+  assert.ok(str.includes(`+${formulas.STAT_FORMULAS.str.healthPerPoint} ОЗ`), str);
+  assert.ok(str.includes(`+${formulas.STAT_FORMULAS.str.damagePerPoint} урона`), str);
+  assert.ok(str.includes(`+${formulas.STAT_FORMULAS.str.tenacityPerPoint * 100}% стойкости`), str);
+  const agi = content.STAT_META.agi.gain;
+  assert.ok(agi.includes(`+${formulas.STAT_FORMULAS.agi.consumablePerPoint} урона расходников`), agi);
+  assert.ok(agi.includes(`+${formulas.STAT_FORMULAS.agi.evasionPerPoint * 100}% уклонения`), agi);
+});
