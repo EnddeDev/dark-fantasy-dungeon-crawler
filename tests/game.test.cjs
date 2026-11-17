@@ -2133,7 +2133,7 @@ test("shop upgrade price is the same function used by the UI and the charge", ()
   for (let level = 1; level < 10; level++) {
     const cost = content.shopUpgradeCost(level);
     assert.ok(Number.isInteger(cost) && cost > 0);
-    assert.equal(cost, 250 * level);
+    assert.equal(cost, 200 + 75 * (level - 1));
   }
 });
 
