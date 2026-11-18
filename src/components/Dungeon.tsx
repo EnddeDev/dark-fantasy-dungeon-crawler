@@ -117,7 +117,7 @@ export function Dungeon({
 
   const fieldConsumables = Object.entries(bag).filter(([id]) => {
     const t = ITEMS[id]?.use?.type;
-    return t === "heal" || t === "cleanse" || t === "special_map" || t === "special_water" || t === "special_torch";
+    return t === "heal" || t === "cleanse" || t === "antidote" || t === "special_map" || t === "special_water" || t === "special_torch";
   });
 
 
@@ -714,7 +714,9 @@ export function Dungeon({
                           ? `нужен ИНТ ${req}`
                           : def.use?.type === "heal"
                             ? `+${biomeHealingAmount(biome, consumablePower(def, player.stats), def.kind === "potion")} здоровья`
-                            : def.use?.type === "cleanse"
+                            : def.use?.type === "antidote"
+                              ? (def.use?.cleanseAll ? "снять все негативные эффекты" : `снять негативный эффект${def.use?.power ? ` (+${def.use.power} ОЗ)` : ""}`)
+                              : def.use?.type === "cleanse"
                               ? `снять раны, проклятие и яд (+${biomeHealingAmount(biome, def.use?.power ?? 8, def.kind === "potion")} ОЗ)`
                               : def.use?.type === "special_map"
                                 ? "отметить сундуки, босса и события"

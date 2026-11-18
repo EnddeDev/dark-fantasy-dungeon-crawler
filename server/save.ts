@@ -18,6 +18,7 @@ import {
   EPIC_SKILLS,
   GEAR_BASES,
   ITEMS,
+  REMOVED_ITEM_IDS,
   LEGENDARY_PASSIVES,
   MAX_LEVEL,
   RECIPES,
@@ -333,6 +334,7 @@ export function sanitizePlayer(raw: unknown, floors = 1): Player {
   const bagInput = input.bag === undefined ? {} : asObject(input.bag, "сумка");
   const bag: Record<string, number> = {};
   for (const [id, count] of Object.entries(bagInput)) {
+    if (REMOVED_ITEM_IDS.has(id)) continue;
     if (!ITEMS[id]) bad(`неизвестный предмет в сумке: «${id}»`);
     const value = int(count, 0, BAG_COUNT_CAP, "количество в сумке");
     if (value > 0) bag[id] = value;

@@ -34,7 +34,7 @@ export const ARCHETYPES: Record<ArchetypeId, ArchetypeDef> = {
     short: "Полная защита",
     desc: "Тяжёлая броня и щит, регенерация, шипы, сопротивление эффектам. Затягивает бой, уходит в защиту и бьёт тем сильнее, чем выше его броня.",
     gear: ["bulwark_mace", "shield_tower", "plate", "greathelm", "greaves", "vambraces", "ring_stone", "icon"],
-    supplies: ["potion_stone", "potion_l", "antidote"],
+    supplies: ["potion_l", "antidote"],
     milestone5: {
       id: "arch_bulwark_5",
       name: "Стена щитов",
@@ -58,7 +58,7 @@ export const ARCHETYPES: Record<ArchetypeId, ArchetypeDef> = {
     short: "Двуручная ярость",
     desc: "Самое тяжёлое двуручное оружие, здоровье вместо брони, регенерация, оглушение и вампиризм. Чем меньше своего или чужого здоровья — тем страшнее удар.",
     gear: ["barbarian_greataxe", "blood_hide", "tooth", "ring_band", "rag"],
-    supplies: ["rage", "potion_l", "antidote"],
+    supplies: ["potion_l", "antidote"],
     milestone5: {
       id: "arch_barbarian_5",
       name: "Кровавая ярость",
@@ -82,7 +82,7 @@ export const ARCHETYPES: Record<ArchetypeId, ArchetypeDef> = {
     short: "Первый удар",
     desc: "Максимум урона в первые ходы: гарантированные криты, несколько атак за ход, инициатива, шанс и сила крита, вампиризм, уклонение и контратака.",
     gear: ["assassin_stiletto", "dagger", "boots", "strider_boots", "ring_edge", "wraps"],
-    supplies: ["potion_haste", "smoke_bomb", "throwing_knife"],
+    supplies: ["smoke_bomb", "throwing_knife"],
     milestone5: {
       id: "arch_assassin_5",
       name: "Первая кровь",
@@ -130,7 +130,7 @@ export const ARCHETYPES: Record<ArchetypeId, ArchetypeDef> = {
     short: "Приёмы и пакт",
     desc: "Платит здоровьем за приёмы: каждый приём тратит 3% макс. ОЗ. Удачный приём иссушает врага и возвращает кровь герою.",
     gear: ["warlock_scepter", "abyss", "shroud", "runed_bracers", "ring_ward", "soulstone"],
-    supplies: ["pact_elixir", "scroll_frost", "scroll_terror"],
+    supplies: ["scroll_frost", "scroll_terror"],
     milestone5: {
       id: "arch_warlock_5",
       name: "Тёмный пакт",

@@ -164,7 +164,7 @@ test("consumables use AGI, damage scrolls use INT, healing/support stays flat", 
   assert.equal(content.consumablePower(content.ITEMS.acid_vial, stats), 28);
   assert.equal(content.consumablePower(content.ITEMS.throwing_knife, stats), 25);
   assert.equal(content.consumablePower(content.ITEMS.scroll_spark, stats), 20);
-  assert.equal(content.consumablePower(content.ITEMS.potion_s, stats), 28);
+  assert.equal(content.consumablePower(content.ITEMS.potion_s, stats), 30);
   assert.equal(content.consumablePower(content.ITEMS.scroll_heal, stats), 32);
   assert.equal(content.consumableScaleStat(content.ITEMS.potion_s), null);
   assert.equal(content.consumableScaleStat(content.ITEMS.scroll_heal), null);
@@ -230,7 +230,7 @@ test("stun skips a turn, fear auto-guards, wither turns healing into damage, chi
   chilled.p.statuses.chill = 1;
   chilled.p.hp = 10;
   const afterChill = battle.playerAct(chilled, { type: "item", id: "potion_s" });
-  assert.equal(afterChill.p.hp, 24); // 10 + 28/2
+  assert.equal(afterChill.p.hp, 25); // 10 + 30/2
 });
 
 test("подсказки прироста характеристик совпадают с формулами", () => {

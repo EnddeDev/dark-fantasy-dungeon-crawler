@@ -136,8 +136,9 @@ import {
   IMMUNITY_NAMES,
   IMMUNITY_ROUNDS,
   type ImmunityEffect,
-  OIL_BLIND_MISS,
+  OIL_NAMES,
   OIL_ROUNDS,
+  EXHAUST_ROUNDS,
   bossDotTick,
   dotBaseTick,
   dotSkillTick,
@@ -145,15 +146,10 @@ import {
   type DotKind,
   skillDotTick,
   magicTickFrom,
-  oilAcidArmorCut,
-  oilHitDamage,
-  oilIceAttackCut,
   oilTickDamage,
-  oilTickFromHit,
   refreshedTick,
   type OilKind,
 } from "./statusEffects";
-import { damageTypeName, isDamageElement } from "./damageTypes";
 import { ARCHETYPES, type ArchetypeId } from "./archetypes";
 import type { GearEffectId, GearPassiveId } from "./gearEffects";
 import { pouchIds } from "./pouch";
@@ -271,6 +267,10 @@ export interface BattleState {
       /** Урон масла с клинка: один слот, новое масло заменяет старое. */
       oilType: OilKind | null;
       oilRounds: number;
+      /** Сила масла: тик огня и льда, разовый урон магии, −броня раскола, % остроты. */
+      oilPower?: number;
+      /** Доля снижения атак врага (масло льда). */
+      oilCut?: number;
       /** Раскол врага: плоское снижение брони и доля брони, раунды. Приёмы первой партии. */
       breakFlat?: number;
       breakPct?: number;
@@ -411,6 +411,16 @@ export interface BattleState {
       vampHits: number;
       /** Зелья иммунитета: сколько ходов защищает от каждого эффекта. */
       immune: Partial<Record<ImmunityEffect, number>>;
+      /** Сопротивление эффекту: шанс (0–1), что эффект не наложится, и сколько раундов действует. */
+      resistFx?: Partial<Record<ImmunityEffect, { chance: number; rounds: number }>>;
+      /** Слот очереди (раунд × 1000 + индекс), в котором уже пили зелье выносливости. */
+      staminaPotionSlot?: number;
+      /** Эликсиры с таймером: вампиризм и точность. Значение и раунды. */
+      buffs?: Partial<Record<"vamp" | "magic_vamp" | "sure_hit", { value: number; rounds: number }>>;
+      /** Каменная кожа: доля снижения входящего урона (по умолчанию 0.3). */
+      stonePct?: number;
+      /** Ярость: прибавка за каждые 10% недостающего ОЗ, в процентах (по умолчанию 10). */
+      rageStep?: number;
       /** Варвар: кровавая ярость (вампиризм оружием). */
       bloodRage: number;
       /** Ассасин: масло быстрого клинка. */
@@ -418,6 +428,10 @@ export interface BattleState {
       /** Смазанный клинок: вид урона масла и раунды, в которые оружие смазано (1). */
       oilType: OilKind | null;
       oilRounds: number;
+      /** Сила масла: тик огня и льда, разовый урон магии, −броня раскола, % остроты. */
+      oilPower?: number;
+      /** Доля снижения атак врага (масло льда). */
+      oilCut?: number;
       /** Колдун: эликсир пакта (урон приёмов). */
       pactElixir: number;
       /** Полная защита от урона (свитки/приёмы архимага). */
@@ -1053,13 +1067,55 @@ export function rollConsumableLoot(floor: number, count: number): string[] {
     ["tear", 6],
     ["potion_s", 14],
     ["antidote", 8],
-    ["rage", 6],
     ["throwing_knife", 8],
     ["poison_dart", 7],
     ["smoke_bomb", 5],
     ["blast_bomb", floor >= 2 ? 5 : 2],
     ["fear_vial", 3],
-    ["potion_l", floor >= 2 ? 7 : 3],
+    ["potion_l", floor >= 6 ? 7 : 0],
+    ["potion_m", floor >= 3 ? 6 : 0],
+    ["potion_xl", floor >= 9 ? 5 : 0],
+    ["stamina_s", floor >= 2 ? 6 : 0],
+    ["stamina_m", floor >= 4 ? 6 : 0],
+    ["stamina_l", floor >= 9 ? 5 : 0],
+    ["antidote_poison", floor >= 3 ? 4 : 0],
+    ["antidote_fear", floor >= 3 ? 4 : 0],
+    ["antidote_curse", floor >= 3 ? 4 : 0],
+    ["antidote_full", floor >= 6 ? 4 : 0],
+    ["elixir_antidote_weak", floor >= 1 ? 4 : 0],
+    ["elixir_fire_weak", floor >= 1 ? 4 : 0],
+    ["elixir_rage_weak", floor >= 3 ? 4 : 0],
+    ["elixir_courage_weak", floor >= 3 ? 4 : 0],
+    ["elixir_skin_weak", floor >= 3 ? 4 : 0],
+    ["elixir_vamp", floor >= 4 ? 4 : 0],
+    ["elixir_spirit", floor >= 4 ? 4 : 0],
+    ["elixir_accuracy", floor >= 5 ? 4 : 0],
+    ["elixir_antidote", floor >= 5 ? 4 : 0],
+    ["elixir_fire", floor >= 5 ? 4 : 0],
+    ["elixir_skin", floor >= 6 ? 4 : 0],
+    ["elixir_cold", floor >= 6 ? 4 : 0],
+    ["elixir_courage", floor >= 6 ? 4 : 0],
+    ["elixir_antidote_great", floor >= 7 ? 4 : 0],
+    ["elixir_fire_great", floor >= 7 ? 4 : 0],
+    ["elixir_cold_great", floor >= 7 ? 4 : 0],
+    ["elixir_courage_great", floor >= 7 ? 4 : 0],
+    ["elixir_rage", floor >= 8 ? 4 : 0],
+    ["elixir_vamp_great", floor >= 8 ? 4 : 0],
+    ["elixir_spirit_great", floor >= 8 ? 4 : 0],
+    ["elixir_goddess_tear", floor >= 9 ? 4 : 0],
+    ["oil_fire_bad", floor >= 2 ? 4 : 0],
+    ["oil_sunder_bad", floor >= 2 ? 4 : 0],
+    ["oil_edge_bad", floor >= 2 ? 4 : 0],
+    ["oil_ice", floor >= 4 ? 4 : 0],
+    ["oil_fire", floor >= 4 ? 4 : 0],
+    ["oil_weak", floor >= 4 ? 4 : 0],
+    ["oil_fatigue", floor >= 4 ? 4 : 0],
+    ["oil_magic", floor >= 6 ? 4 : 0],
+    ["oil_drain", floor >= 6 ? 4 : 0],
+    ["oil_ice_good", floor >= 8 ? 4 : 0],
+    ["oil_fire_good", floor >= 8 ? 4 : 0],
+    ["oil_edge_good", floor >= 8 ? 4 : 0],
+    ["oil_exhaust", floor >= 10 ? 4 : 0],
     ["scroll_spark", 8],
     ["scroll_fire", 7],
     ["scroll_heal", 6],
@@ -1067,8 +1123,6 @@ export function rollConsumableLoot(floor: number, count: number): string[] {
     ["scroll_frost", floor >= 2 ? 5 : 2],
     ["scroll_bolt", floor >= 3 ? 5 : 1],
     /* новые припасы и реагенты */
-    ["potion_haste", 6],
-    ["potion_stone", floor >= 2 ? 6 : 3],
     ["scroll_terror", 5],
     ["scroll_snare", floor >= 2 ? 5 : 2],
     ["acid_vial", 6],
@@ -1148,7 +1202,7 @@ function clone(b: BattleState): BattleState {
       legendaryPower: Object.fromEntries(Object.entries(b.p.legendaryPower).map(([k, v]) => [k, { ...v }])),
       epicSkillLevels: { ...b.p.epicSkillLevels },
       passives: [...b.p.passives],
-      statuses: { ...b.p.statuses, immune: { ...b.p.statuses.immune } },
+      statuses: { ...b.p.statuses, immune: { ...b.p.statuses.immune }, resistFx: { ...(b.p.statuses.resistFx ?? {}) }, buffs: { ...(b.p.statuses.buffs ?? {}) } },
     },
     bag: { ...b.bag },
     conjured: { ...b.conjured },
@@ -1380,6 +1434,24 @@ function enemyDebuffCount(b: BattleState) {
 }
 /** Горение без срока: держится до конца боя (число раундов больше любого боя). */
 const BURN_UNTIL_END = 999;
+
+/** Снимает один негативный эффект героя (для зелий от состояний). */
+function clearHeroEffect(b: BattleState, key: ImmunityEffect) {
+  const fields: Record<ImmunityEffect, string[]> = {
+    bleed: ["wound", "woundStacks"], poison: ["poison", "poisonStacks"], burn: ["burn"],
+    curse: ["curse", "cursePower"], fear: ["fear"], stun: ["stunAp"], sunder: ["sundered"], chill: ["chill"],
+    noHeal: ["noHeal"], darkness: ["darkness"], sealItems: ["sealItems"],
+    sealSkills: ["sealSkills"], sealAttack: ["sealAttack"],
+  };
+  const st = b.p.statuses as unknown as Record<string, number>;
+  for (const f of fields[key]) st[f] = 0;
+}
+
+/** Зелье очищения: все негативные эффекты героя. */
+function clearAllHeroNegatives(b: BattleState) {
+  clearHeroNegatives(b, true);
+  for (const k of IMMUNITY_EFFECTS) clearHeroEffect(b, k);
+}
 
 /**
  * Приёмы первой партии: эффекты, которые не ждут следующего хода.
@@ -1704,7 +1776,7 @@ function skillRageOn(b: BattleState): boolean {
 }
 function rageBonus(b: BattleState): number {
   const steps = Math.min(10, Math.floor(missingHpRatio(b) * 10));
-  return (effectPower(b, "rage") / 100) * steps + (b.p.statuses.rage > 0 ? 0.10 * steps : 0);
+  return (effectPower(b, "rage") / 100) * steps + (b.p.statuses.rage > 0 ? ((b.p.statuses.rageStep ?? 10) / 100) * steps : 0);
 }
 function statusRounds(b: BattleState, base: number) {
   return base + effectPower(b, "status_duration") + passivePower(b, "time_warp", "duration");
@@ -1751,7 +1823,7 @@ function heroChance(b: BattleState, layer: Parameters<typeof combatChance>[0], e
 }
 
 /** Истощение врага: снимает случайных положительных (ярость, костяной щит); продление снимает все. */
-function applyDepletion(b: BattleState): string[] {
+function applyDepletion(b: BattleState, rounds = DEPLETE_ROUNDS): string[] {
   const e = b.enemy;
   const pool = [...(e.fury > 0 ? ["fury"] : []), ...(e.shield ? ["shield"] : [])];
   const { removed } = depleteRemove(pool, e.depleted > 0);
@@ -1759,7 +1831,7 @@ function applyDepletion(b: BattleState): string[] {
     if (id === "fury") e.fury = 0;
     if (id === "shield") e.shield = false;
   }
-  e.depleted = Math.max(e.depleted, DEPLETE_ROUNDS);
+  e.depleted = Math.max(e.depleted, rounds);
   const names: Record<string, string> = { fury: "ярость", shield: "костяной щит" };
   push(b, removed.length ? `Истощение: у ${e.def.name} снято ${removed.map((r) => names[r]).join(", ")}.` : `Истощение ${e.def.name}: положительных эффектов нет, но они гаснут на ${e.depleted} хода.`, "p");
   return removed;
@@ -1844,9 +1916,16 @@ function playerImmune(b: BattleState, id: ImmunityEffect): boolean {
 
 /** Иммунитет срабатывает: эффект не накладывается, в журнале видно почему. */
 function immuneNote(b: BattleState, id: ImmunityEffect): boolean {
-  if (!playerImmune(b, id)) return false;
-  push(b, `Иммунитет: ${IMMUNITY_NAMES[id]} не накладывается.`, "p");
-  return true;
+  if (playerImmune(b, id)) {
+    push(b, `Иммунитет: ${IMMUNITY_NAMES[id]} не накладывается.`, "p");
+    return true;
+  }
+  const rf = b.p.statuses.resistFx?.[id];
+  if (rf && rf.rounds > 0 && Math.random() < rf.chance) {
+    push(b, `Сопротивление: ${IMMUNITY_NAMES[id]} не накладывается.`, "p");
+    return true;
+  }
+  return false;
 }
 
 /** Сколько наложений яда или кровотечения висит на герое. */
@@ -1963,44 +2042,88 @@ function enemyOil(b: BattleState, kind: OilKind): boolean {
   return b.enemy.statuses.oilType === kind && b.enemy.statuses.oilRounds > 0;
 }
 
-/** Кислота под маслом снимает с брони врага 1 + ЛОВ героя. */
-function enemyOilArmorCut(b: BattleState): number {
-  return enemyOil(b, "acid") ? oilAcidArmorCut(b.p.stats.agi) : 0;
-}
-
-/** Лёд под маслом режет силу атаки и физических приёмов врага на 0.05 за очко ИНТ героя. */
+/** Лёд под маслом режет силу атаки врага на долю из предмета. */
 function enemyOilAttackMult(b: BattleState): number {
-  return enemyOil(b, "ice") ? 1 - oilIceAttackCut(b.p.stats.int) : 1;
+  return enemyOil(b, "ice") ? 1 - (b.enemy.statuses.oilCut ?? 0) : 1;
 }
 
-/**
- * Удар смазанным оружием накладывает вид масла на 3 раунда. Повторный удар обновляет срок.
- * Разовый урон (магия 3 + 3×ИНТ, свет 2×ИНТ) проходит сразу. Стихия, к которой род
- * невосприимчив, не действует.
- */
-function oilOnHit(b: BattleState, hitDamage: number) {
-  const kind = b.p.statuses.oilType;
-  if (!kind || b.p.statuses.oilRounds <= 0 || b.enemy.hp <= 0) return;
-  const element = isDamageElement(kind) ? kind : undefined;
-  const name = damageTypeName(kind);
-  if (element && raceElementMult(b.enemy.def.race, element) <= 0) {
-    push(b, `${b.enemy.def.name} не поддаётся маслу: ${name} не действует.`, "sys", element);
+/** Огонь или лёд на враге: тик за раунд, срок OIL_ROUNDS. Сильнейший тик держится. */
+function applyOilTick(b: BattleState, kind: "fire" | "ice", power: number, cut: number, element: DamageElement) {
+  if (raceElementMult(b.enemy.def.race, element) <= 0) {
+    push(b, `${b.enemy.def.name} не поддаётся маслу: ${OIL_NAMES[kind]} не действует.`, "sys", element);
     return;
   }
   const renew = enemyOil(b, kind);
-  b.enemy.statuses.oilTick = refreshedTick(renew, b.enemy.statuses.oilTick, oilTickFromHit(hitDamage));
+  b.enemy.statuses.oilTick = refreshedTick(renew && b.enemy.statuses.oilType === kind, b.enemy.statuses.oilTick, power);
   b.enemy.statuses.oilType = kind;
   b.enemy.statuses.oilRounds = OIL_ROUNDS;
+  b.enemy.statuses.oilCut = kind === "ice" ? cut : 0;
   push(
     b,
     renew
-      ? `Смазанный клинок обновляет ${name} на ${b.enemy.def.name}: ${OIL_ROUNDS} раунда.`
-      : `Смазанный клинок накладывает ${name} на ${b.enemy.def.name}: ${OIL_ROUNDS} раунда.`,
+      ? `Смазанный клинок обновляет ${OIL_NAMES[kind]} на ${b.enemy.def.name}: ${OIL_ROUNDS} раунда.`
+      : `Смазанный клинок накладывает ${OIL_NAMES[kind]} на ${b.enemy.def.name}: ${OIL_ROUNDS} раунда.`,
     "p",
     element,
   );
-  const raw = oilHitDamage(kind, b.p.stats.int);
-  if (raw > 0) elementalHit(b, raw, ` Масло: ${name}.`, element);
+}
+
+/**
+ * Удар смазанным оружием применяет вид масла. Острота работает на урон героя
+ * (см. hitEnemy), остальные виды накладываются на врага.
+ */
+function oilOnHit(b: BattleState, _hitDamage: number) {
+  const s = b.p.statuses;
+  const kind = s.oilType;
+  if (!kind || s.oilRounds <= 0 || b.enemy.hp <= 0) return;
+  const power = s.oilPower ?? 0;
+  switch (kind) {
+    case "fire":
+      applyOilTick(b, "fire", power, 0, "fire");
+      return;
+    case "ice":
+      applyOilTick(b, "ice", power, s.oilCut ?? 0, "ice");
+      return;
+    case "sunder": {
+      b.enemy.statuses.breakFlat = power;
+      b.enemy.statuses.breakRounds = OIL_ROUNDS;
+      push(b, `Раскол: броня ${b.enemy.def.name} −${power} на ${OIL_ROUNDS} раунда.`, "p");
+      return;
+    }
+    case "weak": {
+      b.enemy.statuses.breakPct = power;
+      b.enemy.statuses.breakRounds = OIL_ROUNDS;
+      push(b, `Разрушение: броня ${b.enemy.def.name} −${Math.round(power * 100)}% на ${OIL_ROUNDS} раунда.`, "p");
+      return;
+    }
+    case "magic":
+      elementalHit(b, power, " Масло: магия.", undefined);
+      return;
+    case "drain": {
+      b.enemy.statuses.oilType = "drain";
+      b.enemy.statuses.oilRounds = OIL_ROUNDS;
+      push(b, `${b.enemy.def.name} не может восстанавливать здоровье: иссушение на ${OIL_ROUNDS} раунда.`, "p");
+      return;
+    }
+    case "exhaust": {
+      /* Один случайный положительный эффект врага снимается и не возвращается EXHAUST_ROUNDS раундов. */
+      const e = b.enemy;
+      const pool = [...(e.fury > 0 ? ["fury"] : []), ...(e.shield ? ["shield"] : [])];
+      if (pool.length === 0) {
+        push(b, `Масло истощения: у ${e.def.name} нечего снимать.`, "sys");
+        return;
+      }
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      if (pick === "fury") e.fury = 0;
+      if (pick === "shield") e.shield = false;
+      e.depleted = Math.max(e.depleted, EXHAUST_ROUNDS);
+      const names: Record<string, string> = { fury: "ярость", shield: "костяной щит" };
+      push(b, `Масло истощения: у ${e.def.name} снято ${names[pick]}, возврат заблокирован на ${EXHAUST_ROUNDS} раунда.`, "p");
+      return;
+    }
+    default:
+      return; // острота и усталость: не на ударе врага
+  }
 }
 
 function weaponHitEffects(b: BattleState) {
@@ -2026,6 +2149,10 @@ function weaponHitEffects(b: BattleState) {
 }
 
 function healEnemy(b: BattleState, amount: number): number {
+  if (b.enemy.statuses.oilType === "drain" && b.enemy.statuses.oilRounds > 0) {
+    push(b, `${b.enemy.def.name} не может восстанавливать здоровье: иссушение масла.`, "e");
+    return 0;
+  }
   if ((b.enemy.statuses.eruptWither ?? 0) > 0) amount = Math.round(amount * 0.8);
   if (effectsDepleted(b)) {
     push(b, `${b.enemy.def.name} не может лечиться: истощение (ещё ${b.enemy.depleted} ход.).`, "e");
@@ -2226,6 +2353,8 @@ export function applyVamp(b: BattleState, dealt: number, extraRatio = 0, source:
   let ratio = rarePower(b, "vamp", "ratio") / 100 + extraRatio;
   if (kind === "phys") ratio += effectPower(b, "vamp") / 100;
   else ratio += effectPower(b, "magic_vamp") / 100;
+  const elixirVamp = kind === "phys" ? b.p.statuses.buffs?.vamp : b.p.statuses.buffs?.magic_vamp;
+  if (elixirVamp && (kind === "magic" || source === "weapon" || source === "skill")) ratio += elixirVamp.value;
   if (source === "weapon" || source === "skill" || source === "any") ratio += effectPower(b, "vamp_str") / 100;
   if (source === "weapon" || source === "skill") {
     if (b.p.statuses.bloodRage > 0) ratio += 0.15;
@@ -2285,7 +2414,7 @@ export function damageAfterEnemyDefense(b: BattleState, raw: number, kind: "phys
     /* Сквозь броню: приёмы Тень, Обратный хват, Змеиный выпад (следующий), Фехтование. */
     const ignoreNow = (b.p.statuses.ignoreArmorNow ?? 0) > 0 || (b.p.statuses.fencingTurns ?? 0) > 0 ||
       (b.p.statuses.gripTurn ?? 0) > 0 || (b.p.statuses.nextPierce ?? 0) > 0;
-    const effArmor = Math.round(Math.max(0, enemyArmorNow(b.enemy) - pierce - enemyOilArmorCut(b)) * (1 - (ignoreNow ? 1 : (b.armorIgnore ?? 0))));
+    const effArmor = Math.round(Math.max(0, enemyArmorNow(b.enemy) - pierce) * (1 - (ignoreNow ? 1 : (b.armorIgnore ?? 0))));
     if ((b.p.statuses.nextPierce ?? 0) > 0) b.p.statuses.nextPierce = 0;
     d -= effArmor;
     /* Каменная шкура и укрепление рода — врождённые свойства породы,
@@ -2354,6 +2483,10 @@ function hitEnemy(
   }
   /* Побои: враг получает больше урона от героя, пока эффект действует. */
   if ((b.enemy.statuses.beatRounds ?? 0) > 0) raw = Math.round(raw * (1 + (b.enemy.statuses.beatMult ?? 0)));
+  /* Острота на клинке: урон атак героя растёт, пока смазка держится. */
+  if (kind === "phys" && b.p.statuses.oilType === "edge" && b.p.statuses.oilRounds > 0) {
+    raw = Math.round(raw * (1 + (b.p.statuses.oilPower ?? 0) / 100));
+  }
   /* Обратный хват: в этом ходу весь урон героя ÷2. */
   if ((b.p.statuses.halfDmg ?? 0) > 0) raw = Math.round(raw / 2);
   /* Ловкий «без рода»: часть физических ударов он уводит и сам контратакует без урона для себя.
@@ -2400,7 +2533,7 @@ function hitEnemy(
   if (accurateStrike) {
     if (!b.skillNoMiss) {
       const acc = accuracy ?? heroAccuracy(b, mainHandClass(b), "normal");
-      if (!rollHeroHit(acc, heroEvasion(b))) {
+      if (!b.p.statuses.buffs?.sure_hit && !rollHeroHit(acc, heroEvasion(b))) {
         flash(b, "e", "miss", 0);
         push(b, `Удар мимо: ${b.enemy.def.name} уклоняется.${note}`, "e");
         return 0;
@@ -2567,8 +2700,9 @@ function playerDefenseLines(
     if (flat > 0) lines.push({ label: "Сопротивление урону", value: d, note: `−${flat}` });
   }
   if (b.p.statuses.stone > 0) {
-    d = Math.round(d * 0.7);
-    lines.push({ label: "Каменная кожа", value: d, note: "×0.7" });
+    const stoneMult = 1 - (b.p.statuses.stonePct ?? 0.3);
+    d = Math.round(d * stoneMult);
+    lines.push({ label: "Каменная кожа", value: d, note: `×${stoneMult.toFixed(1)}` });
   }
   let guardMult = 1;
   if (b.p.guard) {
@@ -2623,10 +2757,6 @@ function playerHitParts(b: BattleState, kind: "phys" | "magic", strike: boolean,
     chance *= 1 - darkMiss;
     misses.push({ label: "мрак", chance: darkMiss });
   }
-  if (enemyOil(b, "light")) {
-    chance *= 1 - OIL_BLIND_MISS;
-    misses.push({ label: "враг ослеплён светом", chance: OIL_BLIND_MISS });
-  }
   if (!ignoreDefense && kind === "phys") {
     const evade = combatChance(b.p.chanceLayers.evade);
     if (evade > 0) {
@@ -2661,12 +2791,6 @@ function incoming(
   if (!ignoreDefense && strike && darkMiss > 0 && Math.random() < darkMiss) {
     flash(b, "p", "miss", 0);
     push(b, `Мрак скрывает тебя: ${src} — промах.`, "sys");
-    return false;
-  }
-  /* Световое масло на враге ослепляет его: каждый удар может уйти мимо. */
-  if (enemyOil(b, "light") && Math.random() < OIL_BLIND_MISS) {
-    flash(b, "p", "miss", 0);
-    push(b, `${b.enemy.def.name} ослеплён светом: ${src} — промах.`, "sys");
     return false;
   }
   if (b.p.statuses.invulnerable > 0) {
@@ -3076,16 +3200,16 @@ function advance(b: BattleState) {
       b.enemy.hp -= d;
       push(b, `Порча разъедает ${b.enemy.def.name}: −${d} ОЗ.`, "p");
     }
-    if (b.enemy.statuses.oilType && b.enemy.statuses.oilRounds > 0 && b.enemy.hp > 0) {
+    if (b.enemy.statuses.oilType && b.enemy.statuses.oilRounds > 0 && b.enemy.hp > 0 && b.enemy.statuses.oilType !== "drain") {
       const kind = b.enemy.statuses.oilType;
-      const element = isDamageElement(kind) ? kind : undefined;
+      const element = kind === "fire" || kind === "ice" ? kind : undefined;
       const mult = element ? enemyElementMult(b, element) : 1;
       const raw = oilTickDamage(kind, b.enemy.statuses.oilTick, enemyMagicResist(b));
       if (raw > 0 && mult > 0) {
         const d = Math.max(1, Math.round(raw * mult));
         b.enemy.hp -= d;
         const weak = mult > 1 ? ` Уязвимость ×${mult}.` : "";
-        push(b, `${damageTypeName(kind)} масла отнимает ${d} ОЗ у ${b.enemy.def.name}.${weak}`, "p", element);
+        push(b, `${OIL_NAMES[kind]} масла отнимает ${d} ОЗ у ${b.enemy.def.name}.${weak}`, "p", element);
       }
     }
     if (b.enemy.passive?.id === "regen" && !raceCannotHeal(b.enemy.def.race) && b.enemy.hp > 0 && b.enemy.hp < b.enemy.maxHp) {
@@ -3172,9 +3296,22 @@ function advance(b: BattleState) {
       b.p.statuses.immune[k] = left - 1;
       if (left === 1) push(b, `Иммунитет: ${IMMUNITY_NAMES[k]} снова может накладываться.`, "sys");
     }
+    for (const k of IMMUNITY_EFFECTS) {
+      const rf = b.p.statuses.resistFx?.[k];
+      if (!rf) continue;
+      if (rf.rounds <= 1) delete b.p.statuses.resistFx![k];
+      else b.p.statuses.resistFx![k] = { ...rf, rounds: rf.rounds - 1 };
+    }
+    for (const k of Object.keys(b.p.statuses.buffs ?? {}) as ("vamp" | "magic_vamp" | "sure_hit")[]) {
+      const bf = b.p.statuses.buffs![k];
+      if (!bf) continue;
+      if (bf.rounds <= 1) delete b.p.statuses.buffs![k];
+      else b.p.statuses.buffs![k] = { ...bf, rounds: bf.rounds - 1 };
+    }
 
     if (prevCurse > 0 && b.p.statuses.curse === 0)
       push(b, "Проклятие рассеялось! Твой урон вернулся к норме.", "sys");
+    if (b.p.statuses.rage === 0) b.p.statuses.rageStep = undefined;
     if (prevRage > 0 && b.p.statuses.rage === 0)
       push(b, "Ярость угасла: урон вернулся к обычному.", "sys");
     if (prevWound > 0 && b.p.statuses.wound === 0)
@@ -3192,7 +3329,7 @@ function advance(b: BattleState) {
     if (b.enemy.statuses.oilRounds > 0) {
       b.enemy.statuses.oilRounds -= 1;
       if (b.enemy.statuses.oilRounds === 0) {
-        const name = b.enemy.statuses.oilType ? damageTypeName(b.enemy.statuses.oilType) : "";
+        const name = b.enemy.statuses.oilType ? OIL_NAMES[b.enemy.statuses.oilType] : "";
         b.enemy.statuses.oilType = null;
         if (name) push(b, `${name} масла на ${b.enemy.def.name} угасло.`, "sys");
       }
@@ -4119,32 +4256,10 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
         case "damage": {
           let dmg = Math.round(itemPower * scrollMult);
           if (u.vs && b.enemy.def.race === u.vs) dmg = Math.round(dmg * 2);
-          if (b.p.statuses.rage > 0) dmg = Math.round(dmg * (1 + 0.10 * Math.min(10, Math.floor(missingHpRatio(b) * 10))));
+          if (b.p.statuses.rage > 0) dmg = Math.round(dmg * (1 + ((b.p.statuses.rageStep ?? 10) / 100) * Math.min(10, Math.floor(missingHpRatio(b) * 10))));
           if (b.p.statuses.curse > 0) dmg = Math.round(dmg * (1 - (b.p.statuses.cursePower ?? 30) / 100));
           const dealt = elementalHit(b, dmg, ` [${def.name}]${u.vs && b.enemy.def.race === u.vs ? " · вдвойне против такого рода!" : ""}`, u.element);
           applyVamp(b, dealt, 0, def.kind === "scroll" ? "scroll" : "consumable", def.kind === "scroll" ? "magic" : "phys");
-          break;
-        }
-        case "vamp_potion": {
-          b.p.statuses.vampHits = Math.max(b.p.statuses.vampHits, u.hits ?? 3);
-          push(b, `${def.name}: следующие ${b.p.statuses.vampHits} удара возвращают 25% урона здоровьем.`, "p");
-          break;
-        }
-        case "regen_potion": {
-          b.p.statuses.regenPotion = statusRounds(b, u.rounds ?? 4);
-          push(b, `${def.name}: +5 здоровья за раунд на ${b.p.statuses.regenPotion} раунда.`, "p");
-          break;
-        }
-        case "resist_potion": {
-          b.p.statuses.resistPotion = statusRounds(b, u.rounds ?? 3);
-          push(b, `${def.name}: +25% стойкости к эффектам врага на ${b.p.statuses.resistPotion} раунда.`, "p");
-          break;
-        }
-        case "weaken": {
-          /* Порча без периодического урона: только −20% урона врага. */
-          if (b.enemy.statuses.blight === 0) b.enemy.statuses.blightTick = 0;
-          b.enemy.statuses.blight = Math.max(b.enemy.statuses.blight, u.rounds ?? 3);
-          push(b, `${def.name}: ${b.enemy.def.name} наносит −20% урона на ${b.enemy.statuses.blight} раунда.`, "p");
           break;
         }
         case "seal_moves": {
@@ -4188,6 +4303,30 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
           push(b, `Молния раскалывает броню врага (−2 брони).`, "p");
           break;
         }
+        case "stamina": {
+          const slot = b.round * 1000 + b.idx;
+          if (b.p.statuses.staminaPotionSlot === slot) return err("Зелье выносливости уже пили в этом ходу.");
+          b.p.statuses.staminaPotionSlot = slot;
+          const before = b.p.stamina;
+          b.p.stamina = Math.min(b.p.staminaMax, b.p.stamina + itemPower);
+          push(b, `${def.name}: +${b.p.stamina - before} выносливости.`, "p");
+          break;
+        }
+        case "antidote": {
+          const healed = itemPower > 0 ? healPlayer(b, itemPower, true) : 0;
+          if (u.cleanseAll) clearAllHeroNegatives(b);
+          for (const k of u.effects ?? []) clearHeroEffect(b, k);
+          if (u.resist) {
+            for (const k of u.effects ?? []) {
+              b.p.statuses.resistFx = { ...(b.p.statuses.resistFx ?? {}), [k]: { chance: u.resist, rounds: u.rounds ?? 1 } };
+            }
+          }
+          if (healed > 0) flash(b, "p", "heal", healed);
+          const what = u.cleanseAll ? "все негативные эффекты сняты" : `снято: ${(u.effects ?? []).map((k) => IMMUNITY_NAMES[k]).join(", ")}`;
+          const resistNote = u.resist ? ` На ${u.rounds ?? 1} раунд: ${Math.round(u.resist * 100)}% сопротивления.` : "";
+          push(b, `${def.name}: ${what}${healed > 0 ? `, +${healed} здоровья` : ""}.${resistNote}`, "p");
+          break;
+        }
         case "cleanse": {
           b.p.statuses.wound = 0;
           b.p.statuses.woundStacks = 0;
@@ -4201,7 +4340,8 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
         }
         case "rage": {
           b.p.statuses.rage = statusRounds(b, u.rounds ?? 5);
-          push(b, `${def.name}: ярость на ${u.rounds} раундов, +10% урона за каждые 10% недостающего ОЗ.`, "p");
+          b.p.statuses.rageStep = u.rageStep ?? 10;
+          push(b, `${def.name}: ярость на ${b.p.statuses.rage} раунда, +${b.p.statuses.rageStep}% урона за каждые 10% недостающего ОЗ.`, "p");
           break;
         }
         case "flee": {
@@ -4254,14 +4394,10 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
           push(b, `${b.enemy.def.name} в ужасе: автоматически держит защиту ${b.enemy.statuses.fear} хода.`, "p");
           break;
         }
-        case "haste": {
-          b.p.statuses.haste = statusRounds(b, u.rounds ?? 3);
-          push(b, `${def.name}: следующие ${b.p.statuses.haste} раунда ты действуешь на ход раньше.`, "p");
-          break;
-        }
         case "stone": {
           b.p.statuses.stone = statusRounds(b, u.rounds ?? 3);
-          push(b, `${def.name}: входящий урон −30% на ${b.p.statuses.stone} раунда.`, "p");
+          b.p.statuses.stonePct = u.power ?? 0.3;
+          push(b, `${def.name}: входящий урон −${Math.round((u.power ?? 0.3) * 100)}% на ${b.p.statuses.stone} раунда.`, "p");
           break;
         }
         case "terror": {
@@ -4276,51 +4412,42 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
           }
           break;
         }
-        case "iron_tonic": {
-          b.p.statuses.ironTonic = statusRounds(b, u.rounds ?? 4);
-          b.p.statuses.wound = 0;
-          b.p.statuses.woundStacks = 0;
-          push(b, `${def.name}: +4 брони и +4 регенерации на ${b.p.statuses.ironTonic} раунда.`, "p");
+        case "resist": {
+          const fx = u.effects ?? [];
+          const rounds = u.rounds ?? 1;
+          for (const k of fx) {
+            b.p.statuses.resistFx = { ...(b.p.statuses.resistFx ?? {}), [k]: { chance: u.resist ?? 0, rounds } };
+          }
+          push(b, `${def.name}: ${Math.round((u.resist ?? 0) * 100)}% сопротивления на ${rounds} раунд(а): ${fx.map((k) => IMMUNITY_NAMES[k]).join(", ")}.`, "p");
           break;
         }
-        case "blood_rage": {
-          b.p.statuses.rage = statusRounds(b, u.rounds ?? 4);
-          b.p.statuses.bloodRage = statusRounds(b, u.rounds ?? 4);
-          push(b, `${def.name}: ярость и +15% вампиризма оружием на ${u.rounds} раунда.`, "p");
+        case "vamp": {
+          const kind = u.vampKind === "magic" ? "magic_vamp" : "vamp";
+          const rounds = statusRounds(b, u.rounds ?? 3);
+          b.p.statuses.buffs = { ...(b.p.statuses.buffs ?? {}), [kind]: { value: (u.power ?? 0) / 100, rounds } };
+          push(b, `${def.name}: ${u.power}% ${kind === "magic_vamp" ? "магического урона" : "урона оружием"} возвращается здоровьем на ${rounds} раунда.`, "p");
+          break;
+        }
+        case "sure_hit": {
+          const rounds = statusRounds(b, u.rounds ?? 1);
+          b.p.statuses.buffs = { ...(b.p.statuses.buffs ?? {}), sure_hit: { value: 1, rounds } };
+          push(b, `${def.name}: атака героя не промахивается на ход.`, "p");
           break;
         }
         case "oil": {
           if (!u.oil) break;
-          /* Счётчик уменьшается в конце каждого раунда: 2 = остаток текущего раунда
-             и следующий, то есть масло действует на удары в ближайшем раунде. */
+          /* +1: остаток текущего раунда, затем срок из предмета. */
           b.p.statuses.oilType = u.oil;
-          b.p.statuses.oilRounds = 2;
-          const name = damageTypeName(u.oil);
-          push(
-            b,
-            `${def.name}: клинок смазан на ближайший раунд. Удар оружием накладывает ${name} на 3 раунда.`,
-            "p",
-            isDamageElement(u.oil) ? u.oil : undefined,
-          );
+          b.p.statuses.oilRounds = (u.coat ?? 3) + 1;
+          b.p.statuses.oilPower = u.power ?? 0;
+          b.p.statuses.oilCut = u.cut ?? 0;
+          push(b, `${def.name}: клинок смазан на ${u.coat ?? 3} раунда, вид: ${OIL_NAMES[u.oil]}.`, "p");
           break;
         }
         case "immunity": {
           if (!u.effect) break;
           b.p.statuses.immune[u.effect] = Math.max(b.p.statuses.immune[u.effect] ?? 0, IMMUNITY_ROUNDS);
           push(b, `${def.name}: ${IMMUNITY_NAMES[u.effect]} не накладывается ${IMMUNITY_ROUNDS} хода.`, "p");
-          break;
-        }
-        case "quickblade": {
-          b.p.statuses.quickblade = statusRounds(b, u.rounds ?? 3);
-          push(b, `${def.name}: +25% шанса крита и +50% силы крита на ${u.rounds} раунда.`, "p");
-          break;
-        }
-        case "pact_elixir": {
-          b.p.weaponCd = 0;
-          for (const k of Object.keys(b.p.epicCds)) b.p.epicCds[k] = 0;
-          for (const k of Object.keys(b.p.armorCds)) b.p.armorCds[k] = 0;
-          b.p.statuses.pactElixir = statusRounds(b, u.rounds ?? 3);
-          push(b, `${def.name}: перезарядки сброшены, +25% урона приёмов на ${u.rounds} раунда.`, "p");
           break;
         }
         case "scroll_creation": {

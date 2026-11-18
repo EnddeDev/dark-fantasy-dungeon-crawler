@@ -437,6 +437,20 @@ export class DungeonController {
         if (def.kind === "scroll") statuses.wound = 0;
         msg = `${def.name}: +${amt} здоровья.`;
       }
+    } else if (u.type === "antidote") {
+      if (u.cleanseAll || u.effects?.includes("poison")) statuses.poison = 0;
+      if (u.cleanseAll || u.effects?.includes("curse")) {
+        statuses.curse = 0;
+        statuses.cursePower = 0;
+      }
+      if (u.cleanseAll || u.effects?.includes("fear")) statuses.fear = 0;
+      if (u.cleanseAll) {
+        statuses.wound = 0;
+        statuses.burn = 0;
+      }
+      const amt = u.power ?? 0;
+      hp = Math.min(d.maxHp, hp + amt);
+      msg = `${def.name}: ${u.cleanseAll ? "все негативные эффекты сняты" : "негативный эффект снят"}${amt ? ` (+${amt} ОЗ)` : ""}.`;
     } else if (u.type === "cleanse") {
       statuses.wound = 0;
       statuses.curse = 0;

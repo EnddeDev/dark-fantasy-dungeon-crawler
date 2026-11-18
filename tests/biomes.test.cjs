@@ -102,7 +102,7 @@ test("swamp halves non-potion healing for both sides but leaves potions intact",
   const potion = combat("swamp", { bag: { potion_s: 1 } });
   potion.queue = ["p", "e"]; potion.idx = 0; potion.p.hp = 1;
   const afterPotion = battle.playerAct(potion, { type: "item", id: "potion_s" });
-  assert.equal(afterPotion.p.hp, 29);
+  assert.equal(afterPotion.p.hp, 31);
 
   const scroll = combat("swamp", { bag: { scroll_heal: 1 } });
   scroll.queue = ["p", "e"]; scroll.idx = 0; scroll.p.hp = 1;

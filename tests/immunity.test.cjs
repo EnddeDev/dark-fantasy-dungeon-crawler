@@ -57,14 +57,15 @@ function fight(race, moves, bag = {}) {
 
 const endRound = (st) => withRandom(() => battle.playerAct({ ...st, queue: ["p"], idx: 0 }, { type: "end_turn" }));
 
-test("зелье иммунитета из рюкзака тратит 5 выносливости и защищает ровно от одного эффекта на 3 хода", () => {
-  const b = fight("none", ["guard"], { immune_bleed: 1 });
+test("зелье от яда из рюкзака тратит 5 выносливости, снимает яд и на раунд даёт 30% сопротивления", () => {
+  const b = fight("none", ["guard"], { antidote_poison: 1 });
+  b.p.statuses.poison = 2;
   b.queue = ["p", "e"];
   b.idx = 0;
-  const after = battle.playerAct(b, { type: "item", id: "immune_bleed" });
-  assert.equal(after.p.statuses.immune.bleed, 3, "кровотечение: 3 хода");
-  assert.equal(after.p.statuses.immune.poison ?? 0, 0, "другие эффекты не защищены");
-  assert.equal(after.bag.immune_bleed ?? 0, 0, "зелье израсходовано");
+  const after = battle.playerAct(b, { type: "item", id: "antidote_poison" });
+  assert.equal(after.p.statuses.poison, 0, "яд снят");
+  assert.deepEqual(after.p.statuses.resistFx.poison, { chance: 0.3, rounds: 1 }, "сопротивление яду 30% на 1 раунд");
+  assert.equal(after.bag.antidote_poison ?? 0, 0, "зелье израсходовано");
   assert.equal(after.p.stamina, b.p.stamina - 5, "из рюкзака — 5 выносливости");
   assert.equal(after.queue[after.idx], "p", "ход героя продолжается, пока есть выносливость");
 });
@@ -156,32 +157,40 @@ test("иммунитет виден в полосе эффектов: щит, с
 
 test("масло на клинке видно герою синим, масло на враге — дебаффом со своим значком", () => {
   const hero = fight("none", ["guard"]);
-  hero.p.statuses.oilType = "fire";
+  hero.p.statuses.oilType = "edge";
   hero.p.statuses.oilRounds = 2;
+  hero.p.statuses.oilPower = 10;
   const blade = effects.playerEffectChips(hero).find((c) => c.id === "oil");
   assert.ok(blade, "клинок смазан — иконка есть");
   assert.equal(blade.polarity, "good");
   assert.equal(blade.color, effects.EFFECT_COLORS.buff, "синяя рамка");
 
   const frost = fight("none", ["guard"], {});
-  frost.p.stats.int = 10;
   frost.enemy.statuses.oilType = "ice";
   frost.enemy.statuses.oilRounds = 3;
-  frost.enemy.statuses.oilTick = 3;
+  frost.enemy.statuses.oilTick = 5;
+  frost.enemy.statuses.oilCut = 0.1;
   const ice = effects.enemyEffectChips(frost).find((c) => c.id === "frost");
   assert.ok(ice, "лёд на враге — иконка льда");
   assert.equal(ice.polarity, "bad");
-  assert.equal(ice.boosts[0].value, "−50%", "5% за очко ИНТ при ИНТ 10");
-  assert.equal(ice.dot.perTick, 3, "лёд: тик из удара, 3 урона за раунд");
+  assert.equal(ice.boosts[0].value, "−10%", "атаки врага −10% из предмета");
+  assert.equal(ice.dot.perTick, 5, "лёд: 5 урона за раунд");
 
   const fire = fight("none", ["guard"]);
   fire.enemy.statuses.oilType = "fire";
   fire.enemy.statuses.oilRounds = 3;
   fire.enemy.statuses.oilTick = 6;
-  const flame = effects.enemyEffectChips(fire).find((c) => c.name === "Огонь масла");
-  assert.ok(flame, "огонь на враге — иконка огня");
-  assert.equal(flame.dot.perTick, 6, "огонь масла: тик из удара, 6 урона за раунд");
+  const flame = effects.enemyEffectChips(fire).find((c) => c.name === "Горение масла");
+  assert.ok(flame, "огонь на враге — иконка горения");
+  assert.equal(flame.dot.perTick, 6, "горение масла: 6 урона за раунд");
   assert.equal(flame.dot.ticks, 3);
+
+  const drain = fight("none", ["guard"]);
+  drain.enemy.statuses.oilType = "drain";
+  drain.enemy.statuses.oilRounds = 3;
+  const block = effects.enemyEffectChips(drain).find((c) => c.name === "Иссушение масла");
+  assert.ok(block, "иссушение видно на враге");
+  assert.equal(block.polarity, "bad");
 });
 
 test("иконки масел и иммунитета есть в наборе глифов", () => {
@@ -190,13 +199,10 @@ test("иконки масел и иммунитета есть в наборе �
   }
 });
 
-test("зелья иммунитета: по одному на эффект, есть в припасах и описаны", () => {
-  const potions = Object.values(content.ITEMS).filter((i) => i.use?.type === "immunity");
-  assert.equal(potions.length, statusEffects.IMMUNITY_EFFECTS.length, "по одному зелью на каждый эффект");
-  const effectsCovered = potions.map((i) => i.use.effect).sort();
-  assert.deepEqual(effectsCovered, [...statusEffects.IMMUNITY_EFFECTS].sort());
+test("зелья от состояний и очищение: описаны, есть уровни припасов", () => {
+  const potions = Object.values(content.ITEMS).filter((i) => i.use?.type === "antidote");
+  assert.deepEqual(potions.map((i) => i.id).sort(), ["antidote", "antidote_curse", "antidote_fear", "antidote_full", "antidote_poison"]);
   for (const i of potions) {
-    assert.equal(i.use.rounds, 3, `${i.id}: 3 хода`);
     assert.ok(i.id in content.SUPPLY_LEVELS, `${i.id}: есть уровень припаса`);
     assert.ok(i.desc.length > 0, `${i.id}: есть описание`);
   }

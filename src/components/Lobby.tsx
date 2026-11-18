@@ -49,8 +49,7 @@ import {
 } from "../game/content";
 import type { LobbyController } from "../controllers/LobbyController";
 import { recipePrice } from "../model/pricing";
-import { damageTypeName } from "../game/damageTypes";
-import { IMMUNITY_NAMES } from "../game/statusEffects";
+import { IMMUNITY_NAMES, OIL_NAMES } from "../game/statusEffects";
 import { SLOT_META, SLOT_ORDER } from "../game/types";
 import type { RarityTier, Slot } from "../game/types";
 import { derived } from "../game/battle";
@@ -238,6 +237,15 @@ function effectSummary(def: ItemDef): { what: string; when: string } {
         what: "Снимает раны, проклятие и яд, возвращает +8 здоровья.",
         when: "Мгновенно. Работает в коридоре и в бою.",
       };
+    case "stamina":
+      return { what: `Восстанавливает ${dmg} выносливости.`, when: "Только в бою. Один раз в ход." };
+    case "antidote":
+      return {
+        what: u.cleanseAll
+          ? "Снимает все негативные эффекты."
+          : `Снимает ${(u.effects ?? []).map((k) => IMMUNITY_NAMES[k]).join(" и ")}${u.resist ? `; на ${u.rounds ?? 1} раунд даёт ${Math.round(u.resist * 100)}% сопротивления` : ""}${u.power ? `; +${u.power} здоровья` : ""}.`,
+        when: "Мгновенно. Работает в коридоре и в бою.",
+      };
     case "throw":
       return { what: `Наносит ${dmg} физического урона.`, when: "Мгновенно. Только в бою." };
     case "poison":
@@ -285,10 +293,8 @@ function effectSummary(def: ItemDef): { what: string; when: string } {
         what: `Наносит ${dmg} урона сквозь броню и разъедает её на −3.`,
         when: "Мгновенно. Только в бою.",
       };
-    case "haste":
-      return { what: "+1 ход в каждом раунде.", when: `Действует ${u.rounds} раунда.` };
     case "stone":
-      return { what: "Входящий урон снижен на 30%.", when: `Действует ${u.rounds} раунда.` };
+      return { what: `Входящий урон снижен на ${Math.round((u.power ?? 0.3) * 100)}%.`, when: `Действует ${u.rounds} раунда.` };
     case "terror":
       return { what: "Враг вынужден держать защиту и не атакует.", when: `Действует ${u.rounds} хода.` };
     case "stun_enemy":
@@ -303,10 +309,16 @@ function effectSummary(def: ItemDef): { what: string; when: string } {
       return { what: "Снимает горение на карте в Огненных недрах.", when: "Используется на карте, когда есть горение." };
     case "special_torch":
       return { what: "+1 к видимости; в Тёмном подземелье снимает штраф мрака.", when: `Действует ${u.rounds ?? 5} ходов по карте.` };
+    case "resist":
+      return { what: `Шанс ${Math.round((u.resist ?? 0) * 100)}%, что эффект не наложится: ${(u.effects ?? []).map((k) => IMMUNITY_NAMES[k]).join(", ")}.`, when: `Действует ${u.rounds ?? 1} раунд.` };
+    case "vamp":
+      return { what: `Возвращает ${u.power ?? 0}% ${u.vampKind === "magic" ? "магического урона" : "урона оружием"} здоровьем.`, when: `Действует ${u.rounds ?? 3} раунда.` };
+    case "sure_hit":
+      return { what: "Атака героя не промахивается.", when: "На ход." };
     case "oil":
       return {
-        what: `Смазывает оружие: удар накладывает ${u.oil ? damageTypeName(u.oil) : "урон"} на 3 раунда.`,
-        when: "Тратит ход. Действует на ближайший раунд; только в бою.",
+        what: `Смазывает оружие: удар накладывает ${u.oil ? OIL_NAMES[u.oil] : "урон"} на 3 раунда.`,
+        when: `Тратит ход. Смазка держится ${(u.coat ?? 3)} раунда; только в бою.`,
       };
     case "immunity":
       return {
