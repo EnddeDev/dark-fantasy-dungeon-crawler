@@ -17,15 +17,8 @@ function loadGameModule(name) {
 const battle = loadGameModule("battle");
 const content = loadGameModule("content");
 
-const ARCHETYPE = new Set(["iron_tonic", "blood_rage", "quickblade_oil", "pact_elixir"]);
-const generic = (id) => {
-  const def = content.ITEMS[id];
-  return (def.kind === "potion" || def.kind === "throwable") && !id.startsWith("immune_") && !ARCHETYPE.has(id);
-};
-const NEW_IDS = [
-  "heal_elixir", "regen_potion", "shard_bomb", "nectar", "resist_potion", "ice_gust", "vine_net",
-  "weaken", "salt", "vamp_potion", "dragon_powder", "phoenix", "hell_var", "frost_crystal", "seal_silence",
-];
+/* Эликсиры и масла нового списка магазина: 21 + 13. */
+const NEW_IDS = Object.keys(content.ITEMS).filter((id) => /^(elixir_|oil_)/.test(id));
 
 function player(over = {}) {
   const gear = content.createGearItem({ baseId: "sword", rarity: "rare", wear: "new", identified: true, level: 4 });
@@ -53,30 +46,24 @@ function dummyFight(pl, id, floor = 5) {
   return b;
 }
 
-test("расходники: по четыре общих на каждом уровне от 1 до 10", () => {
-  for (let L = 1; L <= 10; L++) {
-    const ids = Object.keys(content.ITEMS).filter((id) => generic(id) && content.supplyLevel(id) === L);
-    assert.equal(ids.length, 4, `уровень ${L}: ${ids.join(", ")}`);
-  }
-});
-
-test("расходники: уровни 6–10 больше не пустые, новые предметы на месте", () => {
+test("расходники: эликсиры и масла на месте, уровни 1–10, все попадают в добычу", () => {
+  assert.equal(NEW_IDS.length, 34, "21 эликсир и 13 масел");
   for (const id of NEW_IDS) {
     assert.ok(content.ITEMS[id], `нет предмета ${id}`);
     const L = content.supplyLevel(id);
-    assert.ok(L >= 5 && L <= 10, `${id}: уровень ${L}`);
+    assert.ok(L >= 1 && L <= 10, `${id}: уровень ${L}`);
     assert.ok((content.ITEMS[id].price ?? 0) > 0, `${id}: нет цены`);
   }
   const pool = content.questSupplyPool(10);
   for (const id of NEW_IDS) assert.ok(pool.includes(id), `${id} не попадает в добычу`);
-  assert.ok(!content.questSupplyPool(4).includes("phoenix"), "ур. 10 не должен выпадать с 4 этажа");
+  assert.ok(!content.questSupplyPool(4).includes("potion_xl"), "ур. 9 не должен выпадать с 4 этажа");
 });
 
 test("иммунитеты и архетипные зелья остались на прежних уровнях", () => {
-  assert.equal(content.supplyLevel("immune_bleed"), 2);
-  assert.equal(content.supplyLevel("immune_sealAttack"), 4);
-  assert.equal(content.supplyLevel("iron_tonic"), 4);
-  assert.equal(content.supplyLevel("pact_elixir"), 5);
+  assert.equal(content.supplyLevel("antidote_poison"), 3);
+  assert.equal(content.supplyLevel("antidote_full"), 6);
+  assert.equal(content.supplyLevel("elixir_antidote_weak"), 1);
+  assert.equal(content.supplyLevel("oil_exhaust"), 10);
 });
 
 test("урон расходников растёт на 10% за уровень, на 10-м ×1,9", () => {
@@ -92,47 +79,41 @@ test("урон расходников растёт на 10% за уровень,
 test("свитки и лечение не получают бонус уровня", () => {
   const stats = { str: 1, agi: 5, int: 5 };
   assert.equal(content.consumablePower(content.ITEMS.scroll_spark, stats), 20);
-  assert.equal(content.consumablePower(content.ITEMS.heal_elixir, stats), 100);
-  assert.equal(content.consumablePower(content.ITEMS.nectar, stats), 140);
-  assert.equal(content.consumablePower(content.ITEMS.phoenix, stats), 200);
-  assert.equal(content.consumablePower(content.ITEMS.potion_l, stats), 65);
+  assert.equal(content.consumablePower(content.ITEMS.potion_xl, stats), 320);
+  assert.equal(content.consumablePower(content.ITEMS.potion_m, stats), 80);
+  assert.equal(content.consumablePower(content.ITEMS.potion_l, stats), 160);
 });
 
-test("Вампирская кровь: три удара оружием возвращают 25% урона, потом гаснет", () => {
-  const pl = player({ hp: 500, bag: { vamp_potion: 1 } });
-  const b = dummyFight(pl, "vamp_potion");
+test("Эликсир вампира: 25% урона оружием возвращается здоровьем три раунда, духа — магическим", () => {
+  const pl = player({ hp: 500, bag: { elixir_vamp: 1, elixir_spirit: 1 } });
+  const b = dummyFight(pl, "elixir_vamp");
   b.p.hp = 100; b.p.maxHp = 500;
-  const after = battle.playerAct(b, { type: "item", id: "vamp_potion" });
-  assert.equal(after.p.statuses.vampHits, 3);
-  /* удар оружием на 200 урона: 25% = 50 здоровья и один заряд */
+  const after = battle.playerAct(b, { type: "item", id: "elixir_vamp" });
+  assert.equal(after.p.statuses.buffs.vamp.rounds, 3);
+  assert.equal(after.p.statuses.buffs.vamp.value, 0.25);
   const copy = () => ({ ...after, p: { ...after.p, hp: 100, statuses: { ...after.p.statuses } } });
-  const hitOnce = copy();
-  battle.applyVamp(hitOnce, 200, 0, "weapon", "phys");
-  assert.equal(hitOnce.p.statuses.vampHits, 2, "заряд тратится на удар");
-  assert.equal(hitOnce.p.hp, 150);
-  /* расходник заряд не тратит */
-  const viaItem = copy();
-  battle.applyVamp(viaItem, 200, 0, "consumable", "phys");
-  assert.equal(viaItem.p.statuses.vampHits, 3);
+  const hit = copy();
+  battle.applyVamp(hit, 200, 0, "weapon", "phys");
+  assert.equal(hit.p.hp, 150, "25% от 200");
+  const magic = copy();
+  battle.applyVamp(magic, 200, 0, "scroll", "magic");
+  assert.equal(magic.p.hp, 100, "духа у вампира нет: магия не лечит");
 });
 
-test("Зелье стойкости и регенерация заводят статусы; стойкость поднимает шанс", () => {
-  const pl = player({ hp: 500, bag: { resist_potion: 1, regen_potion: 1 } });
-  const b = dummyFight(pl, "resist_potion");
-  const before = battle.playerResistChance(b);
-  const resisted = battle.playerAct(b, { type: "item", id: "resist_potion" });
-  assert.equal(resisted.p.statuses.resistPotion, 3);
-  assert.ok(battle.playerResistChance(resisted) > before, "стойкость должна расти");
-
-  const regen = battle.playerAct(dummyFight(pl, "regen_potion"), { type: "item", id: "regen_potion" });
-  assert.equal(regen.p.statuses.regenPotion, 4);
+test("Эликсир от холода и большой противоядия: сопротивление на раунд", () => {
+  const pl = player({ hp: 500, bag: { elixir_cold: 1, elixir_antidote_great: 1 } });
+  const cold = battle.playerAct(dummyFight(pl, "elixir_cold"), { type: "item", id: "elixir_cold" });
+  assert.equal(cold.p.statuses.resistFx.chill.chance, 0.5);
+  assert.equal(cold.p.statuses.resistFx.chill.rounds, 1);
+  const poison = battle.playerAct(dummyFight(pl, "elixir_antidote_great"), { type: "item", id: "elixir_antidote_great" });
+  assert.equal(poison.p.statuses.resistFx.poison.chance, 1);
 });
 
-test("Отвар сокрушения: порча −20% без периодического урона", () => {
-  const pl = player({ hp: 500, bag: { weaken: 1 } });
-  const after = battle.playerAct(dummyFight(pl, "weaken"), { type: "item", id: "weaken" });
-  assert.equal(after.enemy.statuses.blight, 3);
-  assert.equal(after.enemy.statuses.blightTick, 0);
+test("Масло слабости и раскола: броня врага ниже на 3 раунда", () => {
+  const pl = player({ hp: 500, bag: { oil_weak: 1 } });
+  const oiled = battle.playerAct(dummyFight(pl, "oil_weak"), { type: "item", id: "oil_weak" });
+  assert.equal(oiled.p.statuses.oilType, "weak");
+  assert.equal(oiled.p.statuses.oilRounds, 4, "смазка 3 раунда и остаток текущего");
 });
 
 test("Печать тишины: враг два раунда выбирает только атаку или стойку", () => {

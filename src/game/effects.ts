@@ -18,9 +18,8 @@ import {
   CHILL_HEAL_MULT,
   IMMUNITY_EFFECTS,
   IMMUNITY_NAMES,
+  type OilKind,
   magicTickFrom,
-  oilAcidArmorCut,
-  oilIceAttackCut,
   oilTickDamage,
 } from "./statusEffects";
 import { isBattleCurse } from "./traps";
@@ -140,14 +139,17 @@ function tickDot(
 }
 
 /** Что делает масло на клинке: короткая строка для подсказки. */
-const OIL_BLADE_TEXT = {
-  magic: "при каждом ударе сразу 3 + 3×ИНТ магического урона",
-  fire: "урон огнём за раунд: 10% от удара",
-  ice: "урон льдом за раунд: 10% от удара, и −5% силы атаки врага за очко ИНТ",
-  acid: "урон кислотой за раунд: 10% от удара, и броня врага −(1 + ЛОВ)",
-  light: "при каждом ударе сразу 2×ИНТ света и 25% промахов врага",
-  poison: "урон ядом за раунд: 10% от удара",
-} as const;
+const OIL_BLADE_TEXT: Record<OilKind, string> = {
+  fire: "горение врагу: урон за раунд",
+  ice: "лёд врагу: урон за раунд и слабее атаки",
+  sunder: "раскол: броня врага ниже",
+  edge: "урон атак героя выше",
+  weak: "разрушение: броня врага ниже на процент",
+  fatigue: "снимает выносливость врага (в дуэли)",
+  magic: "сразу магический урон при ударе",
+  drain: "враг не может лечиться",
+  exhaust: "снимает случайный положительный эффект врага",
+};
 
 /** Строка «сколько это в числах» для подсказки. */
 export function dotSummary(dot: EffectDot): string {
@@ -178,13 +180,14 @@ export function playerEffectChips(b: BattleState): EffectChip[] {
   const chips: EffectChip[] = [];
   const magicRes = combatChance(b.p.chanceLayers.magicResist);
   const missing = Math.max(0, 1 - b.p.hp / Math.max(1, b.p.maxHp));
-  const rageBonus = 0.1 * Math.min(10, Math.floor(missing * 10));
+  const rageStep = (s.rageStep ?? 10) / 100;
+  const rageBonus = rageStep * Math.min(10, Math.floor(missing * 10));
 
   /* ── Усиления ── */
   if (s.rage > 0) {
     chips.push({
       id: "rage", name: "Ярость", polarity: "good", rounds: s.rage,
-      details: ["Урон растёт от недостающего здоровья: +10% за каждые 10%."],
+      details: [`Урон растёт от недостающего здоровья: +${Math.round(rageStep * 100)}% за каждые 10%.`],
       boosts: [{ stat: "Урон", value: `+${pct(rageBonus)}` }],
       highlight: "dmg", color: EFFECT_COLORS.buff,
     });
@@ -200,8 +203,8 @@ export function playerEffectChips(b: BattleState): EffectChip[] {
   if (s.stone > 0) {
     chips.push({
       id: "stone", name: "Каменная кожа", polarity: "good", rounds: s.stone,
-      details: ["Входящий урон снижен на 30%."],
-      boosts: [{ stat: "Защита", value: "−30% урона" }],
+      details: [`Входящий урон снижен на ${Math.round((s.stonePct ?? 0.3) * 100)}%.`],
+      boosts: [{ stat: "Защита", value: `−${Math.round((s.stonePct ?? 0.3) * 100)}% урона` }],
       highlight: "armor", color: EFFECT_COLORS.buff,
     });
   }
@@ -468,6 +471,30 @@ export function playerEffectChips(b: BattleState): EffectChip[] {
     });
   }
 
+  /* ── Эликсиры вампиризма и точности ── */
+  const vampBuff = s.buffs?.vamp;
+  if (vampBuff) {
+    chips.push({
+      id: "vamp_hits", name: "Похищение жизни", polarity: "good", rounds: vampBuff.rounds,
+      details: [`${Math.round(vampBuff.value * 100)}% урона оружием возвращается здоровьем.`],
+      boosts: [{ stat: "Лечение", value: `${Math.round(vampBuff.value * 100)}%` }], color: EFFECT_COLORS.buff,
+    });
+  }
+  const magicVampBuff = s.buffs?.magic_vamp;
+  if (magicVampBuff) {
+    chips.push({
+      id: "vamp_hits", name: "Похищение духа", polarity: "good", rounds: magicVampBuff.rounds,
+      details: [`${Math.round(magicVampBuff.value * 100)}% магического урона возвращается здоровьем.`],
+      boosts: [{ stat: "Лечение", value: `${Math.round(magicVampBuff.value * 100)}%` }], color: EFFECT_COLORS.buff,
+    });
+  }
+  if (s.buffs?.sure_hit) {
+    chips.push({
+      id: "unknown", name: "Точность", polarity: "good", rounds: s.buffs.sure_hit.rounds,
+      details: ["Атака героя не промахивается."], boosts: [], color: EFFECT_COLORS.buff,
+    });
+  }
+
   /* ── Смазанный клинок: положительный, синяя рамка ── */
   if (s.oilType && s.oilRounds > 0) {
     chips.push({
@@ -485,6 +512,17 @@ export function playerEffectChips(b: BattleState): EffectChip[] {
       id: key, name: `Иммунитет: ${IMMUNITY_NAMES[key]}`, polarity: "good", immune: true,
       rounds: left, unit: "ход",
       details: [`Эффект «${IMMUNITY_NAMES[key]}» на тебя не накладывается.`],
+      boosts: [], color: EFFECT_COLORS.immunity,
+    });
+  }
+
+  /* ── Сопротивление эффектам (зелья-противоядия): один чип со списком ── */
+  const resistKeys = IMMUNITY_EFFECTS.filter((key) => (s.resistFx?.[key]?.rounds ?? 0) > 0);
+  if (resistKeys.length > 0) {
+    const rounds = Math.max(...resistKeys.map((key) => s.resistFx?.[key]?.rounds ?? 0));
+    chips.push({
+      id: "resist", name: "Сопротивление эффектам", polarity: "good", rounds, unit: "раунд",
+      details: resistKeys.map((key) => `С шансом ${Math.round((s.resistFx?.[key]?.chance ?? 0) * 100)}%: «${IMMUNITY_NAMES[key]}» не накладывается.`),
       boosts: [], color: EFFECT_COLORS.immunity,
     });
   }
@@ -630,48 +668,26 @@ export function enemyEffectChips(b: BattleState): EffectChip[] {
   /* ── Масло на твари: дебаффы от смазанного клинка героя ── */
   if (s.oilType && s.oilRounds > 0) {
     const kind = s.oilType;
-    const element = kind === "fire" || kind === "ice" || kind === "acid" || kind === "light" ? kind : undefined;
-    const mult = element ? raceElementMult(e.def.race, element) : 1;
-    const agi = b.p.stats.agi;
-    const int = b.p.stats.int;
-    const tick = (raw: number, type: EffectDot["type"]): EffectDot => {
-      const perTick = Math.max(1, Math.round(raw * mult));
-      return { perTick, ticks: s.oilRounds, total: perTick * s.oilRounds, type, when: "в конце раунда" };
-    };
-    const oilName = { fire: "Огонь масла", poison: "Яд масла", ice: "Лёд масла", acid: "Кислота масла", light: "Ослепление" }[kind as "fire" | "poison" | "ice" | "acid" | "light"] ?? "Масло";
+    const mult = kind === "fire" || kind === "ice" ? raceElementMult(e.def.race, kind) : 1;
+    const perTick = (kind === "fire" || kind === "ice") ? Math.max(1, Math.round(oilTickDamage(kind, s.oilTick, magicRes) * mult)) : 0;
     if (kind === "fire") {
       chips.push({
-        id: "burn", name: oilName, polarity: "bad", rounds: s.oilRounds,
-        details: [`Огонь масла: ${s.oilTick} урона за раунд (10% от удара, которым наложено).`],
-        boosts: [], dot: tick(oilTickDamage("fire", s.oilTick, magicRes), "огонь"), color: EFFECT_COLORS.burn,
-      });
-    } else if (kind === "poison") {
-      chips.push({
-        id: "poison", name: oilName, polarity: "bad", rounds: s.oilRounds,
-        details: [`Яд масла: ${s.oilTick} урона за раунд (10% от удара, которым наложено).`],
-        boosts: [], dot: tick(oilTickDamage("poison", s.oilTick, 0), "физический"), color: EFFECT_COLORS.poison,
+        id: "burn", name: "Горение масла", polarity: "bad", rounds: s.oilRounds,
+        details: [`Горение масла: ${s.oilTick} урона за раунд.`],
+        boosts: [], dot: { perTick, ticks: s.oilRounds, total: perTick * s.oilRounds, type: "огонь", when: "в конце раунда" }, color: EFFECT_COLORS.burn,
       });
     } else if (kind === "ice") {
-      const cut = oilIceAttackCut(int);
+      const cut = Math.round((s.oilCut ?? 0) * 100);
       chips.push({
-        id: "frost", name: oilName, polarity: "bad", rounds: s.oilRounds,
-        details: [`Сила атаки и физических приёмов −${Math.round(cut * 100)}% (5% за очко ИНТ героя).`],
-        boosts: [{ stat: "Атака", value: `−${Math.round(cut * 100)}%` }],
-        dot: tick(oilTickDamage("ice", s.oilTick, magicRes), "магический"), color: EFFECT_COLORS.frost,
+        id: "frost", name: "Лёд масла", polarity: "bad", rounds: s.oilRounds,
+        details: [`Лёд масла: ${s.oilTick} урона за раунд и атаки −${cut}%.`],
+        boosts: [{ stat: "Атака", value: `−${cut}%` }],
+        dot: { perTick, ticks: s.oilRounds, total: perTick * s.oilRounds, type: "магический", when: "в конце раунда" }, color: EFFECT_COLORS.frost,
       });
-    } else if (kind === "acid") {
-      const cut = oilAcidArmorCut(agi);
+    } else if (kind === "drain") {
       chips.push({
-        id: "acid", name: oilName, polarity: "bad", rounds: s.oilRounds,
-        details: [`Броня твари снижена на ${cut} (1 + ЛОВ героя).`],
-        boosts: [{ stat: "Броня", value: `−${cut}` }], highlight: "armor",
-        dot: tick(oilTickDamage("acid", s.oilTick, magicRes), "магический"), color: EFFECT_COLORS.acid,
-      });
-    } else if (kind === "light") {
-      chips.push({
-        id: "blind", name: oilName, polarity: "bad", rounds: s.oilRounds,
-        details: ["Тварь ослеплена светом: её удары промахиваются с шансом 25%."],
-        boosts: [{ stat: "Удары", value: "промах 25%" }], color: EFFECT_COLORS.blind,
+        id: "noHeal", name: "Иссушение масла", polarity: "bad", rounds: s.oilRounds,
+        details: ["Тварь не может восстанавливать здоровье."], boosts: [], color: EFFECT_COLORS.curse,
       });
     }
   }

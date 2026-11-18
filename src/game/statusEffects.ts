@@ -64,11 +64,6 @@ export function bossDotTick(kind: DotKind, maxHp: number): number {
   return Math.max(1, Math.ceil(Math.max(0, maxHp) * BOSS_DOT_PCT[kind]));
 }
 
-/** Тик масла: 10% от урона удара, которым масло наложено. */
-export function oilTickFromHit(damage: number): number {
-  return Math.max(1, Math.round(Math.max(0, damage) * 0.1));
-}
-
 /** Тик магического эффекта, который режется сопротивлением цели. */
 export function magicTickFrom(tick: number, magicResist: number): number {
   return Math.max(1, Math.round(Math.max(0, tick) * (1 - Math.max(0, Math.min(0.99, magicResist)))));
@@ -94,19 +89,18 @@ export function trapTickFrom(kind: "bleed" | "poison", floor: number): number {
 }
 
 /**
- * Виды масла для оружия. Удар смазанным оружием накладывает вид на 3 раунда.
- * Разовые виды (магия, свет) бьют в момент удара; периодические (огонь, лёд,
- * кислота, яд) тикают в конце каждого раунда срока. Горение — это огонь.
+ * Виды масла для оружия. Удар смазанным оружием накладывает вид на срок эффекта
+ * (OIL_ROUNDS). Сила и срок смазки задаются предметом. Остроту и магию герой
+ * получает сам; огонь, лёд, раскол, слабость, иссушение и истощение идут врагу.
  */
-export type OilKind = "magic" | "fire" | "ice" | "acid" | "light" | "poison";
-
+export type OilKind = "fire" | "ice" | "sunder" | "edge" | "weak" | "fatigue" | "magic" | "drain" | "exhaust";
 /**
  * Эффекты, от которых героя защищает зелье иммунитета. Только те, что реально
  * попадают на героя: проклятие, страх, раскол, оглушение, кровотечение, яд, горение,
  * запрет лечения, мрак и три печати. Обморожение и увядание на героя не накладываются.
  */
 export const IMMUNITY_EFFECTS = [
-  "bleed", "poison", "burn", "curse", "fear", "stun", "sunder",
+  "bleed", "poison", "burn", "chill", "curse", "fear", "stun", "sunder",
   "noHeal", "darkness", "sealItems", "sealSkills", "sealAttack",
 ] as const;
 
@@ -120,6 +114,7 @@ export const IMMUNITY_NAMES: Record<ImmunityEffect, string> = {
   bleed: "кровотечение",
   poison: "яд",
   burn: "горение",
+  chill: "обморожение",
   curse: "проклятие",
   fear: "страх",
   stun: "оглушение",
@@ -131,47 +126,23 @@ export const IMMUNITY_NAMES: Record<ImmunityEffect, string> = {
   sealAttack: "печать оков",
 };
 
-/** Срок масла на клинке врага после удара, в раундах. */
+/** Срок эффекта масла на враге после удара, в раундах. */
 export const OIL_ROUNDS = 3;
-
-/** Шанс промаха врага под светом (ослепление). */
-export const OIL_BLIND_MISS = 0.25;
-
-/** Снижение силы атаки и физических приёмов врага под льдом: за каждое очко ИНТ. */
-export const OIL_ICE_CUT_PER_INT = 0.05;
-
+/** Срок невозврата положительного эффекта врага после масла истощения, в раундах. */
+export const EXHAUST_ROUNDS = 3;
+/** Названия видов масла для журнала. */
+export const OIL_NAMES: Record<OilKind, string> = {
+  fire: "горение", ice: "лёд", sunder: "раскол", edge: "острота", weak: "слабость",
+  fatigue: "усталость", magic: "магия", drain: "иссушение", exhaust: "истощение",
+};
 /**
- * Разовый урон масла при ударе: магия 3 + 3×ИНТ, свет 2×ИНТ.
- * Для периодических видов 0 — их урон идёт тиками.
- */
-export function oilHitDamage(kind: OilKind, int: number): number {
-  const i = Math.max(0, int);
-  if (kind === "magic") return 3 + 3 * i;
-  if (kind === "light") return 2 * i;
-  return 0;
-}
-
-/**
- * Периодический урон масла за раунд: тик — 10% от удара, которым масло наложено.
- * Огонь, лёд и кислота режутся магическим сопротивлением, яд — нет.
- * Разовые виды (магия, свет) тиков не дают — возвращают 0.
+ * Периодический урон масла за раунд: огонь и лёд, режутся магическим сопротивлением.
+ * Остальные виды тиков не дают.
  */
 export function oilTickDamage(kind: OilKind, tick: number, magicResist: number): number {
-  if (kind !== "fire" && kind !== "ice" && kind !== "acid" && kind !== "poison") return 0;
-  if (kind === "poison") return Math.max(1, tick);
+  if (kind !== "fire" && kind !== "ice") return 0;
   return magicTickFrom(tick, magicResist);
 }
-
-/** Доля, на которую льдом снижена сила атаки врага (0.05 за каждое очко ИНТ героя). */
-export function oilIceAttackCut(int: number): number {
-  return Math.min(0.9, OIL_ICE_CUT_PER_INT * Math.max(0, int));
-}
-
-/** Сколько брони снимает кислота: 1 + ЛОВ героя. */
-export function oilAcidArmorCut(agi: number): number {
-  return 1 + Math.max(0, agi);
-}
-
 export const CHILL_HEAL_MULT = 0.5;
 export const CURSE_DAMAGE_MULT = 0.7;
 export const BLIGHT_DAMAGE_MULT = 0.8;

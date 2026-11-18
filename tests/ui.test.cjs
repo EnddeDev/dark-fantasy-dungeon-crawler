@@ -192,7 +192,7 @@ test("dungeon header hides maze counts and corridor healing shows fixed/INT form
   for (const text of ["Север", "Восток", "Юг", "Запад"]) assert.ok(!html.includes(`>${text}<`), `кнопка ${text} должна быть удалена`);
   assert.ok(!/здоровье/i.test(html), "в шапке карты нет блока здоровья");
   assert.ok(html.includes("Рюкзак"), "в лабиринте можно открыть рюкзак");
-  assert.ok(html.includes("+28 здоровья"));
+  assert.ok(html.includes("+30 здоровья"));
   assert.ok(html.includes("+32 здоровья")); // свиток лечения больше не масштабируется от ИНТ
 });
 
@@ -430,7 +430,7 @@ test("dungeon map renders distinct biome palettes, textures and rules", () => {
     assert.ok(html.includes(rule), id);
     assert.ok(html.includes("biomeTexture"), id);
     if (id === "swamp") {
-      assert.ok(html.includes("+28 здоровья"), "potion stays full");
+      assert.ok(html.includes("+30 здоровья"), "potion stays full");
       assert.ok(html.includes("+16 здоровья"), "scroll is halved");
     }
   }

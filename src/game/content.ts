@@ -2134,14 +2134,23 @@ export interface ItemDef {
     type:
       | "heal" | "damage" | "cleanse" | "rage" | "flee" | "chill" | "sunder_damage"
       | "throw" | "poison" | "smoke" | "explosion" | "fear"
-      | "haste" | "terror" | "stun_enemy" | "acid" | "stone"
-      | "iron_tonic" | "blood_rage" | "quickblade" | "pact_elixir" | "scroll_creation"
+      | "terror" | "stun_enemy" | "acid" | "stone"
+      | "scroll_creation" | "resist" | "vamp" | "sure_hit"
       | "bleed" | "blight" | "wither" | "buff_break" | "oil" | "immunity"
-      | "vamp_potion" | "regen_potion" | "resist_potion" | "weaken" | "burn_flask" | "crystal_freeze" | "seal_moves"
+      | "burn_flask" | "crystal_freeze" | "seal_moves"
+      | "stamina" | "antidote"
       | "special_kit" | "special_lockpick" | "special_map" | "special_water" | "special_torch";
     power?: number;
     /** Сколько ударов действует эффект (для похищения жизни). */
     hits?: number;
+    /** Эликсиры: сила ярости за каждые 10% недостающего ОЗ (в процентах). */
+    rageStep?: number;
+    /** Эликсиры вампиризма: вид урона, который возвращает здоровье. */
+    vampKind?: "phys" | "magic";
+    /** Масла: сколько раундов смазка держится на клинке. */
+    coat?: number;
+    /** Масло льда: доля снижения атак врага. */
+    cut?: number;
     scale?: number;
     /** Характеристика масштабирования: зелья без множителя, урон зелий и свитки — ИНТ, метательное — ЛОВ. */
     scaleStat?: StatKey;
@@ -2156,6 +2165,12 @@ export interface ItemDef {
     oil?: OilKind;
     /** Какой негативный эффект снимает иммунитет зелья. */
     effect?: ImmunityEffect;
+    /** Зелье-противоядие: какие негативные эффекты снимает (для типа antidote). */
+    effects?: ImmunityEffect[];
+    /** Снимает все негативные эффекты героя. */
+    cleanseAll?: boolean;
+    /** Шанс (0–1), что накладываемый из effects эффект не подействует. */
+    resist?: number;
   };
 }
 
@@ -2164,10 +2179,18 @@ const I = (d: ItemDef) => d;
 export const ITEMS: Record<string, ItemDef> = Object.fromEntries(
   [
     /* зелья и расходники */
-    I({ id: "potion_s", name: "Малое зелье лечения", kind: "potion", price: 45, use: { type: "heal", power: 28 }, desc: "Восстанавливает 28 здоровья. Вкус жжёного мёда и золы." }),
-    I({ id: "potion_l", name: "Большое зелье лечения", kind: "potion", price: 120, use: { type: "heal", power: 65 }, desc: "Восстанавливает 65 здоровья. Густое, тёплое, варится на слезе банши." }),
-    I({ id: "antidote", name: "Горечь полыни", kind: "potion", price: 42, use: { type: "cleanse", power: 8 }, desc: "Снимает кровотечение, проклятие и яд, возвращает 8 здоровья." }),
-    I({ id: "rage", name: "Эликсир ярости", kind: "potion", price: 95, use: { type: "rage", rounds: 5 }, desc: "Пять раундов ярости: +10% урона за каждые 10% недостающего ОЗ." }),
+    I({ id: "potion_s", name: "Малое зелье лечения", kind: "potion", price: 30, use: { type: "heal", power: 30 }, desc: "Восстанавливает 30 здоровья." }),
+    I({ id: "potion_m", name: "Зелье лечения", kind: "potion", price: 65, use: { type: "heal", power: 80 }, desc: "Восстанавливает 80 здоровья." }),
+    I({ id: "potion_l", name: "Большое зелье лечения", kind: "potion", price: 100, use: { type: "heal", power: 160 }, desc: "Восстанавливает 160 здоровья." }),
+    I({ id: "potion_xl", name: "Великое зелье лечения", kind: "potion", price: 135, use: { type: "heal", power: 320 }, desc: "Восстанавливает 320 здоровья." }),
+    I({ id: "stamina_s", name: "Малое зелье выносливости", kind: "potion", price: 60, use: { type: "stamina", power: 30 }, desc: "Восстанавливает 30 выносливости. Можно выпить один раз в ход." }),
+    I({ id: "stamina_m", name: "Среднее зелье выносливости", kind: "potion", price: 90, use: { type: "stamina", power: 60 }, desc: "Восстанавливает 60 выносливости. Можно выпить один раз в ход." }),
+    I({ id: "stamina_l", name: "Большое зелье выносливости", kind: "potion", price: 120, use: { type: "stamina", power: 90 }, desc: "Восстанавливает 90 выносливости. Можно выпить один раз в ход." }),
+    I({ id: "antidote", name: "Горечь полыни", kind: "potion", price: 30, use: { type: "antidote", power: 5, effects: ["poison", "curse"] }, desc: "Возвращает 5 здоровья и снимает яд и проклятье." }),
+    I({ id: "antidote_poison", name: "Зелье от яда", kind: "potion", price: 50, use: { type: "antidote", effects: ["poison"], resist: 0.3, rounds: 1 }, desc: "Снимает яд. На 1 раунд яд не накладывается с шансом 30%." }),
+    I({ id: "antidote_fear", name: "Зелье от страха", kind: "potion", price: 50, use: { type: "antidote", effects: ["fear"], resist: 0.3, rounds: 1 }, desc: "Снимает страх. На 1 раунд страх не накладывается с шансом 30%." }),
+    I({ id: "antidote_curse", name: "Зелье от проклятья", kind: "potion", price: 50, use: { type: "antidote", effects: ["curse"], resist: 0.3, rounds: 1 }, desc: "Снимает проклятье. На 1 раунд проклятье не накладывается с шансом 30%." }),
+    I({ id: "antidote_full", name: "Зелье очищения", kind: "potion", price: 150, use: { type: "antidote", cleanseAll: true }, desc: "Снимает все негативные эффекты." }),
     /* оружейные расходники не требуют Интеллекта */
     I({ id: "throwing_knife", name: "Метательный кинжал", kind: "throwable", price: 28, use: { type: "throw", power: 10, scale: 1.5, scaleStat: "agi" }, desc: "Быстрый бросок: 15 + 2×ЛОВ физического урона." }),
     I({ id: "poison_dart", name: "Отравленный дротик", kind: "throwable", price: 48, use: { type: "poison", power: 5, scale: 1, scaleStat: "agi", rounds: 3 }, desc: "Прокалывает кожу и травит живую цель 3 раунда. Нежить, конструкты и призраки невосприимчивы." }),
@@ -2187,99 +2210,81 @@ export const ITEMS: Record<string, ItemDef> = Object.fromEntries(
     I({ id: "fire", name: "Огненный гриб", kind: "reagent", reagentCat: "plant", price: 34, desc: "Тёплый на ощупь даже в холодной ладони." }),
     I({ id: "tear", name: "Слеза банши", kind: "reagent", reagentCat: "monster", price: 65, desc: "Собрана в полночь. Не высыхает." }),
     ...EXTRA_ITEMS,
-    I({ id: "iron_tonic", name: "Тоник железной кожи", kind: "potion", price: 120,
-      use: { type: "iron_tonic", rounds: 4 },
-      desc: "Бастион: +4 брони и +4 регенерации на 4 раунда, снимает кровотечение." }),
-    I({ id: "blood_rage", name: "Кровавая ярость", kind: "potion", price: 130,
-      use: { type: "blood_rage", rounds: 4 },
-      desc: "Варвар: ярость на 4 раунда (+10% урона за каждые 10% недостающего ОЗ) и +15% вампиризма оружием." }),
-    I({ id: "quickblade_oil", name: "Масло быстрого клинка", kind: "potion", price: 125,
-      use: { type: "quickblade", rounds: 3 },
-      desc: "Ассасин: +25% шанса крита и +50% силы крита на 3 раунда." }),
-    /* Масла: тратят ход, смазывают оружие на 1 раунд. Удар смазанным оружием
-       накладывает свой вид урона на 3 раунда; магия и свет бьют сразу. */
-    I({ id: "oil_magic", name: "Магическое масло", kind: "potion", price: 105,
-      use: { type: "oil", oil: "magic" },
-      desc: "Смазывает оружие магией на 1 раунд: каждый удар сразу наносит магический урон 3 + 3×ИНТ. Тратит ход." }),
-    I({ id: "oil_fire", name: "Огненное масло", kind: "potion", price: 90,
-      use: { type: "oil", oil: "fire" },
-      desc: "Смазывает оружие огнём на 1 раунд: удар накладывает огонь — тик 10% от удара за раунд, 3 раунда. Конструкты уязвимы. Тратит ход." }),
-    I({ id: "oil_ice", name: "Ледяное масло", kind: "potion", price: 95,
-      use: { type: "oil", oil: "ice" },
-      desc: "Смазывает оружие льдом на 1 раунд: удар накладывает лёд — тик 10% от удара за раунд и −5% силы атаки врага за каждое очко ИНТ, 3 раунда. Конструкты уязвимы. Тратит ход." }),
-    I({ id: "oil_acid", name: "Кислотное масло", kind: "potion", price: 100,
-      use: { type: "oil", oil: "acid" },
-      desc: "Смазывает оружие кислотой на 1 раунд: удар накладывает кислоту — тик 10% от удара за раунд и снижает броню врага на 1 + ЛОВ, 3 раунда. Конструкты уязвимы. Тратит ход." }),
-    I({ id: "oil_light", name: "Световое масло", kind: "potion", price: 110,
-      use: { type: "oil", oil: "light" },
-      desc: "Смазывает оружие светом на 1 раунд: каждый удар сразу наносит 2×ИНТ света и ослепляет врага — его удары промахиваются с шансом 25%, 3 раунда. Вампиры уязвимы, звери невосприимчивы. Тратит ход." }),
-    I({ id: "oil_poison", name: "Ядовитое масло", kind: "potion", price: 85,
-      use: { type: "oil", oil: "poison" },
-      desc: "Смазывает оружие ядом на 1 раунд: удар накладывает яд — тик 10% от удара за раунд, 3 раунда. Тратит ход." }),
-    I({ id: "immune_bleed", name: "Зелье от кровотечения", kind: "potion", price: 85,
-      use: { type: "immunity", effect: "bleed", rounds: 3 },
-      desc: "Тратит ход. Три хода эффект «Кровотечение» на тебя не накладывается." }),
-    I({ id: "immune_poison", name: "Зелье от яда", kind: "potion", price: 85,
-      use: { type: "immunity", effect: "poison", rounds: 3 },
-      desc: "Тратит ход. Три хода эффект «Яд» на тебя не накладывается." }),
-    I({ id: "immune_burn", name: "Зелье от горения", kind: "potion", price: 95,
-      use: { type: "immunity", effect: "burn", rounds: 3 },
-      desc: "Тратит ход. Три хода эффект «Горение» на тебя не накладывается." }),
-    I({ id: "immune_curse", name: "Зелье от проклятия", kind: "potion", price: 95,
-      use: { type: "immunity", effect: "curse", rounds: 3 },
-      desc: "Тратит ход. Три хода эффект «Проклятие» на тебя не накладывается." }),
-    I({ id: "immune_fear", name: "Зелье от страха", kind: "potion", price: 95,
-      use: { type: "immunity", effect: "fear", rounds: 3 },
-      desc: "Тратит ход. Три хода эффект «Страх» на тебя не накладывается." }),
-    I({ id: "immune_stun", name: "Зелье от оглушения", kind: "potion", price: 110,
-      use: { type: "immunity", effect: "stun", rounds: 3 },
-      desc: "Тратит ход. Три хода эффект «Оглушение» на тебя не накладывается." }),
-    I({ id: "immune_sunder", name: "Зелье от раскола", kind: "potion", price: 110,
-      use: { type: "immunity", effect: "sunder", rounds: 3 },
-      desc: "Тратит ход. Три хода эффект «Раскол» на тебя не накладывается." }),
-    I({ id: "immune_noHeal", name: "Зелье от запрета лечения", kind: "potion", price: 95,
-      use: { type: "immunity", effect: "noHeal", rounds: 3 },
-      desc: "Тратит ход. Три хода эффект «Запрет лечения» на тебя не накладывается." }),
-    I({ id: "immune_darkness", name: "Зелье от мрака", kind: "potion", price: 95,
-      use: { type: "immunity", effect: "darkness", rounds: 3 },
-      desc: "Тратит ход. Три хода эффект «Мрак» на тебя не накладывается." }),
-    I({ id: "immune_sealItems", name: "Зелье от печати немоты", kind: "potion", price: 110,
-      use: { type: "immunity", effect: "sealItems", rounds: 3 },
-      desc: "Тратит ход. Три хода эффект «Печать немоты» на тебя не накладывается." }),
-    I({ id: "immune_sealSkills", name: "Зелье от печати забвения", kind: "potion", price: 110,
-      use: { type: "immunity", effect: "sealSkills", rounds: 3 },
-      desc: "Тратит ход. Три хода эффект «Печать забвения» на тебя не накладывается." }),
-    I({ id: "immune_sealAttack", name: "Зелье от печати оков", kind: "potion", price: 110,
-      use: { type: "immunity", effect: "sealAttack", rounds: 3 },
-      desc: "Тратит ход. Три хода эффект «Печать оков» на тебя не накладывается." }),
-    I({ id: "pact_elixir", name: "Эликсир пакта", kind: "potion", price: 140,
-      use: { type: "pact_elixir", rounds: 3 },
-      desc: "Колдун: сбрасывает перезарядку приёмов и даёт +25% урона приёмов на 3 раунда." }),
+    /* Эликсиры: срок и сопротивление по списку магазина. Сопротивление — шанс, что эффект не наложится. */
+    I({ id: "elixir_antidote_weak", name: "Слабый эликсир противоядия", kind: "potion", price: 35, level: 1, use: { type: "resist", effects: ["poison"], resist: 0.25, rounds: 1 }, desc: "На раунд: 25% сопротивления яду." }),
+    I({ id: "elixir_fire_weak", name: "Слабый эликсир огнестойкости", kind: "potion", price: 35, level: 1, use: { type: "resist", effects: ["burn"], resist: 0.25, rounds: 1 }, desc: "На раунд: 25% сопротивления горению." }),
+    I({ id: "elixir_rage_weak", name: "Слабый эликсир ярости", kind: "potion", price: 60, level: 3, use: { type: "rage", rounds: 3, rageStep: 5 }, desc: "На 3 раунда: +5% урона за каждые 10% недостающего здоровья." }),
+    I({ id: "elixir_courage_weak", name: "Слабый эликсир отваги", kind: "potion", price: 45, level: 3, use: { type: "resist", effects: ["fear"], resist: 0.3, rounds: 1 }, desc: "На раунд: 30% сопротивления страху." }),
+    I({ id: "elixir_skin_weak", name: "Слабый эликсир каменной кожи", kind: "potion", price: 70, level: 3, use: { type: "stone", power: 0.1, rounds: 3 }, desc: "На 3 раунда: входящий урон −10%." }),
+    I({ id: "elixir_vamp", name: "Эликсир вампира", kind: "potion", price: 85, level: 4, use: { type: "vamp", power: 25, rounds: 3, vampKind: "phys" }, desc: "На 3 раунда: 25% урона оружием возвращается здоровьем." }),
+    I({ id: "elixir_spirit", name: "Эликсир духа", kind: "potion", price: 85, level: 4, use: { type: "vamp", power: 25, rounds: 3, vampKind: "magic" }, desc: "На 3 раунда: 25% магического урона возвращается здоровьем." }),
+    I({ id: "elixir_accuracy", name: "Эликсир точности", kind: "potion", price: 130, level: 5, use: { type: "sure_hit", rounds: 1 }, desc: "На ход: атака героя не промахивается." }),
+    I({ id: "elixir_antidote", name: "Эликсир противоядия", kind: "potion", price: 60, level: 5, use: { type: "resist", effects: ["poison"], resist: 0.5, rounds: 1 }, desc: "На раунд: 50% сопротивления яду." }),
+    I({ id: "elixir_fire", name: "Эликсир огнестойкости", kind: "potion", price: 60, level: 5, use: { type: "resist", effects: ["burn"], resist: 0.5, rounds: 1 }, desc: "На раунд: 50% сопротивления горению." }),
+    I({ id: "elixir_skin", name: "Эликсир каменной кожи", kind: "potion", price: 130, level: 6, use: { type: "stone", power: 0.2, rounds: 3 }, desc: "На 3 раунда: входящий урон −20%." }),
+    I({ id: "elixir_cold", name: "Эликсир от холода", kind: "potion", price: 60, level: 6, use: { type: "resist", effects: ["chill"], resist: 0.5, rounds: 1 }, desc: "На раунд: 50% сопротивления льду." }),
+    I({ id: "elixir_courage", name: "Эликсир от отваги", kind: "potion", price: 60, level: 6, use: { type: "resist", effects: ["fear"], resist: 0.5, rounds: 1 }, desc: "На раунд: 50% сопротивления страху." }),
+    I({ id: "elixir_antidote_great", name: "Большой эликсир противоядия", kind: "potion", price: 135, level: 7, use: { type: "resist", effects: ["poison"], resist: 1, rounds: 1 }, desc: "На раунд: 100% сопротивления яду." }),
+    I({ id: "elixir_fire_great", name: "Большой эликсир огнестойкости", kind: "potion", price: 135, level: 7, use: { type: "resist", effects: ["burn"], resist: 1, rounds: 1 }, desc: "На раунд: 100% сопротивления горению." }),
+    I({ id: "elixir_cold_great", name: "Большой эликсир от холода", kind: "potion", price: 135, level: 7, use: { type: "resist", effects: ["chill"], resist: 1, rounds: 1 }, desc: "На раунд: 100% сопротивления льду." }),
+    I({ id: "elixir_courage_great", name: "Большой эликсир отваги", kind: "potion", price: 135, level: 7, use: { type: "resist", effects: ["fear"], resist: 1, rounds: 1 }, desc: "На раунд: 100% сопротивления страху." }),
+    I({ id: "elixir_rage", name: "Эликсир ярости", kind: "potion", price: 135, level: 8, use: { type: "rage", rounds: 3, rageStep: 12 }, desc: "На 3 раунда: +12% урона за каждые 10% недостающего здоровья." }),
+    I({ id: "elixir_vamp_great", name: "Большой эликсир вампира", kind: "potion", price: 185, level: 8, use: { type: "vamp", power: 45, rounds: 3, vampKind: "phys" }, desc: "На 3 раунда: 45% урона оружием возвращается здоровьем." }),
+    I({ id: "elixir_spirit_great", name: "Большой эликсир духа", kind: "potion", price: 185, level: 8, use: { type: "vamp", power: 45, rounds: 3, vampKind: "magic" }, desc: "На 3 раунда: 45% магического урона возвращается здоровьем." }),
+    I({ id: "elixir_goddess_tear", name: "Эликсир слеза богини", kind: "potion", price: 255, level: 9, use: { type: "resist", effects: ["poison", "burn", "chill", "bleed", "curse", "fear", "stun", "sunder", "noHeal", "darkness", "sealItems", "sealSkills", "sealAttack"], resist: 1, rounds: 3 }, desc: "На 3 раунда: 100% сопротивления всем негативным эффектам." }),
+    /* Масла: тратят ход, смазывают оружие. Удар накладывает эффект на врага на 3 раунда. */
+    I({ id: "oil_fire_bad", name: "Плохое масло огня", kind: "potion", price: 75, level: 2, use: { type: "oil", oil: "fire", power: 5, coat: 3 }, desc: "Смазка на 3 раунда. Удар накладывает горение: 5 урона за раунд, 3 раунда." }),
+    I({ id: "oil_sunder_bad", name: "Плохое масло раскола", kind: "potion", price: 75, level: 2, use: { type: "oil", oil: "sunder", power: 2, coat: 3 }, desc: "Смазка на 3 раунда. Удар накладывает раскол: броня врага −2 на 3 раунда." }),
+    I({ id: "oil_edge_bad", name: "Плохое масло остроты", kind: "potion", price: 75, level: 2, use: { type: "oil", oil: "edge", power: 10, coat: 3 }, desc: "Смазка на 3 раунда: урон атак героя +10%." }),
+    I({ id: "oil_ice", name: "Масло льда", kind: "potion", price: 175, level: 4, use: { type: "oil", oil: "ice", power: 5, cut: 0.1, coat: 3 }, desc: "Смазка на 3 раунда. Удар накладывает лёд: 5 урона за раунд и атаки врага −10%." }),
+    I({ id: "oil_fire", name: "Масло огня", kind: "potion", price: 175, level: 4, use: { type: "oil", oil: "fire", power: 10, coat: 3 }, desc: "Смазка на 3 раунда. Удар накладывает горение: 10 урона за раунд." }),
+    I({ id: "oil_weak", name: "Масло слабости", kind: "potion", price: 175, level: 4, use: { type: "oil", oil: "weak", power: 0.05, coat: 3 }, desc: "Смазка на 3 раунда. Удар накладывает разрушение: броня врага −5%." }),
+    I({ id: "oil_fatigue", name: "Масло усталости", kind: "potion", price: 175, level: 4, use: { type: "oil", oil: "fatigue", power: 5, coat: 3 }, desc: "Смазка на 3 раунда. Удар снимает 5 выносливости врагу (в дуэли)." }),
+    I({ id: "oil_magic", name: "Масло магии", kind: "potion", price: 225, level: 6, use: { type: "oil", oil: "magic", power: 30, coat: 3 }, desc: "Смазка на 3 раунда. Каждый удар наносит 30 магического урона." }),
+    I({ id: "oil_drain", name: "Масло иссушения", kind: "potion", price: 255, level: 6, use: { type: "oil", oil: "drain", coat: 2 }, desc: "Смазка на 2 раунда. Удар накладывает запрет лечения на 3 раунда." }),
+    I({ id: "oil_ice_good", name: "Хорошее масло льда", kind: "potion", price: 275, level: 8, use: { type: "oil", oil: "ice", power: 10, cut: 0.2, coat: 3 }, desc: "Смазка на 3 раунда. Удар накладывает лёд: 10 урона за раунд и атаки врага −20%." }),
+    I({ id: "oil_fire_good", name: "Хорошее масло огня", kind: "potion", price: 275, level: 8, use: { type: "oil", oil: "fire", power: 15, coat: 3 }, desc: "Смазка на 3 раунда. Удар накладывает горение: 15 урона за раунд." }),
+    I({ id: "oil_edge_good", name: "Хорошее масло остроты", kind: "potion", price: 375, level: 8, use: { type: "oil", oil: "edge", power: 25, coat: 3 }, desc: "Смазка на 3 раунда: урон атак героя +25%." }),
+    I({ id: "oil_exhaust", name: "Масло истощения", kind: "potion", price: 450, level: 10, use: { type: "oil", oil: "exhaust", coat: 1 }, desc: "Смазка на 1 раунд. Удар снимает случайный положительный эффект врага и не даёт ему вернуться 3 раунда." }),
     I({ id: "scroll_creation", name: "Свиток сотворения", kind: "scroll", price: 160,
       use: { type: "scroll_creation", intReq: 5 },
       desc: "Архимаг: создаёт 2 случайных свитка в рюкзак и сразу применяет один из них." }),
   ].map((it) => [it.id, it]),
 );
 
+/** Снятые с игры расходники. В старых сохранениях их молча убирают при загрузке. */
+export const REMOVED_ITEM_IDS: ReadonlySet<string> = new Set([
+  "heal_elixir", "nectar", "salt", "phoenix",
+  "immune_bleed", "immune_poison", "immune_burn", "immune_curse", "immune_fear", "immune_stun",
+  "immune_sunder", "immune_noHeal", "immune_darkness", "immune_sealItems", "immune_sealSkills", "immune_sealAttack",
+
+  /* Старые эликсиры и масла, заменённые новым списком магазина. */
+  "rage", "iron_tonic", "blood_rage", "quickblade_oil", "pact_elixir", "oil_acid", "oil_light", "oil_poison", "potion_haste", "potion_stone", "regen_potion", "resist_potion", "vamp_potion", "weaken",
+]);
+
 /** Уровень припаса = минимальный этаж дропа. */
 export const SUPPLY_LEVELS: Record<string, number> = {
   /* Общие расходники: по четыре на уровень, уровни 1–10 (как у лавки). */
-  potion_s: 1, antidote: 1, throwing_knife: 1, poison_dart: 1,
-  rage: 2, acid_vial: 2, serrated_knife: 2, dispel_powder: 2,
-  potion_l: 3, blast_bomb: 3, oil_fire: 3, fear_vial: 3,
-  smoke_bomb: 4, frost_bomb: 4, oil_poison: 4, potion_stone: 4,
-  holy_water: 5, bomb_flash: 5, oil_ice: 5, heal_elixir: 5,
-  oil_acid: 6, blight_powder: 6, regen_potion: 6, shard_bomb: 6,
-  potion_haste: 7, wither_dust: 7, oil_magic: 7, nectar: 7,
-  oil_light: 8, resist_potion: 8, ice_gust: 8, vine_net: 8,
-  weaken: 9, salt: 9, vamp_potion: 9, dragon_powder: 9,
-  phoenix: 10, hell_var: 10, frost_crystal: 10, seal_silence: 10,
-  /* архетипные зелья (вне сетки по четыре) */
-  iron_tonic: 4, blood_rage: 4, quickblade_oil: 4, pact_elixir: 5,
-  /* зелья от состояний (вне сетки) */
-  immune_bleed: 2, immune_poison: 2, immune_burn: 3, immune_curse: 3, immune_fear: 3,
-  immune_stun: 4, immune_sunder: 4, immune_noHeal: 3, immune_darkness: 3,
-  immune_sealItems: 4, immune_sealSkills: 4, immune_sealAttack: 4,
+  potion_s: 1, antidote: 1, stamina_s: 2, throwing_knife: 1, poison_dart: 1,
+  acid_vial: 2, serrated_knife: 2, dispel_powder: 2,
+  potion_m: 3, antidote_poison: 3, antidote_fear: 3, antidote_curse: 3, blast_bomb: 3, fear_vial: 3,
+  stamina_m: 4, antidote_full: 6, potion_l: 6,
+  smoke_bomb: 4, frost_bomb: 4,
+  holy_water: 5, bomb_flash: 5,
+  shard_bomb: 6, blight_powder: 6,
+  wither_dust: 7,
+  ice_gust: 8, vine_net: 8,
+  stamina_l: 9, potion_xl: 9, dragon_powder: 9,
+  hell_var: 10, frost_crystal: 10, seal_silence: 10,
+  /* эликсиры и масла: уровень = уровень магазина */
+  elixir_antidote_weak: 1, elixir_fire_weak: 1, elixir_rage_weak: 3, elixir_courage_weak: 3,
+  elixir_skin_weak: 3, elixir_vamp: 4, elixir_spirit: 4, elixir_accuracy: 5, elixir_antidote: 5,
+  elixir_fire: 5, elixir_skin: 6, elixir_cold: 6, elixir_courage: 6, elixir_antidote_great: 7,
+  elixir_fire_great: 7, elixir_cold_great: 7, elixir_courage_great: 7, elixir_rage: 8,
+  elixir_vamp_great: 8, elixir_spirit_great: 8, elixir_goddess_tear: 9,
+  oil_fire_bad: 2, oil_sunder_bad: 2, oil_edge_bad: 2, oil_ice: 4, oil_fire: 4, oil_weak: 4,
+  oil_fatigue: 4, oil_magic: 6, oil_drain: 6, oil_ice_good: 8, oil_fire_good: 8, oil_edge_good: 8,
+  oil_exhaust: 10,
   /* свитки (не менялись) */
   scroll_spark: 1, scroll_fire: 2, scroll_heal: 2, scroll_shadow: 3, scroll_frost: 3,
   scroll_bolt: 4, scroll_terror: 3, scroll_snare: 4, scroll_creation: 5, scroll_dispel: 3,
@@ -2363,16 +2368,11 @@ export const RECIPES: Recipe[] = [
   { id: "r1", out: "potion_s", count: 1, need: ["moss", "fire"], intReq: 1, price: 35 },
   { id: "r2", out: "antidote", count: 1, need: ["bone", "moss"], intReq: 2, price: 45 },
   { id: "r3", out: "scroll_spark", count: 1, need: ["fire", "bone"], intReq: 2, price: 55 },
-  { id: "r4", out: "rage", count: 1, need: ["fire", "moss", "bone"], intReq: 3, price: 70 },
   { id: "r5", out: "potion_l", count: 1, need: ["moss", "stone_hematite", "tear"], intReq: 4, price: 95 },
   { id: "r6", out: "scroll_fire", count: 1, need: ["fire", "stone_onyx", "bone"], intReq: 4, price: 95 },
   { id: "r7", out: "scroll_frost", count: 1, need: ["tear", "bone"], intReq: 5, price: 110 },
   { id: "r8", out: "scroll_bolt", count: 1, need: ["tear", "fire", "bone"], intReq: 6, price: 140 },
   ...EXTRA_RECIPES,
-  { id: "r15", out: "iron_tonic", count: 1, need: ["root", "ember", "bone"], intReq: 4, price: 100 },
-  { id: "r16", out: "blood_rage", count: 1, need: ["fang", "moss", "fire"], intReq: 4, price: 105 },
-  { id: "r17", out: "quickblade_oil", count: 1, need: ["gland", "powder", "silk"], intReq: 4, price: 105 },
-  { id: "r19", out: "pact_elixir", count: 1, need: ["tear", "ember", "cloth"], intReq: 5, price: 120 },
   { id: "r20", out: "scroll_creation", count: 1, need: ["cloth", "tear", "bone"], intReq: 6, price: 140 },
 ];
 
@@ -2943,25 +2943,23 @@ export function rollDungeonWear(rng: () => number = Math.random): WearTier {
 const SUPPLY_POOL = [
   "potion_s",
   "potion_l",
-  "heal_elixir",
-  "regen_potion",
+  "potion_m",
+  "potion_xl",
+  "stamina_s",
+  "stamina_m",
+  "stamina_l",
+  "antidote_poison",
+  "antidote_fear",
+  "antidote_curse",
+  "antidote_full",
   "shard_bomb",
-  "nectar",
-  "resist_potion",
   "ice_gust",
   "vine_net",
-  "weaken",
-  "salt",
-  "vamp_potion",
   "dragon_powder",
-  "phoenix",
   "hell_var",
   "frost_crystal",
   "seal_silence",
   "antidote",
-  "rage",
-  "potion_haste",
-  "potion_stone",
   "scroll_spark",
   "scroll_fire",
   "scroll_heal",
@@ -2974,34 +2972,49 @@ const SUPPLY_POOL = [
   "bomb_flash",
   "acid_vial",
   "holy_water",
-  "iron_tonic",
-  "blood_rage",
-  "quickblade_oil",
   "oil_fire",
-  "oil_poison",
   "oil_ice",
-  "oil_acid",
   "oil_magic",
-  "oil_light",
-  "immune_bleed",
-  "immune_poison",
-  "immune_burn",
-  "immune_curse",
-  "immune_fear",
-  "immune_stun",
-  "immune_sunder",
-  "immune_noHeal",
-  "immune_darkness",
-  "immune_sealItems",
-  "immune_sealSkills",
-  "immune_sealAttack",
-  "pact_elixir",
   "scroll_creation",
   "serrated_knife",
   "frost_bomb",
   "blight_powder",
   "wither_dust",
   "sapper_kit", "lockpicks", "tattered_map", "water_skin", "field_torch",
+  "elixir_antidote_weak",
+  "elixir_fire_weak",
+  "elixir_rage_weak",
+  "elixir_courage_weak",
+  "elixir_skin_weak",
+  "elixir_vamp",
+  "elixir_spirit",
+  "elixir_accuracy",
+  "elixir_antidote",
+  "elixir_fire",
+  "elixir_skin",
+  "elixir_cold",
+  "elixir_courage",
+  "elixir_antidote_great",
+  "elixir_fire_great",
+  "elixir_cold_great",
+  "elixir_courage_great",
+  "elixir_rage",
+  "elixir_vamp_great",
+  "elixir_spirit_great",
+  "elixir_goddess_tear",
+  "oil_fire_bad",
+  "oil_sunder_bad",
+  "oil_edge_bad",
+  "oil_ice",
+  "oil_fire",
+  "oil_weak",
+  "oil_fatigue",
+  "oil_magic",
+  "oil_drain",
+  "oil_ice_good",
+  "oil_fire_good",
+  "oil_edge_good",
+  "oil_exhaust",
 ];
 
 function pickGearBase(level: number, rng: () => number = Math.random): string {

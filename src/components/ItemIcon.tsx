@@ -86,8 +86,6 @@ const GLYPHS: Record<string, string> = {
   scroll_bolt: `<path d="M15 11 h18 v26 H15 z" /><path d="M12 6 h24 v6 H12 z" /><path d="M27 17 l-8 9 h5 l-3 8 l9-11 h-5 z" />`,
 
   /* новые припасы и реагенты */
-  potion_haste: `<path d="M19 5 h10 v9 l7 18 a7 7 0 0 1-6 10 h-12 a7 7 0 0 1-6-10 l7-18 z" /><path d="M27 14 l-7 8 h5 l-4 7 h6" />`,
-  potion_stone: `<path d="M19 5 h10 v9 l7 18 a7 7 0 0 1-6 10 h-12 a7 7 0 0 1-6-10 l7-18 z" /><path d="M18 30 l6-6 6 6 -6 6 z" />`,
   scroll_terror: `<path d="M15 11 h18 v26 H15 z" /><path d="M12 6 h24 v6 H12 z" /><path d="M18 20 l6-4 6 4 -6 10 z" />`,
   scroll_snare: `<path d="M15 11 h18 v26 H15 z" /><path d="M12 6 h24 v6 H12 z" /><path d="M19 19 l6 6 -6 6 M29 19 l-6 6 6 6" />`,
   acid_vial: `<path d="M20 4 h8 v10 l6 14 a6 6 0 0 1-5 9 h-10 a6 6 0 0 1-5-9 l6-14 z" /><path d="M17 30 l5-4 4 5 5-5" />`,
@@ -116,6 +114,17 @@ export const RARITY_COLOR: Record<RarityTier, string> = {
   legendary: "#f6d48a",
 };
 
+/* Эликсиры и масла без своего значка: колба для эликсиров, капля в склянке для масел. */
+const ELIXIR_GLYPH = `<path d="M20 5 h8 v8 l6 16 a6 6 0 0 1-5 9 h-10 a6 6 0 0 1-5-9 l6-16 z" /><path d="M18 30 h12" />`;
+const OIL_GLYPH = `<path d="M21 6 h6 v10 h4 v22 a4 4 0 0 1-4 4 h-6 a4 4 0 0 1-4-4 v-22 h4 z" /><path d="M24 22 c3 4 3 7 0 9 c-3-2-3-5 0-9 z" />`;
+
+function glyphFor(id: string): string | undefined {
+  if (GLYPHS[id]) return GLYPHS[id];
+  if (id.startsWith("elixir_")) return ELIXIR_GLYPH;
+  if (id.startsWith("oil_")) return OIL_GLYPH;
+  return undefined;
+}
+
 export function ItemIcon({
   id,
   className = "",
@@ -130,7 +139,7 @@ export function ItemIcon({
   framed?: boolean;
 }) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
-  const glyph = GLYPHS[id];
+  const glyph = glyphFor(id);
   const color = rarity ? RARITY_COLOR[rarity] : "#e8dcc8";
 
   return (
