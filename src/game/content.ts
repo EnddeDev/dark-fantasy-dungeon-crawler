@@ -1327,7 +1327,7 @@ const ARCHETYPE_GEAR: GearBaseDef[] = [
     dmg: [5, 8], level: 4, minFloor: 4, idIntReq: 5, idGoldCost: 100,
     desc: "Дым от кадла складывается в строки. Архимаг творит свитки прямо в бою.",
     preferredEpic: "ash_aegis",
-    weaponSkill: { id: "word_creation", name: "Слово творения", intReq: 4, cooldown: 3, scaleStat: "int", scaleMult: 2.4, effect: "create_scroll", desc: "Урон оружия + 2.4×ИНТ; создаёт 1 случайный свиток и сразу применяет его без траты хода." },
+    weaponSkill: { id: "word_creation", name: "Слово творения", intReq: 4, cooldown: 3, scaleStat: "int", scaleMult: 2.4, effect: "create_scroll", magic: true, desc: "Урон оружия + 2.4×ИНТ; создаёт 1 случайный свиток и сразу применяет его без траты хода." },
   },
 ];
 
