@@ -1,6 +1,8 @@
 import { Backpack, ScrollText } from "lucide-react";
 import { AudioSettings } from "./AudioSettings";
 import type { LobbyAccount } from "./LobbyChrome";
+import { BiomeTag } from "./BiomeLabel";
+import type { BiomeId } from "../game/biomes";
 
 /**
  * Верхняя панель игры на карте и в бою: название, задания, рюкзак, звук и вход.
@@ -8,19 +10,22 @@ import type { LobbyAccount } from "./LobbyChrome";
  */
 export function PlayTopBar({
   floor,
+  biome,
   activeQuests,
   onOpenQuests,
   onOpenBag,
   account,
 }: {
   floor?: number;
+  /** Биом этажа: тег по центру шапки. */
+  biome?: BiomeId;
   activeQuests: number;
   onOpenQuests: () => void;
   onOpenBag: () => void;
   account?: LobbyAccount;
 }) {
   return (
-    <header className="sticky top-0 z-30 border-b border-line bg-soot/95 backdrop-blur-[2px] lg:h-14">
+    <header className="sticky top-0 z-30 border-b border-line bg-soot/95 backdrop-blur-[2px] lg:relative lg:h-14">
       <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 px-4 py-2.5 sm:px-6 lg:h-full lg:py-0">
         <div className="flex items-baseline gap-3">
           <span className="font-title text-2xl leading-none text-flamehi">Сумрак</span>
@@ -30,6 +35,11 @@ export function PlayTopBar({
             </span>
           )}
         </div>
+        {biome && (
+          <div className="order-first w-full lg:order-none lg:absolute lg:left-1/2 lg:top-1/2 lg:w-auto lg:-translate-x-1/2 lg:-translate-y-1/2">
+            <BiomeTag biome={biome} />
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"

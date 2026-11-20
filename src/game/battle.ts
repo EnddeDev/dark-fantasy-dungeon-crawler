@@ -2265,6 +2265,27 @@ function rollHeroHit(accuracy: number, evasion: number): boolean {
   return Math.random() < p;
 }
 
+/**
+ * Урон одного удара выбранного вида для подсказки кнопки: диапазон по каждой руке, без крита,
+ * после защиты врага. Рискованная бьёт по максимуму оружия, безопасная — по минимуму, обычная — по разбросу.
+ * Бонус «Стойки» (Бастион) идёт в первый удар, как в бою.
+ */
+export function heroAttackDamage(b: BattleState, kind: AttackKind): { min: number; max: number; hands: number } {
+  const strikes = (b.p.hands ?? []).length ? b.p.hands : [undefined];
+  const lowKind: AttackKind = kind === "risky" ? "risky" : "safe";
+  const highKind: AttackKind = kind === "safe" ? "safe" : "risky";
+  let min = 0;
+  let max = 0;
+  strikes.forEach((hand, i) => {
+    const bonus = i === 0 ? (b.p.statuses.bulwarkStrike ?? 0) : 0;
+    const lo = calcWeaponRoll(b, 1, 0, { hand, kind: lowKind, preview: true }).d;
+    const hi = calcWeaponRoll(b, 1, 0, { hand, kind: highKind, preview: true }).d;
+    min += damageAfterEnemyDefense(b, lo + bonus, "phys");
+    max += damageAfterEnemyDefense(b, hi + bonus, "phys");
+  });
+  return { min, max, hands: strikes.length };
+}
+
 /** Превью удара для кнопки вида атаки: меткость, уклонение врага и шанс попасть. */
 export function heroAttackPreview(b: BattleState, kind: AttackKind): { accuracy: number; evasion: number; chance: number; state: "advantage" | "disadvantage" | "normal" } {
   const accuracy = heroAccuracy(b, mainHandClass(b), kind);
@@ -2282,11 +2303,12 @@ function calcWeaponRoll(
   b: BattleState,
   mult = 1,
   bonusFlat = 0,
-  opts: { skill?: boolean; forceCrit?: boolean; multi?: boolean; hand?: HandStrike; kind?: AttackKind } = {},
+  opts: { skill?: boolean; forceCrit?: boolean; multi?: boolean; hand?: HandStrike; kind?: AttackKind; preview?: boolean } = {},
 ) {
+  /* Превью (подсказка кнопки): без крита и без расхода «подготовки», бросков не делает. */
   if (mult === 1 && (b.p.statuses.prepared ?? 0) > 0) {
     bonusFlat += Math.round(playerArmorNow(b) * 0.25);
-    b.p.statuses.prepared = 0;
+    if (!opts.preview) b.p.statuses.prepared = 0;
   }
   const hand = opts.hand ?? { lo: b.p.hit[0], hi: b.p.hit[1], agi: b.p.weaponAgi, cls: "light" as GearClass };
   /* Рискованная бьёт по максимуму оружия, безопасная — по минимуму, обычная — по разбросу. */
@@ -2342,7 +2364,7 @@ function calcWeaponRoll(
   if (b.p.statuses.quickblade > 0) critMult += 0.5;
   let crit = false;
   const forceCrit = !!opts.forceCrit;
-  if (forceCrit || (critChance > 0 && Math.random() < critChance)) {
+  if (!opts.preview && (forceCrit || (critChance > 0 && Math.random() < critChance))) {
     d *= critMult;
     crit = true;
   }

@@ -644,7 +644,7 @@ test("сумка с зельями лежит в арсенале под эки�
   assert.ok(!floor.includes('aria-label="Сумка с зельями"'), "в выборе яруса сумки нет");
 });
 
-test("battle attacks: short names only; stamina and miss chance live in the hover title", () => {
+test("battle attacks: short names only; damage, stamina and miss chance live in the hover popup", () => {
   const b = freshBattle(makePlayer(), 3, false);
   const html = renderToStaticMarkup(React.createElement(BattleView, {
     battle: b, onAct: noop, onEnemyTurn: noop, onContinue: noop,
@@ -653,7 +653,15 @@ test("battle attacks: short names only; stamina and miss chance live in the hove
     assert.ok(html.includes(`>${name}</button>`), `кнопка «${name}» без лишнего текста`);
   }
   assert.ok(!/>[^<]*·\s*\d+<\/span>/.test(html) && !html.includes(">попасть "), "внутри кнопок атак нет текста про выносливость и шанс");
-  assert.match(html, /title="Выносливость: \d+\. Концентрация [+−]?\d+\. Шанс промахнуться: \d+%"/, "подсказка показывает выносливость, концентрацию и промах");
+  for (const name of ["Мощный", "Обычный", "Точный"]) {
+    const end = html.indexOf(`>${name}</button>`);
+    const start = html.lastIndexOf("<button", end);
+    assert.ok(!html.slice(start, end).includes("title="), `у кнопки «${name}» нет нативной подсказки: её заменяет всплывающее окно`);
+  }
+  const src = fs.readFileSync("src/components/BattleView.tsx", "utf8");
+  for (const text of ["Урон за атаку", "Выносливость: {cost}", "Шанс промахнуться: {miss}%", "heroAttackDamage(b, kind)"]) {
+    assert.ok(src.includes(text), `всплывающее окно атаки содержит: ${text}`);
+  }
 });
 
 test("карточка эффекта: короткое значение — проценты или число без процентов", () => {

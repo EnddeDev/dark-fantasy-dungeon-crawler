@@ -68,12 +68,12 @@ function headerOf(html) {
   return html.slice(html.indexOf("<header"), html.indexOf("</header>") + "</header>".length);
 }
 
-test("шапка карты как в лобби: бренд, задания, рюкзак и звук; тип подземелья в шапке не выводится", () => {
+test("шапка карты как в лобби: бренд, тип подземелья по центру, задания, рюкзак и звук", () => {
   const html = render("swamp");
   const header = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
   assert.ok(header.includes("Сумрак"), "название игры");
   assert.ok(header.includes("подземелье · этаж"), "подзаголовок с этажом");
-  assert.ok(!header.includes(biomes.BIOMES.swamp.name), "тип подземелья убран из шапки");
+  assert.ok(header.includes(biomes.BIOMES.swamp.name), "тип подземелья (BiomeTag) в шапке по центру");
   assert.ok(header.includes("Задания"), "кнопка заданий");
   assert.ok(header.includes("Рюкзак"), "кнопка рюкзака");
   assert.ok(header.includes("sticky"), "шапка закреплена, как в лобби");

@@ -31,6 +31,7 @@ import {
   enemyMoveCooldownLeft,
   enemyReadout,
   queuePreview,
+  type AttackKind,
   type BattleState,
   type EnemyMoveEffect,
   type EnemyMoveView,
@@ -39,6 +40,7 @@ import {
   ATTACK_KINDS,
   ATTACK_KIND_META,
   attackStaminaCost,
+  heroAttackDamage,
   heroAttackPreview,
   techniqueStaminaCost,
   riskyAttackBlock,
@@ -49,7 +51,7 @@ import { ItemArt } from "./ItemArt";
 import { SummaryRow, type SummaryRowData } from "./SummaryRow";
 import type { MetricKey } from "./MetricBadge";
 import { Btn, Meter, Tag } from "./ui";
-import { BiomeRule, BiomeTag, biomeStyle } from "./BiomeLabel";
+import { BiomeRule, biomeStyle } from "./BiomeLabel";
 import { isBattleCurse } from "../game/traps";
 import { statDamage } from "../game/statFormulas";
 import { EFFECT_COLORS, durationLabel, enemyEffectChips, playerEffectChips, type EffectChip, type EffectIconId } from "../game/effects";
@@ -116,6 +118,76 @@ const roundWord = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? "раунд" 
 /** Подсказка действия: изменение концентрации («Концентрация +1», «Концентрация 0»). */
 const concText = (delta: number) => (delta === 0 ? "Концентрация 0" : `Концентрация ${delta > 0 ? "+" : "−"}${Math.abs(delta)}`);
 
+/**
+ * Кнопка вида атаки с всплывающим окном: урон за удар, выносливость, концентрация, промах.
+ * Окно открывается при наводке и фокусе, поэтому видно и на закрытой кнопке (с причиной блока).
+ */
+function AttackKindButton({
+  kind,
+  b,
+  off,
+  block,
+  cost,
+  miss,
+  onPress,
+}: {
+  kind: AttackKind;
+  b: BattleState;
+  off: boolean;
+  block: string | null;
+  cost: number;
+  miss: number;
+  onPress: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const tipRef = useRef<HTMLDivElement>(null);
+  useFitInViewport(tipRef, open);
+  const meta = ATTACK_KIND_META[kind];
+  const dmg = heroAttackDamage(b, kind);
+  const range = dmg.min === dmg.max ? `${dmg.min}` : `${dmg.min}–${dmg.max}`;
+  const hands = dmg.hands > 1 ? `Ударов за атаку: ${dmg.hands} (по одному на каждую руку). Диапазон уже суммарный.` : null;
+  return (
+    <div
+      className="relative"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onFocus={() => setOpen(true)}
+      onBlur={() => setOpen(false)}
+    >
+      <Btn
+        tone={off ? "ghost" : kind === "safe" ? "verd" : "flame"}
+        disabled={off}
+        className="w-full"
+        onClick={onPress}
+      >
+        {meta.short}
+      </Btn>
+      {open && (
+        <div
+          ref={tipRef}
+          role="tooltip"
+          className="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 block w-[min(19rem,80vw)] -translate-x-1/2 border border-line bg-black/95 p-3 text-left text-[0.84rem] leading-snug text-parch/90 shadow-[0_10px_30px_rgba(0,0,0,0.75)]"
+        >
+          <div className="font-display text-[0.95rem] uppercase tracking-[0.06em] text-flamehi">{meta.name}</div>
+          <p className="mt-1 text-mute">{meta.desc}</p>
+          <div className="mt-2 flex items-baseline justify-between gap-3 border-t border-line/50 pt-2">
+            <span className="sc text-[0.78rem] text-flamedim">Урон за атаку</span>
+            <span className="font-mono text-[1.05rem] tab text-rubric">{range}</span>
+          </div>
+          {hands && <p className="mt-1 text-mute">{hands}</p>}
+          <p className="mt-1 text-mute">Без крита и с учётом защиты врага.</p>
+          <div className="mt-2 space-y-0.5 font-mono text-[0.8rem] text-mute">
+            <div>Выносливость: {cost}</div>
+            <div>{concText(concentrationDelta("attack", kind))}</div>
+            <div>Шанс промахнуться: {miss}%</div>
+          </div>
+          {block && <p className="mt-2 text-rubric">{block}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Иконка наложения приёма врага. Пунктир-«½» — наложение с шансом около половины. Подробности — в подсказке строки приёма. */
 function EnemyEffectIcon({ effect }: { effect: EnemyMoveEffect }) {
   const color = (EFFECT_COLORS as Record<string, string>)[effect.id] ?? "#c9b58a";
@@ -144,12 +216,13 @@ export function EnemyMoveTip({ mv, meta }: { mv: EnemyMoveView; meta?: { name: s
     <div className="text-[0.84rem] leading-snug text-parch/90">
       <div className="font-display text-[0.95rem] uppercase tracking-[0.06em] text-flamehi">{meta?.name ?? mv.move}</div>
       {meta?.desc && <p className="mt-1 text-mute">{meta.desc}</p>}
-      {mv.cooldownRounds > 0 && (
-        <p className="mt-1 text-mute">
-          Перезарядка {mv.cooldownRounds} {roundWord(mv.cooldownRounds)} после приёма.{" "}
-          {mv.cooldown > 0 ? `Сейчас недоступен ещё ${mv.cooldown} ${roundWord(mv.cooldown)}.` : "Сейчас доступен."}
-        </p>
-      )}
+      <p className="mt-1 text-mute">
+        {mv.cooldownRounds > 0
+          ? `Перезарядка ${mv.cooldownRounds} ${roundWord(mv.cooldownRounds)} после приёма. ${
+              mv.cooldown > 0 ? `Сейчас недоступен ещё ${mv.cooldown} ${roundWord(mv.cooldown)}.` : "Сейчас доступен."
+            }`
+          : "Перезарядки нет."}
+      </p>
 
       <div className="sc mt-2">Урон по тебе</div>
       {bd.lines.length === 0 ? (
@@ -250,14 +323,17 @@ export function EnemyMoveRow({ mv, meta }: { mv: EnemyMoveView; meta?: { name: s
       >
         {meta?.name ?? mv.move}
       </span>
-      {mv.cooldownRounds > 0 && (
-        <span
-          className={`shrink-0 font-mono text-[0.72rem] ${mv.cooldown > 0 ? "text-rubric" : "text-mute"}`}
-          title={`Перезарядка ${mv.cooldownRounds} ${roundWord(mv.cooldownRounds)} после приёма`}
-        >
-          {mv.cooldown > 0 ? `перез. ${mv.cooldown}` : `перез. ${mv.cooldownRounds}`}
-        </span>
-      )}
+      {/* Перезарядка видна всегда: у приёмов с дебаффом — сколько ждать, у остальных — прочерк. */}
+      <span
+        className={`w-[5.5rem] shrink-0 text-right font-mono text-[0.76rem] ${mv.cooldown > 0 ? "text-rubric" : "text-mute"}`}
+        title={
+          mv.cooldownRounds > 0
+            ? `Перезарядка ${mv.cooldownRounds} ${roundWord(mv.cooldownRounds)} после приёма`
+            : "Перезарядки нет"
+        }
+      >
+        {mv.cooldownRounds === 0 ? "—" : mv.cooldown > 0 ? `ждать ${mv.cooldown} р.` : `готов · ${mv.cooldownRounds} р.`}
+      </span>
       <span className="w-14 shrink-0 text-right font-mono text-[1rem] tab text-rubric">
         {mv.damage > 0 ? `≈${mv.damage}` : "—"}
       </span>
@@ -581,6 +657,7 @@ export function BattleView({
     <div className="biome-surface flex min-h-screen flex-col bg-soot" data-biome={b.biome} style={biomeStyle(b.biome)}>
       <PlayTopBar
         floor={floor}
+        biome={b.biome}
         activeQuests={activeQuests}
         onOpenQuests={() => setQuestsOpen(true)}
         onOpenBag={() => setBagOpen(true)}
@@ -594,7 +671,6 @@ export function BattleView({
               {b.isBoss ? "Битва со Стражем" : "Бой"}
             </h2>
             <span className="font-mono text-lg tab text-flame">РАУНД {roman(b.round)}</span>
-            <BiomeTag biome={b.biome} />
           </div>
           <span
             className={`font-display text-sm uppercase tracking-[0.2em] ${
@@ -748,7 +824,6 @@ export function BattleView({
             {(menu === "main" || menu === "item") && (
               <div className="grid grid-cols-3 gap-2">
                 {ATTACK_KINDS.map((kind) => {
-                  const meta = ATTACK_KIND_META[kind];
                   const preview = heroAttackPreview(b, kind);
                   const cost = attackStaminaCost(b);
                   const miss = Math.round((1 - preview.chance) * 100);
@@ -756,15 +831,16 @@ export function BattleView({
                   const block = kind === "risky" ? riskyAttackBlock(b) : null;
                   const off = !ready.attack || !!block;
                   return (
-                    <Btn
+                    <AttackKindButton
                       key={kind}
-                      tone={off ? "ghost" : kind === "safe" ? "verd" : "flame"}
-                      disabled={off}
-                      title={block ?? `Выносливость: ${cost}. ${concText(concentrationDelta("attack", kind))}. Шанс промахнуться: ${miss}%`}
-                      onClick={() => act({ type: "attack", kind })}
-                    >
-                      {meta.short}
-                    </Btn>
+                      kind={kind}
+                      b={b}
+                      off={off}
+                      block={block}
+                      cost={cost}
+                      miss={miss}
+                      onPress={() => act({ type: "attack", kind })}
+                    />
                   );
                 })}
               </div>
