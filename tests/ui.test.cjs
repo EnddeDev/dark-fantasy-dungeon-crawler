@@ -521,19 +521,19 @@ test("battle item menu hides special supplies and reagents", () => {
   assert.ok(html.includes("Действия"));
 });
 
-test("gear filter has one button per equipment slot, rings grouped", () => {
+test("chest filter: one icon button per equipment slot (aria-label), no search, no sort", () => {
   const player = makePlayer({ armory: [content.createGearItem({ baseId: "sword", wear: "worn", rarity: "common", identified: true })] });
   const html = renderToStaticMarkup(React.createElement(Lobby, {
     player, controller: {}, shopStock: [], onStart: noop, best: 1, unlockedFloor: 2, initialTab: "armory",
   }));
   const group = html.slice(html.indexOf('aria-label="Слот снаряжения"'));
   assert.ok(group.length > 0, "группа фильтра слотов есть");
-  const buttonFor = (label) => new RegExp(`<button[^>]*>(?:<svg[\\s\\S]*?<\\/svg>)?\\s*${label}\\s*<\\/button>`).test(group);
   for (const label of ["Все", "Правая рука", "Левая рука", "Шлем", "Тело", "Наручи", "Ботинки", "Кольца", "Оберег"]) {
-    assert.ok(buttonFor(label), `кнопка «${label}» есть`);
+    assert.ok(group.includes(`aria-label="${label}"`), `кнопка-иконка «${label}» есть`);
   }
-  assert.ok(!buttonFor("Броня"), "общей кнопки «Броня» больше нет");
-  assert.ok(!buttonFor("Руки"), "общей кнопки «Руки» больше нет");
+  assert.ok(!html.includes('aria-label="Поиск снаряжения"'), "поиска в сундуке нет");
+  assert.ok(!html.includes('aria-label="Сортировка"'), "сортировки в сундуке нет");
+  assert.ok(!html.includes(">Броня<") && !html.includes(">Руки<"), "общих кнопок «Броня» и «Руки» нет");
 });
 
 test("shop supplies filter by level and reagents open sorted by level with category filters", () => {
@@ -560,7 +560,7 @@ test("shop supplies filter by level and reagents open sorted by level with categ
   assert.ok(firstPlant > 0 && firstPlant < lastStone, "растения уровня 1 стоят в начале списка, до камней уровня 5");
 });
 
-test("shop gear: type filter light/medium/heavy next to slots, no sort control; armory keeps sort", () => {
+test("shop gear: type filter light/medium/heavy next to slots, no sort control; armory has no sort either", () => {
   const player = makePlayer({ gold: 5000, shopLevel: 5, armory: [] });
   const shop = renderToStaticMarkup(React.createElement(Lobby, {
     player, controller: {}, shopStock: [], onStart: noop, best: 1, unlockedFloor: 2, initialTab: "shop", initialShopSection: "equipment",
@@ -575,7 +575,7 @@ test("shop gear: type filter light/medium/heavy next to slots, no sort control; 
   const armory = renderToStaticMarkup(React.createElement(Lobby, {
     player, controller: {}, shopStock: [], onStart: noop, best: 1, unlockedFloor: 2, initialTab: "armory",
   }));
-  assert.ok(armory.includes('aria-label="Сортировка"'), "в арсенале сортировка осталась");
+  assert.ok(!armory.includes('aria-label="Сортировка"'), "в арсенале сортировки нет");
   assert.ok(!armory.includes('aria-label="Тип брони"'), "тип брони фильтрует только магазин");
 });
 
