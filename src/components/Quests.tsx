@@ -117,6 +117,7 @@ export function QuestsTab({
   unlockedFloor,
   say,
   services = {},
+  initialGiver,
   onInspectMercenary,
 }: {
   player: Player;
@@ -125,13 +126,15 @@ export function QuestsTab({
   say: (text: string | null) => void;
   /** Содержимое NPC, которое живёт в лобби: варка и рецепты алхимика и мастера, кузница. */
   services?: Partial<Record<QuestGiverId, ReactNode>>;
+  /** NPC, которого открыть сразу (переход из окна предмета: в горн, к волшебнику). */
+  initialGiver?: QuestGiverId;
   /** Открывает окно характеристик снаряжения наёмника (живёт в лобби). */
   onInspectMercenary?: (item: GearItem) => void;
 }) {
   const log = logOf(player);
-  /* Открываем того, у кого уже взято задание; иначе — священника. */
+  /* Открываем нужного NPC; иначе того, у кого уже взято задание; иначе — священника. */
   const [giver, setGiver] = useState<QuestGiverId>(
-    () => GIVER_ORDER.find((id) => log.active.some((q) => q.giver === id)) ?? "priest",
+    () => initialGiver ?? GIVER_ORDER.find((id) => log.active.some((q) => q.giver === id)) ?? "priest",
   );
   const activeFull = log.active.length >= QUEST_ACTIVE_LIMIT;
 
