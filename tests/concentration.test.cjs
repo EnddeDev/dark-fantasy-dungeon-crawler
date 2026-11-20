@@ -40,8 +40,15 @@ function player(extra = {}) {
 }
 
 /** Бой с очередью «герой, затем враг», герой на полном здоровье. */
+/** Сумка по умолчанию: предметы из bag лежат в сумке. Правило «в бой только сумка» — в tests/pouchExit.test.cjs. */
+function withAutoPouch(pl) {
+  if (pl.pouch !== undefined) return pl;
+  const ids = Object.keys(pl.bag ?? {}).filter((id) => (pl.bag[id] ?? 0) > 0).slice(0, 5);
+  return { ...pl, pouch: [...ids, ...Array(5 - ids.length).fill(null)] };
+}
+
 function fightFor(extra = {}) {
-  const b = battle.newBattle(player(extra), 1, false, "classic", 0, 0);
+  const b = battle.newBattle(withAutoPouch(player(extra)), 1, false, "classic", 0, 0);
   b.queue = ["p", "e"];
   b.idx = 0;
   b.p.hp = b.p.maxHp;

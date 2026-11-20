@@ -30,6 +30,13 @@ function withRandom(value, fn) {
 }
 
 /** Бой с неубиваемым врагом; герой — Архимаг с заданными рубежами, ветками и гир-пассивами. */
+/** Сумка по умолчанию: предметы из bag лежат в сумке. Правило «в бой только сумка» — в tests/pouchExit.test.cjs. */
+function withAutoPouch(pl) {
+  if (pl.pouch !== undefined) return pl;
+  const ids = Object.keys(pl.bag ?? {}).filter((id) => (pl.bag[id] ?? 0) > 0).slice(0, 5);
+  return { ...pl, pouch: [...ids, ...Array(5 - ids.length).fill(null)] };
+}
+
 function mageFight(passives = [], extra = {}) {
   const pl = {
     name: "Герой", level: 10, xp: 0, statPoints: 0,
@@ -38,7 +45,7 @@ function mageFight(passives = [], extra = {}) {
     statuses: { wound: 0, curse: 0, poison: 0 },
     equip: { ...EMPTY_EQUIP }, archetype: "archmage", ...extra,
   };
-  const b = battle.newBattle(pl, 1, false, "classic", 0, 0);
+  const b = battle.newBattle(withAutoPouch(pl), 1, false, "classic", 0, 0);
   b.queue = ["p", "e"];
   b.idx = 0;
   b.enemy.hp = 99999;
@@ -87,6 +94,7 @@ test("Пылающий канон и Вечная стужа: магически
     for (let k = 0; k < N; k++) {
       const s = mageFight(passives);
       s.bag = { scroll_bolt: 1 };
+      s.pouch = ["scroll_bolt"];
       sum += 99999 - withRandom(0.45, () => battle.playerAct(s, { type: "item", id: "scroll_bolt" })).enemy.hp;
     }
     return sum / N;
@@ -120,6 +128,7 @@ test("Запретный канон: 15% шанс повторно примен�
   b.p.gearPassives = ["archmage_library"];
   b.p.passivePower = { archmage_library: { magic: 12, round: 1, reapply: 100 } };
   b.bag = { scroll_creation: 1 };
+  b.pouch = ["scroll_creation"];
   const next = withRandom(0.45, () => battle.playerAct(b, { type: "item", id: "scroll_creation" }));
   assert.ok(next.log.some((l) => l.text.includes("Запретный канон")), "повторное применение без траты записано в лог");
 });

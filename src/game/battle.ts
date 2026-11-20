@@ -3037,9 +3037,9 @@ function beginTurn(b: BattleState) {
     b.p.guardStrikeUsed = false;
   }
 
-  /* Страх: атаки и приёмы закрыты; защиту, рюкзак, побег или конец хода герой выбирает сам. */
+  /* Страх: атаки и приёмы закрыты; защиту, сумку, побег или конец хода герой выбирает сам. */
   if (side === "p" && b.p.statuses.fear > 0) {
-    push(b, "Страх сковывает волю: атаки и приёмы закрыты. Доступны рюкзак, защита, побег или конец хода.", "e");
+    push(b, "Страх сковывает волю: атаки и приёмы закрыты. Доступны сумка, защита, побег или конец хода.", "e");
   }
 
   /* Регенерация снаряжения: срабатывает в начале каждого хода героя, полным значением. */
@@ -3512,13 +3512,13 @@ function advance(b: BattleState) {
 const CREATED_SCROLLS = ["scroll_bolt", "scroll_heal", "scroll_frost", "scroll_terror"];
 /* ═══════════  СОЗДАННОЕ В БОЮ И КОНЦЕНТРАЦИЯ  ═══════════ */
 
-/** Созданное в бою кладётся в боевой рюкзак и помечается, чтобы не перейти герою после боя. */
+/** Созданное в бою кладётся в боевые копии и помечается, чтобы не перейти герою после боя. */
 function addConjured(b: BattleState, id: string) {
   b.bag[id] = (b.bag[id] ?? 0) + 1;
   b.conjured[id] = (b.conjured[id] ?? 0) + 1;
 }
 
-/** Расход из рюкзака: сначала тратится созданное в бою, поэтому личный запас не меняется. */
+/** Расход предмета: сначала тратится созданное в бою, поэтому личный запас не меняется. */
 function spendBagItem(b: BattleState, id: string) {
   b.bag[id] = (b.bag[id] ?? 0) - 1;
   if (b.bag[id] <= 0) delete b.bag[id];
@@ -3529,7 +3529,7 @@ function spendBagItem(b: BattleState, id: string) {
   }
 }
 
-/** Рюкзак героя после боя (победа, побег, сохранение): без созданного в бою. */
+/** Рюкзак героя после боя (победа, побег, сохранение): без созданного в бою. Весь рюкзак остаётся в сохранении, в бою из него доступна только сумка. */
 export function persistentBag(b: BattleState): Record<string, number> {
   const out: Record<string, number> = {};
   for (const [id, n] of Object.entries(b.bag)) {
@@ -3830,16 +3830,36 @@ export function actionStaminaCost(b: BattleState, a: PlayerAction): number {
     case "guard":
       return STAMINA_GUARD;
     case "item":
-      return b.pouch.includes(a.id) ? 0 : STAMINA_BACKPACK;
+      return isFreePouchUse(b, a.id) ? 0 : STAMINA_BACKPACK;
     default:
       return 0;
   }
 }
 
+/**
+ * Предмет доступен в бою: из сумки (зелье, свиток, расходник, бурдюк; факел — нет) или созданный в бою.
+ * Остальное из рюкзака в бой не переходит.
+ */
+export function battleItemAvailable(b: BattleState, id: string): boolean {
+  if ((b.bag[id] ?? 0) <= 0) return false;
+  if ((b.conjured[id] ?? 0) > 0) return true;
+  return b.pouch.includes(id) && usableFromPouchInBattle(id);
+}
+
+/** Личные копии предмета: всё, что есть в рюкзаке героя, без созданного в бою. */
+export function personalCount(b: BattleState, id: string): number {
+  return Math.max(0, (b.bag[id] ?? 0) - (b.conjured[id] ?? 0));
+}
+
+/** Бесплатно, если предмет из сумки и есть личная копия. Созданное в бою без личной копии стоит выносливость. */
+export function isFreePouchUse(b: BattleState, id: string): boolean {
+  return b.pouch.includes(id) && personalCount(b, id) > 0;
+}
+
 /** Ход продолжается, пока хватает выносливости хотя бы на одну платную трату или есть бесплатный предмет в сумке. */
 function canKeepActing(b: BattleState): boolean {
   if (b.p.stamina >= STAMINA_MIN_PAID) return true;
-  return b.pouch.some((id) => (b.bag[id] ?? 0) > 0 && usableFromPouchInBattle(id));
+  return b.pouch.some((id) => isFreePouchUse(b, id) && (b.bag[id] ?? 0) > 0 && usableFromPouchInBattle(id));
 }
 
 export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
@@ -3853,7 +3873,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
   if (b0.over || b0.queue[b0.idx] !== "p") return b0;
   const b = clone(b0);
   /* Страх: защиту герой уже занял в начале хода (beginTurn). Пока страх держится,
-     атаковать, применять приёмы и бежать нельзя; рюкзак и защита доступны. */
+     атаковать и применять приёмы нельзя; сумка, защита и побег доступны. */
   const fearTurn = b.p.statuses.fear > 0;
 
   const err = (msg: string) => {
@@ -3862,7 +3882,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
   };
 
   if (fearTurn && a.type !== "item" && a.type !== "guard" && a.type !== "flee" && a.type !== "end_turn") {
-    return err("Страх: атаковать и применять приёмы нельзя. Доступны рюкзак, защита, побег и конец хода.");
+    return err("Страх: атаковать и применять приёмы нельзя. Доступны сумка, защита, побег и конец хода.");
   }
 
   /* Выносливость: действие тратит её только в свой ход; списывается после успешного действия. */
@@ -4275,6 +4295,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
         return err("Этот предмет используется только на карте.");
       }
       if (!b.bag[a.id]) return err(`«${def.name}» закончился.`);
+      if (!battleItemAvailable(b, a.id)) return err("В бою доступны только предметы из сумки и созданные в бою.");
       const u = def.use;
       const req = consumableIntReq(def, b.p.intDiscount);
       if (b.p.stats.int < req) return err(`Для «${def.name}» нужен Интеллект ${req}.`);
@@ -4565,6 +4586,8 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
 
       const scrollSaveChance = (hasPassive(b, "echo") ? 0.35 : 0) + effectPower(b, "scroll_save") / 100 +
         (hasPassive(b, "arch_archmage_5") ? 0.25 : 0);
+      /* До траты: созданное в бою тратится первым, поэтому признак «из сумки» берём сейчас. */
+      const fromPouch = isFreePouchUse(b, a.id);
       const saveScroll = def.kind === "scroll" && scrollSaveChance > 0 && Math.random() < scrollSaveChance;
       if (!saveScroll) {
         spendBagItem(b, a.id);
@@ -4573,7 +4596,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
       }
       /* Сумка: зелье, свиток или расходник из слота бесплатно. */
       const isScroll = def.kind === "scroll";
-      const pouchFree = b.pouch.includes(a.id);
+      const pouchFree = fromPouch;
       if (pouchFree) b.p.turnPouch += 1;
       else b.p.turnConsumables += 1;
       if (isScroll) b.p.turnScrolls += 1;
@@ -5541,7 +5564,7 @@ export function enemyStep(b0: BattleState): BattleState {
       const landed = incoming(b, Math.round(base * 0.6 * chill), "magic", `${e.def.name} рычит тебе в лицо`);
       if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0 && Math.random() > resistChance) {
-        if (!immuneNote(b, "fear")) applyHeroFear(b, "Страх на раунд: в свой ход ты сам встаёшь в защиту. Атаки и приёмы закрыты, рюкзак и побег доступны.");
+        if (!immuneNote(b, "fear")) applyHeroFear(b, "Страх на раунд: в свой ход ты сам встаёшь в защиту. Атаки и приёмы закрыты, сумка и побег доступны.");
         e.guard = true;
         flash(b, "e", "guard", 0);
       }
@@ -5842,7 +5865,7 @@ export function combatReadout(b: BattleState): CombatReadout {
   if (b.p.statuses.wither > 0)
     defMods.push({ id: "wither", label: "Увядание", good: false, rounds: b.p.statuses.wither, detail: "Любое лечение переходит в магический урон." });
   if (b.p.statuses.fear > 0)
-    defMods.push({ id: "fear", label: "Страх", good: false, rounds: b.p.statuses.fear, detail: "В твой ход ты в защите сам. Атаки и приёмы закрыты, рюкзак доступен." });
+    defMods.push({ id: "fear", label: "Страх", good: false, rounds: b.p.statuses.fear, detail: "В твой ход ты в защите сам. Атаки и приёмы закрыты, сумка доступна." });
   if (b.p.statuses.sealAttack > 0)
     defMods.push({ id: "sealAttack", label: "Печать оков", good: false, rounds: b.p.statuses.sealAttack, detail: "Обычная атака запрещена в этот ход." });
   if (b.p.statuses.sealSkills > 0)

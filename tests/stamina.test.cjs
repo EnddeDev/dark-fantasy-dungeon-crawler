@@ -54,8 +54,15 @@ function withWeapons(items, slots = ["mainHand"]) {
 }
 
 /** Бой с предсказуемым врагом: не бьёт, не уклоняется, герой не промахивается. Ход героя первый. */
+/** Сумка по умолчанию: предметы из bag лежат в сумке. Правило «в бой только сумка» — в tests/pouchExit.test.cjs. */
+function withAutoPouch(pl) {
+  if (pl.pouch !== undefined) return pl;
+  const ids = Object.keys(pl.bag ?? {}).filter((id) => (pl.bag[id] ?? 0) > 0).slice(0, 5);
+  return { ...pl, pouch: [...ids, ...Array(5 - ids.length).fill(null)] };
+}
+
 function fight(pl) {
-  const b = battle.newBattle(pl, 1, false, "classic", 0, 0);
+  const b = battle.newBattle(withAutoPouch(pl), 1, false, "classic", 0, 0);
   b.queue = ["p", "e", "p", "e"];
   b.idx = 0;
   b.enemy.hp = 99999;
@@ -138,12 +145,12 @@ test("спец-приём архетипа, побег и «Закончить �
   assert.equal(guarded.queue[guarded.idx], "p", "защита не заканчивает ход");
 });
 
-test("рюкзак: предмет тратит 5 выносливости; из сумки — бесплатно", () => {
+test("предмет из рюкзака в бою не применяется; из сумки — бесплатно", () => {
   const bag = fight(hero({ bag: { potion_s: 1 }, pouch: [null, null, null] }));
   bag.p.hp = bag.p.maxHp - 40;
-  const fromBag = battle.playerAct(bag, { type: "item", id: "potion_s" });
-  assert.equal(fromBag.p.stamina, bag.p.stamina - 5, "из рюкзака — 5");
-  assert.equal(fromBag.idx, 0, "ход продолжается");
+  const notInPouch = battle.playerAct(bag, { type: "item", id: "potion_s" });
+  assert.equal(notInPouch.bag.potion_s, 1, "вне сумки зелье в бою не тратится");
+  assert.equal(notInPouch.p.stamina, bag.p.stamina, "выносливость не списана");
 
   const pouch = fight(hero({ bag: { potion_s: 2 }, pouch: ["potion_s", null, null] }));
   pouch.p.hp = pouch.p.maxHp - 40;

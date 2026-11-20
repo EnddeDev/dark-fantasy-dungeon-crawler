@@ -394,7 +394,7 @@ test("трофеи, израсходованные в бою, не списыв�
   game.model.updatePlayer((p) => ({ ...p, bag: { ...p.bag, potion_s: 3 } }));
   game.model.updateRun((run) => ({ ...run, loot: ["potion_s", "potion_s"] }));
 
-  const battleState = battle.newBattle({ ...player, bag: { potion_s: 3 } }, 1, false, undefined, 0, false);
+  const battleState = battle.newBattle({ ...player, bag: { potion_s: 3 }, pouch: ["potion_s", null, null, null, null] }, 1, false, undefined, 0, false);
   battleState.bag = { potion_s: 3 };
   battleState.idx = battleState.queue.indexOf("p");
   game.model.setBattle(battleState);

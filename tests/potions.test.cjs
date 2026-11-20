@@ -38,8 +38,15 @@ function player(over = {}) {
 }
 
 /** Герой ходит первым против безобидной мишени. */
+/** Сумка по умолчанию: предметы из bag лежат в сумке. Правило «в бой только сумка» — в tests/pouchExit.test.cjs. */
+function withAutoPouch(pl) {
+  if (pl.pouch !== undefined) return pl;
+  const ids = Object.keys(pl.bag ?? {}).filter((id) => (pl.bag[id] ?? 0) > 0).slice(0, 5);
+  return { ...pl, pouch: [...ids, ...Array(5 - ids.length).fill(null)] };
+}
+
 function heroBattle(over = {}) {
-  const b = battle.newBattle(player(over), 1, false, undefined, 20, false);
+  const b = battle.newBattle(withAutoPouch(player(over)), 1, false, undefined, 20, false);
   b.queue = ["p", "e"];
   b.idx = 0;
   b.enemy.hp = 5000; b.enemy.maxHp = 5000; b.enemy.armor = 0; b.enemy.passive = null;
@@ -108,7 +115,7 @@ test("зелье выносливости восстанавливает зап�
   b.p.staminaMax = 100;
   b.p.stamina = 10;
   const first = battle.playerAct(b, { type: "item", id: "stamina_s" });
-  assert.equal(first.p.stamina, 10 + 30 - 5, "+30, из рюкзака списано 5");
+  assert.equal(first.p.stamina, 10 + 30, "+30, из сумки бесплатно");
   assert.equal(first.bag.stamina_s, 1, "одно зелье израсходовано");
 
   const second = battle.playerAct(first, { type: "item", id: "stamina_s" });

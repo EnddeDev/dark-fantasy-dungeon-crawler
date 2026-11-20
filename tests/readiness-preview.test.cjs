@@ -39,8 +39,15 @@ function player(extra = {}) {
   };
 }
 
+/** Сумка по умолчанию: предметы из bag лежат в сумке. Правило «в бой только сумка» — в tests/pouchExit.test.cjs. */
+function withAutoPouch(pl) {
+  if (pl.pouch !== undefined) return pl;
+  const ids = Object.keys(pl.bag ?? {}).filter((id) => (pl.bag[id] ?? 0) > 0).slice(0, 5);
+  return { ...pl, pouch: [...ids, ...Array(5 - ids.length).fill(null)] };
+}
+
 function fightFor(extra = {}) {
-  const b = battle.newBattle(player(extra), 1, false, "classic", 0, 0);
+  const b = battle.newBattle(withAutoPouch(player(extra)), 1, false, "classic", 0, 0);
   b.queue = ["p", "e"];
   b.idx = 0;
   b.p.hp = b.p.maxHp;
@@ -91,6 +98,7 @@ test("обычная атака закрыта страхом и печатью 
 test("предпросмотр свитка искры совпадает с уроном реального хода", () => {
   const b = fightFor();
   b.bag = { scroll_spark: 1 };
+  b.pouch = ["scroll_spark"];
   const pv = preview.consumablePreview(b, "scroll_spark");
   assert.equal(pv.blocked, null);
   assert.ok(pv.damage > 0);
@@ -102,6 +110,7 @@ test("предпросмотр зелья лечения даёт число и�
   const b = fightFor();
   b.p.hp = 10;
   b.bag = { potion_s: 1 };
+  b.pouch = ["potion_s"];
   const pv = preview.consumablePreview(b, "potion_s");
   assert.equal(pv.damage, null);
   assert.ok(pv.heal > 0);
@@ -112,6 +121,7 @@ test("предпросмотр зелья лечения даёт число и�
 test("предпросмотр ядовитого дротика показывает яд в раундах", () => {
   const b = fightFor();
   b.bag = { poison_dart: 1 };
+  b.pouch = ["poison_dart"];
   const pv = preview.consumablePreview(b, "poison_dart");
   assert.ok(pv.damage > 0);
   assert.ok(pv.effects.some((line) => line.startsWith("Враг:") && /3 раунда/.test(line)), pv.effects.join(" | "));
