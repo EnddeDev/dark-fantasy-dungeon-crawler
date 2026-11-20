@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useFitInViewport } from "./useFitInViewport";
 import { PlayTopBar } from "./PlayTopBar";
-import { BagModal, QuestsModal } from "./PlayModals";
-import { GearNote } from "./GearNote";
+import { QuestsModal } from "./PlayModals";
 import type { LobbyAccount } from "./LobbyChrome";
 import { logOf } from "../game/quests";
 import type { Player } from "../game/types";
@@ -15,7 +14,6 @@ import {
   isImmuneTo,
   scaledGearStats,
   consumableIntReq,
-  consumableScaleLabel,
 } from "../game/content";
 import { GEAR_EFFECTS, effectDetail } from "../game/gearEffects";
 import { MONSTER_RACE_META, MONSTER_TYPE_META, WEAKNESS_STEP, raceTraits } from "../game/monsters";
@@ -45,6 +43,8 @@ import {
   techniqueStaminaCost,
   riskyAttackBlock,
   concentrationDelta,
+  battleItemAvailable,
+  isFreePouchUse,
 } from "../game/battle";
 import { FoePortrait } from "./FoeArt";
 import { ItemArt } from "./ItemArt";
@@ -59,10 +59,10 @@ import { enemyEffects, learnedEffects, type TabEffect } from "../game/effectEntr
 import { EffectChips } from "./EffectChips";
 import { EffectGlyph } from "./EffectIcon";
 import { DamageTypeTag, ElementRow } from "./DamageTypeIcon";
-import { itemDamageType, raceElementRows } from "../game/damageTypes";
+import { raceElementRows } from "../game/damageTypes";
 import { skillReadiness } from "../game/skillReadiness";
 import { consumablePreview } from "../game/consumablePreview";
-import { POUCH_SLOTS, usableFromPouchInBattle } from "../game/pouch";
+import { POUCH_SLOTS } from "../game/pouch";
 import { monsterActionsBonus, monsterDamageBonus, monsterEvasionBonus, monsterHealthBonus, monsterTechniqueBonus } from "../game/monsterStats";
 
 /** Римская нумерация для строк инициативы. */
@@ -101,7 +101,7 @@ export const ENEMY_EFFECT_DESC: Record<string, string> = {
   poison: "Яд в крови разъедает изнутри каждый раунд.",
   burn: "Огонь держится на тебе и жжёт каждый раунд.",
   curse: "Твой урон снижен на силу проклятия.",
-  fear: "В свой ход ты в защите: атаки и приёмы закрыты, рюкзак доступен.",
+  fear: "В свой ход ты в защите: атаки и приёмы закрыты, сумка доступна.",
   stun: "Пропускаешь ходы: очередь короче на число ходов оглушения.",
   sunder: "Броня героя снижается: раскол — до конца боя, гниение ходока — на два раунда.",
   darkness: "Половина твоих атак уходит в пустоту.",
@@ -416,23 +416,20 @@ export function BattleView({
   onEnemyTurn: () => void;
   onStunSkip: () => void;
   onContinue: () => void;
-  /** Герой из забега: нужен шапке (задания, рюкзак) и для модалок. Без него кнопки открывают пустое. */
+  /** Герой из забега: нужен шапке (задания) и для модалок. Без него кнопки открывают пустое. */
   player?: Player;
   floor?: number;
   account?: LobbyAccount;
 }) {
-  const [menu, setMenu] = useState<"main" | "skill" | "item">("main");
+  const [menu, setMenu] = useState<"main" | "skill">("main");
   const [codex, setCodex] = useState(false);
-  /* Шапка как на карте: задания и рюкзак открываются модалками поверх боя. */
+  /* Шапка как на карте: задания открываются модалкой поверх боя. Рюкзака в бою нет. */
   const [questsOpen, setQuestsOpen] = useState(false);
-  const [bagOpen, setBagOpen] = useState(false);
-  const [detailUid, setDetailUid] = useState<string | null>(null);
   /* Табы в сводках: характеристики или эффекты — отдельно для героя и монстра. */
   const [heroTab, setHeroTab] = useState<SummaryTab>("stats");
   const [foeTab, setFoeTab] = useState<SummaryTab>("stats");
   const b = battle;
   const activeQuests = player ? logOf(player).active.length : 0;
-  const detailItem = player?.armory.find((item) => item.uid === detailUid);
   const myTurn = !b.over && b.queue[b.idx] === "p";
   const e = b.enemy;
   const earnedXp = b.loot.xp;
@@ -463,7 +460,7 @@ export function BattleView({
   const ws = b.p.weaponSkill;
   const wsReq = ws ? Math.max(1, ws.intReq - b.p.intDiscount) : 0;
   const wsIntOk = ws ? b.p.stats.int >= wsReq : false;
-  /* Страх: герой уже в защите, атаки, приёмы и бегство закрыты, рюкзак открыт. */
+  /* Страх: герой уже в защите, атаки и приёмы закрыты, сумка и бегство открыты. */
   const feared = b.p.statuses.fear > 0;
   /* Подсветка приёмов: светится только то, что можно применить прямо сейчас. */
   const ready = skillReadiness(b, myTurn, feared);
@@ -653,6 +650,60 @@ export function BattleView({
     },
   ];
 
+  /* Созданное в бою, чего нет в слотах сумки: отдельная секция, чтобы свитки архимага и расходники дуэлянта не пропали вместе с рюкзаком. */
+  const createdIds = Object.keys(b.conjured).filter((id) => (b.conjured[id] ?? 0) > 0 && !b.pouch.includes(id));
+
+  /* Строка предмета в сумке или созданного в бою: одна разметка для слотов и для «Создано в бою». */
+  const renderBattleItem = (id: string) => {
+    const def = ITEMS[id];
+    const n = b.bag[id] ?? 0;
+    const free = isFreePouchUse(b, id);
+    const available = battleItemAvailable(b, id);
+    const req = def ? consumableIntReq(def, b.p.intDiscount) : 0;
+    const intOk = b.p.stats.int >= req;
+    const fearImmune = def?.use?.type === "fear" && isImmuneTo(e.def.race, "fear");
+    const ok = !!def && available && intOk && myTurn && !fearImmune && !(b.p.statuses.sealItems > 0 && def.kind === "scroll");
+    const pv = consumablePreview(b, id);
+    return (
+      <button
+        key={id}
+        disabled={!ok}
+        onClick={() => act({ type: "item", id })}
+        className="flex w-full items-center justify-between gap-3 border border-line bg-slab2 px-3 py-2 text-left transition-colors enabled:hover:border-flame enabled:hover:bg-flame/10 disabled:opacity-40"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <ItemArt id={id} name={def?.name ?? id} size={30} framed={false} />
+          <span className="min-w-0">
+            <span className="block truncate font-display text-[0.98rem] uppercase tracking-[0.1em] text-flamehi">
+              {def?.name ?? id} <span className="font-mono text-[0.82rem] text-flame">×{n}</span>
+            </span>
+            {!available && n > 0 && <span className="block font-mono text-[0.82rem] text-mute">только на карте</span>}
+            {(pv.damage !== null || pv.heal !== null) && (
+              <span className="block font-mono text-[0.82rem] text-verd">
+                {pv.damage !== null ? `урон ${pv.damage}` : `+${pv.heal} здоровья`}
+              </span>
+            )}
+          </span>
+        </span>
+        <span className={`shrink-0 font-mono text-[0.8rem] ${ok ? "text-verd" : "text-rubric"}`}>
+          {n < 1
+            ? "закончилось"
+            : !available
+              ? "только на карте"
+              : fearImmune
+                ? "иммунитет"
+                : !intOk
+                  ? `нужен ИНТ ${req}`
+                  : !myTurn
+                    ? "не твой ход"
+                    : free
+                      ? "без выносливости"
+                      : `тратит ${STAMINA_BACKPACK} выносливости`}
+        </span>
+      </button>
+    );
+  };
+
   return (
     <div className="biome-surface flex min-h-screen flex-col bg-soot" data-biome={b.biome} style={biomeStyle(b.biome)}>
       <PlayTopBar
@@ -660,7 +711,6 @@ export function BattleView({
         biome={b.biome}
         activeQuests={activeQuests}
         onOpenQuests={() => setQuestsOpen(true)}
-        onOpenBag={() => setBagOpen(true)}
         account={account}
       />
       {/* ── ПОЛОСА ИНИЦИАТИВЫ ── */}
@@ -802,7 +852,7 @@ export function BattleView({
 
         </div>
 
-        {/* ДЕЙСТВИЯ — центральная колонка боя: кнопки, приёмы, рюкзак */}
+        {/* ДЕЙСТВИЯ — центральная колонка боя: кнопки, приёмы, сумка */}
         <div className="order-3 min-w-0 border-b border-line p-4 sm:p-6 xl:order-2 xl:col-start-2 xl:border-b-0">
           {/* ДЕЙСТВИЯ */}
           <div className="border border-line bg-slab/95 p-4">
@@ -815,13 +865,13 @@ export function BattleView({
 
             {(feared || b.p.statuses.sealAttack > 0 || b.p.statuses.sealSkills > 0 || b.p.statuses.sealItems > 0) && (
               <div className="mb-2 flex flex-wrap gap-1.5">
-                {feared && <Tag tone="rubric">Страх: рюкзак, защита, побег, конец хода</Tag>}
+                {feared && <Tag tone="rubric">Страх: сумка, защита, побег, конец хода</Tag>}
                 {b.p.statuses.sealAttack > 0 && <Tag tone="rubric">Печать оков: удар запрещён</Tag>}
                 {b.p.statuses.sealSkills > 0 && <Tag tone="rubric">Печать забвения: приёмы запрещены</Tag>}
                 {b.p.statuses.sealItems > 0 && <Tag tone="rubric">Немота: свитки, магия и спец-приём закрыты</Tag>}
               </div>
             )}
-            {(menu === "main" || menu === "item") && (
+            {menu === "main" && (
               <div className="grid grid-cols-3 gap-2">
                 {ATTACK_KINDS.map((kind) => {
                   const preview = heroAttackPreview(b, kind);
@@ -845,7 +895,7 @@ export function BattleView({
                 })}
               </div>
             )}
-            {(menu === "main" || menu === "item") && (
+            {menu === "main" && (
               <div className={b.p.archetype ? "grid grid-cols-2 gap-2" : "grid grid-cols-1 gap-2"}>
                 <Btn tone={ready.skills ? "flame" : "ghost"} title={`Выносливость: ${techniqueStaminaCost(b)}. ${concText(concentrationDelta("weapon_skill"))}.`} disabled={!myTurn || feared || b.p.statuses.sealSkills > 0 || b.p.stamina < techniqueStaminaCost(b)} onClick={() => setMenu("skill")}>
                   Приёмы · {techniqueStaminaCost(b)}
@@ -862,14 +912,11 @@ export function BattleView({
                 )}
               </div>
             )}
-            {(menu === "main" || menu === "item") && b.p.archetype && (
+            {menu === "main" && b.p.archetype && (
               <p className="mb-2 mt-1 text-[0.85rem] leading-snug text-mute">{ARCHETYPES[b.p.archetype].special.desc}</p>
             )}
-            {(menu === "main" || menu === "item") && (
-              <div className="mt-2 grid grid-cols-3 gap-2">
-                <Btn title={`Предмет: выносливость ${STAMINA_BACKPACK} из рюкзака, из сумки бесплатно. ${concText(concentrationDelta("item"))}.`} disabled={!myTurn || b.p.statuses.sealItems > 0} onClick={() => setMenu("item")}>
-                  Рюкзак · {STAMINA_BACKPACK}
-                </Btn>
+            {menu === "main" && (
+              <div className="mt-2 grid grid-cols-2 gap-2">
                 <Btn tone="verd" title={`Выносливость: ${STAMINA_GUARD}. ${concText(concentrationDelta("guard"))}. Ход заканчивается.`} disabled={!myTurn || b.p.stamina < STAMINA_GUARD} onClick={() => act({ type: "guard" })}>
                   Защита · {STAMINA_GUARD}
                 </Btn>
@@ -878,7 +925,7 @@ export function BattleView({
                 </Btn>
               </div>
             )}
-            {(menu === "main" || menu === "item") && (
+            {menu === "main" && (
               <div className="mt-2">
                 <Btn className="w-full" tone="danger" disabled={!myTurn} onClick={() => act({ type: "flee" })}>
                   Сбежать
@@ -887,71 +934,32 @@ export function BattleView({
             )}
 
             {/* СУМКА: пять слотов зелий, свитков и расходников прямо в действиях. Предмет из сумки не тратит выносливость. */}
-            {(menu === "main" || menu === "item") && (
+            {menu === "main" && (
               <div className="mt-3 border-t border-line/70 pt-3">
                 <div className="mb-2 flex items-baseline justify-between gap-2">
                   <span className="sc text-flamedim">Сумка</span>
-                  <span className="font-mono text-[0.78rem] text-mute">
-                    без выносливости
-                  </span>
+                  <span className="font-mono text-[0.78rem] text-mute">без выносливости</span>
                 </div>
                 <div className="space-y-2">
-                  {Array.from({ length: POUCH_SLOTS }, (_, i) => b.pouch[i] ?? null).map((id, i) => {
-                    if (!id) {
-                      return (
-                        <div key={`empty-${i}`} className="border border-dashed border-line/70 px-3 py-2 text-[0.85rem] italic text-mute">
-                          Слот {i + 1} пуст: предмет ставится в сумку вне боя.
-                        </div>
-                      );
-                    }
-                    const def = ITEMS[id];
-                    const n = b.bag[id] ?? 0;
-                    const req = def ? consumableIntReq(def, b.p.intDiscount) : 0;
-                    const intOk = b.p.stats.int >= req;
-                    const fearImmune = def?.use?.type === "fear" && isImmuneTo(e.def.race, "fear");
-                    const ok = !!def && n > 0 && intOk && myTurn && !fearImmune && usableFromPouchInBattle(id) && !(b.p.statuses.sealItems > 0 && def?.kind === "scroll");
-                    const pv = consumablePreview(b, id);
-                    const freeUse = true;
-                    return (
-                      <button
-                        key={id}
-                        disabled={!ok}
-                        onClick={() => act({ type: "item", id })}
-                        className="flex w-full items-center justify-between gap-3 border border-line bg-slab2 px-3 py-2 text-left transition-colors enabled:hover:border-flame enabled:hover:bg-flame/10 disabled:opacity-40"
-                      >
-                        <span className="flex min-w-0 items-center gap-2">
-                          <ItemArt id={id} name={def?.name ?? id} size={30} framed={false} />
-                          <span className="min-w-0">
-                            <span className="block truncate font-display text-[0.98rem] uppercase tracking-[0.1em] text-flamehi">
-                              {def?.name ?? id} <span className="font-mono text-[0.82rem] text-flame">×{n}</span>
-                            </span>
-                            {!usableFromPouchInBattle(id) && (
-                              <span className="block font-mono text-[0.82rem] text-mute">только на карте</span>
-                            )}
-                            {(pv.damage !== null || pv.heal !== null) && (
-                              <span className="block font-mono text-[0.82rem] text-verd">
-                                {pv.damage !== null ? `урон ${pv.damage}` : `+${pv.heal} здоровья`}
-                              </span>
-                            )}
-                          </span>
-                        </span>
-                        <span className={`shrink-0 font-mono text-[0.8rem] ${ok ? "text-verd" : "text-rubric"}`}>
-                          {n < 1
-                            ? "нет в рюкзаке"
-                            : fearImmune
-                              ? "иммунитет"
-                              : !intOk
-                                ? `нужен ИНТ ${req}`
-                                : !myTurn
-                                  ? "не твой ход"
-                                  : freeUse
-                                    ? "без выносливости"
-                                    : `тратит ${STAMINA_BACKPACK} выносливости`}
-                        </span>
-                      </button>
-                    );
-                  })}
+                  {Array.from({ length: POUCH_SLOTS }, (_, i) => b.pouch[i] ?? null).map((id, i) =>
+                    id ? (
+                      renderBattleItem(id)
+                    ) : (
+                      <div key={`empty-${i}`} className="border border-dashed border-line/70 px-3 py-2 text-[0.85rem] italic text-mute">
+                        Слот {i + 1} пуст: предмет ставится в сумку вне боя.
+                      </div>
+                    ),
+                  )}
                 </div>
+                {createdIds.length > 0 && (
+                  <>
+                    <div className="mb-2 mt-3 flex items-baseline justify-between gap-2">
+                      <span className="sc text-flamedim">Создано в бою</span>
+                      <span className="font-mono text-[0.78rem] text-mute">тратит выносливость</span>
+                    </div>
+                    <div className="space-y-2">{createdIds.map((id) => renderBattleItem(id))}</div>
+                  </>
+                )}
               </div>
             )}
 
@@ -1190,104 +1198,7 @@ export function BattleView({
         </div>
       </div>
 
-      {/* ── РЮКЗАК: на всю высоту экрана, слева ── */}
-      {menu === "item" && (
-        <div className="fixed inset-0 z-40 flex justify-start">
-          <button className="absolute inset-0 bg-black/70" onClick={() => setMenu("main")} aria-label="Закрыть рюкзак" />
-          <aside className="rise relative flex h-full w-[min(30rem,100vw)] flex-col border-r-2 border-flamedim bg-slab shadow-[30px_0_60px_-30px_#000]">
-            <header className="flex items-start justify-between gap-3 border-b border-line bg-slab2/95 px-4 py-3">
-              <div>
-                <span className="sc text-flamedim">Рюкзак</span>
-                <h3 className="font-display text-xl uppercase tracking-[0.1em] text-flamehi">Свитки и зелья</h3>
-                <p className="font-mono text-[0.84rem] text-mute">
-                  {feared ? "страх: рюкзак открыт" : myTurn ? `твой ход: расходник тратит ${STAMINA_BACKPACK} выносливости` : "ход врага или ожидание"}
-                </p>
-              </div>
-              <button onClick={() => setMenu("main")} className="mt-1 text-mute hover:text-rubric" aria-label="Закрыть рюкзак">
-                <X size={18} />
-              </button>
-            </header>
-            <div className="flex-1 space-y-2 overflow-y-auto px-4 py-4">
-              {Object.entries(b.bag).filter(([id]) => ITEMS[id]?.use && (ITEMS[id]?.kind !== "special" || ITEMS[id]?.use?.type === "special_water") && ITEMS[id]?.kind !== "reagent").length === 0 && (
-                <p className="text-sm italic text-mute">Рюкзак пуст: зелья, свитки и метательное оружие продаются в магазине.</p>
-              )}
-              {Object.entries(b.bag).filter(([id]) => ITEMS[id]?.use && (ITEMS[id]?.kind !== "special" || ITEMS[id]?.use?.type === "special_water") && ITEMS[id]?.kind !== "reagent").map(([id, n]) => {
-                const def = ITEMS[id];
-                const u = def.use!;
-                const req = consumableIntReq(def, b.p.intDiscount);
-                const intOk = b.p.stats.int >= req;
-                const fearImmune = u.type === "fear" && isImmuneTo(e.def.race, "fear");
-                const poisonImmune = u.type === "poison" && isImmuneTo(e.def.race, "poison");
-                const ok = intOk && myTurn && !fearImmune && (b.pouch.includes(id) || b.p.stamina >= STAMINA_BACKPACK);
-                const dmgType = itemDamageType(def.use);
-                const pv = consumablePreview(b, id);
-                return (
-                  <button
-                    key={id}
-                    disabled={!ok}
-                    title={`Выносливость: ${b.pouch.includes(id) ? 0 : STAMINA_BACKPACK}${b.pouch.includes(id) ? " (из сумки, бесплатно)" : " (из рюкзака)"}. ${concText(concentrationDelta("item"))}.`}
-                    onClick={() => act({ type: "item", id })}
-                    className="flex w-full items-center justify-between gap-3 border border-line bg-slab2 px-3 py-2 text-left transition-colors enabled:hover:border-flame enabled:hover:bg-flame/10 disabled:opacity-40"
-                  >
-                    <span className="flex items-start gap-2">
-                      <ItemArt id={id} name={def.name} size={34} framed={false} className="mt-0.5" />
-                      <span>
-                        <span className="block font-display text-[1.02rem] uppercase tracking-[0.1em] text-flamehi">
-                          {def.name} <span className="font-mono text-[0.84rem] text-flame">×{n}</span>
-                          {dmgType && <DamageTypeTag id={dmgType} size={14} className="ml-2" />}
-                          {b.pouch.includes(id) && (
-                            <span className="ml-2 font-mono text-[0.78rem] text-verd">из сумки · без выносливости</span>
-                          )}
-                        </span>
-                        <span className="block text-[0.89rem] leading-snug text-mute">{def.desc}</span>
-                        {(pv.damage !== null || pv.heal !== null || pv.effects.length > 0) && (
-                          <span className="mt-1 block space-y-0.5 text-[0.85rem] leading-snug">
-                            {pv.damage !== null && (
-                              <span className="block font-mono text-verd" title="Урон по этому противнику с учётом его защиты">
-                                урон {pv.damage}
-                              </span>
-                            )}
-                            {pv.heal !== null && <span className="block font-mono text-verd">+{pv.heal} здоровья</span>}
-                            {pv.effects.map((line) => (
-                              <span key={line} className="block text-parch">{line}</span>
-                            ))}
-                          </span>
-                        )}
-                      </span>
-                    </span>
-                    <span className={`shrink-0 font-mono text-[0.86rem] ${intOk && !fearImmune && !poisonImmune ? "text-verd" : "text-rubric"}`}>
-                      {fearImmune
-                        ? "иммунитет к страху"
-                        : poisonImmune
-                          ? "яд не действует"
-                          : intOk
-                            ? req > 0
-                              ? `ИНТ ${req} · готово`
-                              : consumableScaleLabel(def)
-                                ? `${consumableScaleLabel(def).replace(" + ", "+")} · готово`
-                                : "готово"
-                            : `нужен ИНТ ${req}`}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </aside>
-        </div>
-      )}
-
       {questsOpen && player && <QuestsModal player={player} onClose={() => setQuestsOpen(false)} />}
-      {bagOpen && player && (
-        <BagModal
-          player={player}
-          onInspect={(uid) => {
-            setBagOpen(false);
-            setDetailUid(uid);
-          }}
-          onClose={() => setBagOpen(false)}
-        />
-      )}
-      {detailItem && player && <GearNote item={detailItem} player={player} onClose={() => setDetailUid(null)} />}
 
       {/* ── КОДЕКС ПРОТИВНИКА: поля рукописи справа ── */}
       {codex && (

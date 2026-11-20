@@ -43,8 +43,15 @@ function withRandom(value, fn) {
   try { return fn(); } finally { Math.random = old; }
 }
 
+/** Сумка по умолчанию: предметы из bag лежат в сумке. Правило «в бой только сумка» — в tests/pouchExit.test.cjs. */
+function withAutoPouch(pl) {
+  if (pl.pouch !== undefined) return pl;
+  const ids = Object.keys(pl.bag ?? {}).filter((id) => (pl.bag[id] ?? 0) > 0).slice(0, 5);
+  return { ...pl, pouch: [...ids, ...Array(5 - ids.length).fill(null)] };
+}
+
 function combat(biome, extra = {}) {
-  const b = freshBattle(player(extra), 3, false, biome);
+  const b = freshBattle(withAutoPouch(player(extra)), 3, false, biome);
   b.enemy.hp = 5000; b.enemy.maxHp = 5000; b.enemy.armor = 0;
   b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none", type: "agile", moves: ["attack"] };
   b.enemy.moves = ["attack"]; b.enemy.passive = null;

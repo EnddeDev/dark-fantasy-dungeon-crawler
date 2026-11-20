@@ -30,6 +30,13 @@ function withRandom(fn, value = 0.99) {
 }
 
 /** Бой с врагом заданного рода и набором приёмов; очередь начинается с врага. */
+/** Сумка по умолчанию: предметы из bag лежат в сумке. Правило «в бой только сумка» — в tests/pouchExit.test.cjs. */
+function withAutoPouch(pl) {
+  if (pl.pouch !== undefined) return pl;
+  const ids = Object.keys(pl.bag ?? {}).filter((id) => (pl.bag[id] ?? 0) > 0).slice(0, 5);
+  return { ...pl, pouch: [...ids, ...Array(5 - ids.length).fill(null)] };
+}
+
 function fight(race, moves, bag = {}) {
   const gear = content.createGearItem({ baseId: "sword", rarity: "rare", wear: "new", identified: true, level: 4 });
   const pl = {
@@ -38,7 +45,7 @@ function fight(race, moves, bag = {}) {
     equip: { mainHand: gear.uid, offHand: null, head: null, body: null, feet: null, wrists: null, ring1: null, ring2: null, amulet: null },
     passives: [], statuses: { wound: 0, curse: 0, poison: 0 }, kills: 0, shopLevel: 1,
   };
-  const b = battle.newBattle(pl, 1, false, undefined, 20, false);
+  const b = battle.newBattle(withAutoPouch(pl), 1, false, undefined, 20, false);
   b.enemy.def = { ...b.enemy.def, id: "fixture", race, type: "strong", moves };
   b.enemy.moves = moves;
   b.enemy.mtype = monsters.coerceMonsterType(race, "strong");
@@ -57,7 +64,7 @@ function fight(race, moves, bag = {}) {
 
 const endRound = (st) => withRandom(() => battle.playerAct({ ...st, queue: ["p"], idx: 0 }, { type: "end_turn" }));
 
-test("зелье от яда из рюкзака тратит 5 выносливости, снимает яд и на раунд даёт 30% сопротивления", () => {
+test("зелье от яда из сумки бесплатно, снимает яд и на раунд даёт 30% сопротивления", () => {
   const b = fight("none", ["guard"], { antidote_poison: 1 });
   b.p.statuses.poison = 2;
   b.queue = ["p", "e"];
@@ -66,7 +73,7 @@ test("зелье от яда из рюкзака тратит 5 вынослив
   assert.equal(after.p.statuses.poison, 0, "яд снят");
   assert.deepEqual(after.p.statuses.resistFx.poison, { chance: 0.3, rounds: 1 }, "сопротивление яду 30% на 1 раунд");
   assert.equal(after.bag.antidote_poison ?? 0, 0, "зелье израсходовано");
-  assert.equal(after.p.stamina, b.p.stamina - 5, "из рюкзака — 5 выносливости");
+  assert.equal(after.p.stamina, b.p.stamina, "из сумки — бесплатно");
   assert.equal(after.queue[after.idx], "p", "ход героя продолжается, пока есть выносливость");
 });
 

@@ -115,7 +115,11 @@ test("бой: шапка такая же, как на карте — тот же
     player: pl, floor: 4, account: ACCOUNT,
   }));
   const mapHtml = render("classic", { account: ACCOUNT });
-  assert.equal(headerOf(battleHtml), headerOf(mapHtml), "шапка боя совпадает с шапкой карты");
+  /* В бою кнопки «Рюкзак» нет: из шапки карты её убираем и сравниваем остальное. */
+  const withoutBag = (h) => h.replace(/<button(?:(?!<\/button>)[\s\S])*?Рюкзак[\s\S]*?<\/button>/, "");
+  assert.ok(headerOf(mapHtml).includes("Рюкзак"), "на карте рюкзак в шапке");
+  assert.ok(!headerOf(battleHtml).includes("Рюкзак"), "в бою рюкзака в шапке нет");
+  assert.equal(headerOf(battleHtml), withoutBag(headerOf(mapHtml)), "шапка боя совпадает с шапкой карты без рюкзака");
   assert.ok(headerOf(battleHtml).includes("Войти"), "вход в шапке боя");
   assert.ok(battleHtml.indexOf("<header") < battleHtml.indexOf("Действия"), "шапка стоит наверху экрана боя");
 });

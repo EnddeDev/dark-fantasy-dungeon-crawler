@@ -27,8 +27,21 @@ const battle = loadGameModule("battle");
  * Бой с нейтральным врагом: род «никакой» и тип «сильный» не дают ни
  * уклонения, ни иммунитетов. Тесты про роды и типы задают их вручную.
  */
+const pouchRules = loadGameModule("pouch");
+/**
+ * Сумка по умолчанию: механика боя проверяется с предметами, которые лежат в сумке.
+ * Правило «в бой только сумка» проверяется в tests/pouchExit.test.cjs.
+ */
+function withAutoPouch(pl) {
+  if (pl.pouch !== undefined) return pl;
+  const ids = Object.keys(pl.bag ?? {})
+    .filter((id) => (pl.bag[id] ?? 0) > 0 && pouchRules.canPouch(id))
+    .slice(0, pouchRules.POUCH_SLOTS);
+  return { ...pl, pouch: [...ids, ...Array(pouchRules.POUCH_SLOTS - ids.length).fill(null)] };
+}
+
 function freshBattle(pl, floor, isBoss, biome, torchTurns, burning) {
-  const b = battle.newBattle(pl, floor, isBoss, biome, torchTurns, burning);
+  const b = battle.newBattle(withAutoPouch(pl), floor, isBoss, biome, torchTurns, burning);
   b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none", type: "strong" };
   b.enemy.mtype = "strong";
   /* Механика боя проверяется без характеристик врага; сами характеристики — в tests/monster-stats.test.cjs. */
@@ -962,6 +975,8 @@ test("every creature and item can be fought to a terminal state", () => {
   for (const def of defs) {
     for (const isBoss of [false, true]) {
       let b = freshBattle(pl, 5, isBoss);
+      /* Тест про завершение боя, а не про число слотов: все предметы считаем лежащими в сумке. */
+      b.pouch = Object.keys(b.bag);
       b.enemy.def = def;
       b.enemy.hp = 100000;
       b.enemy.maxHp = 100000;
@@ -3921,11 +3936,13 @@ test("истощение спадает через два раунда, свит
 
   const scroll = withTechnique("advance");
   scroll.bag = { scroll_dispel: 1 };
+  scroll.pouch = ["scroll_dispel"];
   const scrollHit = battle.playerAct(scroll, { type: "item", id: "scroll_dispel" });
   assert.equal(scrollHit.enemy.depleted, 2, "свиток накладывает истощение");
 
   const powder = withTechnique("advance");
   powder.bag = { dispel_powder: 1 };
+  powder.pouch = ["dispel_powder"];
   const powderHit = battle.playerAct(powder, { type: "item", id: "dispel_powder" });
   assert.equal(powderHit.enemy.depleted, 2, "прах накладывает истощение");
   assert.equal(powderHit.enemy.hp, powder.enemy.hp, "прах не наносит урона");
@@ -3976,6 +3993,7 @@ test("шипы врага ранят за физический приём, но 
 test("шипы врага молчат на свиток и магический урон", () => {
   const b = thornsBattle("advance", "sword");
   b.bag = { scroll_fire: 2 };
+  b.pouch = ["scroll_fire"];
   const after = applyWithoutLuck(b, () => battle.playerAct(b, { type: "item", id: "scroll_fire" }));
   assert.ok(after.enemy.hp < b.enemy.hp, "свиток нанёс урон");
   assert.equal(after.p.hp, b.p.hp, "свиток не будит шипы");

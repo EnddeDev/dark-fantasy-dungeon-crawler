@@ -23,8 +23,15 @@ const gearEffects = load("gearEffects");
 const battle = load("battle");
 
 /** Бой с нейтральным врагом: род «никакой» и тип «сильный» не дают ни уклонения, ни иммунитетов. */
+/** Сумка по умолчанию: предметы из bag лежат в сумке. Правило «в бой только сумка» — в tests/pouchExit.test.cjs. */
+function withAutoPouch(pl) {
+  if (pl.pouch !== undefined) return pl;
+  const ids = Object.keys(pl.bag ?? {}).filter((id) => (pl.bag[id] ?? 0) > 0).slice(0, 5);
+  return { ...pl, pouch: [...ids, ...Array(5 - ids.length).fill(null)] };
+}
+
 function freshBattle(pl, floor, isBoss, biome, torchTurns, burning) {
-  const b = battle.newBattle(pl, floor, isBoss, biome, torchTurns, burning);
+  const b = battle.newBattle(withAutoPouch(pl), floor, isBoss, biome, torchTurns, burning);
   b.enemy.def = { ...b.enemy.def, id: "fixture", race: "none", type: "strong" };
   b.enemy.mtype = "strong";
   return b;
@@ -192,7 +199,7 @@ test("stun skips a turn, fear auto-guards, wither turns healing into damage, chi
   assert.equal(afterStun.p.statuses.stunAp, 0);
   assert.equal(afterStun.idx, 1);
 
-  /* Страх: защиту герой выбирает сам; удар закрыт, бегство и рюкзак открыты, страх тратится в конце раунда. */
+  /* Страх: защиту герой выбирает сам; удар закрыт, бегство и сумка открыты, страх тратится в конце раунда. */
   const fearStart = (bag = {}, fear = 1) => {
     const b = mk(bag);
     b.queue = ["e", "p", "e", "p"];
@@ -214,9 +221,9 @@ test("stun skips a turn, fear auto-guards, wither turns healing into damage, chi
   assert.equal(guarded.p.statuses.fear, 1, "страх не тратится на ходу героя — тает в конце раунда");
   const itemStart = fearStart({ potion_s: 1 });
   const usedItem = battle.playerAct(itemStart, { type: "item", id: "potion_s" });
-  assert.equal(usedItem.bag.potion_s, undefined, "рюкзак в страхе работает");
+  assert.equal(usedItem.bag.potion_s, undefined, "сумка в страхе работает");
   assert.equal(usedItem.idx, 1, "предмет из рюкзака не заканчивает ход");
-  assert.equal(usedItem.p.stamina, itemStart.p.stamina - 5, "предмет тратит 5 выносливости");
+  assert.equal(usedItem.p.stamina, itemStart.p.stamina, "предмет из сумки в страхе бесплатен");
   assert.equal(usedItem.p.guard, false, "без авто-защиты");
   assert.equal(usedItem.p.statuses.fear, 1, "страх держится весь раунд");
 

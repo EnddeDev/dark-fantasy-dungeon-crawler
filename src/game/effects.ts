@@ -405,7 +405,7 @@ export function playerEffectChips(b: BattleState): EffectChip[] {
   if (s.fear > 0) {
     chips.push({
       id: "fear", name: "Страх", polarity: "bad", rounds: s.fear,
-      details: ["В свой ход ты сам в защите. Атаки и приёмы закрыты, рюкзак доступен."],
+      details: ["В свой ход ты сам в защите. Атаки и приёмы закрыты, сумка доступна."],
       boosts: [], color: EFFECT_COLORS.fear,
     });
   }

@@ -21,7 +21,8 @@ export function PlayTopBar({
   biome?: BiomeId;
   activeQuests: number;
   onOpenQuests: () => void;
-  onOpenBag: () => void;
+  /** Без колбэка кнопки «Рюкзак» нет (в бою рюкзак не открывается). */
+  onOpenBag?: () => void;
   account?: LobbyAccount;
 }) {
   return (
@@ -50,14 +51,16 @@ export function PlayTopBar({
             <ScrollText size={15} strokeWidth={1.7} aria-hidden /> Задания
             {activeQuests > 0 && <span className="border border-line px-1.5 py-0.5 font-mono text-[0.78rem] text-mute">{activeQuests}</span>}
           </button>
-          <button
-            type="button"
-            onClick={onOpenBag}
-            className="flex items-center gap-2 border border-line bg-black/40 px-3 py-2 font-display text-[0.85rem] uppercase tracking-[0.1em] text-parch transition-colors hover:border-flamedim hover:text-flamehi"
-            title="Рюкзак: припасы, реагенты и снаряжение"
-          >
-            <Backpack size={15} strokeWidth={1.7} aria-hidden /> Рюкзак
-          </button>
+          {onOpenBag && (
+            <button
+              type="button"
+              onClick={onOpenBag}
+              className="flex items-center gap-2 border border-line bg-black/40 px-3 py-2 font-display text-[0.85rem] uppercase tracking-[0.1em] text-parch transition-colors hover:border-flamedim hover:text-flamehi"
+              title="Рюкзак: припасы, реагенты и снаряжение"
+            >
+              <Backpack size={15} strokeWidth={1.7} aria-hidden /> Рюкзак
+            </button>
+          )}
           <AudioSettings inline />
           {account && (
             <button

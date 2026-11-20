@@ -385,10 +385,13 @@ test("battle: enemy guard raises its armor, the summary shows both values", () =
   assert.equal(er.armorBase, base, "базовая броня без защиты та же");
 });
 
-test("battle: backpack is a full-height panel", () => {
+test("battle: рюкзака в бою нет — ни кнопки, ни окна; созданное в бою видно отдельной секцией", () => {
   const view = fs.readFileSync("src/components/BattleView.tsx", "utf8");
-  assert.match(view, /menu === "item" && \(\s*<div className="fixed inset-0 z-40 flex justify-start">/, "рюкзак открывается слева поверх экрана");
-  assert.match(view, /<aside className="rise relative flex h-full w-\[min\(30rem,100vw\)\]/, "панель на всю высоту экрана");
+  assert.ok(!view.includes('menu === "item"'), "режима рюкзака в бою нет");
+  assert.ok(!view.includes("BagModal"), "окна рюкзака в бою нет");
+  assert.ok(!view.includes("setBagOpen"), "кнопка рюкзака в шапке боя не открывает окно");
+  assert.ok(!view.includes("Рюкзак · "), "кнопки «Рюкзак» в действиях нет");
+  assert.match(view, /Создано в бою/, "созданное в бою доступно отдельной секцией");
 });
 
 

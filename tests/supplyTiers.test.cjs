@@ -35,8 +35,15 @@ function freshBattle(pl, floor = 5) {
 }
 
 /** Очередь начинается с героя; враг — безобидная мишень с фиксированной атакой. */
+/** Сумка по умолчанию: предметы из bag лежат в сумке. Правило «в бой только сумка» — в tests/pouchExit.test.cjs. */
+function withAutoPouch(pl) {
+  if (pl.pouch !== undefined) return pl;
+  const ids = Object.keys(pl.bag ?? {}).filter((id) => (pl.bag[id] ?? 0) > 0).slice(0, 5);
+  return { ...pl, pouch: [...ids, ...Array(5 - ids.length).fill(null)] };
+}
+
 function dummyFight(pl, id, floor = 5) {
-  const b = freshBattle(pl, floor);
+  const b = freshBattle(withAutoPouch(pl), floor);
   b.queue = ["p", "e"]; b.idx = 0;
   b.enemy.hp = 5000; b.enemy.maxHp = 5000; b.enemy.armor = 0; b.enemy.passive = null;
   b.enemy.effects = []; b.enemy.effectPower = {};
