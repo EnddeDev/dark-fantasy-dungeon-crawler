@@ -192,6 +192,7 @@ import type {
   Threat,
 } from "./types";
 import { activeSkillEffects } from "./archetypeSkills";
+import { techniqueHitKind } from "./damageModel";
 
 export interface LogLine {
   id: number;
@@ -1863,7 +1864,6 @@ function drainRoundTick(b: BattleState) {
 }
 
 /** Приёмы, которые запрещает Немота (свиток, магический приём, спец-приём архетипа). */
-const MAGIC_TECH_EFFECTS: readonly string[] = ["pierce", "chill", "leech", "skill_leech"];
 
 /** Уклонение твари: тип плюс род, всегда от текущего определения. */
 function enemyEvade(b: BattleState): number {
@@ -3708,7 +3708,7 @@ function applyArmorSkill(b: BattleState, sk: ArmorSkillView) {
   const st = b.p.stats[sk.scaleStat];
   if (sk.dmg && b.enemy.hp > 0) {
     const raw = sk.dmg.base + sk.dmg.stat * st * weakMult(b) + (sk.dmg.armor ?? 0) * b.p.armor;
-    const kind = sk.dmg.magic ? "magic" : "phys";
+    const kind = techniqueHitKind({ magic: sk.dmg.magic });
     const dealt = hitEnemy(b, Math.max(1, Math.round(raw)), kind, ` [${sk.name}]`);
     applyVamp(b, dealt, 0, "skill", kind);
   }
@@ -3977,9 +3977,8 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
       const funnelBonus = ws.effect === "funnel" ? b.p.stats.str * Math.min(TECHNIQUE_STAT_CAP, b.p.stats.str) : 0;
       const bonus = techniqueBonusNow(b, ws) + cleared * 25 + funnelBonus;
       const eff = ws.effect;
-      if (b.p.statuses.sealItems > 0 && (ws.magic || MAGIC_TECH_EFFECTS.includes(eff ?? ""))) return err("Немота запрещает магические приёмы в этот ход.");
+      if (b.p.statuses.sealItems > 0 && techniqueHitKind({ magic: ws.magic, effect: eff }) === "magic") return err("Немота запрещает магические приёмы в этот ход.");
       const trueDamage = eff === "pierce" || eff === "chill" || eff === "leech" || eff === "skill_leech";
-      const magicSkill = !!ws.magic;
       const hits = eff === "double_attack" ? scaleIntegerByLevel(2, ws.level ?? 1) : eff === "double_cut" ? 2 : NO_ATTACK_EFFECTS.has(eff ?? "") ? 0 : 1;
       /* Казнь: при ОЗ врага ниже половины удар сильнее. Проверка до удара. */
       const executeNow = eff === "execute" && b.enemy.hp < b.enemy.maxHp * 0.5;
@@ -4017,7 +4016,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
         const sledgeMiss = eff === "sledge" && !rollHeroHit(heroAccuracy(b, mainHandClass(b), "normal"), heroEvasion(b));
         const d = Math.round(rolled.d * (executeNow ? 1.5 : 1) * (halfAttack || sledgeMiss ? 0.5 : 1));
         /* Пробивающие приёмы (пронзить, холод, высасывание) — магические удары, но вампиризм считают физическим. */
-        const hitKind: "phys" | "magic" = trueDamage || magicSkill ? "magic" : "phys";
+        const hitKind = techniqueHitKind({ magic: ws.magic, effect: eff });
         const dealt = hitEnemy(b, d, hitKind, ` [Приём: ${ws.name}${crit ? ", КРИТ!" : ""}${hits > 1 ? ` ${i + 1}/${hits}` : ""}]`, true);
         dealtTotal += dealt;
         applyVamp(b, dealt, 0, "weapon", trueDamage ? "phys" : hitKind);
@@ -5598,8 +5597,7 @@ export function combatReadout(b: BattleState): CombatReadout {
       techMin = damageAfterEnemyDefense(b, boosted, "magic");
       techMax = techMin;
     } else {
-      const magicHit = !!techSkill.magic || techSkill.effect === "pierce" || techSkill.effect === "chill" || techSkill.effect === "leech" || techSkill.effect === "skill_leech";
-      const kind = magicHit ? "magic" : "phys";
+      const kind = techniqueHitKind({ magic: techSkill.magic, effect: techSkill.effect });
       const tech = techniqueBonusNow(b, techSkill);
       const skillM = skillDamageMult(b);
       /* Тень за спиной бьёт сквозь броню: превью считает так же, как удар в бою. */

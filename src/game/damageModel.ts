@@ -60,6 +60,21 @@ export function techniqueDamageType(t: TechniqueDamageInput): DamageTypeId {
   return "phys";
 }
 
+/**
+ * Эффекты приёма, чей удар магический даже без флага магии: пронзить, холод, высасывание.
+ * Вампиризм у них считается физическим — это решает бой, а не это правило.
+ */
+export const MAGIC_HIT_EFFECTS: readonly string[] = ["pierce", "chill", "leech", "skill_leech"];
+
+/**
+ * Вид удара приёма оружия или брони по его данным: флаг магии или магический эффект.
+ * Единое правило для боя, превью и немоты. ИНТ-правило здесь не применяется:
+ * «Слово творения» бьёт уроном от ИНТ без флага, и его вид ещё не решён (см. techniqueHit.test.cjs).
+ */
+export function techniqueHitKind(t: { magic?: boolean; effect?: string }): "phys" | "magic" {
+  return t.magic || MAGIC_HIT_EFFECTS.includes(t.effect ?? "") ? "magic" : "phys";
+}
+
 /** Класс приёма: атакующий наносит урон, защитный — защищает или усиливает. */
 export type TechniqueClass = "attack" | "defense";
 
