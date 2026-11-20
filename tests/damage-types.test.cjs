@@ -45,14 +45,14 @@ function renderGuide() {
   return renderToStaticMarkup(React.createElement(Guide, { onOpenShop: () => {}, onOpenArmory: () => {}, onOpenBestiary: () => {} }));
 }
 
-test("виды урона: физический, магический, четыре стихии и два периодических (горение — это огонь)", () => {
+test("виды урона: физический, магический, чистый, четыре стихии и два периодических (горение — это огонь)", () => {
   assert.deepEqual(
     types.DAMAGE_TYPES.map((t) => t.name),
-    ["Физический", "Магический", "Огонь", "Лёд", "Кислота", "Свет", "Яд", "Кровотечение"],
+    ["Физический", "Магический", "Огонь", "Лёд", "Кислота", "Свет", "Чистый", "Яд", "Кровотечение"],
   );
   const direct = types.DAMAGE_TYPES.filter((t) => t.group === "direct");
   const periodic = types.DAMAGE_TYPES.filter((t) => t.group === "periodic");
-  assert.deepEqual(direct.map((t) => t.id), ["phys", "magic", "fire", "ice", "acid", "light"]);
+  assert.deepEqual(direct.map((t) => t.id), ["phys", "magic", "fire", "ice", "acid", "light", "pure"]);
   assert.deepEqual(periodic.map((t) => t.id), ["poison", "bleed"]);
   assert.equal(types.DAMAGE_TYPES.some((t) => t.id === "burn"), false, "горения нет отдельным видом");
 });
@@ -82,12 +82,12 @@ test("периодический урон: тик задаёт источник,
   assert.ok(text("bleed").includes("Не режется сопротивлениями"));
 });
 
-test("руководство выводит виды урона и не упоминает «чистый» урон", () => {
+test("руководство выводит все виды урона, включая чистый", () => {
   const html = renderGuide();
   assert.ok(html.includes("Виды урона"), "заголовок раздела есть");
   for (const t of types.DAMAGE_TYPES) assert.ok(html.includes(`${t.name}.`), `вид «${t.name}» выведен`);
   assert.ok(html.includes("Магический урон."), "правило про магический урон");
-  assert.ok(!/чисты/i.test(html), "слова «чистый/чистого» в руководстве нет");
+  assert.ok(html.includes("Чистый."), "чистый урон выведен в руководстве");
 });
 
 test("все стихии — магический урон", () => {
@@ -130,6 +130,6 @@ test("значок вида урона открывает подсказку с 
   assert.equal(render(React.createElement(ui.ElementRow, { label: "x", elements: [] })), "", "пустая строка не выводится");
   assert.equal(ui.damageKindLabel(types.DAMAGE_TYPES[2]), "магический · стихия");
   assert.equal(ui.damageKindLabel(types.DAMAGE_TYPES[0]), "физический");
-  assert.equal(ui.damageKindLabel(types.DAMAGE_TYPES[6]), "периодический");
+  assert.equal(ui.damageKindLabel(types.DAMAGE_TYPES.find((t) => t.id === "poison")), "периодический");
 });
 

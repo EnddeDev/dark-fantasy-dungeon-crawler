@@ -19,6 +19,7 @@ export const DAMAGE_COLOR: Record<DamageTypeId, string> = {
   ice: "#8fd3ff",
   acid: "#c4e04a",
   light: "#fbe7a1",
+  pure: "#f4f1ff",
   poison: "#7fc45a",
   bleed: "#d0404a",
 };
@@ -53,6 +54,12 @@ const GLYPHS: Record<Exclude<DamageTypeId, "poison" | "bleed">, ReactElement> = 
       <path d="M9.4 3.2h5.2M10.2 3.2v5.1L5.6 16.6A2.3 2.3 0 0 0 7.6 20h8.8a2.3 2.3 0 0 0 2-3.4L13.8 8.3V3.2" />
       <circle cx="10.2" cy="15.6" r="1" />
       <circle cx="14" cy="13.6" r="0.8" />
+    </>
+  ),
+  pure: (
+    <>
+      <circle cx="12" cy="12" r="8.2" />
+      <circle cx="12" cy="12" r="2.4" />
     </>
   ),
   light: (

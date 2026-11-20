@@ -133,6 +133,11 @@ export const NONE_SMART_MOVE = "drain" as const;
 /** Множитель уязвимости к стихии. */
 export const ELEMENT_WEAKNESS_MULT = 1.5;
 
+/** Множитель урона по сопротивлению: 1 − res, не ниже 0. */
+export function elementMult(res: number): number {
+  return Math.max(0, 1 - res);
+}
+
 export const MONSTER_RACE_META: Record<MonsterRace, MonsterRaceMeta> = {
   undead: {
     id: "undead",
@@ -235,13 +240,21 @@ export function raceImmuneTo(race: MonsterRace, effect: EffectKind): boolean {
   return raceMeta(race).immune.includes(effect);
 }
 
+/**
+ * Сопротивление стихии рода: 1 — иммунитет, −0,5 — уязвимость (урон ×1,5), 0 — обычно.
+ * Отрицательное сопротивление — уязвимость; множитель урона считает damageModel.elementMult.
+ */
+export function raceElementRes(race: MonsterRace, element: DamageElement | undefined): number {
+  if (!element) return 0;
+  const meta = raceMeta(race);
+  if (meta.immuneElements?.includes(element)) return 1;
+  if (meta.vulnerable?.includes(element)) return 1 - ELEMENT_WEAKNESS_MULT;
+  return 0;
+}
+
 /** Множитель урона стихией для рода: 0 — иммунитет, 1.5 — уязвимость. */
 export function raceElementMult(race: MonsterRace, element: DamageElement | undefined): number {
-  if (!element) return 1;
-  const meta = raceMeta(race);
-  if (meta.immuneElements?.includes(element)) return 0;
-  if (meta.vulnerable?.includes(element)) return ELEMENT_WEAKNESS_MULT;
-  return 1;
+  return elementMult(raceElementRes(race, element));
 }
 
 /** Род накладывает на тварь дополнительные приёмы. */

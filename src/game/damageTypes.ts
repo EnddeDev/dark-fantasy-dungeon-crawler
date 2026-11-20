@@ -6,13 +6,14 @@
  * магические удары с меткой стихии: они дают уязвимость или иммунитет родов.
  * Периодический урон (яд, кровотечение) тикает в конце раунда; величину тика задаёт источник
  * (у монстров — базовая формула, у боссов — процент от макс. ОЗ) и не режется сопротивлениями. Горение — это огонь: отдельного вида нет.
+ * Чистый урон — прямой, без школы: проходит сквозь все защиты, кроме иммунитета (его не учитывает).
  */
 import { MONSTER_RACE_META, ELEMENT_WEAKNESS_MULT, type DamageElement, type MonsterRace } from "./monsters";
 
 /** Школа прямого удара: какой защитой режется. */
 export type DamageSchool = "phys" | "magic";
 
-export type DamageTypeId = "phys" | "magic" | DamageElement | "poison" | "bleed";
+export type DamageTypeId = "phys" | "magic" | "pure" | DamageElement | "poison" | "bleed";
 
 export interface DamageTypeInfo {
   id: DamageTypeId;
@@ -87,6 +88,12 @@ export const DAMAGE_TYPES: DamageTypeInfo[] = [
     group: "direct",
     school: "magic",
     text: elementText("light", "Некоторые свитки бьют нежить вдвое сильнее. Световое масло: сразу 2×ИНТ и 25% промахов врага, 3 раунда."),
+  },
+  {
+    id: "pure",
+    name: "Чистый",
+    group: "direct",
+    text: "Проходит сквозь все защиты: броню, сопротивления магии и урону, укрепление, уклонение, стойку, барьеры, щиты и защитные состояния. Иммунитет рода не действует.",
   },
   {
     id: "poison",
