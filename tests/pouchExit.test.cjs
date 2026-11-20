@@ -30,28 +30,37 @@ function hero(extra = {}) {
 
 /* ---- сумка ---- */
 
-test("сумка: три слота, только зелья из рюкзака, без дублей", () => {
-  const p = hero({ bag: { potion_s: 2, potion_l: 1, field_torch: 1 }, pouch: undefined });
-  assert.deepEqual(pouch.pouchOf(p), [null, null, null], "пустая сумка по умолчанию");
+test("сумка: пять слотов, зелья, свитки и расходники из рюкзака, без дублей", () => {
+  const p = hero({ bag: { potion_s: 2, potion_l: 1, field_torch: 1, scroll_fire: 1, throwing_knife: 1 }, pouch: undefined });
+  assert.equal(pouch.POUCH_SLOTS, 5, "пять слотов");
+  assert.deepEqual(pouch.pouchOf(p), [null, null, null, null, null], "пустая сумка по умолчанию");
   const put = pouch.setPouchSlot(p, 0, "potion_s");
   assert.equal(put.ok, true);
-  assert.deepEqual(put.pouch, ["potion_s", null, null]);
+  assert.deepEqual(put.pouch, ["potion_s", null, null, null, null]);
   const dup = pouch.setPouchSlot({ ...p, pouch: put.pouch }, 1, "potion_s");
   assert.equal(dup.ok, false, "то же зелье в два слота нельзя");
-  const notPotion = pouch.setPouchSlot(p, 0, "field_torch");
-  assert.equal(notPotion.ok, false, "факел — не зелье");
+  const scroll = pouch.setPouchSlot(p, 1, "scroll_fire");
+  assert.equal(scroll.ok, true, "свиток в сумку");
+  const throwable = pouch.setPouchSlot(p, 2, "throwing_knife");
+  assert.equal(throwable.ok, true, "расходник в сумку");
+  const torch = pouch.setPouchSlot(p, 3, "field_torch");
+  assert.equal(torch.ok, true, "факел в сумку");
+  const notPouchable = pouch.setPouchSlot(p, 0, "lockpicks");
+  assert.equal(notPouchable.ok, false, "отмычки в сумку нельзя");
   const missing = pouch.setPouchSlot(hero({ bag: {} }), 0, "potion_s");
   assert.equal(missing.ok, false, "зелья нет в рюкзаке");
-  const badSlot = pouch.setPouchSlot(p, 3, "potion_s");
-  assert.equal(badSlot.ok, false);
+  const badSlot = pouch.setPouchSlot(p, 5, "potion_s");
+  assert.equal(badSlot.ok, false, "слота 6 нет");
 });
 
 test("сумка: очистка слота и сохранение поля при загрузке", () => {
-  const p = hero({ bag: { potion_s: 1 }, pouch: ["potion_s", null, null] });
+  const p = hero({ bag: { potion_s: 1 }, pouch: ["potion_s", null, null, null, null] });
   const cleared = pouch.setPouchSlot(p, 0, null);
-  assert.deepEqual(cleared.pouch, [null, null, null]);
-  const restored = PlayerFactory.restore({ ...p, pouch: ["potion_s", null, null] });
-  assert.deepEqual(pouch.pouchOf(restored), ["potion_s", null, null], "сумка переживает загрузку");
+  assert.deepEqual(cleared.pouch, [null, null, null, null, null]);
+  const restored = PlayerFactory.restore({ ...p, pouch: ["potion_s", null, null, null, null] });
+  assert.deepEqual(pouch.pouchOf(restored), ["potion_s", null, null, null, null], "сумка переживает загрузку");
+  const old = PlayerFactory.restore({ ...p, pouch: ["potion_s", null, null] });
+  assert.equal(pouch.pouchOf(old).length, 5, "старое сохранение с тремя слотами получает пять");
 });
 
 test("в бою зелья из сумки не тратят выносливость, из рюкзака — 5", () => {
@@ -71,7 +80,7 @@ test("в бою зелья из сумки не тратят выносливо�
 });
 
 test("зелье не из сумки тратит 5 выносливости", () => {
-  const pl = hero({ bag: { potion_s: 1 }, pouch: [null, null, null] });
+  const pl = hero({ bag: { potion_s: 1 }, pouch: [null, null, null, null, null] });
   const b = battle.newBattle(pl, 1, false, "classic", 0, 0);
   b.queue = ["p", "e"];
   b.idx = 0;
@@ -86,10 +95,65 @@ test("сумка: в бою поменять слот нельзя, вне бо�
   game.enterLobby("train");
   game.model.updatePlayer((p) => ({ ...p, bag: { ...p.bag, potion_s: 1 } }));
   assert.equal(game.setPouchSlot(0, "potion_s"), null, "в лобби можно");
-  assert.deepEqual(game.model.getSnapshot().player.pouch, ["potion_s", null, null]);
+  assert.deepEqual(game.model.getSnapshot().player.pouch, ["potion_s", null, null, null, null]);
   const fighting = PlayerFactory.createInitial();
   game.model.update({ battle: battle.newBattle(fighting, 1, false, "classic", 0, 0) });
   assert.ok(game.setPouchSlot(1, null), "в бою вернётся ошибка");
+});
+
+test("сумка: фильтр выборки — зелья, расходники, свитки и спец. (бурдюк, факел); прочее мимо", () => {
+  const p = hero({ bag: { potion_s: 1, elixir_fire: 2, throwing_knife: 1, scroll_fire: 1, field_torch: 1, water_skin: 1, powder: 3, lockpicks: 1 } });
+  assert.equal(pouch.pouchCategoryOf("potion_s"), "potion");
+  assert.equal(pouch.pouchCategoryOf("throwing_knife"), "throwable");
+  assert.equal(pouch.pouchCategoryOf("scroll_fire"), "scroll");
+  assert.equal(pouch.pouchCategoryOf("field_torch"), "special");
+  assert.equal(pouch.pouchCategoryOf("water_skin"), "special");
+  assert.equal(pouch.pouchCategoryOf("lockpicks"), null, "отмычки не категория сумки");
+  assert.equal(pouch.pouchCategoryOf("powder"), null, "реагент не категория сумки");
+  const ids = (cat) => pouch.pouchCandidates(p, cat).map(([id]) => id).sort();
+  assert.deepEqual(ids("potion"), ["elixir_fire", "potion_s"]);
+  assert.deepEqual(ids("throwable"), ["throwing_knife"]);
+  assert.deepEqual(ids("scroll"), ["scroll_fire"]);
+  assert.deepEqual(ids("special"), ["field_torch", "water_skin"]);
+  assert.deepEqual(pouch.pouchCandidates(hero({ bag: {} }), "scroll"), [], "пустой рюкзак — пустой список");
+});
+
+test("в бою свиток и расходник из слота сумки не тратят выносливость, из рюкзака — тратят", () => {
+  const pl = hero({ bag: { scroll_fire: 1, throwing_knife: 1 }, pouch: ["scroll_fire", "throwing_knife", null, null, null] });
+  const b = battle.newBattle(pl, 1, false, "classic", 0, 0);
+  b.queue = ["p", "e"];
+  b.idx = 0;
+  const scroll = battle.playerAct(b, { type: "item", id: "scroll_fire" });
+  assert.equal(scroll.p.stamina, b.p.stamina, "свиток из сумки бесплатен");
+  assert.equal(scroll.bag.scroll_fire, undefined, "свиток потрачен");
+  const knife = battle.playerAct(scroll, { type: "item", id: "throwing_knife" });
+  assert.equal(knife.p.stamina, scroll.p.stamina, "расходник из сумки бесплатен");
+  const loose = hero({ bag: { scroll_fire: 1 }, pouch: [null, null, null, null, null] });
+  const lb = battle.newBattle(loose, 1, false, "classic", 0, 0);
+  lb.queue = ["p", "e"];
+  lb.idx = 0;
+  const paid = battle.playerAct(lb, { type: "item", id: "scroll_fire" });
+  assert.equal(paid.p.stamina, lb.p.stamina - 5, "свиток из рюкзака тратит 5 выносливости");
+});
+
+test("в бою факел из сумки не держит ход: только бурдюк из сумки считается применимым", () => {
+  /* Выносливость 5 → тратим рюкзачное зелье: остаётся меньше минимальной платной траты. */
+  const withTorch = hero({ stats: { str: 4, agi: 3, int: 10 }, bag: { potion_s: 1, field_torch: 1 }, pouch: [null, null, null, null, null] });
+  withTorch.pouch = ["field_torch", null, null, null, null];
+  const b = battle.newBattle(withTorch, 1, false, "classic", 0, 0);
+  b.queue = ["p", "e"];
+  b.idx = 0;
+  b.p.stamina = 5;
+  const after = battle.playerAct(b, { type: "item", id: "potion_s" });
+  assert.notEqual(after.idx, 0, "факел в сумке не даёт продолжить ход: ход переходит врагу");
+
+  const withSkin = hero({ bag: { potion_s: 1, water_skin: 1 }, pouch: ["water_skin", null, null, null, null] });
+  const c = battle.newBattle(withSkin, 1, false, "classic", 0, 0);
+  c.queue = ["p", "e"];
+  c.idx = 0;
+  c.p.stamina = 5;
+  const kept = battle.playerAct(c, { type: "item", id: "potion_s" });
+  assert.equal(kept.idx, 0, "бурдюк из сумки продолжает ход героя");
 });
 
 /* ---- выход из подземелья ---- */

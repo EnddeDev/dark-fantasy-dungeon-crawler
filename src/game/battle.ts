@@ -152,7 +152,7 @@ import {
 } from "./statusEffects";
 import { ARCHETYPES, type ArchetypeId } from "./archetypes";
 import type { GearEffectId, GearPassiveId } from "./gearEffects";
-import { pouchIds } from "./pouch";
+import { pouchIds, usableFromPouchInBattle } from "./pouch";
 import {
   STAMINA_GUARD,
   STAMINA_MIN_PAID,
@@ -357,7 +357,7 @@ export interface BattleState {
     /** Счётчики за текущий ход героя: сбрасываются, когда очередь переходит дальше. */
     turnConsumables: number;
     turnScrolls: number;
-    /** Зелье из сумки: не тратит выносливость. */
+    /** Предмет из сумки: не тратит выносливость. */
     turnPouch: number;
     /** Концентрация 0–7: мощная атака −1, обычная 0, безопасная +1, приём −1, расходник +1, защита +2; при 5 — спец-приём архетипа. */
     concentration: number;
@@ -484,7 +484,7 @@ export interface BattleState {
     guardStrikeUsed: boolean;
   };
   bag: Record<string, number>;
-  /** Зелья из сумки (до трёх видов): не тратят выносливость. */
+  /** Предметы из сумки (до пяти слотов): не тратят выносливость. */
   pouch: string[];
   /** Созданное в бою (свитки архимага, расходники дуэлянт): лежит в bag, герою после боя не переходит. */
   conjured: Record<string, number>;
@@ -3839,7 +3839,7 @@ export function actionStaminaCost(b: BattleState, a: PlayerAction): number {
 /** Ход продолжается, пока хватает выносливости хотя бы на одну платную трату или есть бесплатный предмет в сумке. */
 function canKeepActing(b: BattleState): boolean {
   if (b.p.stamina >= STAMINA_MIN_PAID) return true;
-  return b.pouch.some((id) => (b.bag[id] ?? 0) > 0);
+  return b.pouch.some((id) => (b.bag[id] ?? 0) > 0 && usableFromPouchInBattle(id));
 }
 
 export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
@@ -4571,15 +4571,15 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
       } else {
         push(b, "Эхо мысли сохраняет свиток — он не истлел!", "p");
       }
-      /* Сумка: зелье из слотов бесплатно. */
+      /* Сумка: зелье, свиток или расходник из слота бесплатно. */
       const isScroll = def.kind === "scroll";
-      const pouchFree = def.kind === "potion" && b.pouch.includes(a.id);
+      const pouchFree = b.pouch.includes(a.id);
       if (pouchFree) b.p.turnPouch += 1;
       else b.p.turnConsumables += 1;
       if (isScroll) b.p.turnScrolls += 1;
       if (pouchFree) {
         spent = 0;
-        push(b, "Зелье из сумки не тратит выносливость.", "p");
+        push(b, "Предмет из сумки не тратит выносливость.", "p");
       }
       break;
     }
