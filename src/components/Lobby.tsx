@@ -1095,13 +1095,13 @@ export function Lobby({
                       })}
                     </div>
                   </Panel>
-                  <Panel title="Горн" className="p-4">
+                  <Panel title="Горн" className="flex flex-col p-4">
                     {(() => {
                       const item = player.armory.find((g) => g.uid === forgeUid);
                       if (!item) return <p className="text-sm italic text-mute">Выбери предмет слева, чтобы увидеть улучшения.</p>;
                       const useReagents = forgeUseReagents;
                       return (
-                        <div className="space-y-3">
+                        <div className="flex-1 space-y-3">
                           <button
                             onClick={() => setForgeUseReagents((v) => !v)}
                             className={`flex w-full items-center justify-between gap-2 border px-3 py-2 text-left text-[0.92rem] transition-colors ${useReagents ? "border-flame bg-flame/10 text-parch" : "border-line bg-black/25 text-mute hover:border-flamedim"}`}
@@ -1224,10 +1224,10 @@ export function Lobby({
               })}
             </div>
           </Panel>
-          <Panel title="Свойства" className="p-4">
+          <Panel title="Свойства" className="flex flex-col p-4">
             {!item && <p className="text-sm italic text-mute">Выбери предмет слева, чтобы увидеть свойства.</p>}
             {item && (
-              <div className="space-y-3">
+              <div className="flex-1 space-y-3">
                 <div className="flex flex-wrap gap-2 font-mono text-[0.84rem]">
                   <Tag tone="flame">золото {player.gold}</Tag>
                   <Tag tone={ink >= 5 ? "verd" : "mute"}>чернила {ink}</Tag>

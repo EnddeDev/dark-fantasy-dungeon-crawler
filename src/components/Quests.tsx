@@ -257,7 +257,7 @@ function NpcPanel({
   return (
     <Panel title={`${meta.role} · ${meta.name}`}>
       <div className="grid gap-5 md:grid-cols-[220px_1fr]">
-        <div>
+        <div className="self-start">
           <NpcPortrait giver={giver} className="aspect-square w-full border border-line" />
         </div>
         <div className="space-y-5">
@@ -298,9 +298,9 @@ function NpcPanel({
             say={say}
             onInspectMercenary={onInspectMercenary}
           />
-
-          {services && <section className="space-y-3 border-t border-line pt-4">{services}</section>}
         </div>
+        {/* Услуги NPC (рецепты, кузница, ритуал) — на всю ширину панели, под портретом и заданиями. */}
+        {services && <section className="space-y-3 border-t border-line pt-4 md:col-span-2">{services}</section>}
       </div>
     </Panel>
   );
