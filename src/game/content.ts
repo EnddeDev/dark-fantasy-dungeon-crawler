@@ -453,7 +453,7 @@ export interface ArmorSkillDef {
   scaleStat: StatKey;
   cooldown: number;
   /** Урон: база + множитель характеристики + множитель брони героя. */
-  dmg?: { base: number; stat: number; armor?: number; magic?: boolean };
+  dmg?: { base: number; stat: number; armor?: number; magic?: boolean; element?: DamageElement };
   /** Лечение: база + множитель характеристики. */
   heal?: { base: number; stat: number };
   self?: ArmorSkillSelf;
@@ -492,7 +492,7 @@ export const ARMOR_SKILLS: Record<ArmorSkillId, ArmorSkillDef> = {
   medium_shield_up: { id: "medium_shield_up", name: "Подставленный щит", gearClass: "medium", kind: "defense", scaleStat: "str", cooldown: 3, self: { guard: true, dodgeNext: 1 } },
   /* ----- Лёгкая броня, ИНТ: чары и оберег ----- */
   light_charm: { id: "light_charm", name: "Чарующий укол", gearClass: "light", kind: "attack", scaleStat: "int", cooldown: 2, dmg: { base: 4, stat: 2.5, magic: true }, self: { ironTonic: 1 } },
-  light_spark: { id: "light_spark", name: "Холодная искра", gearClass: "light", kind: "attack", scaleStat: "int", cooldown: 2, dmg: { base: 3, stat: 2, magic: true }, enemy: { chill: 2 }, self: { ironTonic: 1 } },
+  light_spark: { id: "light_spark", name: "Холодная искра", gearClass: "light", kind: "attack", scaleStat: "int", cooldown: 2, dmg: { base: 3, stat: 2, magic: true, element: "ice" }, enemy: { chill: 2 }, self: { ironTonic: 1 } },
   light_ward: { id: "light_ward", name: "Рунный оберег", gearClass: "light", kind: "defense", scaleStat: "int", cooldown: 4, self: { fullGuard: 1, immune: 1 } },
   light_veil: { id: "light_veil", name: "Покров мысли", gearClass: "light", kind: "defense", scaleStat: "int", cooldown: 3, heal: { base: 3, stat: 0.5 }, self: { immune: 1, dodgeNext: 1 } },
   light_mind: { id: "light_mind", name: "Ясность", gearClass: "light", kind: "defense", scaleStat: "int", cooldown: 4, self: { immune: 2 } },
@@ -660,6 +660,8 @@ export interface WeaponSkillDef {
   desc: string;
   /** Приём магический: урон считается магическим (посох и волшебная палочка). */
   magic?: boolean;
+  /** Стихия удара: урон проходит через уязвимости и иммунитеты рода цели. */
+  element?: DamageElement;
 }
 
 export interface GearBaseDef {

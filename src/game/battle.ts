@@ -1652,7 +1652,7 @@ function techniqueDirectEffect(b: BattleState, ws: WeaponSkillDef, executeNow: b
     push(b, `Целебный дождь: лечение 5 + 2×ИНТ в начале хода, ${b.enemy.def.name} пропустит ход.`, "p");
   }
   if (eff === "eruption") {
-    const dealt = hitEnemy(b, 40, "magic", " [Выброс]", false);
+    const dealt = elementalHit(b, 40, " [Выброс]", ws.element);
     if (b.enemy.hp > 0) {
       applyEnemyStatus(b, "burn", 3, m);
       b.enemy.statuses.eruptRounds = 3;
@@ -1692,7 +1692,7 @@ function techniqueDirectEffect(b: BattleState, ws: WeaponSkillDef, executeNow: b
   }
   if (eff === "spark") {
     /* Искра: магический удар без броска оружия, горение на себя и на врага. */
-    const dealt = hitEnemy(b, 25 + bonus, "magic", ` [Приём: ${ws.name}]`, true);
+    const dealt = elementalHit(b, 25 + bonus, ` [Приём: ${ws.name}]`, ws.element, true);
     const tick = 3 + bonus;
     const enemyBurn = magicDot(b, "burn", BURN_UNTIL_END, tick, false);
     /* Горение без срока: держится до конца боя. */
@@ -2613,6 +2613,7 @@ function elementalHit(
   raw: number,
   note: string,
   element: DamageElement | undefined,
+  strike = false,
 ): number {
   const mult = enemyElementMult(b, element);
   if (element && mult <= 0) {
@@ -2620,11 +2621,19 @@ function elementalHit(
     push(b, `${b.enemy.def.name} не получает урона от стихии (${ELEMENT_NAMES[element]}).${note}`, "sys", element);
     return 0;
   }
-  if (element && mult > 1) {
-    push(b, `Уязвимость к стихии: ${ELEMENT_NAMES[element]} бьёт в ×${mult}.`, "p", element);
-    return hitEnemy(b, Math.round(raw * mult), "magic", note, false, element);
+  /* Уязвимость (×>1) и сопротивление (×<1, например правило голема против огня) меняют сырой урон до брони. */
+  if (element && mult !== 1) {
+    push(
+      b,
+      mult > 1
+        ? `Уязвимость к стихии: ${ELEMENT_NAMES[element]} бьёт в ×${mult}.`
+        : `Сопротивление стихии: ${ELEMENT_NAMES[element]} бьёт в ×${mult}.`,
+      "p",
+      element,
+    );
+    return hitEnemy(b, Math.round(raw * mult), "magic", note, strike, element);
   }
-  return hitEnemy(b, raw, "magic", note, false, element);
+  return hitEnemy(b, raw, "magic", note, strike, element);
 }
 
 /** Множитель стихии с учётом правил вида: огонь по Стражу из шлака вдвое слабее. */
@@ -3709,7 +3718,8 @@ function applyArmorSkill(b: BattleState, sk: ArmorSkillView) {
   if (sk.dmg && b.enemy.hp > 0) {
     const raw = sk.dmg.base + sk.dmg.stat * st * weakMult(b) + (sk.dmg.armor ?? 0) * b.p.armor;
     const kind = techniqueHitKind({ magic: sk.dmg.magic });
-    const dealt = hitEnemy(b, Math.max(1, Math.round(raw)), kind, ` [${sk.name}]`);
+    const amount = Math.max(1, Math.round(raw));
+    const dealt = sk.dmg.element ? elementalHit(b, amount, ` [${sk.name}]`, sk.dmg.element) : hitEnemy(b, amount, kind, ` [${sk.name}]`);
     applyVamp(b, dealt, 0, "skill", kind);
   }
   if (sk.heal) {
@@ -5593,8 +5603,10 @@ export function combatReadout(b: BattleState): CombatReadout {
       /* Прямой магический урон приёма, без броска оружия: как в бою — усиление магии, потом защита врага. */
       const tech = techniqueBonusNow(b, techSkill);
       const raw = techSkill.effect === "eruption" ? 40 : techSkill.effect === "life_draw" ? 10 + tech : 25 + tech;
-      const boosted = Math.round(raw * magicMultNow(b));
-      techMin = damageAfterEnemyDefense(b, boosted, "magic");
+      /* Стихия: множитель рода цели считается до усиления магии, как в elementalHit. */
+      const elemMult = techSkill.element ? enemyElementMult(b, techSkill.element) : 1;
+      const boosted = elemMult <= 0 ? 0 : Math.round(Math.round(raw * elemMult) * magicMultNow(b));
+      techMin = boosted > 0 ? damageAfterEnemyDefense(b, boosted, "magic") : 0;
       techMax = techMin;
     } else {
       const kind = techniqueHitKind({ magic: techSkill.magic, effect: techSkill.effect });

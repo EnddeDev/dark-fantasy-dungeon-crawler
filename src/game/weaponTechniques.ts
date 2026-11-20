@@ -31,7 +31,7 @@ export const NEW_WEAPON_TECHNIQUES: (Omit<WeaponSkillDef, "effect"> & { effect: 
   // Волшебная палочка
   { id: "repeat_last", name: "Повторение", intReq: 4, cooldown: 3, scaleStat: "int", scaleMult: 2.4, effect: "repeat_last", magic: true, desc: "Повторяет последний использованный свиток или приём. Тратит ресурсы как обычный приём." },
   { id: "bubble", name: "Пузырь", intReq: 3, cooldown: 3, scaleStat: "int", scaleMult: 2.0, effect: "bubble", magic: true, desc: "Барьер 10 + бонус приёма на 3 хода. Поглощённый урон при окончании возвращается врагу магическим уроном." },
-  { id: "spark", name: "Искра", intReq: 3, cooldown: 3, scaleStat: "int", scaleMult: 2.5, effect: "spark", magic: true, desc: "Магический урон 25 + бонус приёма. Горение на себя и врага: 3 + бонус приёма за раунд." },
+  { id: "spark", name: "Искра", intReq: 3, cooldown: 3, scaleStat: "int", scaleMult: 2.5, effect: "spark", magic: true, element: "fire", desc: "Магический урон 25 + бонус приёма. Горение на себя и врага: 3 + бонус приёма за раунд." },
   // Меч
   { id: "advance", name: "Наступление", intReq: 3, cooldown: 3, scaleStat: "str", scaleMult: 1.8, effect: "advance", desc: "Атака + 50% брони." },
   { id: "breach", name: "Пробитие", intReq: 3, cooldown: 3, scaleStat: "str", scaleMult: 2.0, effect: "breach", desc: "Атака. Раскол на 3 раунда: −10 брони врага." },
@@ -46,7 +46,7 @@ export const NEW_WEAPON_TECHNIQUES: (Omit<WeaponSkillDef, "effect"> & { effect: 
   { id: "swing", name: "Размах", intReq: 4, cooldown: 3, scaleStat: "str", scaleMult: 2.0, effect: "swing", desc: "Атака. Разрушение врага на 3 раунда: укрепление, сопротивления ×0,5. В начале хода врага — удар 3×М(СИЛ)." },
   { id: "plank", name: "Дробящая доска", intReq: 3, cooldown: 3, scaleStat: "str", scaleMult: 2.0, effect: "plank", desc: "Атака. Раскол на 3 раунда: −25% брони." },
   // Посох
-  { id: "eruption", name: "Выброс", intReq: 4, cooldown: 3, scaleStat: "int", scaleMult: 2.6, effect: "eruption", magic: true, desc: "40 урона и четыре эффекта на 3 раунда: горение (урон = ИНТ), обморожение (ИНТ−3, мин. 1, −10% урона), проклятие (1 урон, −10% урона), увядание (3 урона, −20% лечения)." },
+  { id: "eruption", name: "Выброс", intReq: 4, cooldown: 3, scaleStat: "int", scaleMult: 2.6, effect: "eruption", magic: true, element: "fire", desc: "40 урона и четыре эффекта на 3 раунда: горение (урон = ИНТ), обморожение (ИНТ−3, мин. 1, −10% урона), проклятие (1 урон, −10% урона), увядание (3 урона, −20% лечения)." },
   { id: "healing_rain", name: "Целебный дождь", intReq: 3, cooldown: 3, scaleStat: "int", scaleMult: 2.0, effect: "healing_rain", magic: true, desc: "Регенерация на 3 раунда; в начале хода лечит 5 + 2×ИНТ. Блокирует один ход врага." },
   { id: "life_draw", name: "Вытягивание жизни", intReq: 4, cooldown: 3, scaleStat: "int", scaleMult: 2.4, effect: "life_draw", magic: true, desc: "Иссушение врагу на 3 раунда. Урон 10 + бонус приёма." },
   // Копьё
