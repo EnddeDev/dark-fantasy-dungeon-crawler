@@ -62,7 +62,7 @@ import { DamageTypeTag, ElementRow } from "./DamageTypeIcon";
 import { itemDamageType, raceElementRows } from "../game/damageTypes";
 import { skillReadiness } from "../game/skillReadiness";
 import { consumablePreview } from "../game/consumablePreview";
-import { POUCH_SLOTS } from "../game/pouch";
+import { POUCH_SLOTS, usableFromPouchInBattle } from "../game/pouch";
 import { monsterActionsBonus, monsterDamageBonus, monsterEvasionBonus, monsterHealthBonus, monsterTechniqueBonus } from "../game/monsterStats";
 
 /** Римская нумерация для строк инициативы. */
@@ -886,13 +886,13 @@ export function BattleView({
               </div>
             )}
 
-            {/* СУМКА: три слота зелий прямо в действиях. Зелье из сумки не тратит выносливость. */}
+            {/* СУМКА: пять слотов зелий, свитков и расходников прямо в действиях. Предмет из сумки не тратит выносливость. */}
             {(menu === "main" || menu === "item") && (
               <div className="mt-3 border-t border-line/70 pt-3">
                 <div className="mb-2 flex items-baseline justify-between gap-2">
                   <span className="sc text-flamedim">Сумка</span>
                   <span className="font-mono text-[0.78rem] text-mute">
-                    зелья без выносливости
+                    без выносливости
                   </span>
                 </div>
                 <div className="space-y-2">
@@ -900,7 +900,7 @@ export function BattleView({
                     if (!id) {
                       return (
                         <div key={`empty-${i}`} className="border border-dashed border-line/70 px-3 py-2 text-[0.85rem] italic text-mute">
-                          Слот {i + 1} пуст: зелье ставится в сумку вне боя.
+                          Слот {i + 1} пуст: предмет ставится в сумку вне боя.
                         </div>
                       );
                     }
@@ -909,7 +909,7 @@ export function BattleView({
                     const req = def ? consumableIntReq(def, b.p.intDiscount) : 0;
                     const intOk = b.p.stats.int >= req;
                     const fearImmune = def?.use?.type === "fear" && isImmuneTo(e.def.race, "fear");
-                    const ok = !!def && n > 0 && intOk && myTurn && !fearImmune && !(b.p.statuses.sealItems > 0 && def?.kind === "scroll");
+                    const ok = !!def && n > 0 && intOk && myTurn && !fearImmune && usableFromPouchInBattle(id) && !(b.p.statuses.sealItems > 0 && def?.kind === "scroll");
                     const pv = consumablePreview(b, id);
                     const freeUse = true;
                     return (
@@ -925,6 +925,9 @@ export function BattleView({
                             <span className="block truncate font-display text-[0.98rem] uppercase tracking-[0.1em] text-flamehi">
                               {def?.name ?? id} <span className="font-mono text-[0.82rem] text-flame">×{n}</span>
                             </span>
+                            {!usableFromPouchInBattle(id) && (
+                              <span className="block font-mono text-[0.82rem] text-mute">только на карте</span>
+                            )}
                             {(pv.damage !== null || pv.heal !== null) && (
                               <span className="block font-mono text-[0.82rem] text-verd">
                                 {pv.damage !== null ? `урон ${pv.damage}` : `+${pv.heal} здоровья`}
@@ -1232,7 +1235,7 @@ export function BattleView({
                         <span className="block font-display text-[1.02rem] uppercase tracking-[0.1em] text-flamehi">
                           {def.name} <span className="font-mono text-[0.84rem] text-flame">×{n}</span>
                           {dmgType && <DamageTypeTag id={dmgType} size={14} className="ml-2" />}
-                          {def.kind === "potion" && b.pouch.includes(id) && (
+                          {b.pouch.includes(id) && (
                             <span className="ml-2 font-mono text-[0.78rem] text-verd">из сумки · без выносливости</span>
                           )}
                         </span>

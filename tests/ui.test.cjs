@@ -27,6 +27,7 @@ const { Lobby } = load("src/components/Lobby.tsx", "lobby");
 const { Rail, EffectTip, EffectList, summedEffectEntries } = load("src/components/Rail.tsx", "rail");
 const { gearEffectTotals } = load("src/game/gearEffectTotals.ts", "gear-effect-totals");
 const { Dungeon } = load("src/components/Dungeon.tsx", "dungeon");
+const { PouchSlots } = load("src/components/PouchSlots.tsx", "pouch-slots");
 const { BattleView, SummaryTabs, EffectsTab, EnemyMoveRow, chipEntries, ENEMY_EFFECT_DESC, ENEMY_EFFECT_TITLE } = load("src/components/BattleView.tsx", "battle-view");
 const { playerEffectChips } = load("src/game/effects.ts", "effects-chips");
 const { heroItemEffects, learnedEffects, enemyEffects } = load("src/game/effectEntries.ts", "effect-entries");
@@ -268,7 +269,17 @@ test("battle effects: learned abilities from the hero's passives are listed", ()
   assert.ok(list[0].name && list[0].detail, "у способности есть название и описание");
 });
 
-test("battle: bag pouch shows its three potion slots inside the actions column", () => {
+test("сумка: пять слотов-кнопок, пустой слот — «пусто», выборка открывается по клику (без модалки в разметке)", () => {
+  const player = makePlayer({ bag: { potion_s: 2, scroll_fire: 1 }, pouch: ["potion_s", null, null, null, null] });
+  const html = renderToStaticMarkup(React.createElement(PouchSlots, { player, onSet: () => null }));
+  assert.ok(html.includes('aria-label="Сумка"'), "блок сумки");
+  for (let i = 1; i <= 5; i += 1) assert.ok(html.includes(`Слот ${i}:`), `слот ${i} есть`);
+  assert.ok(html.includes("Слот 1: Малое зелье лечения, в рюкзаке 2"), "занятый слот называет предмет и количество");
+  assert.equal((html.match(/>пусто</g) || []).length, 4, "четыре пустых слота");
+  assert.ok(!html.includes('role="dialog"'), "выборка закрыта до клика");
+});
+
+test("battle: bag pouch shows its five slots inside the actions column", () => {
   const b = freshBattle(makePlayer(), 3, false);
   b.pouch = ["potion_s"];
   b.bag = { ...b.bag, potion_s: 2 };
@@ -281,7 +292,7 @@ test("battle: bag pouch shows its three potion slots inside the actions column",
   assert.ok(html.includes("Малое зелье лечения"), "зелье из сумки видно в действиях");
   assert.ok(html.includes("×2"), "количество в рюкзаке");
   assert.ok(html.includes("без выносливости"), "первое зелье помечено как бесплатное");
-  assert.equal((html.match(/Слот \d пуст/g) || []).length, 2, "два пустых слота показаны");
+  assert.equal((html.match(/Слот \d пуст/g) || []).length, 4, "четыре пустых слота показаны");
   const at = (x) => html.indexOf(x);
   assert.ok(at("Сумка") > at("Сбежать"), "сумка под основными кнопками");
   assert.ok(at("Сумка") < at("Сводка врага"), "сумка в центральной колонке, до монстра");
@@ -631,17 +642,16 @@ test("left panel sums the same gear effect over worn items; the hover tip lists 
   assert.ok(tip.includes("+6% к множителю от Интеллекта") && tip.includes("+4% к множителю от Интеллекта"), "у каждого предмета своё значение");
 });
 
-test("сумка с зельями лежит в арсенале под экипировкой, а не в выборе яруса", () => {
+test("сумка лежит в арсенале над сундуком, а не в выборе яруса", () => {
   const player = makePlayer({ bag: { potion_s: 1 } });
   const common = { player, controller: {}, shopStock: [], onStart: noop, best: 1, unlockedFloor: 2, onSetPouch: () => null };
   const armory = renderToStaticMarkup(React.createElement(Lobby, { ...common, initialTab: "armory" }));
-  const at = armory.indexOf('aria-label="Сумка с зельями"');
+  const at = armory.indexOf('aria-label="Сумка"');
   assert.ok(at > 0, "в арсенале есть сумка");
-  assert.ok(at > armory.indexOf('aria-label="Экипировка"'), "сумка под экипировкой");
-  assert.ok(at < armory.indexOf('id="armory-inventory"'), "сумка до инвентаря");
+  assert.ok(at < armory.indexOf('id="armory-inventory"'), "сумка над сундуком");
   const floor = renderToStaticMarkup(React.createElement(Lobby, { ...common, initialTab: "dungeon" }));
   assert.ok(floor.includes("Выбор яруса"), "панель выбора яруса видна");
-  assert.ok(!floor.includes('aria-label="Сумка с зельями"'), "в выборе яруса сумки нет");
+  assert.ok(!floor.includes('aria-label="Сумка"'), "в выборе яруса сумки нет");
 });
 
 test("battle attacks: short names only; damage, stamina and miss chance live in the hover popup", () => {

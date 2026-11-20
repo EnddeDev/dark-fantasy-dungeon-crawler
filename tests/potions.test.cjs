@@ -194,12 +194,14 @@ test("сохранение со всеми старыми расходникам
   assert.deepEqual(player.bag, { potion_s: 3 });
 });
 
-test("сумка принимает эликсиры и масла, но не свитки и реагенты", () => {
+test("сумка принимает эликсиры, масла, свитки и факел, но не реагенты и прочие спец. предметы", () => {
   const pouch = loadGameModule("pouch");
-  const player = { pouch: [null, null, null], bag: { elixir_fire: 1, oil_magic: 1, scroll_fire: 1, powder: 1 } };
+  const player = { pouch: [null, null, null, null, null], bag: { elixir_fire: 1, oil_magic: 1, scroll_fire: 1, powder: 1, field_torch: 1, lockpicks: 1 } };
   assert.equal(pouch.setPouchSlot(player, 0, "elixir_fire").ok, true, "эликсир в сумку");
-  player.pouch = [null, null, null];
+  player.pouch = [null, null, null, null, null];
   assert.equal(pouch.setPouchSlot(player, 1, "oil_magic").ok, true, "масло в сумку");
-  assert.equal(pouch.setPouchSlot(player, 2, "scroll_fire").ok, false, "свиток не кладётся");
-  assert.equal(pouch.setPouchSlot(player, 2, "powder").ok, false, "реагент не кладётся");
+  assert.equal(pouch.setPouchSlot(player, 2, "scroll_fire").ok, true, "свиток в сумку");
+  assert.equal(pouch.setPouchSlot(player, 3, "powder").ok, false, "реагент не кладётся");
+  assert.equal(pouch.setPouchSlot(player, 3, "field_torch").ok, true, "факел кладётся");
+  assert.equal(pouch.setPouchSlot(player, 4, "lockpicks").ok, false, "отмычки не кладутся");
 });
