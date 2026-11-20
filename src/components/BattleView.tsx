@@ -111,6 +111,8 @@ export const ENEMY_EFFECT_DESC: Record<string, string> = {
 
 /** Процент для строк сводки. */
 const pct = (v: number) => `${Math.round(v * 100)}%`;
+/** Склонение «раунд» для числа. */
+const roundWord = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? "раунд" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? "раунда" : "раундов");
 /** Подсказка действия: изменение концентрации («Концентрация +1», «Концентрация 0»). */
 const concText = (delta: number) => (delta === 0 ? "Концентрация 0" : `Концентрация ${delta > 0 ? "+" : "−"}${Math.abs(delta)}`);
 
@@ -142,7 +144,12 @@ export function EnemyMoveTip({ mv, meta }: { mv: EnemyMoveView; meta?: { name: s
     <div className="text-[0.84rem] leading-snug text-parch/90">
       <div className="font-display text-[0.95rem] uppercase tracking-[0.06em] text-flamehi">{meta?.name ?? mv.move}</div>
       {meta?.desc && <p className="mt-1 text-mute">{meta.desc}</p>}
-      {mv.cooldown > 0 && <p className="mt-1 text-mute">Перезарядка: ещё {mv.cooldown}. Приём сейчас недоступен.</p>}
+      {mv.cooldownRounds > 0 && (
+        <p className="mt-1 text-mute">
+          Перезарядка {mv.cooldownRounds} {roundWord(mv.cooldownRounds)} после приёма.{" "}
+          {mv.cooldown > 0 ? `Сейчас недоступен ещё ${mv.cooldown} ${roundWord(mv.cooldown)}.` : "Сейчас доступен."}
+        </p>
+      )}
 
       <div className="sc mt-2">Урон по тебе</div>
       {bd.lines.length === 0 ? (
@@ -165,6 +172,32 @@ export function EnemyMoveTip({ mv, meta }: { mv: EnemyMoveView; meta?: { name: s
             {bd.hitMisses.length > 0 && (
               <span className="text-mute"> ({bd.hitMisses.map((m) => `${m.label} −${pct(m.chance)}`).join(", ")})</span>
             )}
+          </p>
+          {bd.dmgMax > 0 && (
+            <p className="mt-1 flex justify-between gap-3">
+              <span>Урон за удар</span>
+              <span className="font-mono tab">
+                {fmt(bd.dmgMin)}–{fmt(bd.dmgMax)}
+              </span>
+            </p>
+          )}
+          {bd.dotNow > 0 && (
+            <p className="mt-1 flex justify-between gap-3">
+              <span>Тики, уже висящие на тебе</span>
+              <span className="font-mono tab">{fmt(bd.dotNow)}</span>
+            </p>
+          )}
+          {bd.dotNewMax > 0 && (
+            <p className="flex justify-between gap-3">
+              <span>Новые тики (приём и пассивы врага), до</span>
+              <span className="font-mono tab">{fmt(bd.dotNewMax)}</span>
+            </p>
+          )}
+          <p className="flex justify-between gap-3">
+            <span>Урон за ход (удар и тики)</span>
+            <span className="font-mono tab">
+              {fmt(bd.roundMin)}–{fmt(bd.roundMax)}
+            </span>
           </p>
           {bd.blocked && <p className="text-mute">Удар не пройдёт: {bd.blocked}.</p>}
           {bd.hits > 1 && <p className="text-mute">Два удара: второй приходит, только если первый попал.</p>}
@@ -217,7 +250,14 @@ export function EnemyMoveRow({ mv, meta }: { mv: EnemyMoveView; meta?: { name: s
       >
         {meta?.name ?? mv.move}
       </span>
-      {mv.cooldown > 0 && <span className="shrink-0 font-mono text-[0.72rem] text-mute">перез. {mv.cooldown}</span>}
+      {mv.cooldownRounds > 0 && (
+        <span
+          className={`shrink-0 font-mono text-[0.72rem] ${mv.cooldown > 0 ? "text-rubric" : "text-mute"}`}
+          title={`Перезарядка ${mv.cooldownRounds} ${roundWord(mv.cooldownRounds)} после приёма`}
+        >
+          {mv.cooldown > 0 ? `перез. ${mv.cooldown}` : `перез. ${mv.cooldownRounds}`}
+        </span>
+      )}
       <span className="w-14 shrink-0 text-right font-mono text-[1rem] tab text-rubric">
         {mv.damage > 0 ? `≈${mv.damage}` : "—"}
       </span>
