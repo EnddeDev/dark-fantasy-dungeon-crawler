@@ -2400,15 +2400,20 @@ export function enemyArmorNow(e: {
   return e.guard ? Math.round(base * GUARD_ARMOR_MULT) : base;
 }
 
+/** Вид прямого удара: физический, магический или чистый (сквозь все защиты). */
+export type HitKind = "phys" | "magic" | "pure";
+
 /**
  * Урон, который доходит до врага после его брони, защит и эффектов.
  * Бой и сводка («По противнику», урон приёма) считают одной функцией.
  */
-export function damageAfterEnemyDefense(b: BattleState, raw: number, kind: "phys" | "magic"): number {
+export function damageAfterEnemyDefense(b: BattleState, raw: number, kind: HitKind): number {
   let d = raw;
   if (hasLeg(b, "executioner") && kind !== "phys" && b.enemy.hp <= b.enemy.maxHp * 0.5) {
     d = Math.round(d * (1 + legPower(b, "executioner", "damage") / 100));
   }
+  /* Чистый урон: ни брони, ни сопротивлений, ни укрепления, ни уменьшения урона. */
+  if (kind === "pure") return Math.max(1, d);
   if (kind === "phys") {
     const pierce = rarePower(b, "pierce", "armor");
     /* Сквозь броню: приёмы Тень, Обратный хват, Змеиный выпад (следующий), Фехтование. */
@@ -2455,10 +2460,10 @@ function magicMultNow(b: BattleState): number {
     (hasPassive(b, "arch_archmage_10") ? 0.25 : 0) + (hasGearPassive(b, "archmage_library") ? passivePower(b, "archmage_library", "magic") / 100 : 0);
 }
 
-function hitEnemy(
+export function hitEnemy(
   b: BattleState,
   raw: number,
-  kind: "phys" | "magic",
+  kind: HitKind,
   note = "",
   strike = kind === "phys",
   element?: DamageElement,
@@ -2662,10 +2667,12 @@ export function pctText(v: number): string {
 function playerDefenseLines(
   b: BattleState,
   raw: number,
-  kind: "phys" | "magic",
+  kind: HitKind,
   strike: boolean,
   ignoreDefense: boolean,
 ): DamageLine[] {
+  /* Чистый урон проходит сквозь все защиты героя: ни брони, ни стойки, ни сопротивлений. */
+  if (kind === "pure") return [{ label: "Чистый урон", value: Math.max(1, raw) }];
   const lines: DamageLine[] = [];
   let d = raw;
   if (strike) {
@@ -2728,7 +2735,7 @@ function playerDefenseLines(
 function damageAfterPlayerDefense(
   b: BattleState,
   raw: number,
-  kind: "phys" | "magic",
+  kind: HitKind,
   strike: boolean,
   ignoreDefense: boolean,
 ): number {
@@ -2743,7 +2750,7 @@ export interface HitParts {
   misses: { label: string; chance: number }[];
 }
 
-function playerHitParts(b: BattleState, kind: "phys" | "magic", strike: boolean, ignoreDefense: boolean): HitParts {
+function playerHitParts(b: BattleState, kind: HitKind, strike: boolean, ignoreDefense: boolean): HitParts {
   if (b.p.statuses.fullGuard > 0 || b.p.statuses.invulnerable > 0 || b.p.statuses.dodgeNext > 0 || b.p.statuses.smoke > 0) {
     return { chance: 0, blocked: "защита героя поглощает удар", misses: [] };
   }
@@ -2774,10 +2781,10 @@ function firstStrikeStun(b: BattleState) {
   push(b, `Первый удар в бою оглушает ${b.enemy.def.name}.`, "p");
 }
 
-function incoming(
+export function incoming(
   b: BattleState,
   raw: number,
-  kind: "phys" | "magic",
+  kind: HitKind,
   src: string,
   strike = kind === "phys",
   /** Пробивает броню, сопротивление и уклонение (холодное касание призрака). */
@@ -2793,24 +2800,26 @@ function incoming(
     push(b, `Мрак скрывает тебя: ${src} — промах.`, "sys");
     return false;
   }
-  if (b.p.statuses.invulnerable > 0) {
+  /* Чистый урон не знает ни неуязвимости, ни полной защиты, ни уклонения, ни дыма. */
+  const pure = kind === "pure";
+  if (!pure && b.p.statuses.invulnerable > 0) {
     flash(b, "p", "guard", 0);
     push(b, `Неуязвимость поглощает удар (${src}).`, "p");
     return false;
   }
-  if (b.p.statuses.fullGuard > 0) {
+  if (!pure && b.p.statuses.fullGuard > 0) {
     flash(b, "p", "guard", 0);
     push(b, `Полная защита поглощает удар (${src}).`, "p");
     return false;
   }
-  if (b.p.statuses.dodgeNext > 0) {
+  if (!pure && b.p.statuses.dodgeNext > 0) {
     b.p.statuses.dodgeNext--;
     flash(b, "p", "miss", 0);
     push(b, `Пустой шаг: атака (${src}) полностью ускользает.`, "p");
     grantDodgeAction(b);
     return false;
   }
-  if (b.p.statuses.smoke > 0) {
+  if (!pure && b.p.statuses.smoke > 0) {
     b.p.statuses.smoke--;
     flash(b, "p", "miss", 0);
     push(b, `Дымовая завеса скрыла тебя от атаки. Осталось укрытий: ${b.p.statuses.smoke}.`, "p");
@@ -2837,10 +2846,10 @@ function incoming(
     return false;
   }
   let d = damageAfterPlayerDefense(b, raw, kind, strike, ignoreDefense);
-  /* Маг. барьер первым принимает удар, до стены щитов. */
-  d = absorbBarrier(b, d);
+  /* Маг. барьер первым принимает удар, до стены щитов. Чистый урон барьер не останавливает. */
+  if (!pure) d = absorbBarrier(b, d);
   /* Ветки навыков: Стена щитов — в защите щит 15% макс. ОЗ до конца раунда. */
-  if (b.p.guard && hasPassive(b, "skill_wall_a")) {
+  if (!pure && b.p.guard && hasPassive(b, "skill_wall_a")) {
     if ((b.p.statuses.wallShieldRound ?? 0) !== b.round) {
       b.p.statuses.wallShieldRound = b.round;
       b.p.statuses.wallShield = Math.round(b.p.maxHp * 0.15);
@@ -4683,7 +4692,7 @@ function playerThorns(b: BattleState): number {
 }
 
 /** Коэффициенты приёмов врага по урону: множитель к базовому удару, тип удара и число ударов. Приёмы без урона здесь не перечислены. */
-const ENEMY_MOVE_SHAPE: Partial<Record<EnemyMove, { mult: number; kind: "phys" | "magic"; hits?: number; ignoreDefense?: boolean }>> = {
+const ENEMY_MOVE_SHAPE: Partial<Record<EnemyMove, { mult: number; kind: HitKind; hits?: number; ignoreDefense?: boolean }>> = {
   attack: { mult: 1, kind: "phys" },
   heavy: { mult: 1.7, kind: "phys" },
   wound: { mult: 0.9, kind: "phys" },
