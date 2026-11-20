@@ -22,12 +22,13 @@ export function BuyMissingReagents({
   const quote = reagentQuote(player, lines);
   const list = lines.map((line) => `${line.name} ×${line.missing}`).join(", ");
   return (
-    <div className={`space-y-1.5 ${className}`}>
+    <div className={`w-full space-y-1.5 ${className}`}>
       <p className="font-mono text-[0.84rem] text-mute">
         Не хватает: <span className="text-parch">{list}</span>
       </p>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex w-full flex-wrap items-center gap-2">
         <Btn
+          className="w-full"
           tone={quote.canBuy ? "verd" : "ghost"}
           disabled={!quote.canBuy}
           title={quote.reason ?? "Купить недостающие реагенты по цене лавки"}
