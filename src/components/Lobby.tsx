@@ -93,6 +93,7 @@ import { ItemArt } from "./ItemArt";
 import { GearNote } from "./GearNote";
 import { GearCard } from "./GearCard";
 import { QuestsTab } from "./Quests";
+import { BuyMissingReagents } from "./ReagentBuy";
 import { availableQuestCount, couponPreview, logOf, mercenaryPrice, readyQuestCount, recipeMinTrust, stationRecipeList, trustOf } from "../game/quests";
 import type { CraftStation } from "../game/content";
 import { TRUST_MAX, type QuestGiverId } from "../game/types";
@@ -449,7 +450,12 @@ export function Lobby({
   const [forgeConfirm, setForgeConfirm] = useState<{ uid: string; kind: ForgeUpgradeKind } | null>(null);
   const [forgeUseReagents, setForgeUseReagents] = useState(true);
   const [ritualUid, setRitualUid] = useState<string | null>(null);
+  /* Переход из окна предмета к кузнецу или волшебнику: вкладка «Жители» открывает нужного NPC. */
+  const [npcFocus, setNpcFocus] = useState<{ giver: QuestGiverId; key: number } | null>(null);
   const [resetConfirm, setResetConfirm] = useState(false);
+  useEffect(() => {
+    if (tab !== "quests") setNpcFocus(null);
+  }, [tab]);
 
   const d = derived(player);
   const say = (t: string | null) => {
@@ -744,12 +750,46 @@ export function Lobby({
 
   const detailActionsFor = (item: GearItem) => {
     const worn = SLOT_ORDER.find((slot) => player.equip[slot] === item.uid);
-    return worn ? (
-      <Btn tone="danger" onClick={() => { unequipFromFigure(worn); setGearDetail(null); }}>
-        Снять
-      </Btn>
-    ) : (
-      renderDetailActions(item)
+    return (
+      <>
+        {worn ? (
+          <Btn tone="danger" onClick={() => { unequipFromFigure(worn); setGearDetail(null); }}>
+            Снять
+          </Btn>
+        ) : (
+          renderDetailActions(item)
+        )}
+        {renderNpcButtons(item)}
+      </>
+    );
+  };
+  /* Кнопки «В горн» и «К волшебнику» в окне предмета: открывают вкладку «Жители» с этим предметом. */
+  const openNpc = (giver: QuestGiverId, uid: string) => {
+    setGearDetail(null);
+    if (giver === "smith") setForgeUid(uid);
+    else setRitualUid(uid);
+    setNpcFocus({ giver, key: Date.now() });
+    setTab("quests");
+  };
+  const renderNpcButtons = (item: GearItem) => {
+    const ritualOpen = ritualUnlocked(player) && ritualEligible(item);
+    const ritualNote = !ritualUnlocked(player)
+      ? `Ритуал открывается при доверии ${RITUAL_MIN_TRUST} (сейчас ${trustOf(player, "wizard")})`
+      : "Ритуал нужен исследованному предмету со свойствами";
+    return (
+      <>
+        <Btn tone="flame" title="Улучшить предмет в горне кузнеца" onClick={() => openNpc("smith", item.uid)}>
+          В горн
+        </Btn>
+        <Btn
+          tone="flame"
+          disabled={!ritualOpen}
+          title={ritualOpen ? "Ритуал волшебника: замена, хаос-замена, снятие свойств" : ritualNote}
+          onClick={() => openNpc("wizard", item.uid)}
+        >
+          К волшебнику
+        </Btn>
+      </>
     );
   };
 
@@ -1117,6 +1157,14 @@ export function Lobby({
                                 >
                                   Улучшить
                                 </Btn>
+                                {useReagents && opt.available && opt.reagentTotal > 0 && (
+                                  <BuyMissingReagents
+                                    className="mt-3"
+                                    player={player}
+                                    needs={opt.reagentParts}
+                                    onBuy={(needs) => say(controller.buyReagents(needs))}
+                                  />
+                                )}
                               </div>
                             );
                           })}
@@ -1139,6 +1187,14 @@ export function Lobby({
     const item = eligible.find((g) => g.uid === ritualUid) ?? null;
     const costOf = (kind: RitualReplaceKind | "strip") => RITUAL_COSTS[kind];
     const affordable = (kind: RitualReplaceKind | "strip") => player.gold >= costOf(kind).gold && ink >= costOf(kind).ink;
+    /* Чернил нужно до замены (5), иначе до хаоса (7); берём максимум по всем свойствам предмета. */
+    const inkNeedFor = (id: GearEffectId) => {
+      if (!item) return 0;
+      if (ritualCandidates(item, id, "replace").length > 0) return RITUAL_COSTS.replace.ink;
+      if (ritualCandidates(item, id, "chaos").length > 0) return RITUAL_COSTS.chaos.ink;
+      return 0;
+    };
+    const ritualInkNeed = item ? Math.max(0, ...item.effects.map(inkNeedFor)) : 0;
     return (
       <div>
         <p className="dropcap mb-4 max-w-2xl text-[1.02rem] leading-relaxed text-parch/85">
@@ -1176,6 +1232,14 @@ export function Lobby({
                   <Tag tone="flame">золото {player.gold}</Tag>
                   <Tag tone={ink >= 5 ? "verd" : "mute"}>чернила {ink}</Tag>
                 </div>
+                {/* Чернил докупаем на одну кнопку на весь ритуал: до нужного для самого дорогого по чернилам действия из доступных. */}
+                {ritualInkNeed > 0 && (
+                  <BuyMissingReagents
+                    player={player}
+                    needs={[{ id: RITUAL_INK_ID, count: ritualInkNeed }]}
+                    onBuy={(needs) => say(controller.buyReagents(needs))}
+                  />
+                )}
                 {item.effects.map((id: GearEffectId) => {
                   const def = GEAR_EFFECTS[id];
                   const replace = ritualCandidates(item, id, "replace").length > 0;
@@ -1876,11 +1940,13 @@ export function Lobby({
 
             {tab === "quests" && (
               <QuestsTab
+                key={npcFocus?.key ?? "quests"}
                 player={player}
                 controller={controller}
                 unlockedFloor={unlockedFloor}
                 say={say}
                 services={npcServices}
+                initialGiver={npcFocus?.giver}
                 onInspectMercenary={setMercDetail}
               />
             )}

@@ -22,6 +22,7 @@ import {
   type Recipe,
 } from "../game/content";
 import { forgeUpgrade, type ForgeUpgradeKind } from "../game/forge";
+import { buyMissingReagents, type ReagentNeed } from "../game/reagentPurchase";
 import { ritualReplace, ritualStrip, type RitualReplaceKind } from "../game/ritual";
 import type { GearEffectId } from "../game/gearEffects";
 import { hpAfterGearChange, resetStats } from "../game/progression";
@@ -117,6 +118,15 @@ export class LobbyController {
     }));
     playSfx("buy");
     return `Куплено: ${def.name}${charge.used ? " · скидка 25%" : ""}`;
+  }
+
+  /** Докупка недостающих реагентов для горна или ритуала: цена как в лавке, по каждой единице. */
+  buyReagents(needs: ReagentNeed[]): string | null {
+    const res = buyMissingReagents(this.player, needs);
+    if (!res) return null;
+    this.model.updatePlayer(() => res.player);
+    playSfx("buy");
+    return res.message;
   }
 
   sellSupply(def: ItemDef): string | null {
