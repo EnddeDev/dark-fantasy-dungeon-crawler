@@ -38,6 +38,11 @@ export function SkillsPanel({
         </span>
       }
     >
+      {free > 0 && (
+        <p className="mb-3 border border-verd/60 bg-verd/10 px-3 py-2 font-mono text-[0.95rem] text-verd">
+          Свободно очков навыков: <b>{free}</b>. Распредели их по веткам.
+        </p>
+      )}
       <p className="text-[1rem] leading-relaxed text-parch/85">
         Ветки {ARCHETYPES[player.archetype].name.toLowerCase()}: очко за каждый уровень выше 5. Ранг 3 открывает
         первый эффект ветки, ранг 5 — второй. Очки можно распределять по веткам свободно.

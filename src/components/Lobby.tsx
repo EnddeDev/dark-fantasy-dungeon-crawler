@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import {
   ArrowDownUp,
   BookOpen,
+  Info,
   Brain,
   DoorOpen,
   EyeOff,
@@ -74,6 +75,7 @@ import {
 import { forgeFailChance, forgeOptions, forgeReagentPlan, type ForgeUpgradeKind } from "../game/forge";
 import { RITUAL_COSTS, RITUAL_INK_ID, RITUAL_MIN_TRUST, ritualCandidates, ritualEligible, ritualUnlocked, stripReagentCount, type RitualReplaceKind } from "../game/ritual";
 import { statResetCost, totalStatPoints } from "../game/progression";
+import { skillPointsAvailable } from "../game/archetypeSkills";
 import { WEAR_RANGE } from "../game/types";
 import { Guide } from "./Guide";
 import { Bestiary } from "./Bestiary";
@@ -346,8 +348,20 @@ const TAB_ICONS = {
 
 const RARITY_RANK: Record<RarityTier, number> = { common: 0, rare: 1, epic: 2, legendary: 3 };
 
-const TABS: { id: Tab; label: string; badge?: (p: Player) => number; alert?: (p: Player) => number }[] = [
-  { id: "train", label: "Развитие", badge: (p) => p.statPoints },
+const TABS: {
+  id: Tab;
+  label: string;
+  badge?: (p: Player) => number;
+  alert?: (p: Player) => number;
+  /** Точка без числа: подпись для подсказки, или null, если точки нет. */
+  dot?: (p: Player) => string | null;
+}[] = [
+  {
+    id: "train",
+    label: "Развитие",
+    badge: (p) => p.statPoints,
+    dot: (p) => (p.archetype && skillPointsAvailable(p) > 0 ? "Есть свободное очко навыка" : null),
+  },
   {
     id: "armory",
     label: "Арсенал",
@@ -409,6 +423,8 @@ export function Lobby({
   const [selectedFloor, setSelectedFloor] = useState<number>(unlockedFloor);
   const [pickArchetype, setPickArchetype] = useState(false);
   const [pick, setPick] = useState<{ stat: StatKey; tier: StatMilestoneTier } | null>(null);
+  /* Описание характеристики: открывается из карточки «Характеристики». */
+  const [statInfo, setStatInfo] = useState<StatKey | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [purchasedUids, setPurchasedUids] = useState<Record<string, boolean>>({});
   const [gearQuery, setGearQuery] = useState("");
@@ -1171,7 +1187,10 @@ export function Lobby({
     Icon: TAB_ICONS[t.id],
     count: t.badge ? t.badge(player) : 0,
     alert: t.alert ? t.alert(player) > 0 : false,
+    dot: t.dot ? t.dot(player) : null,
   }));
+  /* Свободное очко навыка: точка на подвкладке «Навыки». Очки есть только у выбранного архетипа. */
+  const skillNotice = !!player.archetype && skillPointsAvailable(player) > 0;
 
   return (
     <div className="relative min-h-screen w-full overflow-x-clip">
@@ -1232,6 +1251,14 @@ export function Lobby({
                         }`}
                       >
                         {section.label}
+                        {section.id === "skills" && skillNotice && (
+                          <span
+                            role="img"
+                            aria-label="Есть свободное очко навыка"
+                            title="Есть свободное очко навыка"
+                            className="ml-2 inline-block h-2 w-2 animate-pulse rounded-full bg-verd align-middle"
+                          />
+                        )}
                       </button>
                     ))}
                   </div>
@@ -1262,22 +1289,31 @@ export function Lobby({
                         className="p-4"
                         title={STAT_META[k].name}
                         right={
-                          <span className="font-mono text-sm tab text-flame">
-                            {String(v).padStart(2, "0")}
-                            <span className="text-mute">/10</span>
+                          <span className="flex items-center gap-3">
+                            <span className="font-mono text-sm tab text-flame">
+                              {String(v).padStart(2, "0")}
+                              <span className="text-mute">/10</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setStatInfo(k)}
+                              aria-label={`Описание: ${STAT_META[k].name}`}
+                              title="Описание характеристики"
+                              className="border border-line p-1 text-mute transition-colors hover:border-flame hover:text-flamehi"
+                            >
+                              <Info size={16} strokeWidth={1.7} aria-hidden />
+                            </button>
                           </span>
                         }
                       >
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div className="flex flex-wrap items-center gap-3">
                             <Pips value={v} tone={v >= 5 ? "#e0a33c" : "#ad7a2c"} />
-                            <span className="font-mono text-[0.84rem] text-mute">{STAT_META[k].gain}</span>
                           </div>
                           <Btn tone={can ? "flame" : "ghost"} disabled={!can} onClick={() => upgradeStat(k)}>
                             {v >= 10 ? "предел (10)" : `+1 (${cost} ${cost === 1 ? "очко" : "очка"})`}
                           </Btn>
                         </div>
-                        <p className="mt-2 text-[1rem] leading-snug text-parch/80">{STAT_META[k].blurb}</p>
 
                         <div className="mt-3 grid gap-2 sm:grid-cols-2">
                           {([5, 10] as const).map((tier) => {
@@ -1323,10 +1359,6 @@ export function Lobby({
                   <div className="space-y-4">
                     <div className="max-w-3xl">
                   <Panel className="p-4" title="Архетип" right={<span className="font-mono text-sm tab text-flame">{player.archetype ? ARCHETYPES[player.archetype].name : "не выбран"}</span>}>
-                    <p className="text-[1rem] leading-relaxed text-parch/85">
-                      На <b>5 уровне</b> выбери основной архетип. Усиления архетипов открываются на <b>рубежах характеристик 5 и 10</b>:
-                      там всегда два варианта — по одному на каждый архетип этой характеристики. Можно усилить свой путь или взять дополнительный для соседнего.
-                    </p>
                     {player.archetype ? (
                       <p className="mt-3 border border-flamedim/60 bg-flame/10 px-3 py-2 text-[0.98rem] leading-snug text-parch/85">
                         Основной путь: <b className="text-flamehi">{ARCHETYPES[player.archetype].name}</b>. {ARCHETYPES[player.archetype].desc}
@@ -2033,6 +2065,17 @@ export function Lobby({
             {toast}
           </div>
         </div>
+      )}
+
+      {statInfo && (
+        <Modal
+          title={STAT_META[statInfo].name}
+          sub={STAT_META[statInfo].gain}
+          actions={<Btn tone="ghost" onClick={() => setStatInfo(null)}>Закрыть</Btn>}
+          onClose={() => setStatInfo(null)}
+        >
+          <p className="text-[1rem] leading-relaxed text-parch/85">{STAT_META[statInfo].blurb}</p>
+        </Modal>
       )}
 
       {pick && (
