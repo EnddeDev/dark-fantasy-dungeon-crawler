@@ -2,8 +2,17 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useFitInViewport } from "./useFitInViewport";
 import { createPortal } from "react-dom";
 import {
-  ArrowDownUp,
   BookOpen,
+  Circle,
+  Crown,
+  Flame,
+  Footprints,
+  Hand,
+  HardHat,
+  Info,
+  Layers,
+  Shirt,
+  Star,
   Brain,
   DoorOpen,
   EyeOff,
@@ -74,6 +83,7 @@ import {
 import { forgeFailChance, forgeOptions, forgeReagentPlan, type ForgeUpgradeKind } from "../game/forge";
 import { RITUAL_COSTS, RITUAL_INK_ID, RITUAL_MIN_TRUST, ritualCandidates, ritualEligible, ritualUnlocked, stripReagentCount, type RitualReplaceKind } from "../game/ritual";
 import { statResetCost, totalStatPoints } from "../game/progression";
+import { skillPointsAvailable } from "../game/archetypeSkills";
 import { WEAR_RANGE } from "../game/types";
 import { Guide } from "./Guide";
 import { Bestiary } from "./Bestiary";
@@ -332,7 +342,6 @@ function effectSummary(def: ItemDef): { what: string; when: string } {
 
 
 
-type GearSort = "recent" | "price" | "damage" | "rarity";
 type RarityFilter = "all" | "unknown" | RarityTier;
 
 const TAB_ICONS = {
@@ -344,10 +353,20 @@ const TAB_ICONS = {
   about: BookOpen,
 } as const;
 
-const RARITY_RANK: Record<RarityTier, number> = { common: 0, rare: 1, epic: 2, legendary: 3 };
-
-const TABS: { id: Tab; label: string; badge?: (p: Player) => number; alert?: (p: Player) => number }[] = [
-  { id: "train", label: "Развитие", badge: (p) => p.statPoints },
+const TABS: {
+  id: Tab;
+  label: string;
+  badge?: (p: Player) => number;
+  alert?: (p: Player) => number;
+  /** Точка без числа: подпись для подсказки, или null, если точки нет. */
+  dot?: (p: Player) => string | null;
+}[] = [
+  {
+    id: "train",
+    label: "Развитие",
+    badge: (p) => p.statPoints,
+    dot: (p) => (p.archetype && skillPointsAvailable(p) > 0 ? "Есть свободное очко навыка" : null),
+  },
   {
     id: "armory",
     label: "Арсенал",
@@ -409,15 +428,18 @@ export function Lobby({
   const [selectedFloor, setSelectedFloor] = useState<number>(unlockedFloor);
   const [pickArchetype, setPickArchetype] = useState(false);
   const [pick, setPick] = useState<{ stat: StatKey; tier: StatMilestoneTier } | null>(null);
+  /* Описание характеристики: открывается из карточки «Характеристики». */
+  const [statInfo, setStatInfo] = useState<StatKey | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [purchasedUids, setPurchasedUids] = useState<Record<string, boolean>>({});
   const [gearQuery, setGearQuery] = useState("");
   const [gearSlot, setGearSlot] = useState<SlotFilter>("all");
   const [gearRarity, setGearRarity] = useState<RarityFilter>("all");
-  const [gearSort, setGearSort] = useState<GearSort>("recent");
   const [onlyUnknown, setOnlyUnknown] = useState(false);
   /** Подробности открываются кнопкой; храним UID, чтобы видеть результат исследования. */
   const [gearDetail, setGearDetail] = useState<{ uid: string; inShop: boolean } | null>(null);
+  /* Окно «Куда надеть» для вещи из сундука с несколькими гнёздами или выбором хвата. */
+  const [equipChoice, setEquipChoice] = useState<string | null>(null);
   const [chosenSlot, setChosenSlot] = useState<Slot | null>(null);
   const [supplyLevelFilter, setSupplyLevelFilter] = useState<SupplyLevelFilter>(0);
   const [reagentFilter, setReagentFilter] = useState<ReagentFilter>("all");
@@ -513,10 +535,9 @@ export function Lobby({
   const upgradeCost = player.shopLevel >= SHOP_MAX_LEVEL ? 0 : shopUpgradeCost(player.shopLevel);
   const xpNeed = xpForNextLevel(player.level);
 
-  /* В магазине сортировки нет: порядок прилавка. В арсенале сортировка из выбора игрока. */
+  /* Сортировок нет: порядок прежний. Поиск только в лавке; в сундуке фильтры — слот, редкость, неизвестные. */
   const filterGear = (items: GearItem[], mode: "shop" | "armory" = "armory") => {
-    const sort: GearSort = mode === "shop" ? "recent" : gearSort;
-    const q = gearQuery.trim().toLowerCase();
+    const q = mode === "shop" ? gearQuery.trim().toLowerCase() : "";
     const filtered = items.filter((g) => {
       const st = scaledGearStats(g);
       if (!shopGearMatches(g, gearSlot, mode === "shop" ? shopGearClass : "all")) return false;
@@ -536,137 +557,176 @@ export function Lobby({
       ].join(" ").toLowerCase();
       return haystack.includes(q);
     });
-    const sorted = [...filtered];
-    if (sort === "price") sorted.sort((a, b) => gearBuyPrice(a) - gearBuyPrice(b));
-    if (sort === "damage") {
-      const dmg = (g: GearItem) => {
-        const r = scaledGearStats(g).dmg;
-        return r ? (r[0] + r[1]) / 2 : -1;
-      };
-      sorted.sort((a, b) => dmg(b) - dmg(a));
-    }
-    if (sort === "rarity") {
-      sorted.sort((a, b) => {
-        const ra = a.identified ? RARITY_RANK[a.rarity] : -1;
-        const rb = b.identified ? RARITY_RANK[b.rarity] : -1;
-        return rb - ra;
-      });
-    }
-    return sorted;
+    return filtered;
   };
 
   const resetGearFilters = () => {
     setGearQuery("");
     setGearSlot("all");
     setGearRarity("all");
-    setGearSort("recent");
     setOnlyUnknown(false);
     setChosenSlot(null);
   };
 
-  const renderGearFilters = (mode: "shop" | "armory") => (
-    <div className="space-y-2.5 border border-line bg-black/30 p-2.5">
-      <label className="flex items-center gap-2 border border-line bg-soot px-3 py-2 focus-within:border-flamedim">
-        <Search size={16} className="shrink-0 text-mute" aria-hidden />
-        <input
-          value={gearQuery}
-          onChange={(e) => setGearQuery(e.target.value)}
-          placeholder="Название, приём или свойство…"
-          className="min-w-0 flex-1 bg-transparent text-sm text-parch outline-none placeholder:text-mute/70"
-          aria-label="Поиск снаряжения"
-        />
-        {gearQuery && (
-          <button type="button" onClick={() => setGearQuery("")} aria-label="Очистить поиск" className="text-mute hover:text-parch">
-            <X size={15} />
-          </button>
+  /* Фильтры сундука (armory): только кнопки-иконки, без поиска и сортировки. Лавка — прежний набор. */
+  const renderGearFilters = (mode: "shop" | "armory") => {
+    const chestMode = mode === "armory";
+    const shopSlots: [SlotFilter, string, typeof Gem | null][] = [
+      ["all", "Все", PackageSearch],
+      ["mainHand", "Правая рука", Sword],
+      ["offHand", "Левая рука", Shield],
+      ["head", "Шлем", null],
+      ["body", "Тело", null],
+      ["wrists", "Наручи", null],
+      ["feet", "Ботинки", null],
+      ["rings", "Кольца", Gem],
+      ["amulet", "Оберег", Sparkles],
+    ];
+    const chestSlots: [SlotFilter, string, typeof Gem][] = [
+      ["all", "Все", PackageSearch],
+      ["mainHand", "Правая рука", Sword],
+      ["offHand", "Левая рука", Shield],
+      ["head", "Шлем", HardHat],
+      ["body", "Тело", Shirt],
+      ["wrists", "Наручи", Hand],
+      ["feet", "Ботинки", Footprints],
+      ["rings", "Кольца", Gem],
+      ["amulet", "Оберег", Sparkles],
+    ];
+    const chestRarity: [RarityFilter, string, typeof Gem][] = [
+      ["all", "Любая редкость", Layers],
+      ["common", "Обычное", Circle],
+      ["rare", "Редкое", Star],
+      ["epic", "Эпическое", Flame],
+      ["legendary", "Легендарное", Crown],
+    ];
+    const iconBtn = (active: boolean) =>
+      `flex h-9 w-9 items-center justify-center border transition-colors ${
+        active ? "border-flamedim bg-flame/15 text-flamehi" : "border-line text-mute hover:text-parch"
+      }`;
+    return (
+      <div className="space-y-2.5 border border-line bg-black/30 p-2.5">
+        {!chestMode && (
+          <label className="flex items-center gap-2 border border-line bg-soot px-3 py-2 focus-within:border-flamedim">
+            <Search size={16} className="shrink-0 text-mute" aria-hidden />
+            <input
+              value={gearQuery}
+              onChange={(e) => setGearQuery(e.target.value)}
+              placeholder="Название, приём или свойство…"
+              className="min-w-0 flex-1 bg-transparent text-sm text-parch outline-none placeholder:text-mute/70"
+              aria-label="Поиск снаряжения"
+            />
+            {gearQuery && (
+              <button type="button" onClick={() => setGearQuery("")} aria-label="Очистить поиск" className="text-mute hover:text-parch">
+                <X size={15} />
+              </button>
+            )}
+          </label>
         )}
-      </label>
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex flex-wrap gap-1" role="group" aria-label="Слот снаряжения">
-          {([
-            ["all", "Все", PackageSearch],
-            ["mainHand", "Правая рука", Sword],
-            ["offHand", "Левая рука", Shield],
-            ["head", "Шлем", null],
-            ["body", "Тело", null],
-            ["wrists", "Наручи", null],
-            ["feet", "Ботинки", null],
-            ["rings", "Кольца", Gem],
-            ["amulet", "Оберег", Sparkles],
-          ] as [SlotFilter, string, typeof Gem | null][]).map(([value, label, Icon]) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={gearSlot === value}
-              onClick={() => { setGearSlot(value); setChosenSlot(null); }}
-              className={`flex items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[0.92rem] transition-colors ${
-                gearSlot === value ? "border-flamedim bg-flame/15 text-flamehi" : "border-line text-mute hover:text-parch"
-              }`}
-            >
-              {Icon && <Icon size={13} aria-hidden />}
-              {label}
-            </button>
-          ))}
-        </div>
-        {mode === "shop" && (
-          <div className="flex flex-wrap gap-1" role="group" aria-label="Тип брони">
-            {([
-              ["all", "Любой тип"],
-              ["light", "Лёгкий"],
-              ["medium", "Средний"],
-              ["heavy", "Тяжёлый"],
-            ] as [GearClassFilter, string][]).map(([value, label]) => (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap gap-1" role="group" aria-label="Слот снаряжения">
+            {(chestMode ? chestSlots : shopSlots).map(([value, label, Icon]) => (
               <button
                 key={value}
                 type="button"
-                aria-pressed={shopGearClass === value}
-                onClick={() => setShopGearClass(value)}
-                className={`border px-2.5 py-1.5 font-mono text-[0.92rem] transition-colors ${
-                  shopGearClass === value ? "border-flamedim bg-flame/15 text-flamehi" : "border-line text-mute hover:text-parch"
-                }`}
+                aria-pressed={gearSlot === value}
+                aria-label={chestMode ? label : undefined}
+                title={chestMode ? label : undefined}
+                onClick={() => { setGearSlot(value); setChosenSlot(null); }}
+                className={
+                  chestMode
+                    ? iconBtn(gearSlot === value)
+                    : `flex items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[0.92rem] transition-colors ${
+                        gearSlot === value ? "border-flamedim bg-flame/15 text-flamehi" : "border-line text-mute hover:text-parch"
+                      }`
+                }
               >
-                {label}
+                {chestMode ? (
+                  Icon && <Icon size={18} strokeWidth={1.7} aria-hidden />
+                ) : (
+                  <>
+                    {Icon && <Icon size={13} aria-hidden />}
+                    {label}
+                  </>
+                )}
               </button>
             ))}
           </div>
-        )}
-        <select
-          value={gearRarity}
-          onChange={(e) => setGearRarity(e.target.value as RarityFilter)}
-          aria-label="Фильтр редкости"
-          className="border border-line bg-soot px-2 py-1.5 font-mono text-[0.92rem] text-parch outline-none focus:border-flamedim"
-        >
-          <option value="all">Любая редкость</option>
-          <option value="unknown">Не исследовано</option>
-          <option value="common">Обычное</option>
-          <option value="rare">Редкое</option>
-          <option value="epic">Эпическое</option>
-          <option value="legendary">Легендарное</option>
-        </select>
-        {mode === "armory" && (
-        <label className="flex items-center gap-1.5 border border-line bg-soot px-2 py-1.5 font-mono text-[0.92rem] text-mute">
-          <ArrowDownUp size={13} aria-hidden />
-          <select
-            value={gearSort}
-            onChange={(e) => setGearSort(e.target.value as GearSort)}
-            aria-label="Сортировка"
-            className="bg-transparent text-parch outline-none"
-          >
-            <option value="recent">Сначала новые</option>
-            <option value="price">Цена</option>
-            <option value="damage">Средний урон</option>
-            <option value="rarity">Редкость</option>
-          </select>
-        </label>
-        )}
-        <label className="flex cursor-pointer items-center gap-1.5 font-mono text-[0.92rem] text-mute">
-          <input type="checkbox" checked={onlyUnknown} onChange={(e) => setOnlyUnknown(e.target.checked)} className="accent-[#e0a33c]" />
-          <EyeOff size={13} aria-hidden />
-          Только неизвестные
-        </label>
+          {mode === "shop" && (
+            <div className="flex flex-wrap gap-1" role="group" aria-label="Тип брони">
+              {([
+                ["all", "Любой тип"],
+                ["light", "Лёгкий"],
+                ["medium", "Средний"],
+                ["heavy", "Тяжёлый"],
+              ] as [GearClassFilter, string][]).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={shopGearClass === value}
+                  onClick={() => setShopGearClass(value)}
+                  className={`border px-2.5 py-1.5 font-mono text-[0.92rem] transition-colors ${
+                    shopGearClass === value ? "border-flamedim bg-flame/15 text-flamehi" : "border-line text-mute hover:text-parch"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {chestMode ? (
+            <div className="flex flex-wrap gap-1" role="group" aria-label="Редкость">
+              {chestRarity.map(([value, label, Icon]) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={gearRarity === value}
+                  aria-label={label}
+                  title={label}
+                  onClick={() => setGearRarity(value)}
+                  className={iconBtn(gearRarity === value)}
+                >
+                  <Icon size={18} strokeWidth={1.7} aria-hidden />
+                </button>
+              ))}
+            </div>
+          ) : (
+            <select
+              value={gearRarity}
+              onChange={(e) => setGearRarity(e.target.value as RarityFilter)}
+              aria-label="Фильтр редкости"
+              className="border border-line bg-soot px-2 py-1.5 font-mono text-[0.92rem] text-parch outline-none focus:border-flamedim"
+            >
+              <option value="all">Любая редкость</option>
+              <option value="unknown">Не исследовано</option>
+              <option value="common">Обычное</option>
+              <option value="rare">Редкое</option>
+              <option value="epic">Эпическое</option>
+              <option value="legendary">Легендарное</option>
+            </select>
+          )}
+          {chestMode ? (
+            <button
+              type="button"
+              aria-pressed={onlyUnknown}
+              aria-label="Только неизвестные"
+              title="Только неизвестные"
+              onClick={() => setOnlyUnknown(!onlyUnknown)}
+              className={iconBtn(onlyUnknown)}
+            >
+              <EyeOff size={18} strokeWidth={1.7} aria-hidden />
+            </button>
+          ) : (
+            <label className="flex cursor-pointer items-center gap-1.5 font-mono text-[0.92rem] text-mute">
+              <input type="checkbox" checked={onlyUnknown} onChange={(e) => setOnlyUnknown(e.target.checked)} className="accent-[#e0a33c]" />
+              <EyeOff size={13} aria-hidden />
+              Только неизвестные
+            </label>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const wornUids = new Set(SLOT_ORDER.map((slot) => player.equip[slot]).filter((uid): uid is string => !!uid));
   const inventoryItems = player.armory.filter((item) => !wornUids.has(item.uid));
@@ -733,6 +793,14 @@ export function Lobby({
       : options.find((slot) => !player.equip[slot]) ?? options[0];
     setGearDetail(null);
     equipGear(item, target);
+  };
+  /* «Надеть» из сундука: несколько гнёзд или выбор хвата — окно; иначе сразу в свободное гнездо. */
+  const requestEquip = (item: GearItem) => {
+    if (slotsForItem(item).length > 1 || canTwoHandGrip(item)) {
+      setEquipChoice(item.uid);
+      return;
+    }
+    equipFromChest(item);
   };
   /* Кнопки окна «Подробнее» для вещи из сундука: надеть (с выбором хвата) и продать. */
   const renderDetailActions = (item: GearItem) => {
@@ -1171,7 +1239,10 @@ export function Lobby({
     Icon: TAB_ICONS[t.id],
     count: t.badge ? t.badge(player) : 0,
     alert: t.alert ? t.alert(player) > 0 : false,
+    dot: t.dot ? t.dot(player) : null,
   }));
+  /* Свободное очко навыка: точка на подвкладке «Навыки». Очки есть только у выбранного архетипа. */
+  const skillNotice = !!player.archetype && skillPointsAvailable(player) > 0;
 
   return (
     <div className="relative min-h-screen w-full overflow-x-clip">
@@ -1232,6 +1303,14 @@ export function Lobby({
                         }`}
                       >
                         {section.label}
+                        {section.id === "skills" && skillNotice && (
+                          <span
+                            role="img"
+                            aria-label="Есть свободное очко навыка"
+                            title="Есть свободное очко навыка"
+                            className="ml-2 inline-block h-2 w-2 animate-pulse rounded-full bg-verd align-middle"
+                          />
+                        )}
                       </button>
                     ))}
                   </div>
@@ -1262,22 +1341,31 @@ export function Lobby({
                         className="p-4"
                         title={STAT_META[k].name}
                         right={
-                          <span className="font-mono text-sm tab text-flame">
-                            {String(v).padStart(2, "0")}
-                            <span className="text-mute">/10</span>
+                          <span className="flex items-center gap-3">
+                            <span className="font-mono text-sm tab text-flame">
+                              {String(v).padStart(2, "0")}
+                              <span className="text-mute">/10</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setStatInfo(k)}
+                              aria-label={`Описание: ${STAT_META[k].name}`}
+                              title="Описание характеристики"
+                              className="border border-line p-1 text-mute transition-colors hover:border-flame hover:text-flamehi"
+                            >
+                              <Info size={16} strokeWidth={1.7} aria-hidden />
+                            </button>
                           </span>
                         }
                       >
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div className="flex flex-wrap items-center gap-3">
                             <Pips value={v} tone={v >= 5 ? "#e0a33c" : "#ad7a2c"} />
-                            <span className="font-mono text-[0.84rem] text-mute">{STAT_META[k].gain}</span>
                           </div>
                           <Btn tone={can ? "flame" : "ghost"} disabled={!can} onClick={() => upgradeStat(k)}>
                             {v >= 10 ? "предел (10)" : `+1 (${cost} ${cost === 1 ? "очко" : "очка"})`}
                           </Btn>
                         </div>
-                        <p className="mt-2 text-[1rem] leading-snug text-parch/80">{STAT_META[k].blurb}</p>
 
                         <div className="mt-3 grid gap-2 sm:grid-cols-2">
                           {([5, 10] as const).map((tier) => {
@@ -1323,10 +1411,6 @@ export function Lobby({
                   <div className="space-y-4">
                     <div className="max-w-3xl">
                   <Panel className="p-4" title="Архетип" right={<span className="font-mono text-sm tab text-flame">{player.archetype ? ARCHETYPES[player.archetype].name : "не выбран"}</span>}>
-                    <p className="text-[1rem] leading-relaxed text-parch/85">
-                      На <b>5 уровне</b> выбери основной архетип. Усиления архетипов открываются на <b>рубежах характеристик 5 и 10</b>:
-                      там всегда два варианта — по одному на каждый архетип этой характеристики. Можно усилить свой путь или взять дополнительный для соседнего.
-                    </p>
                     {player.archetype ? (
                       <p className="mt-3 border border-flamedim/60 bg-flame/10 px-3 py-2 text-[0.98rem] leading-snug text-parch/85">
                         Основной путь: <b className="text-flamehi">{ARCHETYPES[player.archetype].name}</b>. {ARCHETYPES[player.archetype].desc}
@@ -1364,13 +1448,10 @@ export function Lobby({
                   <p className="mt-3 text-center text-[0.92rem] leading-relaxed text-mute">
                     Клик — подробности · двойной клик — снять · перетащите в сундук
                   </p>
-                  {onSetPouch && (
-                    <div className="mt-4">
-                      <PouchSlots player={player} onSet={onSetPouch} />
-                    </div>
-                  )}
                 </section>
 
+                <div className="min-w-0 space-y-4">
+                {onSetPouch && <PouchSlots player={player} onSet={onSetPouch} />}
                 <section
                   id="armory-inventory"
                   aria-label="Сундук"
@@ -1430,6 +1511,8 @@ export function Lobby({
                               selected={gearDetail?.uid === item.uid}
                               onInspect={() => inspectGear(item.uid)}
                               onEquip={() => equipFromChest(item)}
+                              onRequestEquip={() => requestEquip(item)}
+                              onSell={() => sellGear(item)}
                             />
                           ))}
                         </div>
@@ -1466,7 +1549,12 @@ export function Lobby({
                               const price = supplySellPrice(def);
                               return (
                                 <tr key={id} className="border-t border-line hover:bg-flame/5">
-                                  <td className="px-3 py-2 text-parch">{def?.name ?? id}</td>
+                                  <td className="px-3 py-2 text-parch">
+                                    <span className="flex items-center gap-2.5">
+                                      <ItemArt id={id} name={def?.name ?? id} size={40} />
+                                      {def?.name ?? id}
+                                    </span>
+                                  </td>
                                   <td className="px-3 py-2 text-right font-mono text-flame">×{n}</td>
                                   <td className="px-3 py-2 text-right font-mono text-verd">{price} зол.</td>
                                   <td className="px-3 py-2 text-right">
@@ -1490,6 +1578,7 @@ export function Lobby({
                     </>
                   )}
                 </section>
+                </div>
               </div>
             )}
 
@@ -2033,6 +2122,72 @@ export function Lobby({
             {toast}
           </div>
         </div>
+      )}
+
+      {equipChoice && (() => {
+        const item = player.armory.find((entry) => entry.uid === equipChoice);
+        if (!item) return null;
+        const options = slotsForItem(item);
+        const wearable = canWear(item, player);
+        const note = wearable ? undefined : wearRequirementNote(item, player);
+        const occupant = (slot: Slot) => {
+          const uid = player.equip[slot];
+          const worn = uid ? player.armory.find((entry) => entry.uid === uid) : undefined;
+          return worn ? scaledGearStats(worn).base.name : null;
+        };
+        const chooseTarget = (target: Slot, grip?: "one" | "two") => {
+          setEquipChoice(null);
+          setGearDetail(null);
+          equipGear(item, target, grip);
+        };
+        return (
+          <Modal
+            title="Куда надеть"
+            sub={scaledGearStats(item).base.name}
+            actions={<Btn tone="ghost" onClick={() => setEquipChoice(null)}>Отмена</Btn>}
+            onClose={() => setEquipChoice(null)}
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              {options.map((target) => {
+                const taken = occupant(target);
+                const twoGrip = canTwoHandGrip(item) && target === "mainHand";
+                return (
+                  <div key={target} className="border border-line bg-slab2 p-3">
+                    <div className="font-display text-[1rem] uppercase tracking-[0.08em] text-flamehi">{SLOT_META[target].name}</div>
+                    <div className="mt-1 font-mono text-[0.8rem] text-mute">{taken ? `сейчас: ${taken}` : "свободно"}</div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {twoGrip ? (
+                        <>
+                          <Btn tone="verd" disabled={!wearable} title={note ?? "Надеть одной рукой"} onClick={() => chooseTarget(target, "one")}>
+                            Одной рукой
+                          </Btn>
+                          <Btn tone="flame" disabled={!wearable} title={note ?? "Взять двумя руками: урон ×1.5, левая рука свободна"} onClick={() => chooseTarget(target, "two")}>
+                            Двумя руками
+                          </Btn>
+                        </>
+                      ) : (
+                        <Btn tone="verd" disabled={!wearable} title={note ?? `Надеть: ${SLOT_META[target].name}`} onClick={() => chooseTarget(target)}>
+                          Надеть
+                        </Btn>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Modal>
+        );
+      })()}
+
+      {statInfo && (
+        <Modal
+          title={STAT_META[statInfo].name}
+          sub={STAT_META[statInfo].gain}
+          actions={<Btn tone="ghost" onClick={() => setStatInfo(null)}>Закрыть</Btn>}
+          onClose={() => setStatInfo(null)}
+        >
+          <p className="text-[1rem] leading-relaxed text-parch/85">{STAT_META[statInfo].blurb}</p>
+        </Modal>
       )}
 
       {pick && (

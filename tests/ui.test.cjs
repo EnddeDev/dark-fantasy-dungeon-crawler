@@ -521,19 +521,19 @@ test("battle item menu hides special supplies and reagents", () => {
   assert.ok(html.includes("Действия"));
 });
 
-test("gear filter has one button per equipment slot, rings grouped", () => {
+test("chest filter: one icon button per equipment slot (aria-label), no search, no sort", () => {
   const player = makePlayer({ armory: [content.createGearItem({ baseId: "sword", wear: "worn", rarity: "common", identified: true })] });
   const html = renderToStaticMarkup(React.createElement(Lobby, {
     player, controller: {}, shopStock: [], onStart: noop, best: 1, unlockedFloor: 2, initialTab: "armory",
   }));
   const group = html.slice(html.indexOf('aria-label="Слот снаряжения"'));
   assert.ok(group.length > 0, "группа фильтра слотов есть");
-  const buttonFor = (label) => new RegExp(`<button[^>]*>(?:<svg[\\s\\S]*?<\\/svg>)?\\s*${label}\\s*<\\/button>`).test(group);
   for (const label of ["Все", "Правая рука", "Левая рука", "Шлем", "Тело", "Наручи", "Ботинки", "Кольца", "Оберег"]) {
-    assert.ok(buttonFor(label), `кнопка «${label}» есть`);
+    assert.ok(group.includes(`aria-label="${label}"`), `кнопка-иконка «${label}» есть`);
   }
-  assert.ok(!buttonFor("Броня"), "общей кнопки «Броня» больше нет");
-  assert.ok(!buttonFor("Руки"), "общей кнопки «Руки» больше нет");
+  assert.ok(!html.includes('aria-label="Поиск снаряжения"'), "поиска в сундуке нет");
+  assert.ok(!html.includes('aria-label="Сортировка"'), "сортировки в сундуке нет");
+  assert.ok(!html.includes(">Броня<") && !html.includes(">Руки<"), "общих кнопок «Броня» и «Руки» нет");
 });
 
 test("shop supplies filter by level and reagents open sorted by level with category filters", () => {
@@ -560,7 +560,7 @@ test("shop supplies filter by level and reagents open sorted by level with categ
   assert.ok(firstPlant > 0 && firstPlant < lastStone, "растения уровня 1 стоят в начале списка, до камней уровня 5");
 });
 
-test("shop gear: type filter light/medium/heavy next to slots, no sort control; armory keeps sort", () => {
+test("shop gear: type filter light/medium/heavy next to slots, no sort control; armory has no sort either", () => {
   const player = makePlayer({ gold: 5000, shopLevel: 5, armory: [] });
   const shop = renderToStaticMarkup(React.createElement(Lobby, {
     player, controller: {}, shopStock: [], onStart: noop, best: 1, unlockedFloor: 2, initialTab: "shop", initialShopSection: "equipment",
@@ -575,7 +575,7 @@ test("shop gear: type filter light/medium/heavy next to slots, no sort control; 
   const armory = renderToStaticMarkup(React.createElement(Lobby, {
     player, controller: {}, shopStock: [], onStart: noop, best: 1, unlockedFloor: 2, initialTab: "armory",
   }));
-  assert.ok(armory.includes('aria-label="Сортировка"'), "в арсенале сортировка осталась");
+  assert.ok(!armory.includes('aria-label="Сортировка"'), "в арсенале сортировки нет");
   assert.ok(!armory.includes('aria-label="Тип брони"'), "тип брони фильтрует только магазин");
 });
 
@@ -644,7 +644,7 @@ test("сумка с зельями лежит в арсенале под эки�
   assert.ok(!floor.includes('aria-label="Сумка с зельями"'), "в выборе яруса сумки нет");
 });
 
-test("battle attacks: short names only; stamina and miss chance live in the hover title", () => {
+test("battle attacks: short names only; damage, stamina and miss chance live in the hover popup", () => {
   const b = freshBattle(makePlayer(), 3, false);
   const html = renderToStaticMarkup(React.createElement(BattleView, {
     battle: b, onAct: noop, onEnemyTurn: noop, onContinue: noop,
@@ -653,7 +653,15 @@ test("battle attacks: short names only; stamina and miss chance live in the hove
     assert.ok(html.includes(`>${name}</button>`), `кнопка «${name}» без лишнего текста`);
   }
   assert.ok(!/>[^<]*·\s*\d+<\/span>/.test(html) && !html.includes(">попасть "), "внутри кнопок атак нет текста про выносливость и шанс");
-  assert.match(html, /title="Выносливость: \d+\. Концентрация [+−]?\d+\. Шанс промахнуться: \d+%"/, "подсказка показывает выносливость, концентрацию и промах");
+  for (const name of ["Мощный", "Обычный", "Точный"]) {
+    const end = html.indexOf(`>${name}</button>`);
+    const start = html.lastIndexOf("<button", end);
+    assert.ok(!html.slice(start, end).includes("title="), `у кнопки «${name}» нет нативной подсказки: её заменяет всплывающее окно`);
+  }
+  const src = fs.readFileSync("src/components/BattleView.tsx", "utf8");
+  for (const text of ["Урон за атаку", "Выносливость: {cost}", "Шанс промахнуться: {miss}%", "heroAttackDamage(b, kind)"]) {
+    assert.ok(src.includes(text), `всплывающее окно атаки содержит: ${text}`);
+  }
 });
 
 test("карточка эффекта: короткое значение — проценты или число без процентов", () => {

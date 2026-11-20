@@ -12,6 +12,7 @@ import { SLOT_META } from "../game/types";
 import { ItemArt } from "./ItemArt";
 import { PlayTopBar } from "./PlayTopBar";
 import { BagModal, QuestsModal } from "./PlayModals";
+import { PouchSlots } from "./PouchSlots";
 import type { LobbyAccount } from "./LobbyChrome";
 import { GearNote } from "./GearNote";
 
@@ -162,6 +163,7 @@ export function Dungeon({
     <div className="biome-surface flex min-h-screen flex-col bg-soot" data-biome={biome} style={biomeStyle(biome)}>
       <PlayTopBar
         floor={run.floor}
+        biome={biome}
         activeQuests={activeQuests}
         onOpenQuests={() => setQuestsOpen(true)}
         onOpenBag={() => setBagOpen(true)}
@@ -642,6 +644,7 @@ export function Dungeon({
 
         {/* СНАРЯЖЕНИЕ + УПРАВЛЕНИЕ + ЖУРНАЛ */}
         <div className="flex w-full max-w-[600px] flex-col gap-4">
+          {onSetPouch && <PouchSlots player={player} onSet={onSetPouch} />}
           <div className="flex items-start gap-5">
             <div className="grid shrink-0 grid-cols-3 gap-1.5">
               {(

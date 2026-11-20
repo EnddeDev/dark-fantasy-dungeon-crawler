@@ -9,6 +9,8 @@ export type LobbyNavItem<T extends string> = {
   Icon: LucideIcon;
   count: number;
   alert: boolean;
+  /** Точка без числа с подсказкой; null — точки нет. */
+  dot?: string | null;
 };
 
 /** Кнопка входа в аккаунт (или сообщества, если вход выполнен). */
@@ -116,6 +118,14 @@ export function LobbyNav<T extends string>({
               <span className="min-w-0 flex-1 truncate">{item.label}</span>
               {item.count > 0 && (
                 <span className="border border-flame bg-flame/20 px-1.5 py-0.5 font-mono text-[0.78rem] text-flamehi">{item.count}</span>
+              )}
+              {item.dot && (
+                <span
+                  role="img"
+                  aria-label={item.dot}
+                  title={item.dot}
+                  className="inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-verd"
+                />
               )}
               {item.alert && (
                 <span

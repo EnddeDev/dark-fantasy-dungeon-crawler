@@ -1,7 +1,7 @@
 import { SLOT_META, SLOT_ORDER, type GearItem, type Player, type Slot } from "../game/types";
-import { canWear, gearClassLabel, gearStatReqLabel, RARITY_META, scaledGearStats, slotsForItem } from "../game/content";
+import { canWear, gearClassLabel, gearSellPrice, gearStatReqLabel, RARITY_META, scaledGearStats, slotsForItem, wearRequirementNote } from "../game/content";
 import { ItemArt } from "./ItemArt";
-import { RARITY_STYLE, RARITY_TEXT, Tag } from "./ui";
+import { Btn, RARITY_STYLE, RARITY_TEXT, Tag } from "./ui";
 
 /** Центры гнёзд в процентах от картины «Витрувианский человек» (public/images/armory/vitruvian.jpg). */
 export const FIGURE_SLOT_POS: Record<Slot, { x: number; y: number }> = {
@@ -116,54 +116,77 @@ export function EquipmentFigure({
   );
 }
 
-/** Плитка вещи в сундуке: картинка, название, статус. Перетаскивается в гнездо. */
+/** Плитка вещи в сундуке: картинка, название, статус. Перетаскивается в гнездо. Кнопки «Надеть» и «Продать» — отдельной строкой. */
 export function GearTile({
   item,
   player,
   selected = false,
   onInspect,
   onEquip,
+  onRequestEquip,
+  onSell,
 }: {
   item: GearItem;
   player: Player;
   selected?: boolean;
   onInspect: () => void;
+  /** Двойной клик: надеть в первое свободное подходящее гнездо. */
   onEquip: () => void;
+  /** Кнопка «Надеть»: окно выбора гнезда или сразу. */
+  onRequestEquip: () => void;
+  onSell: () => void;
 }) {
   const st = scaledGearStats(item);
   const wearable = canWear(item, player);
   const slots = slotsForItem(item);
+  const sell = gearSellPrice(item);
   return (
-    <button
-      type="button"
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.setData("text/plain", `${ITEM_DRAG_PREFIX}${item.uid}`);
-        e.dataTransfer.effectAllowed = "move";
-      }}
-      onClick={onInspect}
-      onDoubleClick={() => (wearable ? onEquip() : onInspect())}
-      title={`${st.base.name}: клик — подробности, двойной клик — надеть, перетащите на гнездо`}
-      aria-label={`${st.base.name}, ${gearClassLabel(item)}, ур. ${item.level ?? 1}`}
-      className={`flex min-w-0 flex-col items-center gap-1.5 border bg-slab/80 p-2 text-center transition-colors hover:bg-slab2/80 ${
-        selected ? "border-flame" : "border-line"
-      }`}
-      style={item.identified ? RARITY_STYLE[item.rarity] : undefined}
-    >
-      <ItemArt id={item.baseId} name={st.base.name} size={56} rarity={item.identified ? item.rarity : undefined} />
-      <span className="line-clamp-2 min-h-[2.4em] w-full font-display text-[0.9rem] uppercase leading-tight tracking-[0.04em] text-flamehi">
-        {st.base.name}
-      </span>
-      <span className="flex flex-wrap items-center justify-center gap-1">
-        <span className="font-mono text-[0.76rem] text-mute">{slots.map((s) => SLOT_META[s].short).join(" / ")}</span>
-        {item.identified ? (
-          <span className={`font-mono text-[0.76rem] ${RARITY_TEXT[item.rarity]}`}>{RARITY_META[item.rarity].name}</span>
-        ) : (
-          <Tag tone="flame">Не исследовано</Tag>
-        )}
-      </span>
-      <span className={`font-mono text-[0.74rem] ${wearable ? "text-mute" : "text-rubric"}`}>{gearStatReqLabel(item)}</span>
-    </button>
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <button
+        type="button"
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.setData("text/plain", `${ITEM_DRAG_PREFIX}${item.uid}`);
+          e.dataTransfer.effectAllowed = "move";
+        }}
+        onClick={onInspect}
+        onDoubleClick={() => (wearable ? onEquip() : onInspect())}
+        title={`${st.base.name}: клик — подробности, двойной клик — надеть, перетащите на гнездо`}
+        aria-label={`${st.base.name}, ${gearClassLabel(item)}, ур. ${item.level ?? 1}`}
+        className={`flex min-w-0 flex-col items-center gap-1.5 border bg-slab/80 p-2 text-center transition-colors hover:bg-slab2/80 ${
+          selected ? "border-flame" : "border-line"
+        }`}
+        style={item.identified ? RARITY_STYLE[item.rarity] : undefined}
+      >
+        <ItemArt id={item.baseId} name={st.base.name} size={56} rarity={item.identified ? item.rarity : undefined} />
+        <span className="line-clamp-2 min-h-[2.4em] w-full font-display text-[0.9rem] uppercase leading-tight tracking-[0.04em] text-flamehi">
+          {st.base.name}
+        </span>
+        <span className="flex flex-wrap items-center justify-center gap-1">
+          <span className="font-mono text-[0.76rem] text-mute">{slots.map((s) => SLOT_META[s].short).join(" / ")}</span>
+          {item.identified ? (
+            <span className={`font-mono text-[0.76rem] ${RARITY_TEXT[item.rarity]}`}>{RARITY_META[item.rarity].name}</span>
+          ) : (
+            <Tag tone="flame">Не исследовано</Tag>
+          )}
+        </span>
+        <span className={`font-mono text-[0.74rem] ${wearable ? "text-mute" : "text-rubric"}`}>{gearStatReqLabel(item)}</span>
+      </button>
+      <div className="grid grid-cols-2 gap-1.5">
+        <Btn
+          tone="verd"
+          disabled={!wearable}
+          title={wearable ? "Надеть" : wearRequirementNote(item, player)}
+          className="px-2 py-1.5 text-[0.86rem]"
+          onClick={onRequestEquip}
+        >
+          Надеть
+        </Btn>
+        <Btn tone="danger" title={`Продать за ${sell} зол.`} className="px-2 py-1.5 text-[0.86rem]" onClick={onSell}>
+          Продать · {sell}
+        </Btn>
+      </div>
+    </div>
   );
 }
 
