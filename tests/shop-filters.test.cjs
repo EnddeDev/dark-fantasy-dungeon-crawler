@@ -120,3 +120,31 @@ test("тип брони: лёгкая, средняя и тяжёлая; вме�
     assert.equal(content.gearClassFor(g), "medium");
   }
 });
+
+test("зелья: каждый предмет группы «Зелья» попадает ровно в один вид; фильтр режет список", () => {
+  const potionGroup = supplies.filter((i) => i.kind === "potion");
+  assert.ok(potionGroup.length > 0);
+  const kinds = { potion: 0, elixir: 0, oil: 0 };
+  for (const def of potionGroup) {
+    const kind = shop.potionKindOf(def);
+    assert.ok(kind in kinds, `${def.id}: неизвестный вид ${kind}`);
+    kinds[kind]++;
+    assert.equal(shop.potionMatches(def, kind), true, `${def.id} проходит свой фильтр`);
+    for (const other of ["potion", "elixir", "oil"]) {
+      if (other !== kind) assert.equal(shop.potionMatches(def, other), false, `${def.id} не в «${other}»`);
+    }
+  }
+  assert.ok(kinds.potion > 0 && kinds.elixir > 0 && kinds.oil > 0, "все три вида представлены");
+  assert.equal(kinds.potion + kinds.elixir + kinds.oil, potionGroup.length);
+
+  for (const def of potionGroup) {
+    if (def.use?.type === "oil") assert.equal(shop.potionKindOf(def), "oil", `${def.id} — масло по действию`);
+    if (def.id.startsWith("elixir_")) assert.equal(shop.potionKindOf(def), "elixir", `${def.id} — эликсир`);
+  }
+
+  assert.deepEqual(shop.POTION_FILTERS.map((f) => f.id), ["all", "potion", "elixir", "oil"]);
+  assert.equal(potionGroup.filter((d) => shop.potionMatches(d, "all")).length, potionGroup.length, "«Все» не режет");
+  const oils = potionGroup.filter((d) => shop.potionMatches(d, "oil"));
+  assert.ok(oils.every((d) => d.use?.type === "oil"), "в «Масло» только масла");
+  assert.ok(oils.some((d) => d.id === "oil_fire"), "масло огня в фильтре масла");
+});

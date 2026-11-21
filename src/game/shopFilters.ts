@@ -29,6 +29,31 @@ export function supplyLevelOptions(items: ItemDef[]): number[] {
   return [...new Set(items.map((i) => i.level ?? 1))].sort((a, b) => a - b);
 }
 
+/**
+ * Фильтр группы «Зелья»: all — все; potion — зелья (лечение, выносливость, противоядия и т. д.);
+ * elixir — эликсиры (id начинаются с elixir_); oil — масла (действие oil).
+ */
+export type PotionFilter = "all" | "potion" | "elixir" | "oil";
+
+export const POTION_FILTERS: { id: PotionFilter; label: string }[] = [
+  { id: "all", label: "Все" },
+  { id: "potion", label: "Зелья" },
+  { id: "elixir", label: "Эликсиры" },
+  { id: "oil", label: "Масло" },
+];
+
+/** Вид предмета группы «Зелья»: масло определяется действием, эликсир — идентификатором, остальное — зелье. */
+export function potionKindOf(def: ItemDef): Exclude<PotionFilter, "all"> {
+  if (def.use?.type === "oil") return "oil";
+  if (def.id.startsWith("elixir_")) return "elixir";
+  return "potion";
+}
+
+/** Проходит ли предмет фильтр группы «Зелья». */
+export function potionMatches(def: ItemDef, filter: PotionFilter): boolean {
+  return filter === "all" || potionKindOf(def) === filter;
+}
+
 /** Реагенты выбранной категории в нужном порядке; по умолчанию — по уровню. */
 export function shopReagentList(items: ItemDef[], category: ReagentFilter, sort: ReagentSort): ItemDef[] {
   const byLevel = (a: ItemDef, b: ItemDef) => (a.level ?? 1) - (b.level ?? 1);

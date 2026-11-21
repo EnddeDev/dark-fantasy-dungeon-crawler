@@ -19,15 +19,28 @@ const CATS: { id: PouchCategory; label: string }[] = [
 export function PouchSlots({
   player,
   onSet,
+  shop,
 }: {
   player: Player;
   /** Возвращает текст ошибки или null. */
   onSet: (index: number, id: string | null) => string | null;
+  /**
+   * Докупка по одной единице прямо из сумки — только в лобби, где есть лавка.
+   * price — цена на прилавке (null — не продаётся), buy — покупка одной единицы.
+   */
+  shop?: {
+    price: (id: string) => number | null;
+    canBuy: (id: string) => boolean;
+    buy: (id: string) => string | null;
+  };
 }) {
   const pouch = pouchOf(player);
   const [picker, setPicker] = useState<number | null>(null);
   const [cat, setCat] = useState<PouchCategory>("potion");
   const [error, setError] = useState<string | null>(null);
+  const [buyNote, setBuyNote] = useState<string | null>(null);
+  /* Выбранные в сумке предметы без повторов, в порядке слотов: по ним строится ряд докупки. */
+  const slotted = [...new Set(pouch.filter((id): id is string => !!id))];
 
   const openPicker = (index: number) => {
     setCat(pouchCategoryOf(pouch[index]) ?? "potion");
@@ -53,6 +66,29 @@ export function PouchSlots({
         <span className="font-mono text-[0.76rem] text-mute">зелья, свитки, расходники</span>
       </div>
       <p className="mt-1 text-xs text-mute">В бою предметы из сумки не тратят выносливость. Менять можно только вне боя.</p>
+      {shop && slotted.length > 0 && (
+        <div className="mt-2 border-t border-line/70 pt-2" aria-label="Докупить в сумку">
+          <span className="block font-mono text-[0.76rem] text-mute">Докупить по одной:</span>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {slotted.map((id) => {
+              const price = shop.price(id);
+              if (price === null) return null;
+              return (
+                <Btn
+                  key={id}
+                  tone="ghost"
+                  disabled={!shop.canBuy(id)}
+                  title={shop.canBuy(id) ? `Купить ещё одну единицу: ${ITEMS[id]?.name ?? id}` : "Не хватает золота или нужна лавка выше"}
+                  onClick={() => setBuyNote(shop.buy(id) ?? "Не удалось купить: проверь золото и уровень лавки.")}
+                >
+                  {ITEMS[id]?.name ?? id} +1 · {price} зол.
+                </Btn>
+              );
+            })}
+          </div>
+          {buyNote && <p className="mt-1.5 text-xs text-flamehi">{buyNote}</p>}
+        </div>
+      )}
       <div className="mt-2 grid grid-cols-5 gap-1.5">
         {pouch.map((id, i) => {
           const def = id ? ITEMS[id] : undefined;

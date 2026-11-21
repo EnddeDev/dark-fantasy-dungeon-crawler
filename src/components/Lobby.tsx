@@ -69,9 +69,12 @@ import type { ArchetypeId } from "../game/archetypes";
 import { canChooseStatMilestone, chosenStatMilestone, statMilestoneOptions, type StatMilestoneTier } from "../game/statMilestones";
 import { SHOP_MAX_LEVEL, shopRarityTable, shopUpgradeCost, shopWearTable } from "../game/world";
 import {
+  POTION_FILTERS,
+  potionMatches,
   reagentCategoryOf,
   shopReagentList,
   shopSupplyList,
+  type PotionFilter,
   slotFilterOf,
   supplyLevelOptions,
   type ReagentFilter,
@@ -94,7 +97,7 @@ import { GearNote } from "./GearNote";
 import { GearCard } from "./GearCard";
 import { QuestsTab } from "./Quests";
 import { BuyMissingReagents } from "./ReagentBuy";
-import { availableQuestCount, couponPreview, logOf, mercenaryPrice, readyQuestCount, recipeMinTrust, stationRecipeList, trustOf } from "../game/quests";
+import { availableQuestCount, couponCharge, couponPreview, logOf, mercenaryPrice, readyQuestCount, recipeMinTrust, stationRecipeList, trustOf } from "../game/quests";
 import type { CraftStation } from "../game/content";
 import { TRUST_MAX, type QuestGiverId } from "../game/types";
 import { Btn, Modal, Panel, Pips, Tag } from "./ui";
@@ -416,6 +419,8 @@ export function Lobby({
   const [trainSection, setTrainSection] = useState<TrainSection>("stats");
   const [shopSection, setShopSection] = useState<ShopSection>(initialShopSection);
   const [supplyGroup, setSupplyGroup] = useState<SupplyGroup>("potion");
+  /* Вид зелий в группе «Зелья»: зелья, эликсиры или масло. */
+  const [potionFilter, setPotionFilter] = useState<PotionFilter>("all");
   /* Сумка арсенала: припасы и реагенты в двух вкладках одной таблицы. */
   /** Вкладки сундука: снаряжение, припасы и реагенты из сумки. */
   const [chestTab, setChestTab] = useState<"gear" | "supplies" | "reagents">("gear");
@@ -522,7 +527,11 @@ export function Lobby({
 
   const shopSupplies = shopSupplyList(
     Object.values(ITEMS).filter(
-      (i) => (i.price ?? 0) > 0 && i.kind !== "reagent" && groupOfKind(i.kind) === supplyGroup,
+      (i) =>
+        (i.price ?? 0) > 0 &&
+        i.kind !== "reagent" &&
+        groupOfKind(i.kind) === supplyGroup &&
+        (supplyGroup !== "potion" || potionMatches(i, potionFilter)),
     ),
     supplyLevelFilter,
   );
@@ -1515,7 +1524,27 @@ export function Lobby({
                 </section>
 
                 <div className="min-w-0 space-y-4">
-                {onSetPouch && <PouchSlots player={player} onSet={onSetPouch} />}
+                {onSetPouch && (
+                  <PouchSlots
+                    player={player}
+                    onSet={onSetPouch}
+                    shop={{
+                      price: (id) => {
+                        const def = ITEMS[id];
+                        return def && (def.price ?? 0) > 0 ? couponPreview(player, def.price ?? 0) : null;
+                      },
+                      canBuy: (id) => {
+                        const def = ITEMS[id];
+                        if (!def || (def.price ?? 0) <= 0) return false;
+                        return player.gold >= couponCharge(player, def.price ?? 0).cost && canBuySupply(id, player.shopLevel);
+                      },
+                      buy: (id) => {
+                        const def = ITEMS[id];
+                        return def ? controller.buyConsumable(def) : null;
+                      },
+                    }}
+                  />
+                )}
                 <section
                   id="armory-inventory"
                   aria-label="Сундук"
@@ -1772,6 +1801,24 @@ export function Lobby({
                         Наведи на название — описание действия и длительности
                       </span>
                     </div>
+                    {supplyGroup === "potion" && (
+                      <div className="mb-3 flex flex-wrap items-center gap-1.5" role="group" aria-label="Вид зелья">
+                        <span className="mr-1 font-mono text-[0.86rem] text-mute">Вид:</span>
+                        {POTION_FILTERS.map((f) => (
+                          <button
+                            key={f.id}
+                            type="button"
+                            aria-pressed={potionFilter === f.id}
+                            onClick={() => setPotionFilter(f.id)}
+                            className={`border px-2.5 py-1 font-mono text-[0.92rem] transition-colors ${
+                              potionFilter === f.id ? "border-flamedim bg-flame/15 text-flamehi" : "border-line text-mute hover:text-parch"
+                            }`}
+                          >
+                            {f.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <div className="mb-3 flex flex-wrap items-center gap-1.5" role="group" aria-label="Уровень припаса">
                       <span className="mr-1 font-mono text-[0.86rem] text-mute">Уровень:</span>
                       {[0, ...supplyLevels].map((lvl) => (

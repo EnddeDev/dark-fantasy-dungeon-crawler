@@ -50,7 +50,7 @@ import { FoePortrait } from "./FoeArt";
 import { ItemArt } from "./ItemArt";
 import { SummaryRow, type SummaryRowData } from "./SummaryRow";
 import type { MetricKey } from "./MetricBadge";
-import { Btn, Meter, Tag } from "./ui";
+import { Btn, Meter, Modal, Tag } from "./ui";
 import { BiomeRule, biomeStyle } from "./BiomeLabel";
 import { isBattleCurse } from "../game/traps";
 import { statDamage } from "../game/statFormulas";
@@ -425,6 +425,8 @@ export function BattleView({
   const [codex, setCodex] = useState(false);
   /* Шапка как на карте: задания открываются модалкой поверх боя. Рюкзака в бою нет. */
   const [questsOpen, setQuestsOpen] = useState(false);
+  /* Подтверждение побега: без «Да» бой продолжается. */
+  const [fleeAsk, setFleeAsk] = useState(false);
   /* Табы в сводках: характеристики или эффекты — отдельно для героя и монстра. */
   const [heroTab, setHeroTab] = useState<SummaryTab>("stats");
   const [foeTab, setFoeTab] = useState<SummaryTab>("stats");
@@ -927,10 +929,30 @@ export function BattleView({
             )}
             {menu === "main" && (
               <div className="mt-2">
-                <Btn className="w-full" tone="danger" disabled={!myTurn} onClick={() => act({ type: "flee" })}>
+                <Btn className="w-full" tone="danger" disabled={!myTurn} onClick={() => setFleeAsk(true)}>
                   Сбежать
                 </Btn>
               </div>
+            )}
+            {fleeAsk && myTurn && (
+              <Modal
+                title="Сбежать из боя?"
+                sub="Побег завершает бой."
+                onClose={() => setFleeAsk(false)}
+                actions={
+                  <>
+                    <Btn tone="danger" onClick={() => { setFleeAsk(false); act({ type: "flee" }); }}>
+                      Да, сбежать
+                    </Btn>
+                    <Btn onClick={() => setFleeAsk(false)}>Остаться в бою</Btn>
+                  </>
+                }
+              >
+                <p className="text-sm leading-relaxed text-parch/90">
+                  Из найденного за вылазку уйдёт {Math.round(b.fleeRate * 100)}%: часть золота, припасов и снаряжения.
+                  Сумка и спец-предметы сохранятся.
+                </p>
+              </Modal>
             )}
 
             {/* СУМКА: пять слотов зелий, свитков и расходников прямо в действиях. Предмет из сумки не тратит выносливость. */}
