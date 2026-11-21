@@ -324,7 +324,7 @@ export const BASE_HP = 35;
 /** Множитель здоровья рода R: при спавне выбирается случайное значение из диапазона. */
 export const RACE_HP_RANGE: Record<MonsterRace, [number, number]> = {
   undead: [0.75, 1.25],
-  construct: [1.75, 2.25],
+  construct: [1.25, 1.75],
   vampire: [1, 1.25],
   ghost: [0.7, 1],
   beast: [1.25, 1.75],
