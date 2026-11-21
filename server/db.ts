@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { Player } from "../src/game/types";
+import type { Player, Run } from "../src/game/types";
 
 /**
  * Хранилище игры: обычная SQLite-база в файле.
@@ -158,6 +158,8 @@ export interface StoredProfile {
   userId: string;
   login: string;
   player: Player;
+  /** Карта похода, если игрок вышел на карте; null — герой в лобби. */
+  run: Run | null;
   bestFloor: number;
   unlockedFloor: number;
   updatedAt: number;
@@ -170,11 +172,12 @@ export function readProfile(db: Db, userId: string): StoredProfile | null {
   );
   if (!row) return null;
   try {
-    const save = JSON.parse(row.save) as { player: Player; unlockedFloor?: number };
+    const save = JSON.parse(row.save) as { player: Player; unlockedFloor?: number; run?: Run | null };
     return {
       userId: row.user_id,
       login: row.login,
       player: save.player,
+      run: save.run ?? null,
       bestFloor: row.best_floor,
       unlockedFloor: Math.max(1, save.unlockedFloor ?? row.best_floor ?? 1),
       updatedAt: row.updated_at,
@@ -184,10 +187,15 @@ export function readProfile(db: Db, userId: string): StoredProfile | null {
   }
 }
 
+/**
+ * Запись профиля. Без поля `run` карта похода сохраняется прежней: так пишут рынок, обмены и дуэли,
+ * которые меняют только героя и не должны стирать карту игрока.
+ */
 export function writeProfile(
   db: Db,
-  profile: { userId: string; player: Player; bestFloor: number; unlockedFloor: number },
+  profile: { userId: string; player: Player; bestFloor: number; unlockedFloor: number; run?: Run | null },
 ): void {
+  const run = profile.run !== undefined ? profile.run : readProfile(db, profile.userId)?.run ?? null;
   db.run(
     `INSERT INTO profiles (user_id, name, level, best_floor, gold, save, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -199,7 +207,7 @@ export function writeProfile(
     profile.player.level,
     profile.bestFloor,
     profile.player.gold,
-    JSON.stringify({ player: profile.player, unlockedFloor: profile.unlockedFloor }),
+    JSON.stringify({ player: profile.player, unlockedFloor: profile.unlockedFloor, run }),
     Date.now(),
   );
 }

@@ -8,7 +8,7 @@ import { GEAR_BASES, gearClassLabel, gearKindFor } from "../src/game/content";
 import { GEAR_EFFECTS, effectDetail } from "../src/game/gearEffects";
 import { PlayerFactory } from "../src/model/PlayerFactory";
 import { createDuel, duelAction, duelActionError, duelTimeout, DUEL_TURN_MS, normalizeDuel, type DuelAction, type DuelState } from "../src/game/duel";
-import { sanitizePlayer } from "./save";
+import { sanitizePlayer, sanitizeRun } from "./save";
 import { notify, markRead, listNotifications } from "./notify";
 import { publish, publishAll } from "./events";
 import { portraitVersion } from "./portrait";
@@ -170,14 +170,19 @@ function saveProfile(ctx: Ctx, db: Db) {
      приводится к допустимому виду на сервере: неизвестные предметы, чужие
      uid в слотах и характеристики сверх очков уровня отклоняются. */
   const player = sanitizePlayer(field<Player>(ctx.body, "player"), unlockedFloor);
-  writeProfile(db, { userId: user.id, player, bestFloor, unlockedFloor });
+  /* Карта похода: присылается, только если герой вышел на карте; в лобби поле пустое и карта снимается. */
+  const runRaw = field<unknown>(ctx.body, "run");
+  const run = runRaw === undefined || runRaw === null ? null : sanitizeRun(runRaw);
+  writeProfile(db, { userId: user.id, player, bestFloor, unlockedFloor, run });
   return { profile: publicProfile(profileOf(db, user.id), db) };
 }
 
 function me(ctx: Ctx, db: Db) {
   const user = requireUser(db, ctx);
   const profile = profileOf(db, user.id);
-  return { profile: { ...publicProfile(profile, db), player: profile.player, portrait: portraitVersion(db, user.id) } };
+  return {
+    profile: { ...publicProfile(profile, db), player: profile.player, run: profile.run, portrait: portraitVersion(db, user.id) },
+  };
 }
 
 /* ─────────────────────────── игроки, друзья, чат ─────────────────────────── */

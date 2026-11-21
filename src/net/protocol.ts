@@ -1,5 +1,5 @@
 import type { DuelState } from "../game/duel";
-import type { GearItem, Player } from "../game/types";
+import type { GearItem, Player, Run } from "../game/types";
 
 export interface OnlineProfile {
   id: string;
@@ -14,6 +14,8 @@ export interface OnlineProfile {
   /** Версия портрета (время загрузки) или null, если портрета нет. */
   portrait?: number | null;
   player?: Player;
+  /** Карта похода своего героя; null — герой в лобби. Чужие профили поля не содержат. */
+  run?: Run | null;
 }
 
 /** Отношение к игроку: друг, входящая или исходящая заявка, либо ничего. */

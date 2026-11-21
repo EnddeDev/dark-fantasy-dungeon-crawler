@@ -582,3 +582,173 @@ test("server: профиль: опознанный предмет отдаётс
     assert.equal(amuletText.includes(`"${hidden}"`), false, `поле ${hidden} неопознанного не отдаётся`);
   }
 });
+
+/* ───────────── карта похода и полный герой в базе ───────────── */
+
+function mapRun(extra = {}) {
+  const size = 8;
+  const walls = (rows, cols) => Array.from({ length: rows }, () => Array(cols).fill(false));
+  return {
+    floor: 3,
+    maze: {
+      size,
+      h: walls(size + 1, size),
+      v: walls(size, size + 1),
+      start: { x: 0, y: 0 },
+      stairs: { x: 7, y: 7 },
+      boss: { x: 6, y: 6 },
+      bossDefeated: false,
+      doors: [],
+      openedDoors: [],
+      chests: [5],
+      openedChests: [],
+      keys: [],
+      takenKeys: [],
+      events: [],
+      usedEvents: [],
+      monsters: [20, 44],
+      traps: [33],
+      rooms: [{ x: 1, y: 1, w: 2, h: 2, kind: "hall", name: "Зал", pillars: [] }],
+      dist: Array.from({ length: size }, () => Array(size).fill(-1)),
+    },
+    pos: { x: 3, y: 2 },
+    prevPos: { x: 2, y: 2 },
+    seen: { "0,0": true, "3,2": true },
+    gold: 40,
+    loot: ["potion_s"],
+    gearLoot: [gear("r1")],
+    keys: 0,
+    steps: 12,
+    log: ["Спуск на этаж 3.", "Шаг вправо."],
+    torchTurns: 5,
+    mapRevealed: false,
+    burning: 0,
+    battleCell: null,
+    clearedMonsters: [],
+    revealedTraps: [],
+    revealedEvents: [],
+    sprungTraps: [],
+    questCarry: [],
+    ...extra,
+  };
+}
+
+test("server: герой и карта похода сохраняются целиком и возвращаются как были", async () => {
+  const hero = await account("map_resume");
+  const base = (await api("GET", "/me", hero.token)).data.profile.player;
+  const player = {
+    ...base,
+    level: 4,
+    stats: { str: 3, agi: 2, int: 2 },
+    statPoints: 0,
+    gold: 300,
+    bag: { potion_s: 2 },
+    pouch: ["potion_s", null, null, null, null],
+    armory: [
+      { ...gear("w1"), baseId: "sword", dmgMult: 1.25 },
+      { ...gear("a1"), baseId: "sword", armorQuality: 0.6, armorSkill: "heavy_wall" },
+    ],
+    equip: { ...base.equip, mainHand: "w1" },
+    statuses: { wound: 0, curse: 0, poison: 0, woundTick: 2, burnTick: 3 },
+  };
+  const run = mapRun();
+  const put = await api("PUT", "/me", hero.token, { player, unlockedFloor: 3, bestFloor: 3, run });
+  assert.equal(put.status, 200, JSON.stringify(put.data));
+
+  const me = await api("GET", "/me", hero.token);
+  const saved = me.data.profile.player;
+  assert.deepEqual(saved.pouch, ["potion_s", null, null, null, null], "сумка сохраняется");
+  assert.equal(saved.armory[0].dmgMult, 1.25, "множитель урона оружия сохраняется");
+  assert.equal(saved.armory[1].armorQuality, 0.6, "качество брони сохраняется");
+  assert.equal(saved.armory[1].armorSkill, "heavy_wall", "приём брони сохраняется");
+  assert.equal(saved.statuses.woundTick, 2, "тик эффекта между боями сохраняется");
+  assert.equal(saved.statuses.burnTick, 3);
+  assert.equal(saved.level, 4);
+
+  const resumed = me.data.profile.run;
+  assert.ok(resumed, "карта похода возвращается");
+  assert.deepEqual(resumed.pos, { x: 3, y: 2 }, "клетка та же");
+  assert.equal(resumed.floor, 3);
+  assert.equal(resumed.gold, 40);
+  assert.equal(resumed.steps, 12);
+  assert.equal(resumed.torchTurns, 5);
+  assert.deepEqual(resumed.loot, ["potion_s"]);
+  assert.equal(resumed.gearLoot[0].uid, "r1");
+  assert.deepEqual(resumed.log, run.log);
+  assert.deepEqual(resumed.maze.monsters, [20, 44], "монстры на тех же клетках");
+  assert.deepEqual(resumed.maze.chests, [5]);
+  assert.equal(resumed.maze.h.length, 9, "стены карты на месте");
+  assert.deepEqual(resumed.seen, { "0,0": true, "3,2": true });
+
+  const leftForLobby = await api("PUT", "/me", hero.token, { player: saved, unlockedFloor: 3, bestFloor: 3, run: null });
+  assert.equal(leftForLobby.status, 200);
+  assert.equal((await api("GET", "/me", hero.token)).data.profile.run, null, "в лобби карта снимается");
+});
+
+test("server: карта похода с испорченными данными не записывается как есть", async () => {
+  const cheat = await account("map_cheat");
+  const player = (await api("GET", "/me", cheat.token)).data.profile.player;
+  const outside = await api("PUT", "/me", cheat.token, {
+    player, unlockedFloor: 1, bestFloor: 1, run: mapRun({ pos: { x: 99, y: 0 } }),
+  });
+  assert.equal(outside.status, 200, JSON.stringify(outside.data));
+  const clamped = await api("GET", "/me", cheat.token);
+  assert.deepEqual(clamped.data.profile.run.pos, { x: 7, y: 0 }, "клетка ограничена границей карты");
+  const unknownLoot = await api("PUT", "/me", cheat.token, {
+    player, unlockedFloor: 1, bestFloor: 1, run: mapRun({ loot: ["excalibur_admin"] }),
+  });
+  assert.equal(unknownLoot.status, 400, "неизвестный предмет в добыче отклонён");
+  const hugeGold = await api("PUT", "/me", cheat.token, {
+    player, unlockedFloor: 1, bestFloor: 1, run: mapRun({ gold: 99_999_999 }),
+  });
+  assert.equal(hugeGold.status, 200);
+  const capped = await api("GET", "/me", cheat.token);
+  assert.equal(capped.data.profile.run.gold, 1_000_000, "золото похода ограничено потолком");
+});
+
+test("server: открытый бой сохраняется с точкой и возвращается; неизвестное существо отклоняется", async () => {
+  const fighter = await account("map_fight");
+  const player = (await api("GET", "/me", fighter.token)).data.profile.player;
+  const open = await api("PUT", "/me", fighter.token, {
+    player: { ...player, hp: 7, stamina: 35 },
+    unlockedFloor: 1,
+    bestFloor: 1,
+    run: mapRun({ battleCell: 20, pendingFight: { foe: "vermin", boss: false } }),
+  });
+  assert.equal(open.status, 200, JSON.stringify(open.data));
+  const back = (await api("GET", "/me", fighter.token)).data.profile;
+  assert.deepEqual(back.run.pendingFight, { foe: "vermin", boss: false }, "открытый бой возвращается");
+  assert.equal(back.run.battleCell, 20);
+  assert.equal(back.player.hp, 7, "здоровье из боя сохраняется");
+  assert.equal(back.player.stamina, 35, "выносливость из боя сохраняется");
+
+  const bossOpen = await api("PUT", "/me", fighter.token, {
+    player, unlockedFloor: 1, bestFloor: 1, run: mapRun({ pendingFight: { foe: "any_boss_id", boss: true } }),
+  });
+  assert.equal(bossOpen.status, 200, "страж яруса принимается с любым id из своего списка");
+
+  const unknown = await api("PUT", "/me", fighter.token, {
+    player, unlockedFloor: 1, bestFloor: 1, run: mapRun({ pendingFight: { foe: "excalibur_admin", boss: false } }),
+  });
+  assert.equal(unknown.status, 400, "неизвестный враг отклонён");
+});
+
+test("server: запись рынка не стирает карту похода продавца", async () => {
+  const seller = await account("map_market");
+  await savePlayer(seller.token, (p) => {
+    p.armory = [gear("mk1")];
+  });
+  const saved = await api("PUT", "/me", seller.token, {
+    player: (await api("GET", "/me", seller.token)).data.profile.player,
+    unlockedFloor: 1,
+    bestFloor: 1,
+    run: mapRun(),
+  });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  const listed = await api("POST", "/market", seller.token, { itemUid: "mk1", price: 90 });
+  assert.equal(listed.status, 200, JSON.stringify(listed.data));
+  const after = await api("GET", "/me", seller.token);
+  assert.equal(after.data.profile.player.armory.length, 0, "предмет ушёл в эскроу");
+  assert.ok(after.data.profile.run, "карта осталась на месте после записи рынка");
+  assert.deepEqual(after.data.profile.run.pos, { x: 3, y: 2 });
+});

@@ -14,6 +14,7 @@
  * ограниченным.
  */
 import {
+  ARMOR_SKILL_IDS,
   ENEMIES,
   EPIC_SKILLS,
   GEAR_BASES,
@@ -53,7 +54,11 @@ import {
   type Slot,
   type StatKey,
 } from "../src/game/types";
-import { TRUST_MAX } from "../src/game/types";
+import { TRUST_MAX, type Cell, type Maze, type Run } from "../src/game/types";
+import { MAX_SIZE, MIN_SIZE } from "../src/game/maze";
+import { canPouch, POUCH_SLOTS } from "../src/game/pouch";
+import type { BiomeId } from "../src/game/biomes";
+import type { ArmorSkillId } from "../src/game/types";
 import { HttpError } from "./http";
 
 /** Потолки, выше которых сохранение считается подделкой. */
@@ -74,7 +79,10 @@ const RARITIES = ["common", "rare", "epic", "legendary"] as const;
 const GEAR_KINDS = ["weapon", "armor", "accessory"] as const;
 const GEAR_CLASSES = ["light", "medium", "heavy"] as const;
 const STATS: StatKey[] = ["str", "agi", "int"];
-const STATUS_KEYS = ["wound", "curse", "poison", "cursePower", "chill", "fear", "wither", "burn"] as const;
+const STATUS_KEYS = [
+  "wound", "curse", "poison", "cursePower", "chill", "fear", "wither", "burn",
+  "woundTick", "poisonTick", "burnTick", "chillTick", "curseTick",
+] as const;
 
 const EFFECT_IDS = new Set(Object.keys(GEAR_EFFECTS));
 const EPIC_IDS = new Set(Object.keys(EPIC_SKILLS));
@@ -195,6 +203,14 @@ function sanitizeGear(raw: unknown, index: number): GearItem {
   if (bool(item.noReq)) out.noReq = true;
   if (item.grip === "one" || item.grip === "two") out.grip = item.grip;
   if (base.weaponType) out.weaponType = base.weaponType;
+  /* Множитель урона экземпляра и качество брони задают характеристики: без них предмет меняется после перезагрузки. */
+  const dmgMult = optionalInt(item.dmgMult, 0.5, 2);
+  if (dmgMult !== undefined) out.dmgMult = dmgMult;
+  const armorQuality = optionalInt(item.armorQuality, 0, 1);
+  if (armorQuality !== undefined) out.armorQuality = armorQuality;
+  if (typeof item.armorSkill === "string" && ARMOR_SKILL_IDS.includes(item.armorSkill as ArmorSkillId)) {
+    out.armorSkill = item.armorSkill as ArmorSkillId;
+  }
   return out;
 }
 
@@ -341,6 +357,15 @@ export function sanitizePlayer(raw: unknown, floors = 1): Player {
   }
   if (Object.keys(bag).length > BAG_TYPES_CAP) bad("слишком много видов предметов");
 
+  /* Сумка: пять слотов, в каждом зелье, свиток, расходник или пусто. Лишнее отбрасывается. */
+  const pouchInput = Array.isArray(input.pouch) ? input.pouch : null;
+  const pouch: (string | null)[] | undefined = pouchInput
+    ? Array.from({ length: POUCH_SLOTS }, (_, i) => {
+        const id = pouchInput[i];
+        return typeof id === "string" && canPouch(id) ? id : null;
+      })
+    : undefined;
+
   const armoryInput = Array.isArray(input.armory) ? input.armory : bad("арсенал должен быть списком");
   if (armoryInput.length > ARMORY_CAP) bad("слишком много предметов в арсенале");
   const armory = armoryInput.map((item, index) => sanitizeGear(item, index));
@@ -422,6 +447,7 @@ export function sanitizePlayer(raw: unknown, floors = 1): Player {
     stamina: input.stamina === undefined ? undefined : int(input.stamina, 0, 100_000, "выносливость"),
     gold: int(input.gold ?? 0, 0, GOLD_CAP, "золото"),
     bag,
+    ...(pouch ? { pouch } : {}),
     knownRecipes,
     armory,
     equip,
@@ -441,4 +467,179 @@ export function sanitizePlayer(raw: unknown, floors = 1): Player {
   const maxHp = derived(player).maxHp;
   player.hp = Math.max(1, Math.min(maxHp, player.hp));
   return player;
+}
+
+/* ─────────────────────────── карта похода ──────────────────────────── */
+
+/** Глубина журнала и длина строки: лишнее обрезается, а не отклоняет сохранение целиком. */
+export const RUN_LOG_MAX = 300;
+const RUN_LINE_MAX = 400;
+const RUN_FLOOR_MAX = 200;
+const QUEST_MARK_KINDS = ["kill", "drop", "remains", "captive"] as const;
+const EVENT_KINDS = ["positive", "neutral", "negative"] as const;
+const BIOME_IDS: BiomeId[] = ["classic", "swamp", "ice", "dark", "fire"];
+
+function mapCell(raw: unknown, size: number, name: string): Cell {
+  const c = asObject(raw, name);
+  return { x: int(c.x, 0, size - 1, `${name}: x`), y: int(c.y, 0, size - 1, `${name}: y`) };
+}
+
+function cellList(raw: unknown, name: string, size: number): number[] {
+  return listOf(raw, name, size * size, (v) => int(v, 0, size * size - 1, name));
+}
+
+/** Стены: строк и столбцов size или size + 1, значения — булевы. */
+function wallGrid(raw: unknown, name: string, size: number): boolean[][] {
+  const rows = listOf(raw, name, size + 1, (row) => {
+    if (!Array.isArray(row) || row.length > size + 1) bad(`${name}: строка`);
+    return (row as unknown[]).map((v) => bool(v, false));
+  });
+  if (rows.length < size) bad(`${name}: размер карты`);
+  return rows;
+}
+
+function sanitizeMaze(raw: unknown): Maze {
+  const m = asObject(raw, "карта этажа");
+  const size = int(m.size, MIN_SIZE, MAX_SIZE, "размер карты");
+  const dist = listOf(m.dist, "расстояния", size, (row) => {
+    if (!Array.isArray(row) || row.length > size) bad("расстояния: строка");
+    return (row as unknown[]).map((v) => int(v, -1, size * size, "расстояние"));
+  });
+  if (dist.length !== size) bad("расстояния: размер карты");
+  const rooms = listOf(m.rooms, "комнаты", 200, (r) => {
+    const o = asObject(r, "комната");
+    return {
+      x: int(o.x, 0, size, "комната: x"),
+      y: int(o.y, 0, size, "комната: y"),
+      w: int(o.w, 1, size, "комната: ширина"),
+      h: int(o.h, 1, size, "комната: высота"),
+      kind: textOf(o.kind ?? "", "вид комнаты", 40),
+      name: textOf(o.name ?? "", "название комнаты", 80),
+      ...(o.tone === undefined ? {} : { tone: textOf(o.tone, "тон комнаты", 20) }),
+      pillars: listOf(o.pillars, "пилоны", 64, (p) => {
+        if (!Array.isArray(p) || p.length !== 2) bad("пилон");
+        return [int(p[0], 0, size, "пилон"), int(p[1], 0, size, "пилон")] as [number, number];
+      }),
+    };
+  });
+  const maze: Maze = {
+    size,
+    h: wallGrid(m.h, "стены h", size),
+    v: wallGrid(m.v, "стены v", size),
+    start: mapCell(m.start, size, "старт"),
+    stairs: mapCell(m.stairs, size, "лестница"),
+    boss: mapCell(m.boss, size, "страж"),
+    bossDefeated: bool(m.bossDefeated),
+    doors: cellList(m.doors, "двери", size),
+    openedDoors: cellList(m.openedDoors, "открытые двери", size),
+    chests: cellList(m.chests, "сундуки", size),
+    openedChests: cellList(m.openedChests, "открытые сундуки", size),
+    keys: cellList(m.keys, "ключи", size),
+    takenKeys: cellList(m.takenKeys, "взятые ключи", size),
+    events: cellList(m.events, "события", size),
+    usedEvents: cellList(m.usedEvents, "использованные события", size),
+    monsters: cellList(m.monsters, "монстры", size),
+    traps: cellList(m.traps, "ловушки", size),
+    rooms,
+    dist,
+  };
+  if (m.biome !== undefined) {
+    if (!BIOME_IDS.includes(m.biome as BiomeId)) bad("неизвестный тип этажа");
+    maze.biome = m.biome as BiomeId;
+  }
+  if (m.questMarks !== undefined) {
+    maze.questMarks = listOf(m.questMarks, "метки заданий", 60, (q) => {
+      const o = asObject(q, "метка задания");
+      if (!QUEST_MARK_KINDS.includes(o.kind as (typeof QUEST_MARK_KINDS)[number])) bad("вид метки задания");
+      const mark: NonNullable<Maze["questMarks"]>[number] = {
+        cell: int(o.cell, 0, size * size - 1, "клетка метки"),
+        questId: textOf(o.questId ?? "", "id задания", 40),
+        kind: o.kind as (typeof QUEST_MARK_KINDS)[number],
+        label: textOf(o.label ?? "", "подпись метки", 160),
+      };
+      if (o.enemyId !== undefined) {
+        if (typeof o.enemyId !== "string" || !ENEMIES.some((e) => e.id === o.enemyId)) bad("существо метки");
+        mark.enemyId = o.enemyId as string;
+      }
+      return mark;
+    });
+  }
+  if (m.eventSpawns !== undefined) {
+    maze.eventSpawns = listOf(m.eventSpawns, "события комнат", 200, (e) => {
+      const o = asObject(e, "событие комнаты");
+      if (!EVENT_KINDS.includes(o.kind as (typeof EVENT_KINDS)[number])) bad("вид события");
+      return {
+        room: int(o.room, 0, 199, "комната события"),
+        cell: int(o.cell, 0, size * size - 1, "клетка события"),
+        kind: o.kind as (typeof EVENT_KINDS)[number],
+        eventId: textOf(o.eventId ?? "", "id события", 60),
+      };
+    });
+  }
+  return maze;
+}
+
+/**
+ * Карта похода целиком: этаж, позиция, открытые клетки, добыча и журнал.
+ * Бой сюда не попадает: клиент сохраняет последнее состояние карты без боя.
+ */
+export function sanitizeRun(raw: unknown): Run {
+  const r = asObject(raw, "карта похода");
+  const maze = sanitizeMaze(r.maze);
+  const size = maze.size;
+
+  const seenInput = r.seen === undefined ? {} : asObject(r.seen, "открытые клетки");
+  const seen: Record<string, boolean> = {};
+  for (const [key, value] of Object.entries(seenInput)) {
+    if (!/^\d{1,2},\d{1,2}$/.test(key)) bad("открытая клетка");
+    if (value === true) seen[key] = true;
+  }
+
+  const loot = listOf(r.loot, "добыча похода", 2000, (id) => {
+    if (typeof id !== "string" || !ITEMS[id] || REMOVED_ITEM_IDS.has(id)) bad("неизвестный предмет похода");
+    return id as string;
+  });
+  const gearLoot = listOf(r.gearLoot, "снаряжение похода", 500, (g, i) => sanitizeGear(g, i));
+  const log = Array.isArray(r.log)
+    ? r.log.slice(-RUN_LOG_MAX).map((line) => textOf(line, "строка журнала", RUN_LINE_MAX))
+    : [];
+
+  const run: Run = {
+    floor: int(r.floor, 1, RUN_FLOOR_MAX, "этаж похода"),
+    maze,
+    pos: mapCell(r.pos, size, "позиция"),
+    prevPos: mapCell(r.prevPos ?? r.pos, size, "прошлая позиция"),
+    seen,
+    gold: int(r.gold ?? 0, 0, GOLD_CAP, "золото похода"),
+    loot,
+    gearLoot,
+    keys: int(r.keys ?? 0, 0, 999, "ключи похода"),
+    steps: int(r.steps ?? 0, 0, 1_000_000, "шаги"),
+    log,
+  };
+  if (r.bossSlain !== undefined) run.bossSlain = bool(r.bossSlain);
+  if (r.torchTurns !== undefined) run.torchTurns = int(r.torchTurns, 0, 1000, "факел");
+  if (r.mapRevealed !== undefined) run.mapRevealed = bool(r.mapRevealed);
+  if (r.burning !== undefined) run.burning = int(r.burning, 0, 99, "горение");
+  if (r.battleCell === null) run.battleCell = null;
+  else if (r.battleCell !== undefined) run.battleCell = int(r.battleCell, 0, size * size - 1, "клетка боя");
+  if (r.pendingFight !== undefined && r.pendingFight !== null) {
+    const pf = asObject(r.pendingFight, "открытый бой");
+    const boss = bool(pf.boss);
+    if (typeof pf.foe !== "string" || pf.foe.length > 64) bad("открытый бой");
+    /* Обычный монстр — из списка существ; страж яруса выбирается по этажу, id сверяется по длине. */
+    if (!boss && !ENEMY_IDS.has(pf.foe)) bad("открытый бой");
+    run.pendingFight = { foe: pf.foe, boss };
+  }
+  if (r.clearedMonsters !== undefined) run.clearedMonsters = cellList(r.clearedMonsters, "побеждённые", size);
+  if (r.revealedTraps !== undefined) run.revealedTraps = cellList(r.revealedTraps, "найденные ловушки", size);
+  if (r.revealedEvents !== undefined) run.revealedEvents = cellList(r.revealedEvents, "найденные события", size);
+  if (r.sprungTraps !== undefined) run.sprungTraps = cellList(r.sprungTraps, "сработавшие ловушки", size);
+  if (r.questCarry !== undefined) {
+    run.questCarry = listOf(r.questCarry, "принесённое", 40, (q) => {
+      const o = asObject(q, "принесённое задание");
+      return { questId: textOf(o.questId ?? "", "id задания", 40), label: textOf(o.label ?? "", "подпись", 160) };
+    });
+  }
+  return run;
 }
