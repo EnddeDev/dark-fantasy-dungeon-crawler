@@ -28,50 +28,53 @@ test("регенерация больше не выпадает как свой�
   for (const pool of Object.values(gearEffects.ACCESSORY_EFFECT_POOLS)) assert.ok(!pool.includes("regen"));
 });
 
-test("параметр регенерации: (1 + 0,2 × уровень) × износ × разброс, не меньше 1; без параметра 0", () => {
-  assert.equal(content.gearRegenValue(1, 1, undefined), 0);
-  assert.equal(content.gearRegenValue(1, 1, 100), 1, "1 уровень: 1.2 → 1");
-  assert.equal(content.gearRegenValue(10, 1.325, 110), 4, "10 уровень, новое, +10%: 3 × 1.325 × 1.1 ≈ 4.4 → 4");
-  assert.equal(content.gearRegenValue(10, 0.75, 90), 2, "10 уровень, изношенное, −10%: 3 × 0.75 × 0.9 ≈ 2.0 → 2");
-  assert.ok(content.gearRegenValue(10, 1, 100) > content.gearRegenValue(1, 1, 100), "растёт с уровнем");
+test("параметр регенерации: по таблице типа и слота, не ниже 0; без параметра 0", () => {
+  const mail = content.GEAR_BASES.plate;
+  const heavyBody = content.createGearItem({ baseId: "plate", rarity: "common", identified: true, level: 1, wear: "worn", rng: () => 0.5 });
+  assert.equal(content.scaledGearStats({ ...heavyBody, level: 1, wearMult: 1, statRolls: { ...heavyBody.statRolls, regen: 0 } }).regen, 2, "тело тяжёлой брони 1 уровня: 2");
+  const heavy10 = content.scaledGearStats({ ...heavyBody, level: 10, wearMult: 1, statRolls: { ...heavyBody.statRolls, regen: 0 } });
+  assert.equal(heavy10.regen, 2 + 9, "тело тяжёлой брони 10 уровня: 2 + 1·9");
+  const helmet = content.createGearItem({ baseId: "start_hood", rarity: "common", identified: true, level: 1, wear: "worn", rng: () => 0.5 });
+  assert.ok(content.scaledGearStats({ ...helmet, wearMult: 1, statRolls: { hp: 0, armor: 0, evade: 0, regen: 0, barrier: 0 } }).regen >= 0);
+  assert.ok(mail);
+  assert.equal(content.scaledGearStats(content.createGearItem({ baseId: "sword", rarity: "common", identified: true, level: 5, wear: "worn", rng: () => 0.5 })).regen, 0, "оружие без регенерации");
 });
 
-test("выпадение: броня и аксессуары СИЛ/ИНТ получают параметр, ЛОВ и оружие — нет", () => {
+test("выпадение: броня и аксессуары получают параметр регенерации, оружие — нет; ботинки не дают", () => {
   const rnd = Math.random;
-  let strOrIntWithRegen = 0;
-  let agiWithRegen = 0;
   let weaponWithRegen = 0;
+  let feetWithRegen = 0;
+  let armorOrAccessoryWithRoll = 0;
+  let armorOrAccessory = 0;
   try {
-    for (let i = 0; i < 1500; i++) {
+    for (let i = 0; i < 600; i++) {
       const bases = Object.values(content.GEAR_BASES);
       const base = bases[i % bases.length];
       const item = content.createGearItem({ baseId: base.id, rarity: "rare", identified: true, level: 5 });
       const kind = content.gearKindOfBase(base);
-      const has = item.statRolls && item.statRolls.regen !== undefined;
-      if (kind === "weapon" && has) weaponWithRegen++;
-      if ((kind === "armor" || kind === "accessory") && has) {
-        if (content.gearAffinity(item) === "agi") agiWithRegen++;
-        else strOrIntWithRegen++;
+      if (kind === "weapon" && item.statRolls.regen !== undefined) weaponWithRegen++;
+      if (kind === "armor" || kind === "accessory") {
+        armorOrAccessory++;
+        if (item.statRolls.regen !== undefined && Math.abs(item.statRolls.regen) <= 1) armorOrAccessoryWithRoll++;
+        if (base.slot === "feet" && content.scaledGearStats(item).regen > 0) feetWithRegen++;
       }
     }
   } finally {
     Math.random = rnd;
   }
   assert.equal(weaponWithRegen, 0, "оружие регенерацию не получает");
-  assert.equal(agiWithRegen, 0, "ЛОВ-предметы регенерацию не получают");
-  assert.ok(strOrIntWithRegen > 0, "у брони и аксессуаров СИЛ/ИНТ параметр выпадает");
+  assert.equal(feetWithRegen, 0, "ботинки регенерацию не дают");
+  assert.equal(armorOrAccessoryWithRoll, armorOrAccessory, "у брони и аксессуаров есть бросок регенерации −1…+1");
 });
 
 test("суммарная регенерация героя — сумма параметров надетой брони и аксессуаров", () => {
   const hero = PlayerFactory.createInitial();
-  const base = Object.values(content.GEAR_BASES).find((b) => content.gearKindOfBase(b) === "armor" && b.stat === "str");
-  assert.ok(base, "есть тяжёлая броня СИЛ");
+  const base = content.GEAR_BASES.plate;
   const item = content.createGearItem({ baseId: base.id, rarity: "common", identified: true, level: 10 });
-  item.statRolls = { ...item.statRolls, regen: 100 };
+  item.statRolls = { ...item.statRolls, regen: 0 };
   const pl = { ...hero, level: 10, armory: [item], equip: { ...hero.equip, [base.slot]: item.uid } };
-  const expected = content.gearRegenValue(item.level, item.wearMult, 100);
+  const expected = content.scaledGearStats(item).regen;
   assert.equal(battle.derived(pl).regenPerTurn, expected);
-  assert.equal(content.scaledGearStats(item).regen, expected);
 });
 
 test("регенерация срабатывает в начале каждого хода героя полным значением", () => {
@@ -113,7 +116,7 @@ test("регенерация срабатывает в начале каждог
 
 test("старые предметы со свойством «Регенерация» работают как раньше и складываются с параметром", () => {
   const hero = PlayerFactory.createInitial();
-  const base = Object.values(content.GEAR_BASES).find((b) => content.gearKindOfBase(b) === "armor" && b.stat === "str");
+  const base = content.GEAR_BASES.plate;
   const legacy = content.createGearItem({ baseId: base.id, rarity: "common", identified: true, level: 5 });
   legacy.effects = ["regen"];
   legacy.effectRolls = { regen: 2 };
@@ -121,7 +124,8 @@ test("старые предметы со свойством «Регенерац
   const pl = { ...hero, level: 5, armory: [legacy], equip: { ...hero.equip, [base.slot]: legacy.uid } };
   const d = battle.derived(pl);
   assert.ok((d.effectPower.regen ?? 0) > 0, "свойство regen учитывается в эффектах");
-  assert.equal(d.regenPerTurn, content.gearRegenValue(5, legacy.wearMult, 100), "параметр складывается отдельно");
+  assert.equal(d.regenPerTurn, content.scaledGearStats(legacy).regen, "параметр складывается отдельно");
+  assert.equal(content.scaledGearStats(legacy).regen, content.scaledGearStats({ ...legacy, statRolls: { hp: 0, armor: 0, evade: 0, regen: 0 } }).regen, "старый бросок 100 не меняет параметр");
 });
 
 test("сохранение: параметр регенерации обрезается до 0–200 и не теряется", () => {

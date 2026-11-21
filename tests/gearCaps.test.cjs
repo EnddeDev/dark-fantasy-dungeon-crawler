@@ -55,36 +55,36 @@ test("лёгкая броня (ИНТ и прочая): уклонение не 
   for (const wear of WEARS) assert.ok(maxEvade(light, wear, 1) <= 7, `wear ${wear}`);
 });
 
-test("потолок уклонения растёт с уровнем тем же коэффициентом, что и статы", () => {
+test("потолок уклонения растёт с уровнем тем же коэффициентом, что и статы: 5% → 20% у средней ЛОВ, 7% → 28% у лёгкой", () => {
   const medium = armorBases("medium", "agi");
   const light = armorBases("light", "int");
-  // Средняя ЛОВ: 5 × (1 + 0.5·L) / 1.5 — на 3 уровне 8, на 10 — 20.
-  assert.ok(maxEvade(medium, "new", 3) <= 8);
-  assert.ok(maxEvade(medium, "new", 10) <= 20);
-  assert.ok(maxEvade(medium, "new", 10) > 5, "на 10 уровне потолок должен вырасти");
-  // Лёгкая: 7 × (1 + 0.5·L) / 1.5 — на 10 уровне 28.
-  assert.ok(maxEvade(light, "new", 10) <= 28);
+  assert.ok(maxEvade(medium, "new", 1) <= 5, "средняя ЛОВ на 1 уровне не выше 5%");
+  assert.ok(maxEvade(medium, "new", 10) <= 20, "средняя ЛОВ на 10 уровне не выше 20%");
+  assert.ok(maxEvade(medium, "new", 10) > 5, "на 10 уровне потолок вырос");
+  assert.ok(maxEvade(light, "new", 10) <= 28, "лёгкая на 10 уровне не выше 28%");
 });
 
-test("ОЗ предмета на СИЛ: +10 на 1 уровне, дальше растёт с уровнем", () => {
+test("средняя броня на СИЛ тоже ограничена капом 5% на 1 уровне", () => {
+  const medium = armorBases("medium", "str");
+  assert.ok(medium.length > 0, "нет баз средней брони с СИЛ");
+  for (const wear of WEARS) assert.ok(maxEvade(medium, wear, 1) <= 5, `wear ${wear}`);
+});
+
+test("ОЗ предмета: бонуса СИЛ нет, только таблица и плоский бонус за уровень", () => {
   const bases = Object.values(content.GEAR_BASES).filter(
     (b) => content.gearKindOfBase(b) !== "weapon" && content.gearAffinity({ baseId: b.id, gearClass: b.gearClass ?? "medium" }) === "str",
   );
   assert.ok(bases.length > 0, "нет баз на СИЛ");
+  const gp = loadGameModule("gearParams");
   for (const level of [1, 4, 10]) {
     const base = bases[0];
-    const item = content.createGearItem({ baseId: base.id, wear: "worn", level, identified: true });
+    const item = content.createGearItem({ baseId: base.id, wear: "worn", level, identified: true, rng: () => 0.5 });
     const s = content.scaledGearStats(item);
-    const rolled = scaling.scaleGearStatByLevel(Math.ceil(item.statRolls.hp * item.wearMult), level);
-    const bonus = Math.floor(10 * scaling.statLevelRatio(level) + 1e-9);
-    const flatPerLevel = { heavy: 3, medium: 1, light: 5 }[content.gearClassFor(item)];
-    assert.equal(s.hp, rolled + bonus + flatPerLevel * level, `уровень ${level}`);
+    const cls = content.gearClassFor(item);
+    const table = Math.round((gp.gearParamBase("hp", cls, base.slot, level) ?? 0) * item.wearMult);
+    const flatPerLevel = { heavy: 3, medium: 1, light: 5 }[cls];
+    assert.equal(s.hp, table + flatPerLevel * level, `уровень ${level}`);
   }
-  assert.equal(
-    Math.floor(10 * scaling.statLevelRatio(1) + 1e-9),
-    10,
-    "на 1 уровне бонус равен 10",
-  );
 });
 
 test("предмет на ИНТ получает одно дополнительное свойство (не оружие)", () => {

@@ -163,11 +163,12 @@ function sanitizeGear(raw: unknown, index: number): GearItem {
   const statRollsRaw = item.statRolls === undefined || item.statRolls === null ? null : asObject(item.statRolls, "параметры предмета");
   const statRolls = statRollsRaw
     ? {
-        hp: optionalInt(statRollsRaw.hp, 0, 9999) ?? 0,
-        armor: optionalInt(statRollsRaw.armor, 0, 9999) ?? 0,
-        evade: optionalInt(statRollsRaw.evade, 0, 9999),
-        regen: optionalInt(statRollsRaw.regen, 0, 200),
-        barrier: optionalInt(statRollsRaw.barrier, 0, 9999),
+        /* Броски параметров: −1…+1 у нового снаряжения; старые большие значения сохраняются как есть. */
+        hp: optionalInt(statRollsRaw.hp, -9999, 9999) ?? 0,
+        armor: optionalInt(statRollsRaw.armor, -9999, 9999) ?? 0,
+        evade: optionalInt(statRollsRaw.evade, -9999, 9999),
+        regen: optionalInt(statRollsRaw.regen, -200, 200),
+        barrier: optionalInt(statRollsRaw.barrier, -9999, 9999),
       }
     : undefined;
   const effectRollsRaw = item.effectRolls === undefined || item.effectRolls === null ? null : asObject(item.effectRolls, "броски свойств");

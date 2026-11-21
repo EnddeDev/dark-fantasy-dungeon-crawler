@@ -201,7 +201,7 @@ test("бой: неуловимость отводит физические ат�
   assert.doesNotMatch(text, /тебе \d+ урона/, "урона по герою нет");
 });
 
-test("бой: ответный замах отвечает на каждый удар врага, который прошёл", () => withFixedRandom(0.99, () => {
+test("бой: ответный замах отвечает на каждый удар врага, который прошёл", () => withFixedRandom(0.5, () => {
   const strong = withArmor(wornArmor("plate", "medium_riposte"), { str: 10 });
   let b = battleFor(strong);
   b.p.statuses.counterTurn = 1;
@@ -211,6 +211,8 @@ test("бой: ответный замах отвечает на каждый у�
   b.enemy.statuses.stunAp = 0;
   b.enemy.hp = 9999;
   b.enemy.maxHp = 9999;
+  /* Броня героя по таблице: удар врага должен пройти сквозь неё; бросок 0.5 даёт попадание замаху (точный бросок). */
+  b.enemy.atk = [60, 60];
   b.queue = ["e"];
   b.idx = 0;
   const enemyHp = b.enemy.hp;
