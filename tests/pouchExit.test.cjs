@@ -178,20 +178,23 @@ test("выход: потерянное уходит из рюкзака и сн�
   assert.equal(after.equip.mainHand, null, "слот освобождён");
 });
 
-test("выход без победы над стражем: сначала окно, потом 20% уходит; после стража — без потерь", () => {
+test("выход без победы над стражем: этаж 3 в начале — окно, потом 90% уходит; после стража — без потерь", () => {
   const game = new GameController(new MemoryStorage());
   game.enterLobby("train");
-  game.startRun(1);
+  game.model.update({ unlockedFloor: 3 });
+  game.startRun(3);
   game.model.updateRun((run) => ({ ...run, gold: 50 }));
   game.leaveRun();
   const asking = game.model.getSnapshot();
   assert.equal(asking.modal.kind, "leave");
-  assert.equal(asking.modal.gold, 10);
+  assert.equal(asking.modal.gold, 45, "90% от 50 золота");
+  assert.equal(asking.modal.rate, 0.9);
 
   /* После победы над стражем яруса выход свободен и ничего не теряется. */
   const won = new GameController(new MemoryStorage());
   won.enterLobby("train");
-  won.startRun(1);
+  won.model.update({ unlockedFloor: 3 });
+  won.startRun(3);
   won.model.updateRun((run) => ({ ...run, gold: 50, maze: { ...run.maze, bossDefeated: true } }));
   won.leaveRun();
   const lobby = won.model.getSnapshot();

@@ -440,9 +440,9 @@ export type ModalState =
   | { kind: "key" }
   | { kind: "stairs" }
   /** Выход без победы над стражем: сколько уйдёт при подтверждении. */
-  | { kind: "leave"; gold: number; items: number; gear: number }
+  | { kind: "leave"; gold: number; items: number; gear: number; rate: number }
   /** Окно перед походом: что взять из рюкзака; «Отправиться» запускает этаж. */
   | { kind: "departure"; floor: number }
-  | { kind: "death"; cause: string; lost: number; lostGear: number }
+  | { kind: "death"; cause: string; lost: number; lostGear: number; lostItems: number; rate: number }
   | { kind: "event"; eventId: string; cell: number; result?: { title: string; good: string; bad?: string } }
   | { kind: "note"; title: string; body: string };

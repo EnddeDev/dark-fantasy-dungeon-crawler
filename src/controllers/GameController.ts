@@ -3,9 +3,10 @@ import { checkCharacterName } from "../game/characterName";
 import { rollShopStock } from "../game/content";
 import { BIOMES, biomeHealingAmount, biomeVision, mazeBiome } from "../game/biomes";
 import { genMaze, mazeSizeForFloor } from "../game/maze";
-import { applyExitLoss, EXIT_LOSS_RATE, exitLossCounts, planExitLoss } from "../game/runExit";
+import { applyExitLoss, exitLossCounts, planExitLoss } from "../game/runExit";
+import { deathLossRate, escapeLossRate } from "../game/runLoss";
 import { setPouchSlot as setPouch } from "../game/pouch";
-import { bagAfterDeath, bagAfterReturn, departureSplit, type BagCounts } from "../game/runStash";
+import { bagAfterDeath, bagAfterReturn, bagMerge, countsOf, departureSplit, type BagCounts } from "../game/runStash";
 import { deliverCarried, endRunBlessing, placeQuestMarks, questsForFloor, startRunBlessing } from "../game/quests";
 import type { Player } from "../game/types";
 import { SLOT_ORDER } from "../game/types";
@@ -144,12 +145,20 @@ export class GameController {
 
   die(cause: string): void {
     const { run, player } = this.model.getSnapshot();
-    const lost = run?.gold ?? 0;
-    const lostGearUids = new Set((run?.gearLoot ?? []).map((g) => g.uid));
-    const lostGearCount = lostGearUids.size;
+    /* Смерть теряет долю найденного за вылазку (см. runLoss); остальное возвращается в кошелёк и рюкзак. */
+    const rate = run ? deathLossRate(run) : 0;
+    const plan = run ? planExitLoss(run, rate) : { lostGold: 0, droppedItems: [], droppedGear: [] };
+    const lostGearUids = new Set(plan.droppedGear.map((g) => g.uid));
 
-    /* Поражение: всё взятое в вылазку пропадает, кроме сумки и спец. предметов; рюкзак лобби цел. */
-    const bag: BagCounts = run ? bagAfterDeath(player.bag, run) : { ...player.bag };
+    /* Сумка и спец. предметы, как раньше, плюс найденное, которое не потеряно. */
+    const found = run ? countsOf(run.loot) : {};
+    const dropped = countsOf(plan.droppedItems);
+    const foundLeft: BagCounts = {};
+    for (const [id, n] of Object.entries(found)) {
+      const left = n - (dropped[id] ?? 0);
+      if (left > 0) foundLeft[id] = left;
+    }
+    const bag: BagCounts = run ? bagMerge(bagAfterDeath(player.bag, run), foundLeft) : { ...player.bag };
     const armory = player.armory.filter((g) => !lostGearUids.has(g.uid));
     const equip = { ...player.equip };
     SLOT_ORDER.forEach((slot) => {
@@ -158,6 +167,7 @@ export class GameController {
     /* Смерть гасит благословение похода; принесённое в вылазке пропадает вместе с трофеем. */
     const nextPlayer: Player = {
       ...endRunBlessing(player),
+      gold: player.gold + ((run?.gold ?? 0) - plan.lostGold),
       bag,
       armory,
       equip,
@@ -170,7 +180,14 @@ export class GameController {
       run: null,
       battle: null,
       screen: "lobby",
-      modal: { kind: "death", cause, lost, lostGear: lostGearCount },
+      modal: {
+        kind: "death",
+        cause,
+        lost: plan.lostGold,
+        lostGear: plan.droppedGear.length,
+        lostItems: plan.droppedItems.length,
+        rate,
+      },
     });
   }
 
@@ -248,16 +265,16 @@ export class GameController {
 
   /**
    * Выход в лобби. Без победы над стражем текущего яруса теряется доля добытого
-   * (EXIT_LOSS_RATE); сначала показываем окно с потерями, уходим после подтверждения.
+   * (доля из escapeLossRate); сначала показываем окно с потерями, уходим после подтверждения.
    */
   leaveRun(confirmed = false, unlockFloor?: number): void {
     const { run, player, unlockedFloor } = this.model.getSnapshot();
     if (!run) return;
     /* Победа над стражем в этом походе (любого яруса) снимает потери при выходе. */
-    const rate = run.bossSlain || run.maze.bossDefeated ? 0 : EXIT_LOSS_RATE;
+    const rate = escapeLossRate(run);
     if (rate > 0 && !confirmed) {
       const counts = exitLossCounts(run, rate);
-      this.model.update({ modal: { kind: "leave", gold: counts.gold, items: counts.items, gear: counts.gear } });
+      this.model.update({ modal: { kind: "leave", gold: counts.gold, items: counts.items, gear: counts.gear, rate } });
       return;
     }
     const plan = planExitLoss(run, rate);
@@ -269,7 +286,7 @@ export class GameController {
     const savedGold = run.gold - plan.lostGold;
     const savedItems = run.loot.length - plan.droppedItems.length;
     const savedGear = run.gearLoot.length - plan.droppedGear.length;
-    const lostNote = rate > 0 ? ` Потеряно при выходе без стража: ${plan.lostGold} золота, ${plan.droppedItems.length} расходуемых и ${plan.droppedGear.length} снаряжения.` : "";
+    const lostNote = rate > 0 ? ` Потеряно при уходе с карты: ${plan.lostGold} золота, ${plan.droppedItems.length} расходуемых и ${plan.droppedGear.length} снаряжения.` : "";
     const opened = unlockFloor !== undefined && unlockFloor > unlockedFloor ? unlockFloor : null;
     if (opened !== null) this.saves.writeUnlockedFloor(opened);
     const openedNote = opened !== null ? ` Открыт ярус ${opened}.` : "";

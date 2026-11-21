@@ -111,7 +111,7 @@ export class BattleController {
   private resolveEnd(b: BattleState): void {
     if (!b.over || b.over === "win") return;
     if (b.over === "lose") {
-      this.game.die("Ты не выдержал последнего удара. Подземелье забрало всё, что ты нашёл на его ярусах.");
+      this.game.die("Ты не выдержал последнего удара. Подземелье забрало часть того, что ты нашёл на его ярусах.");
       return;
     }
     this.resolveFlee(b);

@@ -194,6 +194,7 @@ import type {
 } from "./types";
 import { activeSkillEffects } from "./archetypeSkills";
 import { techniqueHitKind } from "./damageModel";
+import { FLEE_BATTLE_LOSS_RATE } from "./runLoss";
 
 export interface LogLine {
   id: number;
@@ -4669,7 +4670,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
 
     case "flee": {
       b.over = "flee";
-      b.fleeRate = a.rate ?? 0.4 + Math.random() * 0.3;
+      b.fleeRate = a.rate ?? FLEE_BATTLE_LOSS_RATE;
       push(b, "Ты бросаешь бой и отступаешь в коридор.", "p");
       break;
     }
