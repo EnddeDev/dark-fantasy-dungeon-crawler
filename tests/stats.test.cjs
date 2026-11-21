@@ -157,8 +157,12 @@ test("linear gear effects roll ±1 around their level-1 base and grow by a fixed
 
 test("created and migrated items carry the new stat/effect rolls", () => {
   const item = content.createGearItem({ baseId: "plate", level: 3, rarity: "epic", wear: "worn", identified: true, rng: () => 0.4 });
-  assert.ok(item.statRolls.hp >= 1 && item.statRolls.hp <= 10, `ОЗ брони: ${item.statRolls.hp}`);
-  assert.ok(item.statRolls.armor >= 4 && item.statRolls.armor <= 14, `броня: ${item.statRolls.armor}`);
+  /* Броски параметров — разброс −1…+1; значения на предмете считает таблица (gearParams.ts). */
+  for (const key of ["hp", "armor", "evade", "barrier", "regen"]) {
+    assert.ok(item.statRolls[key] >= -1 && item.statRolls[key] <= 1, `${key}: ${item.statRolls[key]}`);
+  }
+  assert.ok(content.scaledGearStats(item).hp > 0, "у брони есть ОЗ по таблице");
+  assert.ok(content.scaledGearStats(item).armor > 0, "у тяжёлой брони есть броня по таблице");
   const weapon = content.createGearItem({ baseId: "sword", level: 3, rarity: "epic", wear: "worn", identified: true, rng: () => 0.4 });
   assert.deepEqual(weapon.statRolls, { hp: 0, armor: 0, evade: 0 }, "оружие не даёт защитных характеристик");
   for (const id of item.effects) assert.ok(item.effectRolls[id] != null);

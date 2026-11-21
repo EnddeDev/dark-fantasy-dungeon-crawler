@@ -9,17 +9,22 @@ const temp = fs.mkdtempSync(path.join(os.tmpdir(), "sumrak-levelflat-"));
 process.on("exit", () => fs.rmSync(temp, { recursive: true, force: true }));
 function loadGameModule(name) {
   const outfile = path.join(temp, `${name}.cjs`);
-  buildSync({ entryPoints: [`src/game/${name}.ts`], outfile, bundle: true, platform: "node", format: "cjs" });
+  buildSync({ entryPoints: [`src/game/${name}.ts`], outfile, bundle: true, platform: "node", format: "cjs", logLevel: "silent" });
   return require(outfile);
 }
 const content = loadGameModule("content");
+const gp = loadGameModule("gearParams");
 
-const scaling = loadGameModule("gearScaling");
-
-/** Предмет с фиксированными роллами: ролл 0.5 даёт середину диапазона. */
+/** Предмет с нулевыми бросками: ролл 0.5 даёт 0. Износ берётся у самого предмета. */
 const make = (baseId, level) => content.createGearItem({ baseId, level, wear: "worn", rarity: "common", identified: true, rng: () => 0.5 });
 
-test("плоский бонус ОЗ за каждый уровень, начиная с первого: тяжёлая +3, средняя +1, лёгкая +5, аксессуар +3", () => {
+/** Значение таблицы с износом предмета, как его считает движок (целое, если параметр целый). */
+const tableValue = (key, item, level) => {
+  const cls = content.gearClassFor(item);
+  return Math.round(gp.gearParamBase(key, cls, content.GEAR_BASES[item.baseId].slot, level) * item.wearMult);
+};
+
+test("плоский бонус ОЗ за каждый уровень складывается поверх таблицы: тяжёлая +3, средняя +1, лёгкая +5, аксессуар +3", () => {
   const cases = [
     ["plate", 3],
     ["mail", 1],
@@ -28,60 +33,48 @@ test("плоский бонус ОЗ за каждый уровень, начи�
   ];
   for (const [baseId, perLevel] of cases) {
     const item = make(baseId, 1);
-    const cls = content.gearClassFor(item);
     for (const level of [1, 2, 5, 10]) {
       const leveled = { ...item, level };
-      /* Точная формула: ceil(ceil(ролл × м) × (1 + 0,5 × L)) + бонус СИЛ + perLevel × (L − 1). */
-      const scaled = scaling.scaleGearStatByLevel(Math.ceil(item.statRolls.hp * item.wearMult), level);
-      const strHp = content.gearAffinity(item) === "str" ? Math.floor(10 * scaling.statLevelRatio(level) + 1e-9) : 0;
-      const expected = scaled + strHp + (baseId === "ring_stone" ? 3 : perLevel) * level;
-      assert.equal(content.scaledGearStats(leveled).hp, expected, `${baseId} (${cls}) L${level}`);
+      const expected = tableValue("hp", item, level) + perLevel * level;
+      assert.equal(content.scaledGearStats(leveled).hp, expected, `${baseId} L${level}`);
     }
   }
 });
 
-test("плоский бонус не даёт ОЗ предмету без здоровья (аксессуар ЛОВ, оружие)", () => {
-  const agiRing = make("ring_band", 1);
-  assert.equal(content.scaledGearStats({ ...agiRing, level: 10 }).hp, 0, "аксессуар ЛОВ без ОЗ остаётся без ОЗ");
+test("у оружия и у щита нет ОЗ; плоский бонус не появляется без ОЗ", () => {
   const sword = make("sword", 1);
   assert.equal(content.scaledGearStats({ ...sword, level: 10 }).hp, 0, "оружие без ОЗ");
 });
 
 test("плоский бонус брони: тяжёлая +2, средняя +1, аксессуар +1; лёгкая без брони", () => {
-  const heavy1 = content.scaledGearStats(make("plate", 1)).armor;
-  const heavy5 = content.scaledGearStats(make("plate", 5)).armor;
-  const heavyScaled5 = content.scaledGearStats({ ...make("plate", 5), level: 5 }).armor;
-  assert.equal(heavyScaled5, heavy5);
-  assert.ok(heavy5 - heavy1 >= 2 * 4, "тяжёлая броня растёт минимум на 2 за каждый уровень");
+  const plate = make("plate", 1);
+  for (const level of [1, 5]) {
+    const expected = tableValue("armor", plate, level) + 2 * level;
+    assert.equal(content.scaledGearStats({ ...plate, level }).armor, expected, `тяжёлая L${level}`);
+  }
 
-  const mediumItem = content.createGearItem({ baseId: "start_leather", level: 1, wear: "worn", rarity: "common", identified: true, rng: () => 0.5 });
-  const armorMedium = content.scaledGearStats({ ...mediumItem, level: 1 }).armor;
-  const armorMedium5 = content.scaledGearStats({ ...mediumItem, level: 5 }).armor;
-  assert.ok(armorMedium > 0, "средняя броня даёт броню");
-  assert.ok(armorMedium5 - armorMedium >= 4, "средняя броня +1 за каждый уровень");
+  const mail = make("mail", 1);
+  assert.equal(content.scaledGearStats({ ...mail, level: 5 }).armor, tableValue("armor", mail, 5) + 1 * 5, "средняя +1 за уровень");
 
-  const str = make("ring_stone", 1);
-  const str1 = content.scaledGearStats(str).armor;
-  const str5 = content.scaledGearStats({ ...str, level: 5 }).armor;
-  assert.ok(str5 - str1 >= 4, "аксессуар с бронёй +1 за уровень");
-
-  const light = content.scaledGearStats({ ...make("start_hood", 1), level: 10 }).armor;
-  assert.equal(light, 0, "лёгкая броня без брони не получает плоский бонус");
+  const hood = make("start_hood", 1);
+  assert.equal(content.scaledGearStats({ ...hood, level: 10 }).armor, 0, "лёгкая броня без брони не получает плоский бонус");
 });
 
 test("плоский бонус барьера: средняя +1, лёгкая +3; только у брони на ИНТ", () => {
-  const robe1 = content.scaledGearStats({ ...make("start_robe", 1), level: 1 }).barrier;
-  const robe5 = content.scaledGearStats({ ...make("start_robe", 5), level: 5 }).barrier;
-  assert.ok(robe5 - robe1 >= 3 * 4, `лёгкая броня на ИНТ: +3 за каждый уровень (${robe1} → ${robe5})`);
+  const robe = make("start_robe", 1);
+  assert.equal(content.scaledGearStats({ ...robe, level: 5 }).barrier, tableValue("barrier", robe, 5) + 3 * 5, "лёгкая броня на ИНТ: +3 за уровень");
 
-  const hood = content.scaledGearStats({ ...make("start_hood", 10), level: 10 }).barrier;
-  assert.equal(hood, 0, "броня на ЛОВ барьера не имеет");
-  const ring = content.scaledGearStats({ ...make("amulet", 10), level: 10 }).barrier;
-  assert.equal(ring, 0, "аксессуары барьера не имеют");
+  const hood = make("start_hood", 10);
+  assert.equal(content.scaledGearStats({ ...hood, level: 10 }).barrier, 0, "броня на ЛОВ барьера не имеет");
+  const ring = make("amulet", 10);
+  assert.equal(content.scaledGearStats({ ...ring, level: 10 }).barrier, 0, "аксессуары барьера не имеют");
 });
 
-test("тяжёлая броня: множитель ролла 1,5 вместо 2", () => {
-  const rolls = content.rollItemStatRolls(content.GEAR_BASES.plate, "heavy", () => 0.99);
-  /* roll(4,3) при rng 0.99 → 7; ×1,5 → 10,5 → round 11 при k = 1 (корпус). */
-  assert.equal(rolls.armor, Math.round(7 * 1.5));
+test("бросок ±1 у тяжёлой брони: предметы получают −1, 0 или +1 к броне", () => {
+  const low = content.rollItemStatRolls(content.GEAR_BASES.plate, "heavy", () => 0);
+  const mid = content.rollItemStatRolls(content.GEAR_BASES.plate, "heavy", () => 0.5);
+  const high = content.rollItemStatRolls(content.GEAR_BASES.plate, "heavy", () => 0.99);
+  assert.equal(low.armor, -1);
+  assert.equal(mid.armor, 0);
+  assert.equal(high.armor, 1);
 });

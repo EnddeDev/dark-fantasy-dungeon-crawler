@@ -152,11 +152,11 @@ test("снятие без золота не проходит", () => {
   assert.equal(ritual.ritualStrip(p, item.uid, "rage", seeded(3)), null);
 });
 
-test("маг. барьер: броня на ИНТ даёт барьер вместо уклонения, без капа", () => {
+test("маг. барьер: броня на ИНТ даёт и барьер, и уклонение по таблице (уклонение — не выше капа лёгкой брони)", () => {
   const armor = content.createGearItem({ baseId: "shroud", level: 5, rarity: "common", identified: true, wear: "new", rng: seeded(21) });
   const st = content.scaledGearStats(armor);
   assert.ok(st.barrier > 0, "барьер есть");
-  assert.equal(st.evade, 0, "уклонения у брони на ИНТ нет");
+  assert.ok(st.evade > 0 && st.evadePp <= 7 * (1 + 0.5 * 5) / 1.5 + 1e-9, "уклонение по таблице, не выше капа лёгкой брони на 5 уровне");
   assert.equal(content.gearAffinity(armor), "int");
 });
 
@@ -171,7 +171,7 @@ test("маг. барьер стоит как здоровье по цене", ()
   const st = content.scaledGearStats(armor);
   const parts = content.gearPointParts(armor);
   assert.ok(Math.abs(parts.barrier - content.GEAR_POINT_WEIGHTS.hp * st.barrier) < 1e-9, "вес барьера = вес здоровья");
-  assert.equal(parts.evade, 0, "уклонение не стоит очков у брони на ИНТ");
+  assert.ok(parts.evade > 0, "уклонение у брони на ИНТ стоит очков по таблице");
 });
 
 test("бой: барьер героя — сумма брони на ИНТ, восстанавливается в каждом бою", () => {
@@ -219,6 +219,8 @@ test("бой: яд и кровотечение обходят барьер, го
     b.idx = 0;
     b.p.statuses.stunAp = 1;
     b.p.statuses.invulnerable = 0;
+    /* Регенерация брони — отдельная проверка; здесь видно только яд, кровотечение и горение. */
+    b.p.regenTurn = 0;
     Object.assign(b.p.statuses, status);
     b.p.barrier = 50;
     b.p.barrierMax = 50;
@@ -239,10 +241,10 @@ test("бой: яд и кровотечение обходят барьер, го
   assert.equal(burning.p.hp, 100, "горение в барьер — ОЗ не тронуты");
 });
 
-test("старая броня на ИНТ без барьера в статах: барьер берётся из прежнего уклонения", () => {
+test("старый бросок уклонения 40 не трактуется как разброс: значение по таблице", () => {
   const old = content.createGearItem({ baseId: "shroud", level: 5, rarity: "common", identified: true, wear: "new", rng: seeded(21) });
   old.statRolls = { hp: 5, armor: 0, evade: 40, regen: 0 };
   const st = content.scaledGearStats(old);
   assert.ok(st.barrier > 0, "барьер есть у старого предмета");
-  assert.equal(st.evade, 0, "уклонение у брони на ИНТ заменено барьером");
+  assert.ok(st.evadePp <= 7 * (1 + 0.5 * 5) / 1.5 + 1e-9, "старый бросок 40 не даёт 40%: кап лёгкой брони на 5 уровне");
 });

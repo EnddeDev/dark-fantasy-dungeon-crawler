@@ -2203,25 +2203,28 @@ test("armor and accessories give defense by weight and stat; weapons give none",
     assert.ok(st.dmg, `${id}: зато с уроном`);
   }
 
-  /* Тяжёлая броня: требуют СИЛ, много брони и немного здоровья. */
-  const heavy = rolls("plate");
-  const mediumStr = rolls("mail");
+  /* Значения по таблице типа и слота (gearParams.ts); характеристика на них не влияет. */
+  const stats = (id) => content.scaledGearStats(content.createGearItem({ baseId: id, level: 1, wear: "worn", rarity: "common", identified: true, rng: () => 0.5 }));
+
+  /* Тяжёлая броня: много брони, уклонения нет. */
+  const heavy = stats("plate");
+  const mediumStr = stats("mail");
   assert.ok(heavy.armor > mediumStr.armor, "тяжёлая броня крепче средней");
   assert.equal(heavy.evade, 0, "тяжёлая броня не уклоняется");
   assert.equal(content.gearRequirement(content.createGearItem({ baseId: "plate", identified: true })).stat, "str");
 
-  /* Средняя броня: СИЛ → броня, ЛОВ → уклонение. */
-  const mediumAgi = rolls("start_leather");
-  assert.ok(mediumAgi.evade > 0, "средняя ловкая броня даёт уклонение");
-  assert.ok(mediumStr.armor > mediumAgi.armor, "силовая средняя крепче ловкой");
+  /* Средняя броня одного слота одинаково крепка для СИЛ и ЛОВ: разница только в характеристике, не в таблице. */
+  const mediumAgi = stats("start_leather");
+  assert.ok(mediumAgi.evade > 0, "средняя броня даёт уклонение по таблице");
+  assert.equal(mediumStr.armor, mediumAgi.armor, "средняя броня: одна таблица для СИЛ и ЛОВ");
 
-  /* Лёгкая броня: здоровье и уклонение; с ИНТ здоровья больше. */
-  const lightInt = rolls("start_robe");
-  const lightFree = rolls("start_hood");
-  assert.ok(lightInt.hp > lightFree.hp, "лёгкая броня с ИНТ даёт больше здоровья");
+  /* Лёгкая броня: здоровье и уклонение по таблице; броня на ИНТ дополнительно даёт маг. барьер. */
+  const lightInt = stats("start_robe");
+  const lightFree = stats("start_hood");
   assert.ok(lightFree.evade > 0, "лёгкая броня без ИНТ уклоняется");
-  assert.equal(lightInt.evade, 0, "лёгкая броня с ИНТ не уклоняется: её место занимает маг. барьер");
+  assert.ok(lightInt.evade > 0, "лёгкая броня с ИНТ тоже уклоняется по таблице");
   assert.ok(lightInt.barrier > 0, "лёгкая броня с ИНТ даёт маг. барьер");
+  assert.equal(lightFree.barrier, 0, "лёгкая броня без ИНТ барьера не имеет");
   assert.equal(lightInt.armor, 0, "лёгкая броня почти не защищает");
   const free = content.createGearItem({ baseId: "start_hood", identified: true, level: 1 });
   assert.equal(content.gearRequiresNothing(free), true, "лёгкая броня может не иметь требований");
@@ -2230,15 +2233,19 @@ test("armor and accessories give defense by weight and stat; weapons give none",
   const intLight = content.createGearItem({ baseId: "start_robe", identified: true, level: 1 });
   assert.equal(content.gearRequirement(intLight).stat, "int", "лёгкая с ИНТ требует ИНТ");
 
-  /* Аксессуары: СИЛ → защита и немного ОЗ, ЛОВ → уклонение, ИНТ → здоровье. */
-  const strAcc = rolls("ring_stone");
-  assert.ok(strAcc.armor > 0 && strAcc.hp > 0, "силовой аксессуар даёт защиту и ОЗ");
-  const agiAcc = rolls("ring_band");
-  assert.ok(agiAcc.evade > 0, "ловкий аксессуар даёт уклонение");
+  /* Аксессуары по таблице: ОЗ есть у всех; брони и уклонения кольца и оберег не дают. */
+  const strAcc = stats("ring_stone");
+  assert.ok(strAcc.hp > 0, "кольцо даёт ОЗ");
+  assert.equal(strAcc.armor, 0, "кольцо не даёт броню");
+  assert.equal(strAcc.evade, 0, "кольцо не даёт уклонение");
+  const agiAcc = stats("ring_band");
+  assert.ok(agiAcc.hp > 0, "кольцо ЛОВ даёт ОЗ");
+  assert.equal(agiAcc.evade, 0, "кольцо ЛОВ уклонения не даёт");
   assert.equal(agiAcc.armor, 0);
-  const intAcc = rolls("amulet");
-  assert.ok(intAcc.hp > 0, "умный аксессуар даёт здоровье");
-  assert.equal(intAcc.armor, 0);
+  const intAcc = stats("amulet");
+  assert.ok(intAcc.hp > 0, "оберег даёт ОЗ");
+  assert.equal(intAcc.armor, 0, "оберег не даёт броню");
+  assert.equal(intAcc.evade, 0, "оберег не даёт уклонение");
   assert.equal(intAcc.evade, 0);
 
   /* Уклонение из брони доходит до персонажа. */
