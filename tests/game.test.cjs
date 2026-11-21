@@ -2661,10 +2661,11 @@ test("тик задаёт источник: дротик и нож берут б
 });
 
 test("раскол складывается, сила растёт с уровнем эффекта и монстра", () => {
-  assert.equal(battle.sunderBreakAmount(30), 1);
-  assert.equal(battle.sunderBreakAmount(60), 2);
-  assert.equal(battle.sunderBreakAmount(90), 3);
-  assert.equal(battle.sunderBreakAmount(5), 1, "минимум один пункт брони");
+  /* величина раскола — пункты брони за наложение: округление, не меньше одного */
+  assert.equal(battle.sunderBreakAmount(1), 1);
+  assert.equal(battle.sunderBreakAmount(2), 2);
+  assert.equal(battle.sunderBreakAmount(1.5), 2);
+  assert.equal(battle.sunderBreakAmount(0.5), 1, "минимум один пункт брони");
 
   assert.equal(battle.enemySunderBreak(1), 1);
   assert.equal(battle.enemySunderBreak(4), 1);
@@ -2803,7 +2804,8 @@ test("weapon effects bleed, poison and sunder trigger on a plain hit", () => {
   b.enemy.chanceLayers = { evade: { stats: [], items: [], effects: [] }, resist: { stats: [], items: [], effects: [] } };
   b.p.chanceLayers.crit = { stats: [], items: [], effects: [] };
   const old = Math.random;
-  Math.random = () => 0.5; // свойства со 100% шансом срабатывают, промах и крит — нет
+  /* Шансы свойств 7–10% на 1 уровне: 0.05 срабатывает у всех трёх; крит и промах у героя здесь не в игре. */
+  Math.random = () => 0.05;
   const after = battle.playerAct(b, { type: "attack" });
   Math.random = old;
   assert.ok(after.enemy.statuses.bleed > 0, "кровотечение наложено");

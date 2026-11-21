@@ -41,7 +41,7 @@ import { BiomeIcon } from "./BiomeLabel";
 import { MAX_SIZE, MIN_SIZE, TORCH, chestCountForFloor, mazeSizeForFloor, monsterCountFor, trapCountFor } from "../game/maze";
 import { SLOT_META, SLOT_ORDER } from "../game/types";
 import { ACTIVE_GEAR_EFFECTS, GEAR_EFFECTS } from "../game/gearEffects";
-import { GEAR_EFFECT_BASE, GEAR_EFFECT_GROWTH_MAIN, GEAR_EFFECT_SPREAD } from "../game/gearScaling";
+import { GEAR_EFFECT_BASE, effectGrowthLabel, effectRollSpread } from "../game/gearScaling";
 import { effectDetail } from "../game/gearEffects";
 import { NEGATIVE_EFFECTS } from "../game/statusEffects";
 import { DAMAGE_TYPES } from "../game/damageTypes";
@@ -145,7 +145,7 @@ const STATUS_ROWS = NEGATIVE_EFFECTS.map((effect) => ({ name: effect.name, text:
 const POSITIVE_EFFECT_ROWS = ACTIVE_GEAR_EFFECTS.map((id) => {
   const effect = GEAR_EFFECTS[id];
   const base = GEAR_EFFECT_BASE[id];
-  const spread = GEAR_EFFECT_SPREAD[id];
+  const spread = effectRollSpread(id);
   const range =
     id === "ap"
       ? "0 до 5 ур.; +1 (5–6) → +2 (7–8) → +3 (9–10), только эпик и легендарка"
@@ -154,7 +154,7 @@ const POSITIVE_EFFECT_ROWS = ACTIVE_GEAR_EFFECTS.map((id) => {
     name: effect.name,
     text: effect.desc,
     range,
-    growth: id === "ap" ? "пороги" : `×${GEAR_EFFECT_GROWTH_MAIN} за уровень`,
+    growth: id === "ap" ? "пороги" : effectGrowthLabel(id),
   };
 });
 

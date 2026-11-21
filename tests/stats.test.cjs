@@ -119,20 +119,37 @@ test("тик задаёт источник: базовая формула, ×2 �
   assert.deepEqual(statuses.NEGATIVE_EFFECTS.map((e) => e.id), ["curse", "poison", "burn", "bleed", "chill", "wither", "stun", "fear", "sunder"]);
 });
 
-test("new gear effects roll base spread and grow by compound rate per level", () => {
-  assert.equal(scaling.rollEffectBase("vamp", () => 0), 3);
-  assert.equal(scaling.rollEffectBase("vamp", () => 0.999), 7);
-  assert.equal(scaling.rollEffectBase("crit_chance", () => 0), 2);
-  assert.equal(scaling.rollEffectBase("crit_chance", () => 0.999), 8);
-  /* вампиризм — обычная ставка ×1.17 сложным процентом */
-  assert.equal(scaling.effectMagnitude("vamp", 1, 5), 5);
-  assert.equal(scaling.effectMagnitude("vamp", 2, 5), 6);
-  assert.equal(scaling.effectMagnitude("vamp", 3, 5), 8);
-  assert.equal(scaling.effectMagnitude("vamp", 10, 5), 31);
-  /* у всех эффектов одна ставка — ×1.17 за уровень */
-  assert.equal(scaling.effectMagnitude("crit_chance", 2, 5), 6);
-  assert.equal(scaling.effectMagnitude("crit_chance", 3, 5), 8);
-  assert.equal(scaling.effectMagnitude("crit_chance", 10, 5), 31);
+test("linear gear effects roll ±1 around their level-1 base and grow by a fixed step", () => {
+  /* вампиризм: база 5 ±1, +1.5 за уровень (без ×1.17) */
+  assert.equal(scaling.rollEffectBase("vamp", () => 0), 4);
+  assert.equal(scaling.rollEffectBase("vamp", () => 0.999), 6);
+  assert.equal(scaling.rollEffectBase("crit_chance", () => 0), 3);
+  assert.equal(scaling.rollEffectBase("crit_chance", () => 0.999), 5);
+  assert.equal(scaling.effectMagnitude("vamp", 1), 5);
+  assert.equal(scaling.effectMagnitude("vamp", 2), 6.5);
+  assert.equal(scaling.effectMagnitude("vamp", 3), 8);
+  assert.equal(scaling.effectMagnitude("vamp", 10), 18.5);
+  /* выпавшая база в пределах ±1 сохраняется на всех уровнях */
+  assert.equal(scaling.effectMagnitude("vamp", 3, 6), 9);
+  /* шанс крита: 4% на 1 уровне, +2% за уровень */
+  assert.equal(scaling.effectMagnitude("crit_chance", 1), 4);
+  assert.equal(scaling.effectMagnitude("crit_chance", 2), 6);
+  assert.equal(scaling.effectMagnitude("crit_chance", 10), 22);
+  /* старая выпавшая база (вне ±1 от новой) не переносится: берётся база таблицы */
+  assert.equal(scaling.effectMagnitude("vamp", 1, 30), 5);
+  /* тик у яда, кровотечения и раскола: 5 / 7 / 1 на 1 уровне, у прочих тика нет */
+  assert.equal(scaling.effectTickMagnitude("poison_damage", 1), 5);
+  assert.equal(scaling.effectTickMagnitude("poison_damage", 10), 50);
+  assert.equal(scaling.effectTickMagnitude("bleed", 1), 7);
+  assert.equal(scaling.effectTickMagnitude("sunder", 3), 2);
+  assert.equal(scaling.effectTickMagnitude("vamp", 1), 0);
+  /* жар и обморожение: шанс 5% и 3%, тик 5 и 2 */
+  assert.equal(scaling.effectMagnitude("scorch", 1), 5);
+  assert.equal(scaling.effectTickMagnitude("scorch", 1), 5);
+  assert.equal(scaling.effectMagnitude("frost_bite", 1), 3);
+  assert.equal(scaling.effectTickMagnitude("frost_bite", 1), 2);
+  /* у свойств без линейной таблицы — прежняя ставка ×1.17 */
+  assert.equal(scaling.effectMagnitude("skill_damage", 2, 12), 15);
   for (const [level, expected] of [[1, 0], [2, 0], [3, 0], [4, 0], [5, 1], [6, 1], [7, 2], [8, 2], [9, 3], [10, 3]]) {
     assert.equal(scaling.effectMagnitude("ap", level), expected);
   }

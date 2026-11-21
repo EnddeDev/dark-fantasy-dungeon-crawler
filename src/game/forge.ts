@@ -321,6 +321,7 @@ export function upgradeRarity(item: GearItem, rng: () => number = Math.random): 
   const have = out.effects ?? [];
   const pool = effectPoolForGear({
     kind,
+    slot: base?.slot ?? item.slot,
     weaponType,
     gearClass: base?.gearClass ?? item.gearClass,
     stat,

@@ -1,7 +1,7 @@
 import type { GearItem } from "./types";
 import { GEAR_EFFECTS, effectTotalDetail, type GearEffectId } from "./gearEffects";
 import { GEAR_BASES, canRollExtraAp } from "./content";
-import { MAX_EXTRA_AP, effectMagnitude } from "./gearScaling";
+import { MAX_EXTRA_AP, effectMagnitude, effectTickMagnitude } from "./gearScaling";
 
 /** Вклад одного предмета в эффект. */
 export interface EffectSource {
@@ -20,6 +20,8 @@ export interface EffectTotal {
   total: number;
   detail: string;
   stacking: "sum" | "max";
+  /** Величина срабатывания яда, кровотечения, раскола, жара и обморожения: наибольшая из предметов. */
+  tick?: number;
   sources: EffectSource[];
 }
 
@@ -35,6 +37,7 @@ export function gearEffectTotals(items: GearItem[]): EffectTotal[] {
     for (const id of item.effects ?? []) {
       if (id === "ap" && !canRollExtraAp(item.rarity, level)) continue;
       const value = effectMagnitude(id, level, item.effectRolls?.[id]);
+      const tick = effectTickMagnitude(id, level) || undefined;
       const stacking = id === "ap" ? "max" : "sum";
       const entry: EffectTotal = totals.get(id) ?? {
         id,
@@ -49,14 +52,15 @@ export function gearEffectTotals(items: GearItem[]): EffectTotal[] {
         name: GEAR_BASES[item.baseId]?.name ?? item.baseId,
         level,
         value,
-        detail: effectTotalDetail(id, value),
+        detail: effectTotalDetail(id, value, tick),
       });
       entry.total = stacking === "max" ? Math.max(entry.total, value) : entry.total + value;
+      if (tick !== undefined) entry.tick = Math.max(entry.tick ?? 0, tick);
       totals.set(id, entry);
     }
   }
   return [...totals.values()].map((entry) => {
     const total = entry.stacking === "max" ? Math.min(MAX_EXTRA_AP, entry.total) : entry.total;
-    return { ...entry, total, detail: effectTotalDetail(entry.id, total) };
+    return { ...entry, total, detail: effectTotalDetail(entry.id, total, entry.tick) };
   });
 }

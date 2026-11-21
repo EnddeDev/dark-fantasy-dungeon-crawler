@@ -39,6 +39,7 @@ import {
   ACTIVE_GEAR_EFFECTS,
   effectCountForGear,
   effectPoolForGear,
+  effectExcludedFor,
   passivePoolFor,
   archetypePassive,
   type GearEffectId,
@@ -1811,6 +1812,7 @@ export function createGearItem(opts: {
   const weaponType = kind === "weapon" ? base.weaponType ?? "sword" : undefined;
   const pool = effectPoolForGear({
     kind,
+    slot: base.slot,
     weaponType,
     gearClass,
     stat: reqStat,
@@ -1926,8 +1928,10 @@ export function migrateGearItem(source: GearItem): GearItem {
   const skillId = techniquePool.length
     ? (item.skillId && techniquePool.includes(item.skillId) ? item.skillId : pick(techniquePool, rng))
     : item.skillId;
+  const slot = base.slot ?? item.slot;
   const pool = effectPoolForGear({
     kind,
+    slot,
     weaponType,
     gearClass,
     stat: reqStat,
@@ -1935,9 +1939,10 @@ export function migrateGearItem(source: GearItem): GearItem {
     archetype: base.archetype,
     setId: base.set ?? null,
   }).filter((id) => id !== "ap" || canRollExtraAp(item.rarity ?? "common", item.level ?? 1));
+  /* Свойство, запрещённое для слота, заменяется случайным из пула сета или характеристики. */
   const effects: GearEffectId[] = [];
   for (const id of item.effects ?? []) {
-    if (ACTIVE_GEAR_EFFECTS.includes(id) && !effects.includes(id)) effects.push(id);
+    if (ACTIVE_GEAR_EFFECTS.includes(id) && !effectExcludedFor(id, kind, slot) && !effects.includes(id)) effects.push(id);
   }
   /* Старые предметы догоняют новый минимум свойств: аксессуар — одно, копьё и посох — два. */
   const minEffects = effectCountForGear({
@@ -1957,6 +1962,9 @@ export function migrateGearItem(source: GearItem): GearItem {
     effects.push(avail[Math.floor(rng() * avail.length)]);
   }
   const effectRolls: Partial<Record<GearEffectId, number>> = { ...(item.effectRolls ?? {}) };
+  for (const id of Object.keys(effectRolls) as GearEffectId[]) {
+    if (!effects.includes(id)) delete effectRolls[id];
+  }
   for (const id of effects) {
     if (effectRolls[id] == null) effectRolls[id] = rollEffectBase(id, rng);
   }
