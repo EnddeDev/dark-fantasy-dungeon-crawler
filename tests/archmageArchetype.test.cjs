@@ -85,7 +85,7 @@ test("спец-приём без вампиризма: старый бонус +
   assert.ok(!next.log.some((l) => l.text.includes("Похищение жизни")), "лечения от вампиризма нет");
 });
 
-test("Пылающий канон и Вечная стужа: магический урон +10% и +25% складываются в один множитель", () => {
+test("Единение стихий: магический урон +15%; Абсолютное знание магию не усиливает", () => {
   /* Свиток молнии бьёт магически; спец-приём урона не наносит. Разброс урона больше фиксированного
      Math.random, поэтому сравниваем средние по многим ударам. */
   const avg = (passives) => {
@@ -102,8 +102,8 @@ test("Пылающий канон и Вечная стужа: магически
   const dPlain = avg([]);
   const dFive = avg(["arch_archmage_5"]);
   const dTen = avg(["arch_archmage_5", "arch_archmage_10"]);
-  assert.ok(dFive > dPlain * 1.05, `рубеж 5 усиливает магический урон: ${dPlain.toFixed(1)} → ${dFive.toFixed(1)}`);
-  assert.ok(dTen > dFive * 1.1, `рубеж 10 усиливает ещё сильнее: ${dFive.toFixed(1)} → ${dTen.toFixed(1)}`);
+  assert.ok(dFive > dPlain * 1.08, `рубеж 5 усиливает магический урон: ${dPlain.toFixed(1)} → ${dFive.toFixed(1)}`);
+  assert.ok(Math.abs(dTen - dFive) < dFive * 0.06, `рубеж 10 магию не усиливает: ${dFive.toFixed(1)} → ${dTen.toFixed(1)}`);
 });
 
 test("Тлеющие угли (ветка A): горящий враг теряет 2 брони", () => {
@@ -152,4 +152,20 @@ test("ветка «Стужа» B «Ледяная клеть»: обморож�
   b.idx = 0;
   const next = withRandom(0.1, () => battle.enemyStep(b));
   assert.ok(next.log.some((l) => l.text.includes("ледяной клетью")));
+});
+
+test("Абсолютное знание: барьер +200 в начале боя; без рубежа — без барьера", () => {
+  const plain = mageFight([]);
+  const ten = mageFight(["arch_archmage_10"]);
+  assert.equal(ten.p.barrier - plain.p.barrier, 200, "рубеж 10 даёт барьер +200");
+  assert.equal(ten.p.barrierMax - plain.p.barrierMax, 200, "максимум барьера тоже +200");
+});
+
+test("Абсолютное знание: обычная атака сокращает перезарядку одного приёма на 1 раунд", () => {
+  const s = mageFight(["arch_archmage_10"]);
+  s.p.weaponCd = 3;
+  s.p.epicCds = { ...(s.p.epicCds ?? {}), test_epic: 2 };
+  const after = withRandom(0.45, () => battle.playerAct(s, { type: "attack", kind: "normal" }));
+  assert.equal(after.p.weaponCd, 2, "самый длинный приём (оружие 3) уменьшился на 1");
+  assert.equal(after.p.epicCds.test_epic, 2, "второй приём не тронут");
 });

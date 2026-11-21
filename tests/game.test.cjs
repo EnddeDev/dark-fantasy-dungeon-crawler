@@ -1983,6 +1983,8 @@ test("archmage 10: библиотека душ убрана — первый у�
   const b = monsterBattle("beast", "agile", ["attack"], { player: { passives: ["arch_archmage_10"] } });
   b.enemy.hp = 9999;
   b.enemy.maxHp = 9999;
+  /* Барьер рубежа 10 (+200) поглотил бы удар; тест про блокировку первого удара, поэтому барьер снят. */
+  b.p.barrier = 0;
   const hp0 = b.p.hp;
   const r1 = withRandom(() => battle.enemyStep({ ...b, queue: ["e", "p"], idx: 0 }), 0.45);
   assert.ok(r1.p.hp < hp0, "первый удар проходит");

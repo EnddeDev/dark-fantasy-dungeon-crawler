@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useFitInViewport } from "./useFitInViewport";
+import { MilestoneTip } from "./MilestoneTip";
 import { createPortal } from "react-dom";
 import {
   BookOpen,
@@ -1446,8 +1447,8 @@ export function Lobby({
                             const unlocked = v >= tier;
                             const canPick = canChooseStatMilestone(player, k, tier);
                             return (
+                              <MilestoneTip key={tier} chosen={chosen} tier={tier}>
                               <button
-                                key={tier}
                                 disabled={!unlocked || !!chosen}
                                 onClick={() => setPick({ stat: k, tier })}
                                 className={`border px-3 py-2 text-left transition-colors ${
@@ -1471,6 +1472,7 @@ export function Lobby({
                                   <div className="mt-1 font-mono text-[0.78rem] text-flamedim">{ARCHETYPES[chosen.archetype].name}</div>
                                 )}
                               </button>
+                              </MilestoneTip>
                             );
                           })}
                         </div>

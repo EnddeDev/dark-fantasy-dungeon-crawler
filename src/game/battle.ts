@@ -254,6 +254,8 @@ export interface BattleState {
     xp: number;
     statuses: {
       chill: number; bleed: number; poison: number; fear: number; stunAp: number;
+      /** Бонусный тик проков рубежа 5 (Единение стихий): горение ×5 и обморожение ×3 от уровня героя. */
+      archBurn?: number; archChill?: number;
       blight: number; wither: number; burning: number; burn: number; curse: number;
       /** Тик периодического урона, задан источником наложения (у каждого свой). */
       bleedTick: number; poisonTick: number; burnTick: number; chillTick: number; curseTick: number; blightTick: number;
@@ -1301,8 +1303,8 @@ export function newBattle(
       ap: d.ap,
       stamina: carriedStamina(pl, d.staminaMax),
       staminaMax: d.staminaMax,
-      barrier: d.barrierBonus,
-      barrierMax: d.barrierBonus,
+      barrier: d.barrierBonus + (pl.passives.includes("arch_archmage_10") ? 200 : 0),
+      barrierMax: d.barrierBonus + (pl.passives.includes("arch_archmage_10") ? 200 : 0),
       hands: d.hands,
       firstRoundApBonus: d.firstRoundApBonus,
       stats: { ...pl.stats },
@@ -2204,11 +2206,68 @@ function healEnemy(b: BattleState, amount: number): number {
  * Маг. барьер поглощает урон первым. Яды и кровотечение его обходят: их считают отдельно.
  * Возвращает остаток урона, который дошёл до здоровья.
  */
+/** Абсолютное знание: сбрасывает перезарядку всех приёмов героя. */
+function resetTechniqueCooldowns(b: BattleState) {
+  b.p.weaponCd = 0;
+  for (const k of Object.keys(b.p.epicCds)) b.p.epicCds[k] = 0;
+  for (const k of Object.keys(b.p.armorCds)) b.p.armorCds[k] = 0;
+  push(b, "Барьер снят: перезарядка всех приёмов сброшена.", "p");
+}
+
+/** Абсолютное знание: обычная атака сокращает перезарядку самого длинного приёма на 1 раунд. */
+function reduceOneTechniqueCooldown(b: BattleState) {
+  const cds: { v: number; set: (x: number) => void }[] = [{ v: b.p.weaponCd, set: (x) => { b.p.weaponCd = x; } }];
+  for (const k of Object.keys(b.p.epicCds)) cds.push({ v: b.p.epicCds[k], set: (x) => { b.p.epicCds[k] = x; } });
+  for (const k of Object.keys(b.p.armorCds)) cds.push({ v: b.p.armorCds[k], set: (x) => { b.p.armorCds[k] = x; } });
+  const target = cds.filter((c) => c.v > 0).sort((x, y) => y.v - x.v)[0];
+  if (target) target.set(target.v - 1);
+}
+
+/** Единение стихий: пока приём оружия перезаряжается, обычная атака наносит магический урон. */
+function archBasicKind(b: BattleState): HitKind {
+  return hasPassive(b, "arch_archmage_5") && b.p.weaponCd > 0 ? "magic" : "phys";
+}
+
+/**
+ * Единение стихий: приём или свиток с шансом 25% накладывает горение (50%) или обморожение (50%) на 3 раунда.
+ * Бонусный тик: уровень героя × 5 для горения, × 3 для обморожения. Рубеж 10 держит срок до конца боя.
+ */
+function archmageProc(b: BattleState) {
+  if (!hasPassive(b, "arch_archmage_5") || b.enemy.hp <= 0 || Math.random() >= 0.25) return;
+  const kind = Math.random() < 0.5 ? "burn" : "chill";
+  const rounds = hasPassive(b, "arch_archmage_10") ? BURN_UNTIL_END : 3;
+  applyEnemyStatus(b, kind, rounds, 0);
+  if ((b.enemy.statuses[kind] ?? 0) <= 0) return;
+  const lvl = Math.max(1, Math.floor(b.p.level));
+  if (kind === "burn") b.enemy.statuses.archBurn = lvl * 5;
+  else b.enemy.statuses.archChill = lvl * 3;
+  push(b, `Единение стихий: ${kind === "burn" ? "горение" : "обморожение"} на ${b.enemy.def.name} (бонус ${kind === "burn" ? "×5" : "×3"} уровня).`, "p");
+}
+
+/** Единение стихий: бонусный тик проков в начале каждого хода героя. Без соответствующего статуса бонус гаснет. */
+function archProcTick(b: BattleState) {
+  if ((b.enemy.statuses.burn ?? 0) <= 0) b.enemy.statuses.archBurn = 0;
+  if ((b.enemy.statuses.chill ?? 0) <= 0) b.enemy.statuses.archChill = 0;
+  const burn = b.enemy.statuses.archBurn ?? 0;
+  if (burn > 0 && b.enemy.hp > 0) {
+    b.enemy.hp -= burn;
+    push(b, `Горение Единения стихий: −${burn} ОЗ у ${b.enemy.def.name}.`, "p");
+  }
+  const chill = b.enemy.statuses.archChill ?? 0;
+  if (chill > 0 && b.enemy.hp > 0) {
+    const d = magicTickFrom(chill, enemyMagicResist(b));
+    b.enemy.hp -= d;
+    push(b, `Обморожение Единения стихий: −${d} ОЗ у ${b.enemy.def.name}.`, "p");
+  }
+}
+
 export function absorbBarrier(b: BattleState, dmg: number): number {
   const pool = b.p.barrier ?? 0;
   if (dmg <= 0 || pool <= 0) return dmg;
   const absorbed = Math.min(pool, dmg);
   b.p.barrier = pool - absorbed;
+  /* Абсолютное знание (рубеж 10): снятый барьер сбрасывает перезарядку всех приёмов. */
+  if (b.p.barrier <= 0 && hasPassive(b, "arch_archmage_10")) resetTechniqueCooldowns(b);
   if ((b.p.statuses.bubbleTurns ?? 0) > 0) b.p.statuses.bubbleAbsorbed = (b.p.statuses.bubbleAbsorbed ?? 0) + absorbed;
   push(b, `Маг. барьер поглощает ${absorbed} урона${b.p.barrier <= 0 ? ", барьер разрушен" : ""}.`, "p");
   return dmg - absorbed;
@@ -2499,11 +2558,11 @@ export function magicPowerMult(effectPower: Partial<Record<GearEffectId, number>
 }
 /**
  * Магический множитель героя: все магические добавки складываются в один:
- * магическое усиление предметов, Пылающий канон (+10%), Вечная стужа (+25%), Запретный канон (+12%).
+ * магическое усиление предметов, Единение стихий (+15%), Запретный канон (+12%).
  */
 function magicMultNow(b: BattleState): number {
-  return magicPowerMult(b.p.effectPower) + (hasPassive(b, "arch_archmage_5") ? 0.10 : 0) +
-    (hasPassive(b, "arch_archmage_10") ? 0.25 : 0) + (hasGearPassive(b, "archmage_library") ? passivePower(b, "archmage_library", "magic") / 100 : 0);
+  return magicPowerMult(b.p.effectPower) + (hasPassive(b, "arch_archmage_5") ? 0.15 : 0) +
+    (hasGearPassive(b, "archmage_library") ? passivePower(b, "archmage_library", "magic") / 100 : 0);
 }
 
 export function hitEnemy(
@@ -3071,6 +3130,8 @@ function beginTurn(b: BattleState) {
     const heal = healPlayer(b, b.p.regenTurn ?? 0);
     if (heal > 0) push(b, `Регенерация снаряжения: +${heal} здоровья.`, "p");
   }
+  /* Единение стихий (рубеж 5): бонусный тик горения и обморожения срабатывает в начале каждого хода героя. */
+  if (side === "p" && b.enemy.hp > 0) archProcTick(b);
   /* Выносливость: каждый ход героя восстанавливает STAMINA_TURN_RECOVERY, не больше максимума. */
   if (side === "p" && b.p.hp > 0 && b.p.stamina < b.p.staminaMax) {
     const gain = Math.min(STAMINA_TURN_RECOVERY, b.p.staminaMax - b.p.stamina);
@@ -3711,14 +3772,14 @@ function duelistCounterVolley(b: BattleState) {
 
 /**
  * Архимаг: горение и обморожение от приёмов и свитков.
- * Пылающий канон (рубеж 5): тик +25% (с округлением вверх). Запретный канон: +1 раунд.
- * Вечная стужа (рубеж 10): горение держится до конца боя. Пожар B: горение от свитка +1 за каждый свиток в бою (до 5).
+ * Единение стихий (рубеж 5): тик не меняется, проки идут отдельно (archmageProc). Запретный канон: +1 раунд.
+ * Абсолютное знание (рубеж 10): горение и обморожение держатся до конца боя. Пожар B: горение от свитка +1 за каждый свиток в бою (до 5).
  */
 function magicDot(b: BattleState, kind: "burn" | "chill", rounds: number, tick: number, fromScroll: boolean): { rounds: number; tick: number } {
   let r = rounds + (hasGearPassive(b, "archmage_library") ? passivePower(b, "archmage_library", "round") : 0);
-  let t = hasPassive(b, "arch_archmage_5") ? Math.ceil(tick * 1.25) : tick;
+  let t = tick;
   if (fromScroll && kind === "burn" && hasPassive(b, "skill_ember_b")) t += Math.min(5, b.scrollsMade ?? 0);
-  if (kind === "burn" && hasPassive(b, "arch_archmage_10")) r = BURN_UNTIL_END;
+  if ((kind === "burn" || kind === "chill") && hasPassive(b, "arch_archmage_10")) r = BURN_UNTIL_END;
   return { rounds: r, tick: t };
 }
 function createScrolls(b: BattleState, count: number): string[] {
@@ -3991,7 +4052,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
         const dealt = hitEnemy(
           b,
           d + strikeBonus,
-          "phys",
+          archBasicKind(b),
           label + (crit ? " Критический удар!" : "") + (strikeBonus > 0 ? ` [Стойка: +${strikeBonus}]` : ""),
           true,
           undefined,
@@ -4042,6 +4103,8 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
           applyVamp(b, dealt2, 0, "weapon");
         }
       }
+      /* Абсолютное знание (рубеж 10): обычная атака сокращает перезарядку одного приёма на 1 раунд. */
+      if (hasPassive(b, "arch_archmage_10")) reduceOneTechniqueCooldown(b);
       b.skillNoMiss = false;
       b.armorIgnore = 0;
       break;
@@ -4679,6 +4742,8 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
   if (takeTurn) b.p.statuses.turnActs = (b.p.statuses.turnActs ?? 0) + 1;
   if (takeTurn && a.type === "item" && ITEMS[a.id]?.kind === "scroll") b.lastRepeat = { kind: "item", id: a.id };
   if (takeTurn) b.p.stamina = Math.max(0, b.p.stamina - spent);
+  /* Единение стихий (рубеж 5): приём или свиток может наложить горение или обморожение. */
+  if (takeTurn && !b.over && b.enemy.hp > 0 && (a.type === "weapon_skill" || a.type === "epic_skill" || a.type === "armor_skill" || a.type === "archetype_skill" || (a.type === "item" && ITEMS[a.id]?.kind === "scroll"))) archmageProc(b);
   if (takeTurn && !b.over && a.type !== "end_turn") adjustConcentration(b, a.type, a.type === "attack" ? a.kind ?? "normal" : undefined);
   if (!b.over && b.enemy.hp <= 0 && !tryRevive(b)) {
     b.enemy.hp = 0;
@@ -4814,11 +4879,10 @@ const ENEMY_MOVE_SHAPE: Partial<Record<EnemyMove, { mult: number; kind: HitKind;
 
 /** Ослабление/усиление удара от состояния врага (ледяное проклятие, порча). */
 function enemyChill(b: BattleState): number {
-  /* Холодный след (Стужа A): обморожённый враг −10% урона. Вечная стужа (рубеж 10): обморожение −20%. */
+  /* Холодный след (Стужа A): обморожённый враг −10% урона. */
   const frostTrail = hasPassive(b, "skill_frost_a") && b.enemy.statuses.chill > 0 ? 0.9 : 1;
-  const eternalFrost = hasPassive(b, "arch_archmage_10") && b.enemy.statuses.chill > 0 ? 0.8 : 1;
   return (b.enemy.statuses.blight > 0 ? 0.8 : 1) * (b.enemy.statuses.curse > 0 ? 1 - (b.enemy.statuses.cursePower ?? 30) / 100 : 1) *
-    frostTrail * eternalFrost;
+    frostTrail;
 }
 
 /** Усиления базового удара от эффектов врага, по шагам. Истощение эффектов их отключает. */
