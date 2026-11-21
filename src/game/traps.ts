@@ -67,9 +67,9 @@ export interface TrapState {
 /** Избежать ловушки после любого провала (обход или обезвреживание): столько выносливости. */
 export const TRAP_AVOID_STAMINA = 25;
 
-/** Урон ловушки: 8% максимального здоровья героя, не меньше 4. Каменная кожа −25%. */
-export const TRAP_DAMAGE_PCT = 0.08;
-export const TRAP_DAMAGE_MIN = 4;
+/** Урон ловушки: 16% максимального здоровья героя, не меньше 8. Каменная кожа −25%. */
+export const TRAP_DAMAGE_PCT = 0.16;
+export const TRAP_DAMAGE_MIN = 8;
 export function trapDamage(maxHp: number, stoneSkin = false): number {
   const mult = stoneSkin ? 0.75 : 1;
   return Math.max(TRAP_DAMAGE_MIN, Math.round(Math.max(0, maxHp) * TRAP_DAMAGE_PCT * mult));

@@ -16,9 +16,9 @@ export function monsterCountFor(size: number): number {
   return Math.max(1, Math.round((size * size) / 8));
 }
 
-/** Ловушки: одна на шестнадцать клеток (8×8 — четыре). */
+/** Ловушки: одна на тридцать две клетки (8×8 — две). Вдвое меньше прежнего, урон вдвое больше. */
 export function trapCountFor(size: number): number {
-  return Math.max(1, Math.round((size * size) / 16));
+  return Math.max(1, Math.round((size * size) / 32));
 }
 
 export const cellIdx = (x: number, y: number, size = MIN_SIZE) => y * size + x;

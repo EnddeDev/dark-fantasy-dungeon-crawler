@@ -16,15 +16,15 @@ const maze = load("maze");
 
 const stats = { str: 2, agi: 5, int: 4 };
 
-test("урон ловушки — 8% максимального здоровья, не меньше 4", () => {
-  assert.equal(traps.trapDamage(100), 8);
-  assert.equal(traps.trapDamage(400), 32, "поздно тоже чувствуется");
-  assert.equal(traps.trapDamage(10), 4, "минимум 4");
+test("урон ловушки — 16% максимального здоровья, не меньше 8", () => {
+  assert.equal(traps.trapDamage(100), 16);
+  assert.equal(traps.trapDamage(400), 64, "поздно тоже чувствуется");
+  assert.equal(traps.trapDamage(10), 8, "минимум 8");
 });
 
-test("каменная кожа снижает урон на 25%, но не ниже 4", () => {
-  assert.equal(traps.trapDamage(100, true), 6);
-  assert.equal(traps.trapDamage(10, true), 4);
+test("каменная кожа снижает урон на 25%, но не ниже 8", () => {
+  assert.equal(traps.trapDamage(100, true), 12);
+  assert.equal(traps.trapDamage(10, true), 8);
 });
 
 test("факел даёт обходу и обезвреживанию бросок с преимуществом", () => {

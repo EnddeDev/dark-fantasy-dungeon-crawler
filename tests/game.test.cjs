@@ -114,7 +114,7 @@ test("floors grow from 8x8 to 16x16 and stay capped", () => {
     [8, 9, 10, 11, 12, 13, 14, 15, 16, 16, 16],
   );
   assert.deepEqual([8, 9, 12, 16].map((s) => maze.monsterCountFor(s)), [8, 10, 18, 32]);
-  assert.deepEqual([8, 9, 12, 16].map((s) => maze.trapCountFor(s)), [4, 5, 9, 16]);
+  assert.deepEqual([8, 9, 12, 16].map((s) => maze.trapCountFor(s)), [2, 3, 5, 8]);
 });
 
 test("mazes stay solvable and carry the right number of chests and events", () => {
