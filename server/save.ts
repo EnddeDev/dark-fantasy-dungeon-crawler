@@ -579,6 +579,19 @@ function sanitizeMaze(raw: unknown): Maze {
   return maze;
 }
 
+/** Набор предметов похода: те же правила, что у сумки героя. */
+function runBagOf(value: unknown, what: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [id, count] of Object.entries(asObject(value, what))) {
+    if (REMOVED_ITEM_IDS.has(id)) continue;
+    if (!ITEMS[id]) bad(`неизвестный предмет: «${id}»`);
+    const n = int(count, 0, BAG_COUNT_CAP, what);
+    if (n > 0) out[id] = n;
+  }
+  if (Object.keys(out).length > BAG_TYPES_CAP) bad("слишком много видов предметов");
+  return out;
+}
+
 /**
  * Карта похода целиком: этаж, позиция, открытые клетки, добыча и журнал.
  * Бой сюда не попадает: клиент сохраняет последнее состояние карты без боя.
@@ -618,6 +631,9 @@ export function sanitizeRun(raw: unknown): Run {
     log,
   };
   if (r.bossSlain !== undefined) run.bossSlain = bool(r.bossSlain);
+  /* Рюкзак перед походом: оставленное в лобби и сумка с спец. предметами, которые идут сами. */
+  if (r.lobbyBag !== undefined) run.lobbyBag = runBagOf(r.lobbyBag, "рюкзак в лобби");
+  if (r.keptBag !== undefined) run.keptBag = runBagOf(r.keptBag, "сумка похода");
   if (r.torchTurns !== undefined) run.torchTurns = int(r.torchTurns, 0, 1000, "факел");
   if (r.mapRevealed !== undefined) run.mapRevealed = bool(r.mapRevealed);
   if (r.burning !== undefined) run.burning = int(r.burning, 0, 99, "горение");

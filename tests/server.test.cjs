@@ -651,13 +651,16 @@ test("server: герой и карта похода сохраняются це�
     equip: { ...base.equip, mainHand: "w1" },
     statuses: { wound: 0, curse: 0, poison: 0, woundTick: 2, burnTick: 3 },
   };
-  const run = mapRun();
+  /* Рюкзак перед походом: оставленное в лобби и сумка, которая пошла сама. */
+  const run = mapRun({ lobbyBag: { moss: 4 }, keptBag: { potion_s: 2 } });
   const put = await api("PUT", "/me", hero.token, { player, unlockedFloor: 3, bestFloor: 3, run });
   assert.equal(put.status, 200, JSON.stringify(put.data));
 
   const me = await api("GET", "/me", hero.token);
   const saved = me.data.profile.player;
   assert.deepEqual(saved.pouch, ["potion_s", null, null, null, null], "сумка сохраняется");
+  assert.deepEqual(me.data.profile.run.lobbyBag, { moss: 4 }, "рюкзак в лобби сохраняется");
+  assert.deepEqual(me.data.profile.run.keptBag, { potion_s: 2 }, "сумка похода сохраняется");
   assert.equal(saved.armory[0].dmgMult, 1.25, "множитель урона оружия сохраняется");
   assert.equal(saved.armory[1].armorQuality, 0.6, "качество брони сохраняется");
   assert.equal(saved.armory[1].armorSkill, "heavy_wall", "приём брони сохраняется");

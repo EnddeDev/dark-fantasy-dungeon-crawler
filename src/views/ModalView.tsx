@@ -1,5 +1,6 @@
 import { ItemArt } from "../components/ItemArt";
 import { Btn, Modal, Tag } from "../components/ui";
+import { DepartureModal } from "../components/DepartureModal";
 import type { GameController } from "../controllers/GameController";
 import { BIOMES, biomeVision, mazeBiome } from "../game/biomes";
 import { ITEMS, WEAR_META, scaledGearStats } from "../game/content";
@@ -66,6 +67,11 @@ export function ModalView({ game, state }: { game: GameController; state: GameSt
               <b className="text-flame">Обитатели карты:</b> один монстр на восемь клеток и одна ловушка на
               шестнадцать. Монстры видны, пока их освещает факел, а все ловушки отмечены на карте сразу:
               маршрут остановится перед ними, случайно наступить нельзя.
+            </li>
+            <li>
+              <b className="text-flame">Рюкзак:</b> в поход идут сумка и спец. предметы, остальное выбирается
+              перед выходом. Найденное пополняет временный рюкзак вылазки; что осталось в лобби, вернётся при
+              выходе живым.
             </li>
             <li>
               <b className="text-flame">Пустая клетка:</b> тишина. Находок на пустых клетках нет.
@@ -270,6 +276,16 @@ export function ModalView({ game, state }: { game: GameController; state: GameSt
             предметов и {modal.gear} ед. снаряжения. Победа над стражем текущего яруса снимает штраф.
           </p>
         </Modal>
+      );
+
+    case "departure":
+      return (
+        <DepartureModal
+          player={player}
+          floor={modal.floor}
+          onClose={close}
+          onGo={(picked) => game.startRun(modal.floor, picked)}
+        />
       );
 
     case "death":
