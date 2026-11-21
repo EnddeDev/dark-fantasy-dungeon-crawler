@@ -1,5 +1,5 @@
 import type { DuelAction } from "../game/duel";
-import type { GearItem, Player } from "../game/types";
+import type { GearItem, Player, Run } from "../game/types";
 import type {
   ChatMessage,
   DuelDetail,
@@ -91,11 +91,19 @@ export class ApiClient {
     }
   }
 
-  private async request<T>(method: string, path: string, body?: unknown, raw?: { type: string; data: Blob }): Promise<T> {
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    raw?: { type: string; data: Blob },
+    /** Запрос переживает закрытие вкладки: сохранение при уходе со страницы. */
+    keepalive = false,
+  ): Promise<T> {
     let response: Response;
     try {
       response = await fetch(`${BASE}${path}`, {
         method,
+        keepalive,
         headers: {
           ...(raw ? { "Content-Type": raw.type } : body === undefined ? {} : { "Content-Type": "application/json" }),
           ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
@@ -131,12 +139,19 @@ export class ApiClient {
     return this.request("POST", "/auth/logout");
   }
 
-  me(): Promise<{ profile: OnlineProfile & { player: Player } }> {
+  me(): Promise<{ profile: OnlineProfile & { player: Player; run: Run | null } }> {
     return this.request("GET", "/me");
   }
 
-  save(player: Player, unlockedFloor: number, bestFloor: number): Promise<{ profile: OnlineProfile }> {
-    return this.request("PUT", "/me", { player, unlockedFloor, bestFloor });
+  /** Сохранение героя; `run` — карта похода, если герой на карте (null — в лобби). */
+  save(
+    player: Player,
+    unlockedFloor: number,
+    bestFloor: number,
+    run: Run | null = null,
+    keepalive = false,
+  ): Promise<{ profile: OnlineProfile }> {
+    return this.request("PUT", "/me", { player, unlockedFloor, bestFloor, run }, undefined, keepalive);
   }
 
   /** Порция игроков: по 20 при прокрутке, поиск по имени или логину. */

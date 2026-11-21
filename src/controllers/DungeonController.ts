@@ -22,6 +22,20 @@ export class DungeonController {
     return this.model.getSnapshot();
   }
 
+  /**
+   * Вход с точкой, сохранённой во время боя: бой начинается заново на той же клетке
+   * с тем же видом существа; здоровье, выносливость и эффекты героя уже в точке.
+   */
+  resumeFight(): void {
+    const { run, player } = this.state;
+    if (!run?.pendingFight) return;
+    const { pendingFight, ...rest } = run;
+    const { foe, boss } = pendingFight;
+    this.model.setRun(rest);
+    this.model.setBattle(newBattle(player, run.floor, boss, mazeBiome(run.maze), 0, 0, undefined, boss ? undefined : foe));
+    this.model.setScreen("battle");
+  }
+
   move(dx: number, dy: number, fromPath = false): void {
     if (!fromPath) this.model.setPath([], false);
     const { screen, modal, run } = this.state;

@@ -1,8 +1,7 @@
-import { enemyStep, persistentBag, playerAct, skipStunnedTurn, type BattleState, type PlayerAction } from "../game/battle";
+import { enemyStep, heroAfterBattle, persistentBag, playerAct, skipStunnedTurn, type BattleState, type PlayerAction } from "../game/battle";
 import { grantXp } from "../game/content";
 import { applyMarkVictory, refreshAfterNewFloor } from "../game/quests";
 import { pruneRunLoot, usedFromBags } from "../game/runLoot";
-import { isBattleCurse } from "../game/traps";
 import type { Player } from "../game/types";
 import { SLOT_ORDER } from "../game/types";
 import type { GameModel } from "../model/GameModel";
@@ -57,24 +56,10 @@ export class BattleController {
     const bag = persistentBag(b);
     b.loot.items.forEach((id) => (bag[id] = (bag[id] ?? 0) + 1));
     const withLoot: Player = {
-      ...player,
-      hp: b.p.hp,
-      stamina: b.p.stamina,
+      ...heroAfterBattle(player, b),
       bag,
       armory: [...b.loot.gear, ...player.armory],
       kills: player.kills + 1,
-      statuses: {
-        wound: b.p.statuses.wound,
-        curse: isBattleCurse(b.p.statuses.curse) ? 0 : b.p.statuses.curse,
-        poison: b.p.statuses.poison,
-        cursePower: isBattleCurse(b.p.statuses.curse) ? 0 : b.p.statuses.cursePower,
-        chill: b.p.statuses.chill,
-        fear: b.p.statuses.fear,
-        wither: b.p.statuses.wither,
-        burn: b.p.statuses.burn,
-        woundTick: b.p.statuses.woundTick, poisonTick: b.p.statuses.poisonTick, burnTick: b.p.statuses.burnTick,
-        chillTick: b.p.statuses.chillTick, curseTick: b.p.statuses.curseTick,
-      },
     };
     const { player: afterXp, levelsGained } = grantXp(withLoot, b.loot.xp);
 
@@ -134,24 +119,7 @@ export class BattleController {
 
   private resolveFlee(b: BattleState): void {
     const { run, player } = this.model.getSnapshot();
-    const basePlayer: Player = {
-      ...player,
-      hp: b.p.hp,
-      stamina: b.p.stamina,
-      bag: persistentBag(b),
-      statuses: {
-        wound: b.p.statuses.wound,
-        curse: isBattleCurse(b.p.statuses.curse) ? 0 : b.p.statuses.curse,
-        poison: b.p.statuses.poison,
-        cursePower: isBattleCurse(b.p.statuses.curse) ? 0 : b.p.statuses.cursePower,
-        chill: b.p.statuses.chill,
-        fear: b.p.statuses.fear,
-        wither: b.p.statuses.wither,
-        burn: b.p.statuses.burn,
-        woundTick: b.p.statuses.woundTick, poisonTick: b.p.statuses.poisonTick, burnTick: b.p.statuses.burnTick,
-        chillTick: b.p.statuses.chillTick, curseTick: b.p.statuses.curseTick,
-      },
-    };
+    const basePlayer: Player = heroAfterBattle(player, b);
     if (!run) {
       this.model.update({ player: basePlayer, battle: null, screen: "dungeon" });
       return;

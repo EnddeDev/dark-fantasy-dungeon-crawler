@@ -3539,6 +3539,31 @@ export function persistentBag(b: BattleState): Record<string, number> {
   return out;
 }
 
+/**
+ * Герой с состоянием боя, которое переживает бой: здоровье, выносливость, статусы и личная сумка.
+ * Боевые эффекты (проклятие врага и прочие) не переносятся.
+ */
+export function heroAfterBattle(player: Player, b: BattleState): Player {
+  return {
+    ...player,
+    hp: b.p.hp,
+    stamina: b.p.stamina,
+    bag: persistentBag(b),
+    statuses: {
+      wound: b.p.statuses.wound,
+      curse: isBattleCurse(b.p.statuses.curse) ? 0 : b.p.statuses.curse,
+      poison: b.p.statuses.poison,
+      cursePower: isBattleCurse(b.p.statuses.curse) ? 0 : b.p.statuses.cursePower,
+      chill: b.p.statuses.chill,
+      fear: b.p.statuses.fear,
+      wither: b.p.statuses.wither,
+      burn: b.p.statuses.burn,
+      woundTick: b.p.statuses.woundTick, poisonTick: b.p.statuses.poisonTick, burnTick: b.p.statuses.burnTick,
+      chillTick: b.p.statuses.chillTick, curseTick: b.p.statuses.curseTick,
+    },
+  };
+}
+
 export const MAX_CONCENTRATION = 7;
 /** Спец-приём архетипа открывается при этом порогу концентрации и тратит ровно столько же. */
 export const SPECIAL_CONCENTRATION = 5;
