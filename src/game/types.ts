@@ -393,6 +393,10 @@ export interface Run {
   seen: Record<string, boolean>;
   gold: number;
   loot: string[];
+  /** Рюкзак лобби, оставленный на входе: вернётся при выходе живым. */
+  lobbyBag?: Record<string, number>;
+  /** Сумка и спец. предметы, которые пошли в поход сами: остаются и при поражении. */
+  keptBag?: Record<string, number>;
   gearLoot: GearItem[];
   keys: number;
   steps: number;
@@ -437,6 +441,8 @@ export type ModalState =
   | { kind: "stairs" }
   /** Выход без победы над стражем: сколько уйдёт при подтверждении. */
   | { kind: "leave"; gold: number; items: number; gear: number }
+  /** Окно перед походом: что взять из рюкзака; «Отправиться» запускает этаж. */
+  | { kind: "departure"; floor: number }
   | { kind: "death"; cause: string; lost: number; lostGear: number }
   | { kind: "event"; eventId: string; cell: number; result?: { title: string; good: string; bad?: string } }
   | { kind: "note"; title: string; body: string };

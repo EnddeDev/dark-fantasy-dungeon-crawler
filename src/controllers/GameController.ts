@@ -5,6 +5,7 @@ import { BIOMES, biomeHealingAmount, biomeVision, mazeBiome } from "../game/biom
 import { genMaze, mazeSizeForFloor } from "../game/maze";
 import { applyExitLoss, EXIT_LOSS_RATE, exitLossCounts, planExitLoss } from "../game/runExit";
 import { setPouchSlot as setPouch } from "../game/pouch";
+import { bagAfterDeath, bagAfterReturn, departureSplit, type BagCounts } from "../game/runStash";
 import { deliverCarried, endRunBlessing, placeQuestMarks, questsForFloor, startRunBlessing } from "../game/quests";
 import type { Player } from "../game/types";
 import { SLOT_ORDER } from "../game/types";
@@ -73,15 +74,28 @@ export class GameController {
     this.model.setModal(null);
   }
 
-  startRun(floor: number): void {
+  /** Окно перед походом: выбор из рюкзака. Сам поход — по кнопке «Отправиться». */
+  openDeparture(floor: number): void {
+    const { unlockedFloor } = this.model.getSnapshot();
+    if (!Number.isInteger(floor) || floor < 1 || floor > unlockedFloor) return;
+    this.model.update({ modal: { kind: "departure", floor } });
+  }
+
+  /**
+   * Старт этажа: в поход идут сумка, спец. предметы и выбранное из рюкзака;
+   * остальное остаётся в рюкзаке лобби и вернётся при выходе.
+   */
+  startRun(floor: number, picked: BagCounts = {}): void {
     const { unlockedFloor, best, player } = this.model.getSnapshot();
     if (!Number.isInteger(floor) || floor < 1 || floor > unlockedFloor) return;
+    const split = departureSplit(player, picked);
     /* Задания этажа ставят метки на карту; благословение священника вступает в силу. */
     const quests = questsForFloor(player, floor);
     const maze = placeQuestMarks(genMaze(mazeSizeForFloor(floor), floor), quests);
     const blessed = startRunBlessing(player);
     const nextPlayer: Player = {
       ...blessed,
+      bag: split.carried,
       hp: derived(blessed).maxHp,
       stamina: derived(blessed).staminaMax,
       statuses: { wound: 0, curse: 0, poison: 0, chill: 0, fear: 0, wither: 0, burn: 0 },
@@ -98,6 +112,8 @@ export class GameController {
         seen: { [`${maze.start.x},${maze.start.y}`]: true },
         gold: 0,
         loot: [],
+        lobbyBag: split.lobby,
+        keptBag: split.kept,
         gearLoot: [],
         keys: 0,
         steps: 0,
@@ -129,16 +145,11 @@ export class GameController {
   die(cause: string): void {
     const { run, player } = this.model.getSnapshot();
     const lost = run?.gold ?? 0;
-    const lostItems = [...(run?.loot ?? [])];
     const lostGearUids = new Set((run?.gearLoot ?? []).map((g) => g.uid));
     const lostGearCount = lostGearUids.size;
 
-    const bag = { ...player.bag };
-    lostItems.forEach((id) => {
-      const left = Math.max(0, (bag[id] ?? 0) - 1);
-      if (left > 0) bag[id] = left;
-      else delete bag[id];
-    });
+    /* Поражение: всё взятое в вылазку пропадает, кроме сумки и спец. предметов; рюкзак лобби цел. */
+    const bag: BagCounts = run ? bagAfterDeath(player.bag, run) : { ...player.bag };
     const armory = player.armory.filter((g) => !lostGearUids.has(g.uid));
     const equip = { ...player.equip };
     SLOT_ORDER.forEach((slot) => {
@@ -250,7 +261,9 @@ export class GameController {
       return;
     }
     const plan = planExitLoss(run, rate);
-    const kept = rate > 0 ? applyExitLoss(player, plan) : player;
+    const afterLoss = rate > 0 ? applyExitLoss(player, plan) : player;
+    /* Рюкзак, оставленный в лобби на входе, возвращается целым. */
+    const kept: Player = { ...afterLoss, bag: bagAfterReturn(afterLoss.bag, run) };
     /* Вернувшись живым, герой приносит трофеи и теряет благословение похода. */
     const home = endRunBlessing(deliverCarried(kept, run.questCarry));
     const savedGold = run.gold - plan.lostGold;

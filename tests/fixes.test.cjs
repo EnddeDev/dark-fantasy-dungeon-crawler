@@ -384,14 +384,15 @@ test("список добычи сокращается, когда найден�
   assert.deepEqual(runLoot.usedFromBags({ potion_s: 3, moss: 1 }, { potion_s: 2, moss: 1 }), { potion_s: 1 });
 });
 
-test("трофеи, израсходованные в бою, не списываются второй раз при гибели", () => {
+test("трофеи, израсходованные в бою, не списываются второй раз; при гибели остаётся личное зелье из лобби", () => {
   const game = new GameController(new MemoryStorage());
+  /* Личное зелье лежит в рюкзаке лобби: в поход не идёт, при поражении остаётся. */
+  game.model.setPlayer({ ...game.model.getSnapshot().player, bag: { potion_s: 1 } });
   game.startRun(1);
   const start = game.model.getSnapshot().player;
-  const player = { ...start, hp: 500, bag: { ...start.bag, potion_s: 1 } };
+  const player = { ...start, hp: 500, bag: { potion_s: 3 }, pouch: ["potion_s", null, null, null, null] };
   game.model.setPlayer(player);
   /* Герой нашёл два зелья: в сумке 3, в добыче 2. */
-  game.model.updatePlayer((p) => ({ ...p, bag: { ...p.bag, potion_s: 3 } }));
   game.model.updateRun((run) => ({ ...run, loot: ["potion_s", "potion_s"] }));
 
   const battleState = battle.newBattle({ ...player, bag: { potion_s: 3 }, pouch: ["potion_s", null, null, null, null] }, 1, false, undefined, 0, false);
@@ -407,7 +408,7 @@ test("трофеи, израсходованные в бою, не списыв�
 
   game.die("проверка штрафа");
   const afterDeath = game.model.getSnapshot();
-  assert.equal(afterDeath.player.bag.potion_s, 1, "списан только оставшийся трофей, личное зелье цело");
+  assert.equal(afterDeath.player.bag.potion_s, 1, "после гибели остаётся личное зелье из рюкзака лобби, трофеи пропали");
 });
 
 test("число урона у приёма в меню совпадает с ударом приёма в бою", () => {

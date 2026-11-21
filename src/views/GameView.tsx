@@ -54,7 +54,7 @@ export function GameView({
             player={player}
             controller={game.lobby}
             shopStock={shopStock}
-            onStart={(floor) => game.startRun(floor)}
+            onStart={(floor) => game.openDeparture(floor)}
             onSetPouch={(index, id) => game.setPouchSlot(index, id)}
             onRestart={() => game.restart()}
             best={best}
