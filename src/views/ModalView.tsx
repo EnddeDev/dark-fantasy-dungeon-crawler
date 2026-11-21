@@ -261,7 +261,7 @@ export function ModalView({ game, state }: { game: GameController; state: GameSt
       return (
         <Modal
           title="Уйти с этажа без стража"
-          sub="В этом походе ещё никто из стражей не повержен — уход заберёт 20% добычи"
+          sub={`В этом походе ещё никто из стражей не повержен — уход заберёт ${Math.round(modal.rate * 100)}% добычи`}
           actions={
             <>
               <Btn onClick={close}>Остаться в подземелье</Btn>
@@ -272,8 +272,8 @@ export function ModalView({ game, state }: { game: GameController; state: GameSt
           }
         >
           <p>
-            Выход без победы над стражем яруса теряет 20% добытого: {modal.gold} золота, {modal.items} расходуемых
-            предметов и {modal.gear} ед. снаряжения. Победа над стражем текущего яруса снимает штраф.
+            Уход с карты теряет {Math.round(modal.rate * 100)}% добытого: {modal.gold} золота, {modal.items} расходуемых
+            предметов и {modal.gear} ед. снаряжения. Победа над стражем текущего яруса снимает потери.
           </p>
         </Modal>
       );
@@ -284,7 +284,8 @@ export function ModalView({ game, state }: { game: GameController; state: GameSt
           player={player}
           floor={modal.floor}
           onClose={close}
-          onGo={(picked) => game.startRun(modal.floor, picked)}
+          onGo={() => game.startRun(modal.floor)}
+          onSetPouch={(index, id) => game.setPouchSlot(index, id)}
         />
       );
 
@@ -306,8 +307,9 @@ export function ModalView({ game, state }: { game: GameController; state: GameSt
         >
           <p className="dropcap">{modal.cause}</p>
           <p className="mt-3 text-mute">
-            Потеряна вся добыча этой вылазки: <b className="text-rubric">{modal.lost}</b> золота и{" "}
-            <b className="text-rubric">{modal.lostGear}</b> ед. невынесенного снаряжения. Уровень, опыт,
+            Потеряно {Math.round(modal.rate * 100)}% добычи вылазки: <b className="text-rubric">{modal.lost}</b> золота,{" "}
+            <b className="text-rubric">{modal.lostItems}</b> расходуемых и <b className="text-rubric">{modal.lostGear}</b> ед.
+            снаряжения. Уровень, опыт,
             характеристики и сохранённый в лобби арсенал остались с тобой.
           </p>
         </Modal>

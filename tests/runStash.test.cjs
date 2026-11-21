@@ -66,7 +66,9 @@ test("старт этажа: в поход идёт сумка, спец. пре
 
 test("гибель: лобби-рюкзак цел, из сумки и спец. предметов остаётся то, что не потрачено; трофеи пропадают", () => {
   const game = setup();
-  game.startRun(1, { moss: 1 });
+  /* Этаж 3 в начале: смерть = побег + 20%, ограничено 100% — вся добыча уходит. */
+  game.model.update({ unlockedFloor: 3 });
+  game.startRun(3, { moss: 1 });
   /* В вылазке найдено: два зелья (не из сумки) и одна травинка; зелье из сумки израсходовано. */
   game.model.updatePlayer((p) => ({ ...p, bag: { ...p.bag, potion_s: 1, moss: p.bag.moss + 2 } }));
   game.model.updateRun((r) => ({ ...r, loot: ["potion_s", "moss", "moss"] }));

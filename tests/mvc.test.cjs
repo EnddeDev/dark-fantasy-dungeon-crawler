@@ -126,17 +126,12 @@ test("MVC: GameController starts a run, returns to lobby and persists only safe 
   assert.equal(storage.getItem(SaveRepository.PLAYER_KEY), savedInLobby, "run state must not be saved mid-dungeon");
 
   game.model.updateRun((run) => ({ ...run, gold: 40 }));
-  /* Страж яруса жив: выход сначала открывает окно с потерями и ничего не забирает. */
+  /* Этажи 1–2: побег с карты без потерь, окна с потерями нет. */
   game.leaveRun();
-  const asking = game.model.getSnapshot();
-  assert.equal(asking.screen, "dungeon", "без подтверждения герой остаётся в подземелье");
-  assert.equal(asking.modal.kind, "leave");
-  assert.equal(asking.modal.gold, 8, "20% от 40 золота");
-  game.leaveRun(true);
   const lobby = game.model.getSnapshot();
   assert.equal(lobby.screen, "lobby");
   assert.equal(lobby.run, null);
-  assert.equal(lobby.player.gold, PlayerFactory.createInitial().gold + 32, "вернулось 80% золота");
+  assert.equal(lobby.player.gold, PlayerFactory.createInitial().gold + 40, "всё золото вернулось");
   assert.ok(storage.getItem(SaveRepository.PLAYER_KEY), "lobby progress is persisted");
 });
 
