@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { GameController } from "../controllers/GameController";
 import { checkpointOf, type Checkpoint } from "../game/runCheckpoint";
+import { withoutRemovedShopLines } from "../game/quests";
 import type { OnlineSession } from "./online";
 import type { OnlineProfile } from "./protocol";
 
@@ -33,6 +34,10 @@ export function useSaveSync(controller: GameController, online: OnlineSession): 
     }
     if (appliedProfile.current === profile) return;
     appliedProfile.current = profile;
+    /* Старое сохранение могло хранить снятые с игры товары витрин: в модель их не берём. */
+    const player = profile.player.questLog
+      ? { ...profile.player, questLog: withoutRemovedShopLines(profile.player.questLog) }
+      : profile.player;
     const state = controller.model.getSnapshot();
     const progress = {
       best: Math.max(profile.bestFloor, state.best),
@@ -42,7 +47,7 @@ export function useSaveSync(controller: GameController, online: OnlineSession): 
       /* Герой вышел на карте: возвращаем на ту же карту, с тем же героем и в ту же клетку. */
       controller.model.update({
         ...progress,
-        player: profile.player,
+        player,
         run: profile.run,
         screen: "dungeon",
         battle: null,
@@ -53,7 +58,7 @@ export function useSaveSync(controller: GameController, online: OnlineSession): 
       /* Бой был открыт при выходе: начинается заново с сохранённым здоровьем и эффектами. */
       controller.dungeon.resumeFight();
     } else {
-      controller.model.update({ ...progress, player: profile.player });
+      controller.model.update({ ...progress, player });
     }
   }, [controller, online.status, online.profile]);
 

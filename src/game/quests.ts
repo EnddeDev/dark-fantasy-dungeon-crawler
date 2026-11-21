@@ -24,6 +24,7 @@ import {
   scaledGearStats,
   supplyLevel,
   RECIPES,
+  REMOVED_ITEM_IDS,
   type CraftStation,
   type Recipe,
 } from "./content";
@@ -212,9 +213,18 @@ export function logOf(player: Player): QuestLog {
 }
 
 /** Дополняет журнал из старого сохранения недостающими полями. */
+/**
+ * Витрины без снятых с игры товаров. Старые сохранения могли успеть сохранить такую строку
+ * до снятия: без чистки она отклоняет всё сохранение на сервере.
+ */
+export function withoutRemovedShopLines(log: QuestLog): QuestLog {
+  const keep = (lines: ShopLine[]) => lines.filter((line) => !REMOVED_ITEM_IDS.has(line.id));
+  return { ...log, wizard: keep(log.wizard), villager: keep(log.villager) };
+}
+
 export function normalizeQuestLog(raw: Partial<QuestLog>): QuestLog {
   const base = emptyQuestLog();
-  return {
+  return withoutRemovedShopLines({
     offers: Array.isArray(raw.offers) ? raw.offers : base.offers,
     active: Array.isArray(raw.active) ? raw.active : base.active,
     carried: Array.isArray(raw.carried) ? raw.carried : base.carried,
@@ -227,7 +237,7 @@ export function normalizeQuestLog(raw: Partial<QuestLog>): QuestLog {
     wizard: Array.isArray(raw.wizard) ? raw.wizard : base.wizard,
     villager: Array.isArray(raw.villager) ? raw.villager : base.villager,
     mercenary: Array.isArray(raw.mercenary) ? raw.mercenary : base.mercenary,
-  };
+  });
 }
 
 /* ─────────────  генерация  ───────────── */

@@ -288,8 +288,10 @@ function sanitizeTrust(raw: unknown): Record<QuestGiverId, number> {
 }
 
 function sanitizeShopLines(raw: unknown, name: string): ShopLine[] {
-  return listOf(raw, name, 12, (line) => {
+  const lines = listOf(raw, name, 12, (line): ShopLine | null => {
     const l = asObject(line, name);
+    /* Товар снят с игры, но остался в витрине старого сохранения: строка просто убирается. */
+    if (typeof l.id === "string" && REMOVED_ITEM_IDS.has(l.id)) return null;
     if (typeof l.id !== "string" || !ITEMS[l.id]) bad(`${name}: неизвестный товар`);
     return {
       id: l.id as string,
@@ -297,6 +299,7 @@ function sanitizeShopLines(raw: unknown, name: string): ShopLine[] {
       price: int(l.price ?? 0, 0, GOLD_CAP, `${name}: цена`),
     };
   });
+  return lines.filter((line): line is ShopLine => line !== null);
 }
 
 /** Журнал заданий: задания, купоны, благословения и товары NPC. Вне схемы — 400. */
