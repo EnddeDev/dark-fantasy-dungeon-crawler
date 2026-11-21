@@ -4,8 +4,8 @@
  * Открыт при доверии волшебника 3 и выше. Все функции чистые: состояние героя
  * возвращается новым объектом, случайность — через rng.
  */
-import { GEAR_EFFECTS, ACTIVE_GEAR_EFFECTS, type GearEffectId } from "./gearEffects";
-import { ITEMS, canRollExtraAp, pick, reagentPoolForFloor, scaledGearStats } from "./content";
+import { GEAR_EFFECTS, ACTIVE_GEAR_EFFECTS, effectExcludedFor, type GearEffectId } from "./gearEffects";
+import { ITEMS, canRollExtraAp, gearKindFor, pick, reagentPoolForFloor, scaledGearStats } from "./content";
 import { rollEffectBase } from "./gearScaling";
 import { trustOf } from "./quests";
 import type { GearItem, Player } from "./types";
@@ -40,15 +40,18 @@ export function ritualEligible(item: GearItem): boolean {
 /**
  * Свойства, которые могут выпасть вместо заменяемого.
  * Замена держится в той же характеристике (требование свойства); хаос — любая характеристика.
- * Свойства, которых у предмета уже нет, и «Ускорение» не по правилам уровня — не попадают.
+ * Свойства, которых у предмета уже нет, «Ускорение» не по правилам уровня и свойства,
+ * запрещённые для слота предмета, — не попадают (в том числе при хаос-замене).
  */
 export function ritualCandidates(item: GearItem, effectId: GearEffectId, kind: RitualReplaceKind): GearEffectId[] {
   const has = new Set(item.effects);
   const stat = GEAR_EFFECTS[effectId].stat;
+  const itemKind = gearKindFor(item);
   return ACTIVE_GEAR_EFFECTS.filter(
     (id) =>
       !has.has(id) &&
       (id !== "ap" || canRollExtraAp(item.rarity, item.level)) &&
+      !effectExcludedFor(id, itemKind, item.slot) &&
       (kind === "chaos" || GEAR_EFFECTS[id].stat === stat),
   );
 }

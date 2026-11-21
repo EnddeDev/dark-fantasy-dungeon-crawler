@@ -171,6 +171,7 @@ import {
   GEAR_PASSIVE_BASE,
   MAX_EXTRA_AP,
   effectMagnitude,
+  effectTickMagnitude,
   epicMagnitude,
   legendaryMagnitude,
   passiveMagnitude,
@@ -342,6 +343,8 @@ export interface BattleState {
     gearEffects: GearEffectId[];
     gearPassives: GearPassiveId[];
     effectPower: Partial<Record<GearEffectId, number>>;
+    /** Величина срабатывания яда, кровотечения, раскола, жара и обморожения (тик за ход или броня за удар). */
+    effectValue: Partial<Record<GearEffectId, number>>;
     passivePower: Partial<Record<GearPassiveId, Record<string, number>>>;
     rareAffixPower: Partial<Record<RareAffixId, Record<string, number>>>;
     legendaryPower: Partial<Record<LegendaryPassiveId, Record<string, number>>>;
@@ -593,6 +596,7 @@ export interface DerivedStats {
   gearEffects: GearEffectId[];
   gearPassives: GearPassiveId[];
   effectPower: Partial<Record<GearEffectId, number>>;
+  effectValue: Partial<Record<GearEffectId, number>>;
   passivePower: Partial<Record<GearPassiveId, Record<string, number>>>;
   rareAffixPower: Partial<Record<RareAffixId, Record<string, number>>>;
   legendaryPower: Partial<Record<LegendaryPassiveId, Record<string, number>>>;
@@ -629,6 +633,7 @@ export function derived(pl: Player): DerivedStats {
   const gearEffects: GearEffectId[] = [];
   const gearPassives: GearPassiveId[] = [];
   const effectPower: Partial<Record<GearEffectId, number>> = {};
+  const effectValue: Partial<Record<GearEffectId, number>> = {};
   const passivePower: Partial<Record<GearPassiveId, Record<string, number>>> = {};
   const rareAffixPower: Partial<Record<RareAffixId, Record<string, number>>> = {};
   const legendaryPower: Partial<Record<LegendaryPassiveId, Record<string, number>>> = {};
@@ -704,6 +709,9 @@ export function derived(pl: Player): DerivedStats {
         /* Дополнительные ходы не складываются: берём самое большое значение. */
         if (id === "ap") effectPower[id] = Math.max(effectPower[id] ?? 0, value);
         else effectPower[id] = (effectPower[id] ?? 0) + value;
+        /* Тик яда, кровотечения, раскола, жара и обморожения: сильнейший предмет задаёт величину срабатывания. */
+        const tick = effectTickMagnitude(id, itemLevel);
+        if (tick > 0) effectValue[id] = Math.max(effectValue[id] ?? 0, tick);
       }
     }
     if (g.passive) {
@@ -830,6 +838,7 @@ export function derived(pl: Player): DerivedStats {
     gearEffects,
     gearPassives,
     effectPower,
+    effectValue,
     passivePower,
     rareAffixPower,
     legendaryPower,
@@ -1198,6 +1207,7 @@ function clone(b: BattleState): BattleState {
       gearEffects: [...b.p.gearEffects],
       gearPassives: [...b.p.gearPassives],
       effectPower: { ...b.p.effectPower },
+      effectValue: { ...b.p.effectValue },
       passivePower: Object.fromEntries(Object.entries(b.p.passivePower).map(([k, v]) => [k, { ...v }])),
       rareAffixPower: Object.fromEntries(Object.entries(b.p.rareAffixPower).map(([k, v]) => [k, { ...v }])),
       legendaryPower: Object.fromEntries(Object.entries(b.p.legendaryPower).map(([k, v]) => [k, { ...v }])),
@@ -1318,6 +1328,7 @@ export function newBattle(
       gearEffects: d.gearEffects,
       gearPassives: d.gearPassives,
       effectPower: { ...d.effectPower },
+      effectValue: { ...d.effectValue },
       passivePower: Object.fromEntries(Object.entries(d.passivePower).map(([k, v]) => [k, { ...v }])),
       rareAffixPower: Object.fromEntries(Object.entries(d.rareAffixPower).map(([k, v]) => [k, { ...v }])),
       legendaryPower: Object.fromEntries(Object.entries(d.legendaryPower).map(([k, v]) => [k, { ...v }])),
@@ -1970,9 +1981,9 @@ function enemyDotStacks(b: BattleState, kind: "poison" | "bleed"): number {
   return Math.max(1, b.enemy.statuses[key] ?? 1);
 }
 
-/** Сколько брони снимает раскол от свойства оружия: растёт с уровнем свойства. */
-export function sunderBreakAmount(power: number): number {
-  return Math.max(1, Math.round(Math.max(0, power) / 30));
+/** Сколько брони снимает раскол от свойства оружия: величина свойства, не меньше 1. */
+export function sunderBreakAmount(value: number): number {
+  return Math.max(1, Math.round(Math.max(0, value)));
 }
 
 /** Сколько брони снимает раскол монстра: растёт с его уровнем. */
@@ -2129,22 +2140,34 @@ function oilOnHit(b: BattleState, _hitDamage: number) {
 function weaponHitEffects(b: BattleState) {
   if (b.enemy.hp <= 0) return;
   const chanceOf = (id: GearEffectId) => Math.min(0.95, effectPower(b, id) / 100);
+  /* Величина срабатывания — из свойства предмета (тик за ход или броня за удар), а не от уровня героя. */
+  const gearTick = (id: GearEffectId) => Math.max(1, Math.round(b.p.effectValue?.[id] ?? 0));
   const bleedChance = chanceOf("bleed");
   if (bleedChance > 0 && Math.random() < bleedChance) {
-    applyEnemyStatus(b, "bleed", 3, dotBaseTick("bleed", b.p.level));
+    applyEnemyStatus(b, "bleed", 3, gearTick("bleed"));
     if (b.enemy.statuses.bleed > 0) push(b, `${b.enemy.def.name} истекает кровью от раны.`, "p");
   }
   const poisonChance = chanceOf("poison_damage");
   if (b.enemy.hp > 0 && poisonChance > 0 && Math.random() < poisonChance) {
-    applyEnemyStatus(b, "poison", 3, dotBaseTick("poison", b.p.level));
+    applyEnemyStatus(b, "poison", 3, gearTick("poison_damage"));
     if (b.enemy.statuses.poison > 0) push(b, `Яд с клинка разъедает ${b.enemy.def.name}.`, "p");
   }
   const sunderChance = chanceOf("sunder");
   if (b.enemy.hp > 0 && sunderChance > 0 && b.enemy.armor > 0 && !bossResists(b) && Math.random() < sunderChance) {
     /* Чем выше уровень свойства, тем больше брони снимает каждое наложение. */
-    const breakAmount = sunderBreakAmount(effectPower(b, "sunder"));
+    const breakAmount = sunderBreakAmount(gearTick("sunder"));
     b.enemy.armor = Math.max(0, b.enemy.armor - breakAmount);
     push(b, `Раскол: броня ${b.enemy.def.name} треснула (−${breakAmount}, осталось ${b.enemy.armor}).`, "p");
+  }
+  const scorchChance = chanceOf("scorch");
+  if (b.enemy.hp > 0 && scorchChance > 0 && Math.random() < scorchChance) {
+    applyEnemyStatus(b, "burn", 3, gearTick("scorch"));
+    if (b.enemy.statuses.burn > 0) push(b, `Жар опаляет ${b.enemy.def.name}.`, "p");
+  }
+  const frostChance = chanceOf("frost_bite");
+  if (b.enemy.hp > 0 && frostChance > 0 && Math.random() < frostChance) {
+    applyEnemyStatus(b, "chill", 3, gearTick("frost_bite"));
+    if (b.enemy.statuses.chill > 0) push(b, `Обморожение сковывает ${b.enemy.def.name}.`, "p");
   }
 }
 

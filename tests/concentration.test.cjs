@@ -60,6 +60,8 @@ function fightFor(extra = {}) {
   /* Редкие свойства врага (каменная шкура −25% урона) случайны: снимаем их. */
   b.enemy.passive = null;
   b.enemy.effects = [];
+  /* Врождённые шипы и регенерация читаются из effectPower: без сброса монстр может ранить героя. */
+  b.enemy.effectPower = {};
   return b;
 }
 

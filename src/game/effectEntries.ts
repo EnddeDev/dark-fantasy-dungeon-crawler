@@ -8,6 +8,7 @@
 import type { EnemyPassive, GearItem } from "./types";
 import { GEAR_EFFECTS, GEAR_PASSIVES, effectTotalDetail, passiveDetail, type GearEffectId } from "./gearEffects";
 import { gearEffectTotals } from "./gearEffectTotals";
+import { effectTickMagnitude } from "./gearScaling";
 import { ARCHETYPES, LEGENDARY_PASSIVES, PASSIVES, RARE_AFFIXES, STAT_META, STAT_ORDER, legendaryPassiveDesc, rareAffixDesc } from "./content";
 import { archetypeByMilestone } from "./archetypes";
 import { statMilestoneById } from "./statMilestones";
@@ -98,6 +99,7 @@ export function enemyEffects(e: {
   effects: GearEffectId[];
   effectPower: Partial<Record<GearEffectId, number>>;
   passive: EnemyPassive | null;
+  level?: number;
 }): TabEffect[] {
   const out: TabEffect[] = [];
   const ids = [...new Set(e.effects)].filter((id) => id !== "regen" && id !== "thorns" && (e.effectPower[id] ?? 0) > 0);
@@ -105,7 +107,7 @@ export function enemyEffects(e: {
     out.push({
       id: `foe-effect-${id}`,
       name: GEAR_EFFECTS[id]?.name ?? id,
-      detail: effectTotalDetail(id, e.effectPower[id] ?? 0),
+      detail: effectTotalDetail(id, e.effectPower[id] ?? 0, e.level ? effectTickMagnitude(id, e.level) || undefined : undefined),
       meta: "врождённое",
     });
   }

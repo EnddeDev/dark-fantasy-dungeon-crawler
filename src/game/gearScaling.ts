@@ -3,6 +3,7 @@
  *
  *   основные параметры (урон, броня, ОЗ, уклонение): линейно, ×(1 + 0.5 × уровень);
  *   эффекты и свойства, приёмы, пассивки:            сложным процентом, ×1.17 за уровень;
+ *   линейные свойства (GEAR_EFFECT_LINEAR):          база + шаг × (уровень − 1), без ×1.17;
  *   цены:                                            линейно, ×(1 + 0.17 × уровень).
  *
  * Сложный процент считается по шагам: значение каждого уровня — ceil(предыдущее × ставка).
@@ -68,6 +69,67 @@ export function scaleCompoundByLevel(
     v = Math.ceil(v * rate * precision - 1e-9) / precision;
   }
   return v;
+}
+
+/**
+ * Линейные свойства снаряжения: значение на 1 уровне и прирост за уровень, без ×1.17.
+ * `tick` — у свойств, которые наносят урон или снимают броню при срабатывании:
+ * это величина за срабатывание (тик за ход или броня за удар), растёт своим шагом.
+ */
+export interface LinearEffectDef {
+  base: number;
+  step: number;
+  tick?: { base: number; step: number };
+}
+export const GEAR_EFFECT_LINEAR: Partial<Record<GearEffectId, LinearEffectDef>> = {
+  crit_chance: { base: 4, step: 2 },
+  crit_mult: { base: 5, step: 5 },
+  rage: { base: 5, step: 2 },
+  vamp: { base: 5, step: 1.5 },
+  magic_vamp: { base: 5, step: 1 },
+  fortify: { base: 3, step: 2 },
+  magic_resist: { base: 5, step: 2.5 },
+  armor_damage: { base: 10, step: 5 },
+  wisdom: { base: 5, step: 2.5 },
+  precision: { base: 5, step: 2.5 },
+  might: { base: 5, step: 2.5 },
+  magic_power: { base: 5, step: 3 },
+  thorns: { base: 5, step: 5 },
+  evade: { base: 5, step: 2 },
+  counter: { base: 3, step: 1.25 },
+  resist: { base: 5, step: 2.5 },
+  poison_damage: { base: 10, step: 4, tick: { base: 5, step: 5 } },
+  bleed: { base: 7, step: 3, tick: { base: 7, step: 4 } },
+  sunder: { base: 10, step: 3, tick: { base: 1, step: 0.5 } },
+  scorch: { base: 5, step: 3, tick: { base: 5, step: 3 } },
+  frost_bite: { base: 3, step: 3, tick: { base: 2, step: 2 } },
+};
+/** Разброс шанса линейного свойства при выпадении: ±1 от базы. */
+export const LINEAR_ROLL_SPREAD = 1;
+
+export function isLinearEffect(id: GearEffectId): boolean {
+  return GEAR_EFFECT_LINEAR[id] !== undefined;
+}
+
+/** Значение линейного свойства: выпавшая база (если в пределах разброса) + шаг × (уровень − 1). */
+export function linearEffectValue(def: LinearEffectDef, level: number, rolledBase?: number): number {
+  const start = rolledBase !== undefined && Math.abs(rolledBase - def.base) <= LINEAR_ROLL_SPREAD ? rolledBase : def.base;
+  return start + def.step * (clampGearLevel(level) - 1);
+}
+
+/** Тик (урон за ход или броня за удар) линейного свойства на данном уровне; 0 — у свойства тика нет. */
+export function effectTickMagnitude(id: GearEffectId, level: number): number {
+  const tick = GEAR_EFFECT_LINEAR[id]?.tick;
+  if (!tick) return 0;
+  return tick.base + tick.step * (clampGearLevel(level) - 1);
+}
+
+/** Подпись роста для справочника: «+2% за уровень» или «×1.17 за уровень». */
+export function effectGrowthLabel(id: GearEffectId): string {
+  const def = GEAR_EFFECT_LINEAR[id];
+  if (!def) return `×${GEAR_EFFECT_GROWTH_MAIN} за уровень`;
+  const chance = `+${def.step}`;
+  return def.tick ? `${chance} шанс, +${def.tick.step} за тик за уровень` : `${chance} за уровень`;
 }
 
 /** Эффекты и свойства: сложный процент ×1.17 за уровень. */
@@ -168,33 +230,35 @@ export const GEAR_EFFECT_BASE: Record<GearEffectId, NumericDef> = {
   // Новые свойства предметов
   vamp: { value: 5 },
   magic_vamp: { value: 5 },
-  crit_chance: { value: 5 },
-  crit_mult: { value: 10 },
+  crit_chance: { value: 4 },
+  crit_mult: { value: 5 },
   regen: { value: 4 },
-  fortify: { value: 5 },
+  fortify: { value: 3 },
   magic_resist: { value: 5 },
-  armor_damage: { value: 8 },
-  rage: { value: 10 },
+  armor_damage: { value: 10 },
+  rage: { value: 5 },
   ap: { value: 0 },
   wisdom: { value: 5 },
   magic_power: { value: 5 },
   might: { value: 5 },
   precision: { value: 5 },
-  thorns: { value: 4 },
-  poison_damage: { value: 30 },
-  bleed: { value: 35 },
-  sunder: { value: 30 },
+  thorns: { value: 5 },
+  poison_damage: { value: 10 },
+  bleed: { value: 7 },
+  sunder: { value: 10 },
+  scorch: { value: 5 },
+  frost_bite: { value: 3 },
   // Старые id сохранены только для миграции сохранений
   damage_resist: { value: 2 },
-  resist: { value: 10 },
+  resist: { value: 5 },
   guard_bonus: { value: 15 },
   stun_chance: { value: 8 },
   vamp_str: { value: 8 },
   missing_hp_damage: { value: 6 },
   enemy_missing_damage: { value: 6 },
   two_hand_damage: { value: 15 },
-  evade: { value: 3 },
-  counter: { value: 12 },
+  evade: { value: 5 },
+  counter: { value: 3 },
   first_strike: { value: 20 },
   consumable_damage: { value: 15 },
   consumable_scale: { value: 0.25, precision: 100 },
@@ -214,16 +278,19 @@ export const GEAR_EFFECT_BASE: Record<GearEffectId, NumericDef> = {
 };
 
 /** Разброс базового значения нового свойства при создании предмета. */
+/** Разброс при выпадении для свойств не из линейной таблицы (линейные — LINEAR_ROLL_SPREAD). */
 export const GEAR_EFFECT_SPREAD: Partial<Record<GearEffectId, number>> = {
-  vamp: 2, magic_vamp: 2, crit_chance: 3, crit_mult: 5, regen: 2,
-  fortify: 1, magic_resist: 1, armor_damage: 2, rage: 5,
-  wisdom: 1, magic_power: 1, might: 1, precision: 1, thorns: 1,
-  poison_damage: 6, bleed: 7, sunder: 6,
+  regen: 2,
 };
+
+/** Разброс шанса свойства при выпадении: линейные — ±1, остальные — по таблице выше. */
+export function effectRollSpread(id: GearEffectId): number {
+  return isLinearEffect(id) ? LINEAR_ROLL_SPREAD : GEAR_EFFECT_SPREAD[id] ?? 0;
+}
 
 export function rollEffectBase(id: GearEffectId, rng: () => number = Math.random): number {
   const base = GEAR_EFFECT_BASE[id]?.value ?? 0;
-  const spread = GEAR_EFFECT_SPREAD[id] ?? 0;
+  const spread = effectRollSpread(id);
   if (!spread) return base;
   return Math.max(0, base + Math.floor(rng() * (spread * 2 + 1)) - spread);
 }
@@ -235,6 +302,8 @@ export function effectMagnitude(id: GearEffectId, level: number, rolledBase?: nu
     if (l < EXTRA_AP_MIN_LEVEL) return 0;
     return Math.min(MAX_EXTRA_AP, l >= 9 ? 3 : l >= 7 ? 2 : 1);
   }
+  const linear = GEAR_EFFECT_LINEAR[id];
+  if (linear) return linearEffectValue(linear, level, rolledBase);
   const def = GEAR_EFFECT_BASE[id];
   const base = rolledBase ?? def.value;
   /* Базовые значения свойств заданы на 1 уровне: дальше сложный процент по ставке эффекта. */
