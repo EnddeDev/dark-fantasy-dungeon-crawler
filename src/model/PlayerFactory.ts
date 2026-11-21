@@ -1,7 +1,7 @@
 import { derived } from "../game/battle";
 import { DEFAULT_CHARACTER_NAME } from "../game/characterName";
 import { migrateLegacyId, migrateLegacyPassives, migrateSkillRanks } from "../game/archetypeMigration";
-import { GEAR_BASES, ITEMS, RECIPES, createGearItem, isStarterItem, migrateGearItem } from "../game/content";
+import { GEAR_BASES, ITEMS, MAX_LEVEL, RECIPES, createGearItem, isStarterItem, migrateGearItem } from "../game/content";
 import { initialQuestLog, normalizeQuestLog } from "../game/quests";
 import { normalizeStatMilestones } from "../game/statMilestones";
 import type { Player, Slot } from "../game/types";
@@ -59,7 +59,7 @@ export class PlayerFactory {
       if (
         Number.isInteger(saved.level) &&
         saved.level >= 1 &&
-        saved.level <= 10 &&
+        saved.level <= MAX_LEVEL &&
         saved.stats &&
         saved.bag &&
         Array.isArray(saved.armory) &&
