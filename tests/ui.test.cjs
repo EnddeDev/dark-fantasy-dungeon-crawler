@@ -33,6 +33,7 @@ const { playerEffectChips } = load("src/game/effects.ts", "effects-chips");
 const { heroItemEffects, learnedEffects, enemyEffects } = load("src/game/effectEntries.ts", "effect-entries");
 const battle = load("src/game/battle.ts", "battle");
 const monsters = load("src/game/monsters.ts", "monsters");
+const artManifest = load("src/game/artManifest.ts", "art-manifest");
 
 /** Бой с нейтральным врагом: род «никакой» и тип «сильный» не дают ни уклонения, ни иммунитетов. */
 function freshBattle(pl, floor, isBoss, biome, torchTurns, burning) {
@@ -170,9 +171,33 @@ test("dungeon draws only revealed traps on the map", () => {
     onMove: noop, onCellClick: noop, onUseItem: noop, onEquip: noop, onUnequip: noop,
     onCancelPath: noop, onResumePath: noop,
   }));
-  const marks = (html) => (html.match(/stroke-dasharray="3 3"/g) ?? []).length;
+  /* Ловушка на карте — картинка вида ловушки (вид виден до срабатывания). */
+  const marks = (html) => (html.match(/images\/map\/trap-/g) ?? []).length;
   assert.equal(marks(render(run)), 0, "скрытые ловушки не отрисованы");
   assert.equal(marks(render({ ...run, revealedTraps: m.traps })), m.traps.length, "раскрытые отрисованы");
+});
+
+test("dungeon draws the hero, the fixed monster picture and the trap picture on the map", () => {
+  /* Карта с монстром и ловушкой; герой стоит на клетке монстра, поэтому она освещена и видна. */
+  let m = maze.genMaze(12, 9);
+  for (let i = 0; i < 50 && !(m.monsters.length && m.traps.length); i++) m = maze.genMaze(12, 9);
+  const cell = m.monsters[0];
+  const kind = m.monsterKinds.find((k) => k.cell === cell).id;
+  const at = { x: cell % m.size, y: Math.floor(cell / m.size) };
+  const run = {
+    floor: 9, maze: m, pos: at, prevPos: at, seen: {}, steps: 0,
+    gold: 0, loot: [], gearLoot: [], keys: 0, log: [],
+    torchTurns: 0, mapRevealed: true, revealedTraps: m.traps,
+  };
+  const html = renderToStaticMarkup(React.createElement(Dungeon, {
+    run, player: makePlayer(), bag: {},
+    intStat: 1, intDiscount: 0, path: [], pathPaused: false,
+    onMove: noop, onCellClick: noop, onUseItem: noop, onEquip: noop, onUnequip: noop,
+    onCancelPath: noop, onResumePath: noop,
+  }));
+  assert.ok(html.includes("images/map/hero.jpg"), "герой нарисован картинкой");
+  assert.ok(html.includes(artManifest.foeArtSrc(kind)), "монстр нарисован закреплённым портретом");
+  assert.ok(html.includes("images/map/trap-"), "ловушки нарисованы картинками");
 });
 
 test("dungeon header hides maze counts and corridor healing shows fixed/INT formulas", () => {

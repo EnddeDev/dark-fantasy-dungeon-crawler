@@ -746,12 +746,14 @@ export function placeQuestMarks(maze: Maze, quests: Quest[], rng: () => number =
   const takeCell = (): number | null => order.shift()?.cell ?? null;
 
   const monsters = [...maze.monsters];
+  const monsterKinds = [...(maze.monsterKinds ?? [])];
   const marks: QuestMark[] = [...(maze.questMarks ?? [])];
   for (const q of quests) {
     if (q.kind === "kill" && q.enemyId) {
       const cell = takeCell();
       if (cell === null) continue;
       monsters.push(cell);
+      monsterKinds.push({ cell, id: q.enemyId });
       marks.push({ cell, questId: q.id, kind: "kill", enemyId: q.enemyId, label: `Охота: ${q.enemyName ?? q.enemyId}` });
     } else if (q.kind === "fetch") {
       const cell = takeCell();
@@ -759,13 +761,14 @@ export function placeQuestMarks(maze: Maze, quests: Quest[], rng: () => number =
       const label = q.itemName ?? q.title;
       if (q.source === "drop" && q.enemyId) {
         monsters.push(cell);
+        monsterKinds.push({ cell, id: q.enemyId });
         marks.push({ cell, questId: q.id, kind: "drop", enemyId: q.enemyId, label });
       } else {
         marks.push({ cell, questId: q.id, kind: q.source === "captive" ? "captive" : "remains", label });
       }
     }
   }
-  return { ...maze, monsters, questMarks: marks };
+  return { ...maze, monsters, monsterKinds, questMarks: marks };
 }
 
 /** Метки, которые видны даже в тумане: принесение с этажа. Убийство видно только в круге света. */

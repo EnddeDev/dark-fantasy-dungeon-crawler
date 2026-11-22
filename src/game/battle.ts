@@ -91,6 +91,8 @@ import {
 import { SLOT_ORDER } from "./types";
 import { enemyLevelMult, scaledEnemyXp } from "./enemyScaling";
 import { isBattleCurse } from "./traps";
+import { rollEnemy } from "./enemyPool";
+export { rollEnemy };
 import {
   FIRE_BURN_STEP,
   ICE_TURN_DAMAGE,
@@ -912,18 +914,6 @@ export function buildQueue(apP: number, apE: number): ("p" | "e")[] {
     last = side;
   }
   return out;
-}
-
-export function rollEnemy(floor: number, rng: () => number = Math.random): EnemyDef {
-  const pool = ENEMIES.filter((e) => e.minFloor <= floor);
-  const weights = pool.map((e) => 1 / (1 + (floor - e.minFloor) * 0.55));
-  const total = weights.reduce((s, w) => s + w, 0);
-  let r = rng() * total;
-  for (let i = 0; i < pool.length; i++) {
-    r -= weights[i];
-    if (r <= 0) return pool[i];
-  }
-  return pool[pool.length - 1] ?? ENEMIES[0];
 }
 
 export function rollBoss(floor: number): EnemyDef {

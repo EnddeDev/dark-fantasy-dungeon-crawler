@@ -3,7 +3,8 @@ import { Fragment, useMemo, useState } from "react";
 import { Footprints, X } from "lucide-react";
 import { ITEMS, canTwoHandGrip, canWear, consumableIntReq, consumablePower, slotsForItem, wearRequirementNote } from "../game/content";
 import { Btn } from "./ui";
-import { TORCH, computeVisibility, openDirs } from "../game/maze";
+import { TORCH, computeVisibility, monsterKindAt, openDirs, trapKindAt } from "../game/maze";
+import { foeArtSrc } from "../game/artManifest";
 import { logOf, markAlwaysVisible } from "../game/quests";
 import { BIOMES, BIOME_MAP_COLORS, biomeHealingAmount, biomeVision, mazeBiome } from "../game/biomes";
 import { BiomeRule, biomeStyle } from "./BiomeLabel";
@@ -17,6 +18,22 @@ import type { LobbyAccount } from "./LobbyChrome";
 import { GearNote } from "./GearNote";
 
 const CS = 34;
+
+/**
+ * Фишка на клетке: картинка, обрезанная кругом, и тонкое кольцо. Размер клетки мал,
+ * поэтому деталей нет — узнаётся силуэт и цвет.
+ */
+function MapToken({ id, href, r, ring }: { id: string; href: string; r: number; ring: string }) {
+  return (
+    <>
+      <clipPath id={id}>
+        <circle r={r} />
+      </clipPath>
+      <image href={href} x={-r} y={-r} width={r * 2} height={r * 2} clipPath={`url(#${id})`} preserveAspectRatio="xMidYMid slice" />
+      <circle r={r} fill="none" stroke={ring} strokeWidth="1.6" />
+    </>
+  );
+}
 
 export function Dungeon({
   run,
@@ -456,13 +473,21 @@ export function Dungeon({
                   const lit = visAt(x, y) === 1;
                   const marked = !!run.mapRevealed && visAt(x, y) === 0;
                   if (!lit && !marked) return null;
+                  const art = monsterKindAt(m, i);
+                  const src = art ? foeArtSrc(art) : null;
                   return (
                     <g key={`mo${i}`} transform={`translate(${x * CS + CS / 2} ${y * CS + CS / 2})`} opacity={lit ? 1 : 0.5}>
                       <circle r={11} fill={colors.fog} opacity="0.4" />
-                      <path d="M-8 2l-3-7 7 3h8l7-3-3 7z" fill="#1b1310" stroke={colors.wallShadow} strokeWidth="1.4" />
-                      <circle cx={-3} cy={-1} r={1.7} fill="#e04a2a" />
-                      <circle cx={3} cy={-1} r={1.7} fill="#e04a2a" />
-                      <path d="M-4 6h8" stroke="#f6d48a" strokeWidth="1.1" strokeLinecap="round" />
+                      {src ? (
+                        <MapToken id={`map-mo-${i}`} href={src} r={12} ring={colors.wallShadow} />
+                      ) : (
+                        <>
+                          <path d="M-8 2l-3-7 7 3h8l7-3-3 7z" fill="#1b1310" stroke={colors.wallShadow} strokeWidth="1.4" />
+                          <circle cx={-3} cy={-1} r={1.7} fill="#e04a2a" />
+                          <circle cx={3} cy={-1} r={1.7} fill="#e04a2a" />
+                          <path d="M-4 6h8" stroke="#f6d48a" strokeWidth="1.1" strokeLinecap="round" />
+                        </>
+                      )}
                     </g>
                   );
                 })}
@@ -474,10 +499,17 @@ export function Dungeon({
                   const x = i % S;
                   const y = Math.floor(i / S);
                   const lit = visAt(x, y) === 1;
+                  const kind = trapKindAt(m, i);
                   return (
                     <g key={`tr${i}`} transform={`translate(${x * CS + CS / 2} ${y * CS + CS / 2})`} opacity={lit ? 1 : 0.75}>
-                      <circle r={10} fill="none" stroke="#8a2a22" strokeWidth="1" strokeDasharray="3 3" opacity="0.7" />
-                      <path d="M-8 8L-4 -5L0 6L4 -8L8 6L9 8" fill="none" stroke="#8a2a22" strokeWidth="2" strokeLinejoin="round" />
+                      {kind ? (
+                        <MapToken id={`map-tr-${i}`} href={`images/map/trap-${kind}.jpg`} r={12} ring="#8a2a22" />
+                      ) : (
+                        <>
+                          <circle r={10} fill="none" stroke="#8a2a22" strokeWidth="1" strokeDasharray="3 3" opacity="0.7" />
+                          <path d="M-8 8L-4 -5L0 6L4 -8L8 6L9 8" fill="none" stroke="#8a2a22" strokeWidth="2" strokeLinejoin="round" />
+                        </>
+                      )}
                     </g>
                   );
                 })}
@@ -593,8 +625,7 @@ export function Dungeon({
               {/* персонаж */}
               <g style={{ transform: `translate(${px}px, ${py}px)`, transition: "transform 280ms cubic-bezier(.2,.8,.2,1)" }} className="flicker">
                 <circle r={CS * 1.4} fill="url(#torch)" />
-                <circle r={9} fill={colors.accentHi} stroke={colors.wallShadow} strokeWidth="2.5" />
-                <path d="M0 -4.5L4.5 0L0 4.5L-4.5 0Z" fill={colors.wallShadow} />
+                <MapToken id="map-hero" href="images/map/hero.jpg" r={12} ring={colors.accentHi} />
               </g>
             </svg>
             <div className="vignette pointer-events-none absolute inset-2" />
