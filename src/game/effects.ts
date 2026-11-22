@@ -133,7 +133,7 @@ function tickDot(
     ticks: rounds,
     total: perTick * rounds,
     type: magic ? "магический" : "физический",
-    when: "в конце раунда",
+    when: "в начале хода",
     stacks: Math.max(1, stacks),
   };
 }
@@ -326,7 +326,7 @@ export function playerEffectChips(b: BattleState): EffectChip[] {
   if (s.wound > 0) {
     chips.push({
       id: "bleed", name: "Кровотечение", polarity: "bad", rounds: s.wound,
-      details: ["Рана не затягивается: кровь идёт каждый раунд."],
+      details: ["Рана не затягивается: кровь идёт каждый твой ход."],
       boosts: [], dot: tickDot("bleed", s.woundTick, s.wound, 0, Math.max(1, s.woundStacks ?? 1)), color: EFFECT_COLORS.bleed,
     });
   }
@@ -341,7 +341,7 @@ export function playerEffectChips(b: BattleState): EffectChip[] {
   if (s.burn > 0) {
     chips.push({
       id: "burn", name: "Горение", polarity: "bad", rounds: s.burn,
-      details: ["Огонь держится на тебе и жжёт каждый раунд."],
+      details: ["Огонь держится на тебе и жжёт каждый твой ход."],
       boosts: [], dot: tickDot("burn", s.burnTick, s.burn), color: EFFECT_COLORS.burn,
     });
   }
@@ -674,7 +674,7 @@ export function enemyEffectChips(b: BattleState): EffectChip[] {
       chips.push({
         id: "burn", name: "Горение масла", polarity: "bad", rounds: s.oilRounds,
         details: [`Горение масла: ${s.oilTick} урона за раунд.`],
-        boosts: [], dot: { perTick, ticks: s.oilRounds, total: perTick * s.oilRounds, type: "огонь", when: "в конце раунда" }, color: EFFECT_COLORS.burn,
+        boosts: [], dot: { perTick, ticks: s.oilRounds, total: perTick * s.oilRounds, type: "огонь", when: "в начале хода" }, color: EFFECT_COLORS.burn,
       });
     } else if (kind === "ice") {
       const cut = Math.round((s.oilCut ?? 0) * 100);
@@ -682,7 +682,7 @@ export function enemyEffectChips(b: BattleState): EffectChip[] {
         id: "frost", name: "Лёд масла", polarity: "bad", rounds: s.oilRounds,
         details: [`Лёд масла: ${s.oilTick} урона за раунд и атаки −${cut}%.`],
         boosts: [{ stat: "Атака", value: `−${cut}%` }],
-        dot: { perTick, ticks: s.oilRounds, total: perTick * s.oilRounds, type: "магический", when: "в конце раунда" }, color: EFFECT_COLORS.frost,
+        dot: { perTick, ticks: s.oilRounds, total: perTick * s.oilRounds, type: "магический", when: "в начале хода" }, color: EFFECT_COLORS.frost,
       });
     } else if (kind === "drain") {
       chips.push({
