@@ -671,8 +671,9 @@ test("battle attacks: short names only; damage, stamina and miss chance live in 
     const start = html.lastIndexOf("<button", end);
     assert.ok(!html.slice(start, end).includes("title="), `у кнопки «${name}» нет нативной подсказки: её заменяет всплывающее окно`);
   }
-  const src = fs.readFileSync("src/components/BattleView.tsx", "utf8");
-  for (const text of ["Урон за атаку", "Выносливость: {cost}", "Шанс промахнуться: {miss}%", "heroAttackDamage(b, kind)"]) {
+  /* Окно собирает BattleView (строки выносливости и промаха) и общие части DamageTip (блок «Урон за атаку»). */
+  const src = fs.readFileSync("src/components/BattleView.tsx", "utf8") + fs.readFileSync("src/components/DamageTip.tsx", "utf8");
+  for (const text of ["Урон за атаку", "`Выносливость: ${cost}`", "`Шанс промахнуться: ${miss}%`", "heroAttackDamage(b, kind)", "heroAttackBreakdown(b, kind)"]) {
     assert.ok(src.includes(text), `всплывающее окно атаки содержит: ${text}`);
   }
 });

@@ -148,35 +148,37 @@ test("Жертвенный пакт Колдуна: здоровье 50%, неу
   const w = { ...base, a: duel.fighterFromPlayer("a", player({ archetype: "warlock" })) };
   w.a.concentration = 5;
   const out = duel.duelAction(w, "a", { type: "archetype_skill" }, Date.now());
-  assert.equal(out.a.hp, Math.max(1, Math.round(out.a.maxHp * 0.5)));
+  /* Первый тик иссушения — сразу при наложении: Колдун получает свою долю здоровья. */
+  const tick = Math.ceil(out.b.maxHp * 0.06);
+  assert.equal(out.a.hp, Math.min(out.a.maxHp, Math.max(1, Math.round(out.a.maxHp * 0.5)) + tick), "первый тик лечит Колдуна сразу");
   assert.equal(out.a.invulnerable, true);
   assert.ok(out.b.effects.some((e) => e.kind === "drain" && e.source === "a"));
   /* Ход соперника: неуязвимость держит урон. */
   const hit = withRandom(0.3, () => duel.duelAction({ ...out, turn: "b", apLeft: 1, b: { ...out.b, hit: [30, 30], strFlat: 0, crit: 0, evade: 0 } }, "b", { type: "attack" }, Date.now()));
-  /* Тик иссушения на смене раунда лечит Колдуна на свой размер; урон удара при этом не проходит. */
-  const tick = Math.ceil(out.b.maxHp * 0.06);
-  assert.equal(hit.a.hp, Math.min(out.a.maxHp, out.a.hp + tick), "неуязвимость не пропускает урон удара");
+  assert.equal(hit.a.hp, out.a.hp, "неуязвимость не пропускает урон удара");
   /* Начало хода Колдуна снимает неуязвимость. */
   const back = duel.duelAction({ ...hit, turn: "b", apLeft: 1 }, "b", { type: "pass" }, Date.now());
   assert.equal(back.turn, "a");
   assert.equal(back.a.invulnerable, false);
 });
 
-test("иссушение: тик 6% макс. ОЗ врага в раунд, лечит иссушающего целиком", () => {
+test("иссушение: тик 6% макс. ОЗ врага в начале его хода, лечит иссушающего целиком", () => {
   const s = freshState();
   s.round = 1;
-  s.turn = "b";
+  s.turn = "a";
   s.apLeft = 1;
   s.b.effects = [{ kind: "drain", name: "Иссушение", rounds: 2, value: 0, source: "a" }];
   s.a.hp = 40;
   s.a.maxHp = 200;
   s.b.hp = 200;
   s.b.maxHp = 200;
-  const out = duel.duelAction(s, "b", { type: "pass" }, Date.now());
-  assert.equal(out.round, 2, "переход на новый раунд");
+  /* Ход Колдуна кончается — начинается ход соперника: тик иссушения на нём. */
+  const out = duel.duelAction(s, "a", { type: "pass" }, Date.now());
+  assert.equal(out.turn, "b");
   const tick = Math.ceil(200 * 0.06);
   assert.equal(out.b.hp, 200 - tick);
   assert.equal(out.a.hp, 40 + tick, "иссушающий получает столько же");
+  assert.equal(out.b.effects[0].rounds, 1, "срок: один тик осталось");
 });
 
 test("горение: тик в начале раунда, эффект заканчивается по сроку", () => {

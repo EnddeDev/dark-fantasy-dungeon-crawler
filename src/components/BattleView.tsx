@@ -39,6 +39,7 @@ import {
   ATTACK_KIND_META,
   attackStaminaCost,
   heroAttackDamage,
+  heroAttackBreakdown,
   heroAttackPreview,
   techniqueStaminaCost,
   riskyAttackBlock,
@@ -46,7 +47,6 @@ import {
   battleItemAvailable,
   isFreePouchUse,
 } from "../game/battle";
-import type { BattleFlash } from "../game/battle";
 import { FoePortrait } from "./FoeArt";
 import { ItemArt } from "./ItemArt";
 import { SummaryRow, type SummaryRowData } from "./SummaryRow";
@@ -60,7 +60,7 @@ import { enemyEffects, learnedEffects, type TabEffect } from "../game/effectEntr
 import { EffectChips } from "./EffectChips";
 import { EffectGlyph } from "./EffectIcon";
 import { DamageTypeTag, ElementRow } from "./DamageTypeIcon";
-import { DAMAGE_NUMBER_COLORS } from "../game/damageNumbers";
+import { ActionTipBody, HoverTip, concText, floatColor, floatText, roundWord } from "./DamageTip";
 import { raceElementRows } from "../game/damageTypes";
 import { skillReadiness } from "../game/skillReadiness";
 import { consumablePreview } from "../game/consumablePreview";
@@ -117,12 +117,9 @@ export const ENEMY_EFFECT_DESC: Record<string, string> = {
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 /** Склонение «раунд» для числа. */
 const turnWord = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? "ход" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? "хода" : "ходов");
-const roundWord = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? "раунд" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? "раунда" : "раундов");
-/** Подсказка действия: изменение концентрации («Концентрация +1», «Концентрация 0»). */
-const concText = (delta: number) => (delta === 0 ? "Концентрация 0" : `Концентрация ${delta > 0 ? "+" : "−"}${Math.abs(delta)}`);
 
 /**
- * Кнопка вида атаки с всплывающим окном: урон за удар, выносливость, концентрация, промах.
+ * Кнопка вида атаки с всплывающим окном: урон по типам, эффекты с шансом, выносливость, концентрация, промах.
  * Окно открывается при наводке и фокусе, поэтому видно и на закрытой кнопке (с причиной блока).
  */
 function AttackKindButton({
@@ -142,52 +139,33 @@ function AttackKindButton({
   miss: number;
   onPress: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const tipRef = useRef<HTMLDivElement>(null);
-  useFitInViewport(tipRef, open);
   const meta = ATTACK_KIND_META[kind];
   const dmg = heroAttackDamage(b, kind);
-  const range = dmg.min === dmg.max ? `${dmg.min}` : `${dmg.min}–${dmg.max}`;
-  const hands = dmg.hands > 1 ? `Ударов за атаку: ${dmg.hands} (по одному на каждую руку). Диапазон уже суммарный.` : null;
+  const breakdown = heroAttackBreakdown(b, kind);
+  const hands = dmg.hands > 1 ? `Ударов за атаку: ${dmg.hands} (по одному на каждую руку). Диапазон уже суммарный.` : undefined;
   return (
-    <div
-      className="relative"
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-      onFocus={() => setOpen(true)}
-      onBlur={() => setOpen(false)}
+    <HoverTip
+      tip={
+        <ActionTipBody
+          name={meta.name}
+          desc={meta.desc}
+          direct={breakdown.direct}
+          procs={breakdown.procs}
+          extra={hands}
+          note="Без крита и с учётом защиты врага."
+          lines={[
+            `Выносливость: ${cost}`,
+            concText(concentrationDelta("attack", kind)),
+            `Шанс промахнуться: ${miss}%`,
+          ]}
+          block={block}
+        />
+      }
     >
-      <Btn
-        tone={off ? "ghost" : kind === "safe" ? "verd" : "flame"}
-        disabled={off}
-        className="w-full"
-        onClick={onPress}
-      >
+      <Btn tone={off ? "ghost" : kind === "safe" ? "verd" : "flame"} disabled={off} className="w-full" onClick={onPress}>
         {meta.short}
       </Btn>
-      {open && (
-        <div
-          ref={tipRef}
-          role="tooltip"
-          className="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 block w-[min(19rem,80vw)] -translate-x-1/2 border border-line bg-black/95 p-3 text-left text-[0.84rem] leading-snug text-parch/90 shadow-[0_10px_30px_rgba(0,0,0,0.75)]"
-        >
-          <div className="font-display text-[0.95rem] uppercase tracking-[0.06em] text-flamehi">{meta.name}</div>
-          <p className="mt-1 text-mute">{meta.desc}</p>
-          <div className="mt-2 flex items-baseline justify-between gap-3 border-t border-line/50 pt-2">
-            <span className="sc text-[0.78rem] text-flamedim">Урон за атаку</span>
-            <span className="font-mono text-[1.05rem] tab text-rubric">{range}</span>
-          </div>
-          {hands && <p className="mt-1 text-mute">{hands}</p>}
-          <p className="mt-1 text-mute">Без крита и с учётом защиты врага.</p>
-          <div className="mt-2 space-y-0.5 font-mono text-[0.8rem] text-mute">
-            <div>Выносливость: {cost}</div>
-            <div>{concText(concentrationDelta("attack", kind))}</div>
-            <div>Шанс промахнуться: {miss}%</div>
-          </div>
-          {block && <p className="mt-2 text-rubric">{block}</p>}
-        </div>
-      )}
-    </div>
+    </HoverTip>
   );
 }
 
@@ -411,19 +389,6 @@ export function InfoTag({
       )}
     </span>
   );
-}
-
-/** Текст числа над персонажем: урон, промах, блок или лечение. */
-function flashText(f: BattleFlash): string {
-  if (f.kind === "heal") return `+${f.amount}`;
-  if (f.kind === "miss") return "мимо";
-  if (f.kind === "guard") return "−";
-  return `−${f.amount}`;
-}
-
-/** Цвет урона по типу; без типа — цвет по умолчанию из класса. */
-function flashColor(f: BattleFlash): { color: string } | undefined {
-  return f.kind === "hit" && f.dmg ? { color: DAMAGE_NUMBER_COLORS[f.dmg] } : undefined;
 }
 
 export function BattleView({
@@ -875,9 +840,9 @@ export function BattleView({
               <span
                 key={f.id}
                 className="hitflash pointer-events-none mt-1 block font-mono text-lg text-rubric"
-                style={flashColor(f)}
+                style={floatColor(f)}
               >
-                {flashText(f)}
+                {floatText(f)}
               </span>
             ))}
           </div>
@@ -1158,9 +1123,9 @@ export function BattleView({
                         <span
                           key={f.id}
                           className={`font-mono text-parch drop-shadow-[0_2px_6px_#000] ${enemyFlashes.length > 2 ? "text-2xl" : "text-4xl"}`}
-                          style={flashColor(f)}
+                          style={floatColor(f)}
                         >
-                          {flashText(f)}
+                          {floatText(f)}
                         </span>
                       ))}
                     </div>

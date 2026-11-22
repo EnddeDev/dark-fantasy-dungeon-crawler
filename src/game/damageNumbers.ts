@@ -19,3 +19,16 @@ export const DAMAGE_NUMBER_COLORS: Record<DamageNumberType, string> = {
   bleed: "#408132",
   pure: "#ffffff",
 };
+
+/** Название типа урона для подсказок: что за число и откуда. */
+export const DAMAGE_NUMBER_NAMES: Record<DamageNumberType, string> = {
+  phys: "Физический",
+  magic: "Магический",
+  fire: "Огонь",
+  ice: "Лёд",
+  acid: "Кислота",
+  light: "Свет",
+  poison: "Яд",
+  bleed: "Кровотечение",
+  pure: "Чистый",
+};
