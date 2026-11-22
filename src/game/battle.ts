@@ -2372,6 +2372,22 @@ function rollHeroHit(accuracy: number, evasion: number): boolean {
   return Math.random() < p;
 }
 
+/** Сырой урон удара с множителями, которые hitEnemy ставит до брони. Без бросков и без расхода стаков. */
+function strikeRawNow(b: BattleState, raw: number, kind: HitKind): number {
+  let r = raw;
+  if (kind === "magic") r = Math.round(r * magicMultNow(b));
+  if (isDuelist(b) && comboStacks(b) > 0) {
+    r = Math.round(r * (1 + DUELIST_COMBO_STEP * comboStacks(b)));
+    if (hasPassive(b, "arch_duelist_10") && comboStacks(b) >= DUELIST_COMBO_MAX) r = Math.round(r * DUELIST_COMBO_BURST);
+  }
+  if ((b.enemy.statuses.beatRounds ?? 0) > 0) r = Math.round(r * (1 + (b.enemy.statuses.beatMult ?? 0)));
+  if (kind === "phys" && b.p.statuses.oilType === "edge" && b.p.statuses.oilRounds > 0) {
+    r = Math.round(r * (1 + (b.p.statuses.oilPower ?? 0) / 100));
+  }
+  if ((b.p.statuses.halfDmg ?? 0) > 0) r = Math.round(r / 2);
+  return r;
+}
+
 /**
  * Урон одного удара выбранного вида для подсказки кнопки: диапазон по каждой руке, без крита,
  * после защиты врага. Рискованная бьёт по максимуму оружия, безопасная — по минимуму, обычная — по разбросу.
@@ -2381,16 +2397,134 @@ export function heroAttackDamage(b: BattleState, kind: AttackKind): { min: numbe
   const strikes = (b.p.hands ?? []).length ? b.p.hands : [undefined];
   const lowKind: AttackKind = kind === "risky" ? "risky" : "safe";
   const highKind: AttackKind = kind === "safe" ? "safe" : "risky";
+  /* Удар идёт магией (Архимаг 5 при готовом заряде) — тогда режет магическая защита, а не броня. */
+  const hitKind = archBasicKind(b);
   let min = 0;
   let max = 0;
   strikes.forEach((hand, i) => {
     const bonus = i === 0 ? (b.p.statuses.bulwarkStrike ?? 0) : 0;
     const lo = calcWeaponRoll(b, 1, 0, { hand, kind: lowKind, preview: true }).d;
     const hi = calcWeaponRoll(b, 1, 0, { hand, kind: highKind, preview: true }).d;
-    min += damageAfterEnemyDefense(b, lo + bonus, "phys");
-    max += damageAfterEnemyDefense(b, hi + bonus, "phys");
+    min += damageAfterEnemyDefense(b, strikeRawNow(b, lo + bonus, hitKind), hitKind);
+    max += damageAfterEnemyDefense(b, strikeRawNow(b, hi + bonus, hitKind), hitKind);
   });
   return { min, max, hands: strikes.length };
+}
+
+/** Число в разборе атаки: тип задаёт цвет, источник и шанс — подсказка при наведении. */
+export type AttackDamagePart = {
+  type: DamageNumberType;
+  /** Урон за удар (для эффекта — тик за ход). */
+  min: number;
+  max: number;
+  /** Эффект тикает по ходам (тик за ход); прямой урон — входит в «Урон за атаку». */
+  effect: boolean;
+  /** Шанс срабатывания при попадании, 0–1. Нет — срабатывает при каждом попадании. */
+  chance?: number;
+  /** Сколько ходов тикает эффект. */
+  ticks?: number;
+  /** Когда срабатывает, если не при попадании (например, сразу при применении). */
+  trigger?: string;
+  source: string;
+};
+
+/**
+ * Доля наложений эффекта, которая держится на враге: иммунитет породы, сопротивление породы,
+ * стойкость и сопротивление эффектам, защита босса. Та же цепочка, что в applyEnemyStatus.
+ */
+function enemyEffectLandFactor(b: BattleState, key: "bleed" | "poison" | "burn" | "chill"): number {
+  if ((key === "poison" || key === "bleed") && raceImmuneTo(b.enemy.def.race, key)) return 0;
+  const raceResist = raceEffectResist(b.enemy.def.race);
+  const resist =
+    combineChances([monsterTenacity(enemyStats(b).str), effectsDepleted(b) ? 0 : eChance(b, "resist")]) *
+    ((b.enemy.statuses.shatterRounds ?? 0) > 0 ? 0.5 : 1);
+  const boss = b.isBoss ? 1 - BOSS_EFFECT_RESIST : 1;
+  return (1 - raceResist) * (1 - resist) * boss;
+}
+
+/**
+ * Разбор обычной атаки по типам урона: прямой урон удара и масла магии, а также эффекты,
+ * которые срабатывают при попадании (огонь и лёд масла, свойства клинка) с шансом.
+ */
+export function heroAttackBreakdown(
+  b: BattleState,
+  kind: AttackKind,
+): { direct: AttackDamagePart[]; procs: AttackDamagePart[] } {
+  const strikes = (b.p.hands ?? []).length ? b.p.hands : [undefined];
+  const count = strikes.length;
+  const multi = count > 1 ? ` За ${count} удара.` : "";
+  const hitKind = archBasicKind(b);
+  const range = heroAttackDamage(b, kind);
+  const s = b.p.statuses;
+  const direct: AttackDamagePart[] = [
+    {
+      type: hitKind === "magic" ? "magic" : "phys",
+      min: range.min,
+      max: range.max,
+      effect: false,
+      source:
+        (hitKind === "magic"
+          ? "Оружие, обращённое в магию (Архимаг 5): режет магическая защита врага."
+          : "Оружие: разброс удара с учётом СИЛ и ЛОВ, режет броня врага.") + multi,
+    },
+  ];
+  /* Масло магии: удар сверх оружия при каждом попадании (oilOnHit → elementalHit). */
+  if (s.oilType === "magic" && s.oilRounds > 0 && b.enemy.hp > 0) {
+    const per = damageAfterEnemyDefense(b, strikeRawNow(b, s.oilPower ?? 0, "magic"), "magic");
+    if (per > 0) {
+      direct.push({
+        type: "magic",
+        min: per * count,
+        max: per * count,
+        effect: false,
+        source: `Масло магии на клинке: при каждом попадании.${multi}`,
+      });
+    }
+  }
+
+  const procs: AttackDamagePart[] = [];
+  /* Масло огня и льда: тик за ход на 3 раунда, накладывается при каждом попадании. */
+  if ((s.oilType === "fire" || s.oilType === "ice") && s.oilRounds > 0 && b.enemy.hp > 0) {
+    const mult = enemyElementMult(b, s.oilType);
+    const raw = oilTickDamage(s.oilType, s.oilPower ?? 0, enemyMagicResist(b));
+    if (mult > 0 && raw > 0) {
+      const tick = Math.max(1, Math.round(raw * mult));
+      procs.push({
+        type: s.oilType,
+        min: tick,
+        max: tick,
+        effect: true,
+        ticks: OIL_ROUNDS,
+        source: `${OIL_NAMES[s.oilType]} на клинке: накладывается при каждом попадании.${multi}`,
+      });
+    }
+  }
+  /* Свойства клинка: шанс при попадании, тик — из свойства предмета (у босса — процент ОЗ). */
+  const procDefs: [GearEffectId, "poison" | "bleed" | "burn" | "chill", DamageNumberType, string][] = [
+    ["poison_damage", "poison", "poison", "Яд клинка"],
+    ["bleed", "bleed", "bleed", "Кровотечение от клинка"],
+    ["scorch", "burn", "fire", "Жар клинка"],
+    ["frost_bite", "chill", "ice", "Укус мороза"],
+  ];
+  for (const [id, key, type, name] of procDefs) {
+    const base = Math.min(0.95, effectPower(b, id) / 100);
+    if (base <= 0) continue;
+    const land = enemyEffectLandFactor(b, key);
+    if (land <= 0) continue;
+    const gear = Math.max(1, Math.round(b.p.effectValue?.[id] ?? 0));
+    const raw = b.isBoss ? bossDotTick(key, b.enemy.maxHp) : gear;
+    const tick = key === "chill" ? magicTickFrom(raw, enemyMagicResist(b)) : raw;
+    procs.push({
+      type,
+      min: tick,
+      max: tick,
+      effect: true,
+      chance: base * land,
+      ticks: 3,
+      source: `${name}: свойство клинка, срабатывает при попадании.${count > 1 ? ` Бросок на каждый удар (${count}).` : ""}`,
+    });
+  }
+  return { direct, procs };
 }
 
 /** Превью удара для кнопки вида атаки: меткость, уклонение врага и шанс попасть. */

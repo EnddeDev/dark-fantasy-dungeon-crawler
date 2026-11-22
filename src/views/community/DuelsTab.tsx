@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { EffectsTab, InfoTag, SummaryTabs, chipEntries, roman, type SummaryTab } from "../../components/BattleView";
 import { EffectChips } from "../../components/EffectChips";
 import { PlayerPortrait } from "../../components/PlayerPortrait";
 import { biomeStyle } from "../../components/BiomeLabel";
 import { Btn, Meter, Tag } from "../../components/ui";
+import { ActionTipBody, HoverTip, concText, floatColor, floatText, type FloatNumber } from "../../components/DamageTip";
 import { ARCHETYPES } from "../../game/archetypes";
 import { ATTACK_KIND_META, ATTACK_KINDS, MAX_CONCENTRATION, SPECIAL_CONCENTRATION, type AttackKind } from "../../game/battle";
 import {
@@ -11,16 +12,22 @@ import {
   DUEL_GUARD_ARMOR,
   DUEL_POTION_HEAL,
   duelActionError,
+  duelAttackBreakdown,
   duelAttackCost,
   duelConcentrationDelta,
   duelHitChance,
+  duelTechniqueBreakdown,
   duelTechniqueCost,
   type DuelAction,
   type DuelFighter,
+  type DuelHit,
   type DuelSide,
   type DuelState,
 } from "../../game/duel";
-import { EFFECT_COLORS, type EffectChip } from "../../game/effects";
+import { DAMAGE_NUMBER_COLORS } from "../../game/damageNumbers";
+import { EFFECT_COLORS, type EffectChip, type EffectDot } from "../../game/effects";
+import { ITEMS } from "../../game/content";
+import { OIL_NAMES } from "../../game/statusEffects";
 import { STAMINA_BACKPACK, STAMINA_GUARD } from "../../game/stamina";
 import type { OnlineSession } from "../../net/online";
 import type { DuelDetail, DuelSummary } from "../../net/protocol";
@@ -49,9 +56,8 @@ function Countdown({ deadline }: { deadline: number }) {
 }
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
-const concText = (delta: number) => (delta === 0 ? "Концентрация 0" : `Концентрация ${delta > 0 ? "+" : "−"}${Math.abs(delta)}`);
-
-type Flash = { kind: "dmg" | "heal"; amount: number; id: number };
+/** Число над карточкой: событие из состояния дуэли, ключ — номер хода и порядок в действии. */
+type DuelFloat = FloatNumber & { key: string };
 
 /** Эффекты бойца теми же чипами, что в бою: защита и щит — свои, остальное наложил соперник. */
 function fighterChips(f: DuelFighter): EffectChip[] {
@@ -65,15 +71,33 @@ function fighterChips(f: DuelFighter): EffectChip[] {
   if (f.bulwarkBonus > 0) {
     out.push({ id: "tempArmor", name: "Щит", polarity: "good", rounds: null, unit: "до удара", details: [`Следующий удар получит +${f.bulwarkBonus} урона.`], boosts: [], color: EFFECT_COLORS.buff });
   }
+  if (f.coat && f.coat.rounds > 0) {
+    out.push({ id: "oil", name: OIL_NAMES[f.coat.oil], polarity: "good", rounds: f.coat.rounds, unit: "раунд", details: ["Смазка клинка: каждое попадание накладывает эффект масла."], boosts: [], color: EFFECT_COLORS.buff });
+  }
   for (const e of f.effects) {
     const base = { rounds: e.rounds, polarity: "bad" as const, boosts: [] };
+    /* Тики v2: периодика срабатывает в начале хода носителя; срок — в тиках. */
+    const tickOf = (perTick: number, type: EffectDot["type"]) => ({ perTick, ticks: e.rounds, total: perTick * e.rounds, type, when: "в начале хода" });
     if (e.kind === "burn") {
-      out.push({ ...base, id: "burn", name: "Горение", details: [`Урон ${e.value} в каждом раунде.`], dot: { perTick: e.value, ticks: e.rounds, total: e.value * e.rounds, type: "огонь", when: "в начале раунда" }, color: EFFECT_COLORS.burn });
+      const t = e.value + (e.bonus ?? 0);
+      out.push({ ...base, id: "burn", name: "Горение", details: [`Урон ${t} за ход носителя.`], dot: tickOf(t, "огонь"), color: EFFECT_COLORS.burn });
+    } else if (e.kind === "bleed") {
+      out.push({ ...base, id: "bleed", name: "Кровотечение", details: [`Урон ${e.value} за ход носителя.`], dot: tickOf(e.value, "физический"), color: EFFECT_COLORS.bleed });
+    } else if (e.kind === "poison") {
+      out.push({ ...base, id: "poison", name: "Яд", details: [`Урон ${e.value} за ход носителя.`], dot: tickOf(e.value, "физический"), color: EFFECT_COLORS.poison });
+    } else if (e.kind === "ice") {
+      const t = e.value + (e.bonus ?? 0);
+      const slow = e.pct ? [`Урон носителя −${Math.round(e.pct)}%.`] : [];
+      out.push({ ...base, id: "frost", name: e.name, details: [`Урон ${t} за ход носителя.`, ...slow], dot: tickOf(t, "магический"), color: EFFECT_COLORS.frost });
     } else if (e.kind === "chill") {
       out.push({ ...base, id: "chill", name: "Обморожение", details: [`Урон снижен на ${e.value}%.`], color: EFFECT_COLORS.chill });
     } else if (e.kind === "drain") {
       const tick = Math.max(1, Math.ceil(f.maxHp * DUEL_DRAIN_SHARE));
-      out.push({ ...base, id: "drain", name: "Иссушение", details: [`${pct(DUEL_DRAIN_SHARE)} макс. ОЗ в раунд; иссушающий получает столько же здоровья.`], dot: { perTick: tick, ticks: e.rounds, total: tick * e.rounds, type: "магический", when: "в начале раунда" }, color: EFFECT_COLORS.curse });
+      out.push({ ...base, id: "drain", name: "Иссушение", details: [`${pct(DUEL_DRAIN_SHARE)} макс. ОЗ за ход; иссушающий получает столько же здоровья.`], dot: tickOf(tick, "магический"), color: EFFECT_COLORS.curse });
+    } else if (e.kind === "weak") {
+      out.push({ ...base, id: "weaken", name: e.name, details: [`Броня −${e.value}%.`], color: EFFECT_COLORS.sunder });
+    } else if (e.kind === "noheal") {
+      out.push({ ...base, id: "noHeal", name: e.name, details: ["Лечение не действует."], color: EFFECT_COLORS.depleted });
     } else {
       out.push({ ...base, id: "sunder", name: "Раскол", details: [`Броня −${e.value}.`], color: EFFECT_COLORS.bleed });
     }
@@ -137,13 +161,13 @@ function HeroCard({
   f,
   tab,
   onTab,
-  flash,
+  floats,
   player,
 }: {
   f: DuelFighter;
   tab: SummaryTab;
   onTab: (t: SummaryTab) => void;
-  flash: Flash | null;
+  floats: DuelFloat[];
   player: PortraitRef;
 }) {
   const chips = fighterChips(f);
@@ -188,11 +212,11 @@ function HeroCard({
         </div>
         {tab === "stats" ? <StatRows f={f} /> : <EffectsTab entries={chipEntries(chips)} label="эффекты героя" />}
       </div>
-      {flash && (
-        <span key={flash.id} className="hitflash pointer-events-none mt-1 block font-mono text-lg text-rubric">
-          {flash.kind === "heal" ? `+${flash.amount}` : `−${flash.amount}`}
+      {floats.map((fl) => (
+        <span key={fl.key} className="hitflash pointer-events-none mt-1 block font-mono text-lg text-rubric" style={floatColor(fl)}>
+          {floatText(fl)}
         </span>
-      )}
+      ))}
     </div>
   );
 }
@@ -202,13 +226,13 @@ function FoeCard({
   f,
   tab,
   onTab,
-  flash,
+  floats,
   player,
 }: {
   f: DuelFighter;
   tab: SummaryTab;
   onTab: (t: SummaryTab) => void;
-  flash: Flash | null;
+  floats: DuelFloat[];
   player: PortraitRef;
 }) {
   const chips = fighterChips(f);
@@ -227,14 +251,24 @@ function FoeCard({
           <PlayerPortrait id={player.id} name={f.name} version={player.version} fill />
           <div className="absolute inset-0 bg-gradient-to-t from-soot via-soot/10 to-transparent" />
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,transparent_40%,rgba(0,0,0,0.65)_100%)]" />
-          {flash && (
+          {floats.length > 0 && (
             <div
-              key={flash.id}
-              className={`hitflash pointer-events-none absolute inset-0 flex items-center justify-center ${flash.kind === "heal" ? "bg-verd/25" : "bg-rubric/30"}`}
+              key={floats[floats.length - 1].key}
+              className={`hitflash pointer-events-none absolute inset-0 flex items-center justify-center ${
+                floats[floats.length - 1].kind === "heal" ? "bg-verd/25" : "bg-rubric/30"
+              }`}
             >
-              <span className="font-mono text-4xl text-parch drop-shadow-[0_2px_6px_#000]">
-                {flash.kind === "heal" ? `+${flash.amount}` : `−${flash.amount}`}
-              </span>
+              <div className="flex flex-col items-center gap-1">
+                {floats.map((fl) => (
+                  <span
+                    key={fl.key}
+                    className={`font-mono text-parch drop-shadow-[0_2px_6px_#000] ${floats.length > 2 ? "text-2xl" : "text-4xl"}`}
+                    style={floatColor(fl)}
+                  >
+                    {floatText(fl)}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -294,33 +328,14 @@ function DuelRoom({
   const [busy, setBusy] = useState(false);
   const [heroTab, setHeroTab] = useState<SummaryTab>("stats");
   const [foeTab, setFoeTab] = useState<SummaryTab>("stats");
-  const [flash, setFlash] = useState<Partial<Record<DuelSide, Flash>>>({});
-  /* Последние значения ОЗ: по их изменению показываем вспышку урона или лечения. */
-  const seenHp = useRef<{ a: number; b: number } | null>(null);
-
-  const noteHp = (s: DuelState) => {
-    const now = { a: s.a.hp, b: s.b.hp };
-    const prev = seenHp.current;
-    seenHp.current = now;
-    if (!prev) return;
-    const next: Partial<Record<DuelSide, Flash>> = {};
-    for (const side of ["a", "b"] as const) {
-      const d = now[side] - prev[side];
-      if (d !== 0) next[side] = { kind: d < 0 ? "dmg" : "heal", amount: Math.abs(d), id: Date.now() + (side === "a" ? 0 : 1) };
-    }
-    if (!Object.keys(next).length) return;
-    setFlash((cur) => ({ ...cur, ...next }));
-    /* Вспышка гаснет сама, как в бою; новая вспышка по той же стороне её не обрывает. */
-    for (const side of Object.keys(next) as DuelSide[]) {
-      const id = next[side]!.id;
-      window.setTimeout(() => {
-        setFlash((cur) => (cur[side]?.id === id ? { ...cur, [side]: undefined } : cur));
-      }, 1400);
-    }
-  };
+  /* События последнего действия (урон, лечение, промах) — как вспышки в бою; новое действие их заменяет. */
+  const [hits, setHits] = useState<DuelHit[]>([]);
+  const seenSeq = useRef<number | null>(null);
 
   const apply = (detail: DuelDetail) => {
-    noteHp(detail.state);
+    const s = detail.state;
+    if (seenSeq.current !== null && seenSeq.current !== s.seq) setHits(s.hits ?? []);
+    seenSeq.current = s.seq;
     setDuel(detail);
   };
 
@@ -371,23 +386,66 @@ function DuelRoom({
     version: side === "a" ? duel.challengerPortrait : duel.opponentPortrait,
   });
   const myTurn = state.turn === me && !state.winner;
+  /* Числа над карточками: события текущего хода своей стороны и соперника. */
+  const floatsOf = (side: DuelSide): DuelFloat[] =>
+    hits
+      .filter((h) => h.target === side)
+      .map((h, i) => ({ key: `${state.seq}-${i}`, kind: h.kind === "dmg" ? "hit" : h.kind, amount: h.amount, dmg: h.type }));
   const special = my.archetype ? ARCHETYPES[my.archetype].special : null;
   /* Кнопки закрываются тем же правилом, что проверяет сервер: подсказка всегда про реальную причину. */
   const blockOf = (action: DuelAction) => (state.winner ? "Дуэль окончена" : duelActionError(state, me, action));
   const missOf = (kind: AttackKind) => Math.round((1 - duelHitChance(my, foe, kind)) * 100);
   const attackCost = duelAttackCost(my);
+  /* Кнопка атаки с подсказкой, как в бою: урон по типам, шанс промаха и причина блока. */
+  const attackBtn = (kind: AttackKind) => {
+    const action: DuelAction = { type: "attack", kind };
+    const block = blockOf(action);
+    const breakdown = duelAttackBreakdown(my, foe, kind);
+    const hands = my.hands.length > 1 ? `Ударов за атаку: ${my.hands.length} (по одному на каждую руку). Диапазон уже суммарный.` : undefined;
+    return (
+      <HoverTip
+        tip={
+          <ActionTipBody
+            name={ATTACK_KIND_META[kind].name}
+            desc={ATTACK_KIND_META[kind].desc}
+            direct={breakdown.direct}
+            procs={breakdown.procs}
+            extra={hands}
+            note="Без крита и с учётом защиты врага."
+            lines={[
+              `Выносливость: ${attackCost}`,
+              concText(duelConcentrationDelta(action)),
+              `Шанс промахнуться: ${missOf(kind)}%`,
+            ]}
+            block={block}
+          />
+        }
+      >
+        <Btn tone={block ? "ghost" : kind === "safe" ? "verd" : "flame"} disabled={!!block || busy} className="w-full" onClick={() => act(action)}>
+          {ATTACK_KIND_META[kind].short}
+        </Btn>
+      </HoverTip>
+    );
+  };
   const techCost = duelTechniqueCost(my);
+  const techBreak = duelTechniqueBreakdown(my, foe);
   const myName = my.name;
   const foeName = foe.name;
 
-  const actionBtn = (action: DuelAction, label: string, title: string | undefined, tone: "flame" | "verd" | "ghost" = "ghost", className = "") => {
+  /* Кнопка действия с всплывающим окном, как в бою: описание, расчёт, выносливость и причина блока. */
+  const actionBtn = (action: DuelAction, label: string, tip: ReactNode, tone: "flame" | "verd" | "ghost" = "ghost", className = "") => {
     const block = blockOf(action);
     return (
-      <Btn tone={block ? "ghost" : tone} disabled={!!block || busy} title={block ?? title} onClick={() => act(action)} className={className}>
-        {label}
-      </Btn>
+      <HoverTip tip={tip}>
+        <Btn tone={block ? "ghost" : tone} disabled={!!block || busy} onClick={() => act(action)} className={className}>
+          {label}
+        </Btn>
+      </HoverTip>
     );
   };
+  const simpleTip = (action: DuelAction, name: string, desc: string, lines: string[] = []) => (
+    <ActionTipBody name={name} desc={desc} lines={lines} block={blockOf(action) ?? undefined} />
+  );
 
   return (
     <div className="biome-surface flex flex-col border border-line bg-soot" data-biome="classic" style={biomeStyle("classic")}>
@@ -436,7 +494,7 @@ function DuelRoom({
       <div className="grid flex-1 items-start xl:grid-cols-3">
         {/* ГЕРОЙ — левая колонка, как в бою */}
         <div className="order-2 min-w-0 border-b border-line p-4 sm:p-6 xl:order-1 xl:col-start-1 xl:border-b-0">
-          <HeroCard f={my} tab={heroTab} onTab={setHeroTab} flash={flash[me] ?? null} player={sideOf(me)} />
+          <HeroCard f={my} tab={heroTab} onTab={setHeroTab} floats={floatsOf(me)} player={sideOf(me)} />
         </div>
 
         {/* ДЕЙСТВИЯ — центральная колонка */}
@@ -451,15 +509,7 @@ function DuelRoom({
 
             <div className="grid grid-cols-3 gap-2">
               {ATTACK_KINDS.map((kind) => (
-                <div key={kind}>
-                  {actionBtn(
-                    { type: "attack", kind },
-                    ATTACK_KIND_META[kind].short,
-                    `Выносливость: ${attackCost}. ${concText(duelConcentrationDelta({ type: "attack", kind }))}. Шанс промахнуться: ${missOf(kind)}%`,
-                    kind === "safe" ? "verd" : "flame",
-                    "w-full",
-                  )}
-                </div>
+                <div key={kind}>{attackBtn(kind)}</div>
               ))}
             </div>
 
@@ -467,9 +517,24 @@ function DuelRoom({
               {actionBtn(
                 { type: "technique" },
                 my.skill ? `Приём · ${techCost}` : "Приём",
-                my.skill
-                  ? `Приём «${my.skill.name}». Выносливость: ${techCost}. ${concText(-1)}. Перезарядка: ${my.cooldown > 0 ? my.cooldown : my.skill.cooldown} р.`
-                  : "У оружия нет приёма",
+                my.skill ? (
+                  <ActionTipBody
+                    name={`Приём «${my.skill.name}»`}
+                    desc="Удар оружием с бонусом приёма. Перезаряжается после использования."
+                    direct={techBreak.direct}
+                    procs={techBreak.procs}
+                    note="Без крита и с учётом защиты врага."
+                    lines={[
+                      `Выносливость: ${techCost}`,
+                      concText(-1),
+                      `Перезарядка: ${my.cooldown > 0 ? my.cooldown : my.skill.cooldown} р.`,
+                      `Шанс промахнуться: ${Math.round((1 - duelHitChance(my, foe, "normal")) * 100)}%`,
+                    ]}
+                    block={blockOf({ type: "technique" }) ?? undefined}
+                  />
+                ) : (
+                  simpleTip({ type: "technique" }, "Приём", "У оружия нет приёма")
+                ),
                 "flame",
                 "w-full",
               )}
@@ -477,7 +542,7 @@ function DuelRoom({
                 actionBtn(
                   { type: "archetype_skill" },
                   `Спец-приём: ${special.name} · ${my.concentration}/${MAX_CONCENTRATION}`,
-                  `${special.desc} ${concText(-SPECIAL_CONCENTRATION)}. Выносливость не тратится.`,
+                  simpleTip({ type: "archetype_skill" }, special.name, special.desc, [`Концентрация: ${SPECIAL_CONCENTRATION}`, concText(-SPECIAL_CONCENTRATION), "Выносливость не тратится."]),
                   "flame",
                   "w-full",
                 )}
@@ -485,12 +550,31 @@ function DuelRoom({
             {special && <p className="mb-2 mt-1 text-[0.85rem] leading-snug text-mute">{special.desc}</p>}
 
             <div className="mt-2 grid grid-cols-3 gap-2">
-              {actionBtn({ type: "potion" }, `Зелье · ${my.potions}`, `Выносливость: ${STAMINA_BACKPACK}. ${concText(1)}. Лечит ${DUEL_POTION_HEAL} ОЗ.`, "ghost", "w-full")}
-              {actionBtn({ type: "guard" }, `Защита · ${STAMINA_GUARD}`, `Выносливость: ${STAMINA_GUARD}. ${concText(2)}. Броня +${DUEL_GUARD_ARMOR} до своего хода. Ход не заканчивается.`, "verd", "w-full")}
-              {actionBtn({ type: "pass" }, "Пропуск хода", "Заканчивает ход без действия.", "ghost", "w-full")}
+              {actionBtn({ type: "potion" }, `Зелье · ${my.potions}`, simpleTip({ type: "potion" }, "Зелье", `Лечит ${DUEL_POTION_HEAL} ОЗ.`, [`Выносливость: ${STAMINA_BACKPACK}`, concText(1)]), "ghost", "w-full")}
+              {actionBtn({ type: "guard" }, `Защита · ${STAMINA_GUARD}`, simpleTip({ type: "guard" }, "Защита", `Броня +${DUEL_GUARD_ARMOR} до своего хода. Ход не заканчивается.`, [`Выносливость: ${STAMINA_GUARD}`, concText(2)]), "verd", "w-full")}
+              {actionBtn({ type: "pass" }, "Пропуск хода", simpleTip({ type: "pass" }, "Пропуск хода", "Заканчивает ход без действия."), "ghost", "w-full")}
             </div>
+            {my.oils.length > 0 && (
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {my.oils.map((o) => (
+                  <div key={o.id}>
+                    {actionBtn(
+                      { type: "oil", id: o.id },
+                      `Масло · ${o.name}${o.count > 1 ? ` ×${o.count}` : ""}`,
+                      simpleTip({ type: "oil", id: o.id }, o.name, ITEMS[o.id]?.desc ?? "", [
+                        `Выносливость: ${STAMINA_BACKPACK}`,
+                        concText(1),
+                        `Смазка на ${o.coat} раунда: каждое попадание накладывает ${OIL_NAMES[o.oil].toLowerCase()}.`,
+                      ]),
+                      "flame",
+                      "w-full",
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="mt-2">
-              {actionBtn({ type: "flee" }, "Сдаться", "Засчитывается поражение. Предметы не теряются.", "ghost", "w-full")}
+              {actionBtn({ type: "flee" }, "Сдаться", simpleTip({ type: "flee" }, "Сдаться", "Засчитывается поражение. Предметы не теряются."), "ghost", "w-full")}
             </div>
             {state.winner && (
               <div className="mt-3 border border-flame/50 bg-flame/10 px-3 py-2 font-display text-[1.05rem] uppercase tracking-[0.08em] text-flamehi">
@@ -503,25 +587,32 @@ function DuelRoom({
           <div className="mt-4 border border-line bg-black/45 p-4">
             <div className="sc mb-2">Хроника дуэли</div>
             <div className="max-h-[38vh] space-y-1.5 overflow-y-auto pr-1 text-[0.98rem] leading-snug xl:max-h-[46vh]">
-              {state.log.slice(-40).reverse().map((line, i) => {
-                const mine = line.startsWith(myName);
-                const theirs = line.startsWith(foeName);
-                return (
-                  <div
-                    key={`${state.seq}-${i}`}
-                    className={`border-l-2 pl-2 ${mine ? "border-flamedim text-parch" : theirs ? "border-rubric text-parch/85" : "border-line text-mute italic"}`}
-                  >
-                    {line}
-                  </div>
-                );
-              })}
+              {state.log
+                .map((line, idx) => ({ line, idx, type: state.logTypes?.[idx] ?? null }))
+                .slice(-40)
+                .reverse()
+                .map(({ line, idx, type }) => {
+                  const mine = line.startsWith(myName);
+                  const theirs = line.startsWith(foeName);
+                  /* Строка с уроном окрашена типом урона, как в журнале боя. */
+                  const color = type ? { color: DAMAGE_NUMBER_COLORS[type] } : undefined;
+                  return (
+                    <div
+                      key={`${state.seq}-${idx}`}
+                      style={color}
+                      className={`border-l-2 pl-2 ${mine ? "border-flamedim text-parch" : theirs ? "border-rubric text-parch/85" : "border-line text-mute italic"}`}
+                    >
+                      {line}
+                    </div>
+                  );
+                })}
             </div>
           </div>
         </div>
 
         {/* СОПЕРНИК — правая колонка, как противник в бою */}
         <div className="order-1 min-w-0 xl:order-3 xl:col-start-3 xl:border-l xl:border-line">
-          <FoeCard f={foe} tab={foeTab} onTab={setFoeTab} flash={flash[me === "a" ? "b" : "a"] ?? null} player={sideOf(me === "a" ? "b" : "a")} />
+          <FoeCard f={foe} tab={foeTab} onTab={setFoeTab} floats={floatsOf(me === "a" ? "b" : "a")} player={sideOf(me === "a" ? "b" : "a")} />
         </div>
       </div>
     </div>
