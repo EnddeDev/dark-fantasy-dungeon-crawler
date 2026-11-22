@@ -225,7 +225,11 @@ test("бой: яд и кровотечение обходят барьер, го
     b.p.barrier = 50;
     b.p.barrierMax = 50;
     b.p.hp = 100;
-    return battle.skipStunnedTurn(b);
+    /* Тик идёт в начале хода героя (v2): враг оглушён и пропускает ходы, ход героя начинается. */
+    b.enemy.statuses.stunAp = 10;
+    let s = battle.skipStunnedTurn(b);
+    while (!s.over && s.queue[s.idx] === "e") s = battle.enemyStep(s);
+    return s;
   };
 
   const poisoned = round({ poison: 3, poisonTick: 5 });

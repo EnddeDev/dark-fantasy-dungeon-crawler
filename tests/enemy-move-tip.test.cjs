@@ -73,9 +73,12 @@ test("breakdown: the last line is the damage after defence, expected is the sum 
       reach *= bd.hitChance;
       want += reach * d;
     }
-    /* Первый тик нового наложения идёт сразу: входит с шансом наложения. */
+    /* Первый тик нового наложения идёт сразу, дальше — по тику на каждом ходе героя в раунде, пока срок не вышел. */
+    const heroTurns = b.queue.filter((q) => q === "p").length;
     for (const x of battle.enemyMoveEffectDetails(b, m)) {
-      if (x.tick && x.chance > 0) want += x.chance * ((x.tick[0] + x.tick[1]) / 2);
+      if (!x.tick || !(x.chance > 0)) continue;
+      const later = x.rounds ? Math.max(0, Math.min(x.rounds - 1, heroTurns)) : 0;
+      want += x.chance * ((x.tick[0] + x.tick[1]) / 2) * (1 + later);
     }
     assert.ok(Math.abs(bd.expected - want) < 1e-9, `${m}: ${bd.expected} ≠ ${want}`);
     assert.equal(bd.expected, battle.enemyExpectedMoveDamage(b, m), `${m}: тот же расчёт, что у выбора приёма`);

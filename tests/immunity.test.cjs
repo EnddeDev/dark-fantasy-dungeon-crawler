@@ -110,21 +110,19 @@ test("страх не обновляется, пока держится", () => 
   assert.equal(after.p.statuses.fear, 1, "повторный страх не продлевает");
 });
 
-test("страх заканчивается в конце раунда и даёт 3 раунда иммунитета", () => {
+test("страх тает на ходе героя, иммунитет 3 раунда и тает в конце раунда", () => {
   const b = fight("ghost", ["attack"]);
   b.queue = ["p", "e"];
   b.idx = 0;
   b.p.hp = b.p.maxHp = 5000;
   b.p.statuses.fear = 1;
   const afterHero = battle.playerAct(b, { type: "end_turn" });
-  assert.equal(afterHero.p.statuses.fear, 1, "страх не тает на ходу героя");
-  const roundEnd = withRandom(() => battle.enemyStep(afterHero));
-  assert.equal(roundEnd.p.statuses.fear, 0, "страх кончился в конце раунда");
-  assert.equal(roundEnd.p.statuses.fearImmune, 3, "три раунда защищён");
-  const tick = withRandom(() => battle.enemyStep({ ...roundEnd, idx: 0, queue: ["e"] }));
-  assert.equal(tick.p.statuses.fearImmune, 2, "иммунитет тает по одному в конце раунда");
-  const nextRound = withRandom(() => battle.enemyStep({ ...roundEnd, idx: 0, queue: ["e", "p"] }));
-  assert.equal(nextRound.p.statuses.fear, 0, "в защищённом раунде страх не ставится");
+  assert.equal(afterHero.p.statuses.fear, 0, "страх тает на ходе героя (срок 1)");
+  assert.equal(afterHero.p.statuses.fearImmune, 3, "три раунда защищён");
+  assert.equal(afterHero.p.statuses.fearImmune, 3, "иммунитет не тает на ходе героя");
+  const roundEnd2 = withRandom(() => battle.enemyStep({ ...afterHero, idx: 0, queue: ["e"] }));
+  assert.equal(roundEnd2.p.statuses.fearImmune, 2, "иммунитет тает по одному в конце раунда");
+  assert.equal(roundEnd2.p.statuses.fear, 0, "в защищённом раунде страх не ставится");
 });
 
 test("иммунитет к печатям: интимидация не запрещает атаку и приёмы", () => {

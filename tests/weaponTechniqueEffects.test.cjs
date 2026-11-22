@@ -28,6 +28,7 @@ function fixture(skillId, baseId = "knife", stats = {}) {
   /* Приём задаётся явно: пул базы не всегда содержит нужный id, а выбор по случайности даёт недетерминированный тест. */
   g.skillId = skillId;
   const p = PlayerFactory.createInitial();
+  for (const k of Object.keys(p.equip)) p.equip[k] = null;
   p.armory = [g];
   p.equip = { ...p.equip, mainHand: g.uid };
   p.stats = { ...p.stats, str: 8, agi: 8, int: 8, ...stats };
@@ -48,7 +49,7 @@ test("Укус змеи: яд 3 раунда, тик 2 + бонус приёма
   const b = fixture("snake_bite", "knife", { agi: 6 });
   const bonus = battle.techniqueBonusNow(b, b.p.weaponSkill);
   const after = withRandom(0.99, () => battle.playerAct(b, { type: "weapon_skill" }));
-  assert.equal(after.enemy.statuses.poison, 3);
+  assert.equal(after.enemy.statuses.poison, 2, "3 хода: первый тик сразу, осталось 2");
   assert.equal(after.enemy.statuses.poisonTick, 2 + bonus);
 });
 
@@ -56,7 +57,7 @@ test("Двойной порез: два удара и кровотечение 3
   const b = fixture("double_cut", "knife", { agi: 4 });
   const bonus = battle.techniqueBonusNow(b, b.p.weaponSkill);
   const after = withRandom(0.99, () => battle.playerAct(b, { type: "weapon_skill" }));
-  assert.equal(after.enemy.statuses.bleed, 3);
+  assert.equal(after.enemy.statuses.bleed, 2);
   assert.equal(after.enemy.statuses.bleedTick, 3 + bonus);
   const hits = after.log.filter((l) => l.text.includes("Двойной порез") && /\d\/2/.test(l.text));
   assert.equal(hits.length, 2, "два удара");
@@ -70,7 +71,7 @@ test("Казнь: кровотечение только при ОЗ врага �
   const low = fixture("execute", "axe");
   low.enemy.hp = 2000; // 40% от 5000
   const afterLow = withRandom(0.99, () => battle.playerAct(low, { type: "weapon_skill" }));
-  assert.equal(afterLow.enemy.statuses.bleed, 3);
+  assert.equal(afterLow.enemy.statuses.bleed, 2);
   assert.equal(afterLow.enemy.statuses.bleedTick, Math.round(5000 * 0.05));
 });
 
@@ -291,7 +292,7 @@ test("Выброс: 40 урона и четыре эффекта на 3 раун
   /* Урон 40 проходит через магическое сопротивление врага: не больше 40 и больше нуля. */
   const dealt = hp0 - after.enemy.hp;
   assert.ok(dealt > 0, `урон Выброса нанесён (${dealt})`);
-  assert.equal(after.enemy.statuses.eruptRounds, 3);
+  assert.equal(after.enemy.statuses.eruptRounds, 2);
   assert.equal(after.enemy.statuses.eruptDown, 0.2, "обморожение и проклятие −10% каждое");
   assert.equal(after.enemy.statuses.eruptWither, 1, "увядание: −20% лечения врага");
   assert.equal(after.enemy.statuses.eruptTick, Math.max(1, 6 - 3) + 1 + 3);
@@ -305,7 +306,7 @@ test("Вытягивание жизни: урон 10 + бонус приёма",
   /* Магическое сопротивление врага режет удар: проверяем, что он прошёл и записан в бою. */
   assert.ok(hp0 - after.enemy.hp > 0, "урон нанесён");
   assert.ok(after.log.some((l) => l.text.includes("[Вытягивание жизни]")), "удар записан в бою");
-  assert.equal(after.enemy.statuses.drainRounds, 3, "кража на 3 раунда");
+  assert.equal(after.enemy.statuses.drainRounds, 2, "кража на 3 раунда");
   assert.equal(after.enemy.statuses.drainTick, Math.round(after.enemy.maxHp * 0.05), "5% макс. ОЗ за раунд");
 });
 
@@ -319,7 +320,7 @@ test("Бросок: закончил ход — враг без защиты и 
   const cont = fixture("throw", "spear", { agi: 6 });
   const thrown = withRandom(0.5, () => battle.playerAct(cont, { type: "weapon_skill" }));
   const followed = withRandom(0.5, () => battle.playerAct(thrown, { type: "attack" }));
-  assert.equal(followed.enemy.statuses.bleed, 3, "кровотечение на 3 раунда");
+  assert.equal(followed.enemy.statuses.bleed, 2, "кровотечение на 3 раунда");
   assert.equal(followed.enemy.statuses.bleedTick, 5 + 6);
   assert.equal(followed.p.statuses.throwPending, 0);
 });
@@ -356,8 +357,8 @@ test("Повторение: повторяет последний приём б�
   rep.lastRepeat = first.lastRepeat;
   const hp0 = rep.enemy.hp;
   const repeated = withRandom(0.99, () => battle.playerAct(rep, { type: "weapon_skill" }));
-  assert.equal(repeated.enemy.statuses.poison, 3, "яд наложен повтором");
-  assert.ok(repeated.enemy.hp === hp0, "сам яд не бьёт сразу");
+  assert.equal(repeated.enemy.statuses.poison, 2, "яд наложен повтором");
+  assert.equal(hp0 - repeated.enemy.hp, repeated.enemy.statuses.poisonTick, "сразу только первый тик яда (v2), без прямого удара");
   assert.equal(repeated.p.weaponCd, 3, "сам Повтор уходит на перезарядку");
 });
 

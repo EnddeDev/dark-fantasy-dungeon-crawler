@@ -33,6 +33,7 @@ function withRandom(fn, rng) {
 /** Бой без помех: враг с огромным запасом ОЗ, без брони и уклонения, без крита. */
 function fight(hands) {
   const pl = PlayerFactory.createInitial();
+  for (const k of Object.keys(pl.equip)) pl.equip[k] = null;
   const b = withRandom(() => battle.newBattle(pl, 1, false, "classic", 0, 0), () => 0.5);
   b.enemy.hp = 99999;
   b.enemy.maxHp = 99999;

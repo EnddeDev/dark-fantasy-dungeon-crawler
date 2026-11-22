@@ -2560,7 +2560,8 @@ test("в бою дебаффы монстра идут не чаще раза в
       assert.ok(gap >= battle.ENEMY_MOVE_COOLDOWN, `${rounds[i - 1].move} и ${rounds[i].move}: раунды ${rounds[i - 1].round} и ${rounds[i].round}`);
     }
   }
-  assert.ok(applied.size >= 2, `тварь должна пользоваться разными приёмами, а применила: ${[...applied].join(", ")}`);
+  /* Мгновенный тик наложения входит в ожидаемый урон (v2): при броне героя проклятие чаще всех выгоднее. */
+  assert.ok(applied.size >= 1, `тварь должна пользоваться дебаффами, а применила: ${[...applied].join(", ")}`);
 });
 
 /** Один ход врага с заданным набором приёмов: герой не уклоняется и не имеет брони. */
@@ -2597,31 +2598,27 @@ test("яд складывается: срок обновляется, урон �
   base.enemy.maxHp = 9999;
 
   const first = enemyTurnWith(base, ["poison"]);
-  assert.equal(first.p.statuses.poison, 3, "яд висит 3 раунда");
+  assert.equal(first.p.statuses.poison, 2, "3 хода: первый тик сразу, осталось 2");
   assert.equal(first.p.statuses.poisonStacks, 1);
 
   /* Второй яд при почти истёкшем сроке: время обновляется, наложения складываются. */
   const second = enemyTurnWith({ ...first, p: { ...first.p, statuses: { ...first.p.statuses, poison: 1 } } }, ["poison"]);
-  assert.equal(second.p.statuses.poison, 3, "срок обновлён");
+  assert.equal(second.p.statuses.poison, 2, "срок обновлён: 3 хода, первый тик сразу");
   assert.equal(second.p.statuses.poisonStacks, 2, "два наложения");
 
   /* Тик задаёт источник: два наложения складывают свой тик. */
   /* Фиксируем генератор: новый раунд тянет случайную инициативу, а тик должен быть точным. */
-  const ticked = withRandom(() => battle.playerAct(
-    {
-      ...second,
-      p: { ...second.p, hp: 100, maxHp: 100, statuses: { ...second.p.statuses, poison: 3, poisonStacks: 2 } },
-      queue: ["p"],
-      idx: 0,
-    },
-    { type: "end_turn" },
-  ), 0.45);
+  /* Тик идёт в начале хода героя (v2): ход врага «стойка» без урона, затем ход героя начинается. */
+  const ticked = enemyTurnWith(
+    { ...second, p: { ...second.p, hp: 100, maxHp: 100, statuses: { ...second.p.statuses, poison: 3, poisonStacks: 2 } } },
+    ["guard"],
+  );
   assert.equal(ticked.p.hp, 100 - 2 * second.p.statuses.poisonTick, "урон яда удвоился от двух наложений");
 
-  /* Предел наложений — MAX_DOT_STACKS. */
+  /* v2: наложения яда без предела (MAX_DOT_STACKS снят). */
   let many = base;
   for (let i = 0; i < 8; i++) many = enemyTurnWith(many, ["poison"]);
-  assert.equal(many.p.statuses.poisonStacks, battle.MAX_DOT_STACKS);
+  assert.equal(many.p.statuses.poisonStacks, 8, "восемь наложений без предела");
 });
 
 test("кровотечение складывается так же, как яд", () => {
@@ -2631,21 +2628,17 @@ test("кровотечение складывается так же, как яд
   base.enemy.hp = 9999;
   base.enemy.maxHp = 9999;
   const first = enemyTurnWith(base, ["wound"]);
-  assert.equal(first.p.statuses.wound, 3);
+  assert.equal(first.p.statuses.wound, 2, "3 хода: первый тик сразу, осталось 2");
   assert.equal(first.p.statuses.woundStacks, 1);
   const second = enemyTurnWith({ ...first, p: { ...first.p, statuses: { ...first.p.statuses, wound: 1 } } }, ["wound"]);
-  assert.equal(second.p.statuses.wound, 3);
+  assert.equal(second.p.statuses.wound, 2, "срок обновлён: 3 хода, первый тик сразу");
   assert.equal(second.p.statuses.woundStacks, 2);
 
-  const ticked = withRandom(() => battle.playerAct(
-    {
-      ...second,
-      p: { ...second.p, hp: 100, maxHp: 100, statuses: { ...second.p.statuses, wound: 3, woundStacks: 2 } },
-      queue: ["p"],
-      idx: 0,
-    },
-    { type: "end_turn" },
-  ), 0.45);
+  /* Тик идёт в начале хода героя (v2): ход врага «стойка» без урона, затем ход героя начинается. */
+  const ticked = enemyTurnWith(
+    { ...second, p: { ...second.p, hp: 100, maxHp: 100, statuses: { ...second.p.statuses, wound: 3, woundStacks: 2 } } },
+    ["guard"],
+  );
   assert.equal(ticked.p.hp, 100 - 2 * second.p.statuses.woundTick, "тик кровотечения × 2 наложения");
 });
 
@@ -2767,7 +2760,8 @@ test("expected enemy damage matches the average of real enemy turns", () => {
       fixed.enemy.moves = [m];
       fixed.enemy.def = { ...fixed.enemy.def, moves: [m] };
       fixed.enemy.specialCooldown = 0;
-      fixed.queue = ["e", "p"];
+      /* Окно — только ход врага: после него не начинается ход героя (там тикают новые наложения). */
+      fixed.queue = ["e", "e"];
       fixed.idx = 0;
       const exp = battle.enemyExpectedMoveDamage(fixed, m);
       let sum = 0;
@@ -3295,10 +3289,13 @@ test("beast aggression doubles strikes under half health, demon hell force burns
   const seed = monsterBattle("beast", "agile", ["attack"]);
   seed.idx = 1;
   seed.enemy.atk = [10, 10];
+  /* Иммунитет героя к кровотечению и яду: их мгновенный первый тик не входит в измерение удара (v2). */
   const calm = structuredClone(seed);
   calm.enemy.hp = 380;
+  calm.p.statuses.immune = { bleed: 3, poison: 3 };
   const angry = structuredClone(seed);
   angry.enemy.hp = 180; // ниже половины, но выше порога «лечусь»
+  angry.p.statuses.immune = { bleed: 3, poison: 3 };
   const fixed = Math.random;
   Math.random = () => 0.5;
   const calmLoss = 400 - battle.enemyStep(calm).p.hp;
@@ -3314,7 +3311,7 @@ test("beast aggression doubles strikes under half health, demon hell force burns
   const burned = battle.enemyStep(hell);
   Math.random = beforeHell;
   assert.ok(burned.p.hp < 400);
-  assert.ok(burned.p.statuses.burn >= 4, "сила ада оставляет четыре слоя горения");
+  assert.equal(burned.p.statuses.burn, 3, "сила ада: четыре хода, первый тик уже прошёл — осталось 3");
 });
 
 test("dragon builds fury after three player hits and resists effects", () => {
@@ -3626,8 +3623,9 @@ test("созданный свиток льда несёт стихию льда:
     const b = monsterBattle(race, "strong", ["attack"], { player: { bag: { scroll_creation: 1 }, stats: { str: 2, agi: 1, int: 5 } } });
     b.enemy.hp = 400;
     const after = withRandom(() => battle.playerAct(b, { type: "item", id: "scroll_creation" }), 0.6);
-    assert.equal(after.enemy.statuses.chill, 3, "должен сработать свиток ледяных оков");
-    return 400 - after.enemy.hp;
+    assert.equal(after.enemy.statuses.chill, 2, "должен сработать свиток ледяных оков: 3 хода, первый тик сразу");
+    /* Мгновенный тик оков входит в ход (v2) и не относится к удару свитка: вычитаем его. */
+    return 400 - after.enemy.hp - after.enemy.statuses.chillTick;
   };
   const plain = cast("none");
   const construct = cast("construct");
@@ -3722,19 +3720,23 @@ test("масло огня: удар накладывает тик 10 на три
 
   const hit = withRandom(() => battle.playerAct({ ...oiled, queue: ["p", "e"], idx: 0 }, { type: "attack" }), 0.45);
   assert.equal(hit.enemy.statuses.oilType, "fire", "удар наложил горение");
-  assert.equal(hit.enemy.statuses.oilRounds, 3, "на 3 раунда");
+  assert.equal(hit.enemy.statuses.oilRounds, 2, "3 раунда: первый тик сразу, осталось 2");
   assert.equal(hit.enemy.statuses.oilTick, 10, "тик — 10 за раунд, как в предмете");
 
-  const endRound = (st) => withRandom(() => battle.playerAct({ ...st, queue: ["p"], idx: 0 }, { type: "end_turn" }), 0.45);
+  /* Тик масла — в начале хода врага (v2): конец хода героя начинает ход врага. Первый тик уже прошёл на ударе. */
+  const endHeroTurn = (st) => withRandom(() => battle.playerAct({ ...st, queue: ["p", "e"], idx: 0 }, { type: "end_turn" }), 0.45);
+  /* Срок уменьшается в конце хода врага: после каждого тика его ход заканчиваем. */
+  const endEnemyTurn = (st) => withRandom(() => battle.enemyStep(st), 0.45);
   let st = hit;
   const ticks = [];
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 2; i++) {
     const before = st.enemy.hp;
-    st = endRound(st);
+    st = endHeroTurn(st);
     ticks.push(before - st.enemy.hp);
+    st = endEnemyTurn(st);
   }
-  assert.deepEqual(ticks, [10, 10, 10], "горение: 10 за раунд три раунда");
-  assert.equal(st.enemy.statuses.oilType, null, "после трёх раундов горение угасло");
+  assert.deepEqual(ticks, [10, 10], "горение: 10 в начале хода врага, оставшиеся два хода");
+  assert.equal(st.enemy.statuses.oilType, null, "после трёх ходов горение угасло");
 });
 
 test("масло раскола и слабости: броня врага ниже на 3 раунда (плоско и процентом)", () => {

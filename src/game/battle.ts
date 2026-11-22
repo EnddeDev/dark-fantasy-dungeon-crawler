@@ -4372,6 +4372,8 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
       else if (leech > 0) applyVamp(b, dealtTotal, leech, "skill", "phys");
 
       /* Колдун: удачный приём накладывает иссушение на врага. Печать пакта лечит 12% урона таких приёмов. */
+      /* ОЗ до мгновенного лечения иссушением: «Обет крови» смотрит на то, что довёл приём. */
+      const hpBeforeDrain = b.p.hp;
       if (b.p.archetype === "warlock" && dealtTotal > 0 && b.enemy.hp > 0) {
         applyPactDrain(b, PACT_DRAIN_ROUNDS);
         if (hasGearPassive(b, "warlock_pact")) {
@@ -4386,7 +4388,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
         push(b, `Порча приёмом: ${b.enemy.def.name} проклят (урон −10%).`, "p");
       }
       /* Обет крови (ветка «Обет» A): приём, который довёл ОЗ героя ниже 30%, не тратит перезарядку. */
-      const vowFree = hasPassive(b, "skill_vow_a") && hpBeforePact >= b.p.maxHp * 0.3 && b.p.hp < b.p.maxHp * 0.3;
+      const vowFree = hasPassive(b, "skill_vow_a") && hpBeforePact >= b.p.maxHp * 0.3 && hpBeforeDrain < b.p.maxHp * 0.3;
       const noCd = vowFree || (hasPassive(b, "echo") && Math.random() < 0.35);
       if (noCd) {
         push(b, vowFree ? "Обет крови: ОЗ ниже 30%, перезарядки нет!" : "Приём не ушёл на перезарядку!", "p");
@@ -5212,19 +5214,30 @@ export function enemyMoveBreakdown(b: BattleState, move: EnemyMove): EnemyMoveBr
   /* Тики: висящие на герое — всегда; новые от приёма — верхняя граница. Обычный и второй удар тикают один раз. */
   const dotNow = heroRoundDotNow(b);
   const newTicks = enemyMoveEffectDetails(b, move).filter((x) => x.tick && x.chance > 0);
+  /* Тики на ходах героя в этом же раунде: как в бою, первый тик наложения уже прошёл сразу, дальше — по одному на каждый ход героя, пока срок не вышел. */
+  const heroTurnsNow = b.queue.filter((x) => x === "p").length;
+  const laterTicks = (rounds: number) => Math.max(0, Math.min(rounds - 1, heroTurnsNow));
+  const later = (x: EnemyMoveEffectDetail) => (x.rounds ? laterTicks(x.rounds) : 0);
   /* Первый тик нового наложения проходит сразу, в ход врага: входит в ожидаемый урон приёма по шансу наложения. */
   for (const x of newTicks) {
     if (!x.tick) continue;
-    expected += x.chance * ((x.tick[0] + x.tick[1]) / 2);
+    const avgTick = (x.tick[0] + x.tick[1]) / 2;
+    expected += x.chance * avgTick * (1 + later(x));
   }
   /* Пассивы врага в incoming: яд на каждом физическом попадании (стек за удар), горение беса на каждом попадании. */
+  const venomPassive = e.passive?.id === "venom" && shape.kind === "phys";
+  const imp = e.def.id === "imp";
   const passiveMax =
-    (e.passive?.id === "venom" && shape.kind === "phys" ? dotTickSpan("poison", e.level, false)[1] * hits : 0) +
-    (e.def.id === "imp" ? dotTickSpan("burn", e.level, false)[1] : 0);
+    (venomPassive ? dotTickSpan("poison", e.level, false)[1] * hits : 0) + (imp ? dotTickSpan("burn", e.level, false)[1] : 0);
+  /* Тики на ходах героя от пассивов: яд врага на 2 раунда, горение беса на 1 раунд. */
+  const passiveLaterMax =
+    (venomPassive ? dotTickSpan("poison", e.level, false)[1] * hits * laterTicks(2) : 0) +
+    (imp ? dotTickSpan("burn", e.level, false)[1] * laterTicks(statusRounds(b, 1)) : 0);
   const dotNewMax =
-    newTicks.filter((x) => !x.half).reduce((sum, x) => sum + (x.tick?.[1] ?? 0), 0) +
-    Math.max(0, ...newTicks.filter((x) => x.half).map((x) => x.tick?.[1] ?? 0)) +
-    passiveMax;
+    newTicks.filter((x) => !x.half).reduce((sum, x) => sum + (x.tick?.[1] ?? 0) * (1 + later(x)), 0) +
+    Math.max(0, ...newTicks.filter((x) => x.half).map((x) => (x.tick?.[1] ?? 0) * (1 + later(x)))) +
+    passiveMax +
+    passiveLaterMax;
   /* Строка подсказки «+ сумма эффект шанс»: средний тик × срок, шанс — тот же, что у наложения. */
   const ticks: EnemyMoveTickEffect[] = newTicks.flatMap((x) =>
     x.tick && x.rounds

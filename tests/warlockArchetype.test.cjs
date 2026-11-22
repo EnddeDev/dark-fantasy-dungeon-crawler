@@ -73,11 +73,10 @@ function endRound(s) {
 test("Колдун: каждый приём платит 3% макс. ОЗ, не меньше 1", () => {
   const b = warlockFight();
   b.p.hp = b.p.maxHp;
-  const before = b.p.hp;
   const next = withRandom(0.45, () => battle.playerAct(b, { type: "weapon_skill" }));
-  const paid = before - next.p.hp;
-  assert.equal(paid, Math.max(1, Math.round(b.p.maxHp * 0.03)));
-  assert.ok(next.log.some((l) => l.text.includes("Плата пакта")));
+  /* Плату читаем из журнала: мгновенный тик иссушения в этом же ходе лечит героя (v2). */
+  const want = Math.max(1, Math.round(b.p.maxHp * 0.03));
+  assert.ok(next.log.some((l) => l.text.includes(`Плата пакта: −${want} ОЗ.`)), `плата ${want}`);
 });
 
 test("Плата пакта не убивает героя: ОЗ остаётся не ниже 1", () => {
@@ -85,7 +84,8 @@ test("Плата пакта не убивает героя: ОЗ остаётс�
   b.enemy.atk = [0, 0];
   b.p.hp = 1;
   const next = withRandom(0.45, () => battle.playerAct(b, { type: "weapon_skill" }));
-  assert.equal(next.p.hp, 1);
+  /* Плата держит ОЗ на 1; дальше мгновенный тик иссушения лечит героя, поэтому проверяем «не ниже 1». */
+  assert.ok(next.p.hp >= 1, "ОЗ не ниже 1");
   assert.ok(!next.over, "бой не закончен");
 });
 
@@ -99,25 +99,28 @@ test("не-Колдун не платит кровью за приём", () => {
 test("удачный приём накладывает иссушение на 2 раунда; тик — 6% макс. ОЗ врага", () => {
   const b = warlockFight();
   const next = withRandom(0.45, () => battle.playerAct(b, { type: "weapon_skill" }));
-  assert.equal(next.enemy.statuses.drainRounds, 2);
+  assert.equal(next.enemy.statuses.drainRounds, 1, "2 хода: первый тик сразу, осталось 1");
   assert.equal(next.enemy.statuses.drainTick, Math.round(next.enemy.maxHp * 0.06));
 });
 
 test("рубеж 10 «Владыка пакта»: иссушение на 2 раунда дольше", () => {
   const b = warlockFight(["arch_warlock_10"]);
   const next = withRandom(0.45, () => battle.playerAct(b, { type: "weapon_skill" }));
-  assert.equal(next.enemy.statuses.drainRounds, 4);
+  assert.equal(next.enemy.statuses.drainRounds, 3, "4 хода: первый тик сразу, осталось 3");
 });
 
 test("Печать пакта: лечение только у приёмов с иссушением и только при уроне", () => {
   const b = warlockFight();
   b.p.gearPassives = ["warlock_pact"];
   b.p.passivePower = { warlock_pact: { skillDamage: 25, cd: 1, vamp: 12 } };
-  b.p.hp = Math.floor(b.p.maxHp * 0.5);
+  /* Враг маленький: мгновенный тик иссушения лечит мало, и герой не упирается в максимум (v2). */
+  b.enemy.hp = 1000; b.enemy.maxHp = 1000;
+  b.p.hp = Math.floor(b.p.maxHp * 0.2);
   const next = withRandom(0.45, () => battle.playerAct(b, { type: "weapon_skill" }));
   assert.ok(next.log.some((l) => l.text.includes("Печать пакта: +")), "лечение от печати");
   const plain = warlockFight();
-  plain.p.hp = Math.floor(plain.p.maxHp * 0.5);
+  plain.enemy.hp = 1000; plain.enemy.maxHp = 1000;
+  plain.p.hp = Math.floor(plain.p.maxHp * 0.2);
   const noPact = withRandom(0.45, () => battle.playerAct(plain, { type: "weapon_skill" }));
   assert.ok(!noPact.log.some((l) => l.text.includes("Печать пакта")), "без печати лечения нет");
 });
@@ -152,7 +155,7 @@ test("Жертвенный пакт: иссушение на 3 раунда, к�
   const b = warlockFight();
   b.p.concentration = 5;
   const next = withRandom(0.45, () => battle.playerAct(b, { type: "archetype_skill" }));
-  assert.equal(next.enemy.statuses.drainRounds, 3);
+  assert.equal(next.enemy.statuses.drainRounds, 2, "3 хода: первый тик сразу, осталось 2");
   assert.equal(next.p.concentration, 0);
 });
 
@@ -177,21 +180,21 @@ test("ветка «Обряд» B «Кровь пакта»: Жертвенны�
 test("ветка «Порча» A: приём накладывает проклятие с −10% урона врага", () => {
   const b = warlockFight(["skill_curse_a"]);
   const next = withRandom(0.45, () => battle.playerAct(b, { type: "weapon_skill" }));
-  assert.equal(next.enemy.statuses.curse, 2);
+  assert.equal(next.enemy.statuses.curse, 1, "2 хода: первый тик сразу, осталось 1");
   assert.equal(next.enemy.statuses.cursePower, 10);
 });
 
 test("ветка «Порча» B «Долгая порча»: проклятие от приёма держится на 2 раунда дольше", () => {
   const b = warlockFight(["skill_curse_a", "skill_curse_b"]);
   const next = withRandom(0.45, () => battle.playerAct(b, { type: "weapon_skill" }));
-  assert.equal(next.enemy.statuses.curse, 4);
+  assert.equal(next.enemy.statuses.curse, 3, "4 хода: первый тик сразу, осталось 3");
 });
 
 test("ветка «Обет» A «Обет крови»: приём, который довёл ОЗ ниже 30%, не тратит перезарядку", () => {
   const b = warlockFight(["skill_vow_a"]);
   b.p.hp = Math.round(b.p.maxHp * 0.31);
   const next = withRandom(0.45, () => battle.playerAct(b, { type: "weapon_skill" }));
-  assert.ok(next.p.hp < next.p.maxHp * 0.3, "после приёма ОЗ ниже 30%");
+  /* ОЗ ниже 30% после приёма (до мгновенного лечения иссушением): перезарядки нет. */
   assert.equal(next.p.weaponCd, 0, "перезарядки нет");
 });
 

@@ -25,6 +25,7 @@ function withRandom(value, fn) {
 /** Бой героя с одним эпическим навыком; враг без брони, защит и стихий. */
 function fixture(skillId, stats = {}) {
   const p = PlayerFactory.createInitial();
+  for (const k of Object.keys(p.equip)) p.equip[k] = null;
   p.stats = { ...p.stats, str: 8, agi: 8, int: 8, ...stats };
   p.hp = battle.derived(p).maxHp;
   const b = battle.newBattle(p, 1, false, "classic", 0, 0);
@@ -47,11 +48,23 @@ function fixture(skillId, stats = {}) {
 
 const cast = (b, id) => withRandom(0.99, () => battle.playerAct(b, { type: "epic_skill", id }));
 
+/* Урон самого удара: мгновенный первый тик наложенного на врага эффекта (v2) идёт отдельно и не входит. */
+function hitDealt(after, hp0) {
+  const s = after.enemy.statuses;
+  let tick = 0;
+  if (s.burn > 0) tick += s.burnTick;
+  if (s.chill > 0) tick += s.chillTick;
+  if (s.curse > 0) tick += s.curseTick;
+  if (s.bleed > 0) tick += s.bleedTick;
+  if (s.poison > 0) tick += s.poisonTick;
+  return hp0 - after.enemy.hp - tick;
+}
+
 test("Огненный шар: урон = 20 + 3,5×ИНТ, огонь, поджог", () => {
   const lo = cast(fixture("fireball", { int: 4 }), "fireball");
   const hi = cast(fixture("fireball", { int: 8 }), "fireball");
-  const dmgLo = 5000 - lo.enemy.hp;
-  const dmgHi = 5000 - hi.enemy.hp;
+  const dmgLo = hitDealt(lo, 5000);
+  const dmgHi = hitDealt(hi, 5000);
   assert.ok(Math.abs(dmgHi - (20 + 3.5 * 8)) <= 2, `ИНТ 8: урон ${dmgHi}, ждём ≈48`);
   assert.ok(Math.abs(dmgLo - (20 + 3.5 * 4)) <= 2, `ИНТ 4: урон ${dmgLo}, ждём ≈34`);
   assert.ok(hi.enemy.statuses.burn > 0, "поджог наложен");
@@ -64,7 +77,7 @@ test("Кровавое копьё: урон от СИЛ, броня не реж�
   b.p.hp = b.p.maxHp - 60;
   const hpBefore = b.p.hp;
   const after = cast(b, "blood_lance");
-  const dmg = 5000 - after.enemy.hp;
+  const dmg = hitDealt(after, 5000);
   assert.ok(Math.abs(dmg - (16 + 2.5 * 8)) <= 2, `СИЛ 8: урон ${dmg}, ждём ≈36 (броня 50 не режет)`);
   const healed = after.p.hp - hpBefore;
   assert.ok(healed > 0 && Math.abs(healed - dmg * 0.5) <= 2, `лечение ${healed} ≈ половина урона`);
@@ -88,7 +101,7 @@ test("Теневой росчерк: урон от ЛОВ сквозь брон�
   const b = fixture("shadow_volley", { agi: 8, int: 1 });
   b.enemy.armor = 50;
   const after = cast(b, "shadow_volley");
-  const dmg = 5000 - after.enemy.hp;
+  const dmg = hitDealt(after, 5000);
   assert.ok(Math.abs(dmg - (16 + 3 * 8)) <= 2, `ЛОВ 8: урон ${dmg}, ждём ≈40 (броня 50 не режет)`);
   assert.equal(after.enemy.statuses.blight, 2, "порча (−20% урона врага) на 2 раунда");
   assert.equal(after.enemy.statuses.chill, 0, "холода нет — это Росчерк, а не Дыхание");
@@ -99,7 +112,7 @@ test("Дыхание склепа: урон 16 + 3×ИНТ, холод 3 рау�
   const b = fixture("frost_nova", { int: 8 });
   b.enemy.statuses.stunAp = 0;
   const after = cast(b, "frost_nova");
-  const dmg = 5000 - after.enemy.hp;
+  const dmg = hitDealt(after, 5000);
   assert.ok(Math.abs(dmg - (16 + 3 * 8)) <= 2, `ИНТ 8: урон ${dmg}, ждём ≈40`);
   assert.ok(after.enemy.statuses.chill > 0, "холод наложен");
   assert.equal(after.enemy.statuses.stunAp, 1, "враг теряет 1 ход");
