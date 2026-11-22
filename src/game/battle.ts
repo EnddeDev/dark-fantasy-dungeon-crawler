@@ -2372,6 +2372,11 @@ function rollHeroHit(accuracy: number, evasion: number): boolean {
   return Math.random() < p;
 }
 
+/** Подпись крита для вторичных ударов (ответ, серия, обманка): крит сработал в броске, в логе он должен быть виден. */
+function critTag(crit: boolean): string {
+  return crit ? " Критический удар!" : "";
+}
+
 /** Сырой урон удара с множителями, которые hitEnemy ставит до брони. Без бросков и без расхода стаков. */
 function strikeRawNow(b: BattleState, raw: number, kind: HitKind): number {
   let r = raw;
@@ -3113,8 +3118,8 @@ export function incoming(
     /* Тень (ранг 5): раз за раунд, уклонившись, отвечаешь ударом из укрытия. */
     if (hasPassive(b, "skill_shadow_b") && (b.p.statuses.shadowCounterRound ?? 0) !== b.round && b.enemy.hp > 0) {
       b.p.statuses.shadowCounterRound = b.round;
-      const { d: sd } = calcWeaponRoll(b, 0.6);
-      const sdealt = hitEnemy(b, sd, "phys", " [Контрудар из тени]");
+      const { d: sd, crit: sc } = calcWeaponRoll(b, 0.6);
+      const sdealt = hitEnemy(b, sd, "phys", ` [Контрудар из тени]${critTag(sc)}`);
       applyVamp(b, sdealt, 0, "weapon");
     }
     return false;
@@ -3175,22 +3180,22 @@ export function incoming(
   const counterChance = Math.min(1, effectPower(b, "counter") / 100 + passivePower(b, "dance", "counter") / 100 + passivePower(b, "duelist_phantom", "counter") / 100 +
     (hasPassive(b, "arch_assassin_10") ? 0.10 : 0) + (isDuelist(b) && hasPassive(b, "arch_duelist_5") ? 0.10 : 0));
   if (b.p.hp > 0 && b.enemy.hp > 0 && counterChance > 0 && Math.random() < counterChance) {
-    const { d: cd } = calcWeaponRoll(b, 0.6);
-    const dealt = duelistCounterHit(b, cd, " [Контратака]");
+    const { d: cd, crit: cc } = calcWeaponRoll(b, 0.6);
+    const dealt = duelistCounterHit(b, cd, ` [Контратака]${critTag(cc)}`);
     comboOnCounter(b, dealt);
     applyVamp(b, dealt, 0, "weapon");
   }
   /* Выпад и Копьё вперёд: ответ на первые физические удары врага. */
   if (kind === "phys" && (b.p.statuses.counterNext ?? 0) > 0 && (b.p.statuses.counterTurns ?? 0) > 0 && b.p.hp > 0 && b.enemy.hp > 0) {
     b.p.statuses.counterNext = (b.p.statuses.counterNext ?? 0) - 1;
-    const { d: cd } = calcWeaponRoll(b, 0.6);
-    const dealt = hitEnemy(b, cd, "phys", " [Контратака]");
+    const { d: cd, crit: cc } = calcWeaponRoll(b, 0.6);
+    const dealt = hitEnemy(b, cd, "phys", ` [Контратака]${critTag(cc)}`);
     applyVamp(b, dealt, 0, "weapon");
   }
   /* Ответный замах: каждый физический удар, который прошёл, получает ответ. */
   if (kind === "phys" && b.p.statuses.counterTurn > 0 && b.p.hp > 0 && b.enemy.hp > 0) {
-    const { d: cd } = calcWeaponRoll(b, 0.6);
-    const dealt = hitEnemy(b, cd, "phys", " [Ответный замах]");
+    const { d: cd, crit: cc } = calcWeaponRoll(b, 0.6);
+    const dealt = hitEnemy(b, cd, "phys", ` [Ответный замах]${critTag(cc)}`);
     applyVamp(b, dealt, 0, "weapon");
   }
 
@@ -4004,8 +4009,8 @@ function runArchetypeSpecial(b: BattleState, arch: ArchetypeId) {
 
 /** Ответный залп: контратака по врагу, затем раскол брони −3 на 2 раунда. */
 function duelistCounterVolley(b: BattleState) {
-  const { d } = calcWeaponRoll(b, 0.6);
-  const dealt = duelistCounterHit(b, d, " [Ответный залп]");
+  const { d, crit } = calcWeaponRoll(b, 0.6);
+  const dealt = duelistCounterHit(b, d, ` [Ответный залп]${critTag(crit)}`);
   comboOnCounter(b, dealt);
   applyEnemyBreak(b, 3, 0, 2, "Ответный залп");
 }
@@ -4313,8 +4318,8 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
         if (crit && b.enemy.hp > 0 && hasPassive(b, "skill_flurry_a")) {
           const extra = hasPassive(b, "skill_flurry_b") && enemyBelowShare(b, 0.5) ? 2 : 1;
           for (let t = 0; t < extra && b.enemy.hp > 0; t++) {
-            const { d: xd } = calcWeaponRoll(b, 1, 0, { hand, kind });
-            const xdealt = hitEnemy(b, xd, "phys", `${label} [Серия]`, true, undefined, acc);
+            const { d: xd, crit: xc } = calcWeaponRoll(b, 1, 0, { hand, kind });
+            const xdealt = hitEnemy(b, xd, "phys", `${label} [Серия]${critTag(xc)}`, true, undefined, acc);
             applyVamp(b, xdealt, 0, "weapon");
           }
         }
@@ -4335,13 +4340,6 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
         if (b.enemy.hp > 0 && stunChance > 0 && Math.random() < stunChance && !bossResists(b)) {
           b.enemy.statuses.stunAp = Math.min(2, b.enemy.statuses.stunAp + 1);
           push(b, `${b.enemy.def.name} оглушён и потеряет 1 ход в следующем раунде!`, "p");
-        }
-        const counterChance = Math.min(1, effectPower(b, "counter") / 100 + passivePower(b, "dance", "counter") / 100 + passivePower(b, "duelist_phantom", "counter") / 100 + (isDuelist(b) && hasPassive(b, "arch_duelist_5") ? 0.10 : 0));
-        if (b.enemy.hp > 0 && counterChance > 0 && Math.random() < counterChance) {
-          const { d: cd } = calcWeaponRoll(b, 0.6, 0, { hand, kind });
-          const dealt2 = duelistCounterHit(b, cd, " [Второй удар]", acc);
-          comboOnCounter(b, dealt2);
-          applyVamp(b, dealt2, 0, "weapon");
         }
       }
       /* Абсолютное знание (рубеж 10): обычная атака сокращает перезарядку одного приёма на 1 раунд. */
@@ -4443,13 +4441,6 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
             b.enemy.statuses.stunAp = Math.min(2, b.enemy.statuses.stunAp + 1);
             push(b, `${b.enemy.def.name} оглушён ударом ${i + 1}/${hits}!`, "p");
           }
-          const counterChance = Math.min(1, effectPower(b, "counter") / 100 + passivePower(b, "dance", "counter") / 100 + passivePower(b, "duelist_phantom", "counter") / 100 + (isDuelist(b) && hasPassive(b, "arch_duelist_5") ? 0.10 : 0));
-          if (b.enemy.hp > 0 && counterChance > 0 && Math.random() < counterChance) {
-            const { d: cd } = calcWeaponRoll(b, 0.6);
-            const dealt2 = duelistCounterHit(b, cd, ` [Второй удар ${i + 1}/${hits}]`);
-            comboOnCounter(b, dealt2);
-            applyVamp(b, dealt2, 0, "weapon");
-          }
         }
         if (b.enemy.hp <= 0) break;
       }
@@ -4493,8 +4484,8 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
       } else if (eff === "counter_thrust") {
         /* Встречный выпад: если враг атаковал в прошлом раунде — контратака по нему. */
         if (b.p.statuses.incomingRound === b.round - 1 && b.enemy.hp > 0) {
-          const { d: cd } = calcWeaponRoll(b, 0.6);
-          const dealt = hitEnemy(b, cd, "phys", " [Встречный выпад]");
+          const { d: cd, crit: cc } = calcWeaponRoll(b, 0.6);
+          const dealt = hitEnemy(b, cd, "phys", ` [Встречный выпад]${critTag(cc)}`);
           comboOnCounter(b, dealt);
           push(b, "Встречный выпад: враг атаковал в прошлом раунде — ответный удар.", "p");
         }
@@ -5739,9 +5730,9 @@ export function enemyStep(b0: BattleState): BattleState {
   if ((e.statuses.feint ?? 0) > 0) {
     e.statuses.feint = 0;
     if (Math.random() < 0.2) {
-      const { d: fd } = calcWeaponRoll(b, 0.5);
+      const { d: fd, crit: fc } = calcWeaponRoll(b, 0.5);
       push(b, `Обманка: ${e.def.name} ловится на ложный замах.`, "p");
-      hitEnemy(b, fd, "phys", " [Обманка]");
+      hitEnemy(b, fd, "phys", ` [Обманка]${critTag(fc)}`);
       if (!finishIfEnemyDead(b)) advance(b);
       return b;
     }
