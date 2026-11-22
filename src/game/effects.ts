@@ -13,7 +13,7 @@ import type { BattleState } from "./battle";
 import { combatChance } from "./chances";
 import { enemyChance } from "./enemyEffects";
 import { fireBurnDamage } from "./biomes";
-import { MONSTER_RACE_META, raceCannotHeal, raceElementMult, raceImmuneTo } from "./monsters";
+import { MONSTER_RACE_META, WEAKNESS_STEP, raceCannotHeal, raceElementMult, raceImmuneTo } from "./monsters";
 import {
   CHILL_HEAL_MULT,
   IMMUNITY_EFFECTS,
@@ -33,6 +33,7 @@ export const EFFECT_ICON_IDS = [
   "noHeal", "sealItems", "sealSkills", "sealAttack", "guard", "fury",
   "depleted", "regen", "thorns", "oil", "frost", "acid", "blind", "resist", "vamp_hits", "unknown",
   "slow", "beat", "weaken", "shatter", "drain",
+  "rot", "noEvade", "eruption", "echo",
 ] as const;
 
 export type EffectIconId = (typeof EFFECT_ICON_IDS)[number];
@@ -59,6 +60,10 @@ export const EFFECT_COLORS = {
   frost: "#8fd3ff",
   acid: "#b5c53a",
   blind: "#d8c46a",
+  rot: "#7d6a2e",
+  noEvade: "#6f7a8a",
+  eruption: "#c4531f",
+  echo: "#b08a3e",
 } as const;
 
 /* ─────────────────────────────  ТИПЫ  ───────────────────────────── */
@@ -439,6 +444,31 @@ export function playerEffectChips(b: BattleState): EffectChip[] {
     });
   }
 
+  /* ── Негативные статусы, у которых раньше не было иконки: гниение, слабость вампира, без уклонения ── */
+  if ((s.rot ?? 0) > 0) {
+    chips.push({
+      id: "rot", name: "Гниение", polarity: "bad", rounds: s.rotRounds ?? null,
+      details: ["Каждый удар добавляет слой, не больше двух; броня вернётся, когда гниение отступит."],
+      boosts: [{ stat: "Броня", value: `−${s.rot}` }], color: EFFECT_COLORS.rot,
+    });
+  }
+  if ((s.weakness ?? 0) > 0) {
+    const w = s.weakness ?? 0;
+    chips.push({
+      id: "weaken", name: "Слабость вампира", polarity: "bad", rounds: null, unit: "до конца боя",
+      badge: `×${w}`,
+      details: [`Твой урон от обычных атак −${Math.round(w * WEAKNESS_STEP * 100)}%. Копится с каждым попаданием вампира.`],
+      boosts: [{ stat: "Урон атак", value: `−${Math.round(w * WEAKNESS_STEP * 100)}%` }], color: EFFECT_COLORS.blight,
+    });
+  }
+  if ((s.noEvade ?? 0) > 0) {
+    chips.push({
+      id: "noEvade", name: "Без уклонения", polarity: "bad", rounds: s.noEvade ?? 0,
+      details: ["Захват: ни ты, ни враг не можете уклониться от ударов."],
+      boosts: [{ stat: "Уклонение", value: "0" }], color: EFFECT_COLORS.noEvade,
+    });
+  }
+
   /* ── Новые эффекты врага: замедление, побои, ослабление, разрушение, иссушение ── */
   if (s.slow > 0) {
     chips.push({
@@ -655,6 +685,101 @@ export function enemyEffectChips(b: BattleState): EffectChip[] {
       boosts: [],
       dot: { perTick, ticks: null, total: null, type: "огонь", when: "в начале твоего хода" },
       color: EFFECT_COLORS.burn,
+    });
+  }
+  /* ── Негативные статусы, у которых раньше не было иконки: иссушение пакта, выброс, пробой, разрушение, побои, запреты, печати, эхо ── */
+  if ((s.drainRounds ?? 0) > 0) {
+    chips.push({
+      id: "drain", name: "Иссушение", polarity: "bad", rounds: s.drainRounds ?? 0,
+      details: [`Теряет ${s.drainTick ?? 0} ОЗ в начале своего хода; эти очки получаешь ты.`],
+      boosts: [], color: EFFECT_COLORS.wither,
+    });
+  }
+  if ((s.eruptRounds ?? 0) > 0) {
+    const down = Math.round((s.eruptDown ?? 0) * 100);
+    const details = [`Жжёт ${s.eruptTick ?? 0} ОЗ за тик.`];
+    if (down > 0) details.push(`Урон обморожения и проклятия −${down}%.`);
+    if ((s.eruptWither ?? 0) > 0) details.push("Увядание: лечение −20%.");
+    chips.push({
+      id: "eruption", name: "Выброс", polarity: "bad", rounds: s.eruptRounds ?? 0,
+      details, boosts: [], color: EFFECT_COLORS.eruption,
+    });
+  }
+  if ((s.breakRounds ?? 0) > 0) {
+    const pct = Math.round((s.breakPct ?? 0) * 100);
+    const flat = (s.breakFlat ?? 0) + (s.breakExtra ?? 0);
+    const parts = [pct > 0 ? `−${pct}%` : "", flat > 0 ? `−${flat}` : ""].filter(Boolean);
+    chips.push({
+      id: "sunder", name: "Пробой брони", polarity: "bad", rounds: s.breakRounds ?? 0,
+      details: ["Броня твари снижена на время, а не навсегда."],
+      boosts: [{ stat: "Броня", value: parts.join(" и ") || "0" }], color: EFFECT_COLORS.sunder,
+    });
+  }
+  if ((s.shatterRounds ?? 0) > 0) {
+    chips.push({
+      id: "shatter", name: "Разрушение", polarity: "bad", rounds: s.shatterRounds ?? 0,
+      details: ["Магическое сопротивление твари вдвое ниже."],
+      boosts: [{ stat: "Магическое сопротивление", value: "−50%" }], color: EFFECT_COLORS.sunder,
+    });
+  }
+  if ((s.beatRounds ?? 0) > 0) {
+    const bonus = Math.round((s.beatMult ?? 0) * 100);
+    chips.push({
+      id: "beat", name: "Побои", polarity: "bad", rounds: s.beatRounds ?? 0,
+      details: [`Получаемый ею урон +${bonus}%.`],
+      boosts: [{ stat: "Получаемый урон", value: `+${bonus}%` }], color: EFFECT_COLORS.sunder,
+    });
+  }
+  if ((s.noEvade ?? 0) > 0) {
+    chips.push({
+      id: "noEvade", name: "Без уклонения", polarity: "bad", rounds: s.noEvade ?? 0,
+      details: ["Захват: тварь не может уклониться от ударов."],
+      boosts: [{ stat: "Уклонение", value: "0" }], color: EFFECT_COLORS.noEvade,
+    });
+  }
+  if ((s.noGuard ?? 0) > 0) {
+    chips.push({
+      id: "guard", name: "Без защиты", polarity: "bad", rounds: s.noGuard ?? 0, unit: "ход",
+      details: ["Тварь не может уйти в защиту."], boosts: [], color: EFFECT_COLORS.fear,
+    });
+  }
+  if ((s.sealMoves ?? 0) > 0) {
+    chips.push({
+      id: "sealSkills", name: "Печать приёмов", polarity: "bad", rounds: s.sealMoves ?? 0, unit: "раунд",
+      details: ["Тварь не применяет приёмы."], boosts: [], color: EFFECT_COLORS.curse,
+    });
+  }
+  if ((s.skipTurn ?? 0) > 0) {
+    chips.push({
+      id: "stun", name: "Пропуск хода", polarity: "bad", rounds: 1, unit: "ход",
+      details: ["Целебный дождь: ход твари пропускается."],
+      boosts: [{ stat: "Ходы", value: "−1" }], color: EFFECT_COLORS.stun,
+    });
+  }
+  if ((s.throwDown ?? 0) > 0) {
+    chips.push({
+      id: "weaken", name: "Бросок", polarity: "bad", rounds: null, unit: "до конца её хода",
+      details: ["Не уходит в защиту до конца своего хода: её удары вдвое слабее."],
+      boosts: [{ stat: "Урон", value: "×0,5" }], color: EFFECT_COLORS.blight,
+    });
+  }
+  if ((s.feint ?? 0) > 0) {
+    chips.push({
+      id: "blind", name: "Обманка", polarity: "bad", rounds: null, unit: "следующий ход",
+      details: ["С шансом 20% её ход срывается на ложном замахе."], boosts: [], color: EFFECT_COLORS.blind,
+    });
+  }
+  if ((s.echoDue ?? 0) > 0) {
+    chips.push({
+      id: "echo", name: "Эхо", polarity: "bad", rounds: null, unit: "в конце её хода",
+      details: [`В конце её хода придёт ${s.echoDue} урона.`], boosts: [], color: EFFECT_COLORS.echo,
+    });
+  }
+  if ((s.emberShred ?? 0) > 0 && (s.burn ?? 0) > 0) {
+    chips.push({
+      id: "burn", name: "Тлеющие угли", polarity: "bad", rounds: null, unit: "пока горит",
+      details: ["Горящая тварь теряет броню, пока горит."],
+      boosts: [{ stat: "Броня", value: `−${s.emberShred}` }], color: EFFECT_COLORS.burn,
     });
   }
   if (e.forceGuard > 0) {
