@@ -46,7 +46,6 @@ import { effectDetail } from "../game/gearEffects";
 import { NEGATIVE_EFFECTS } from "../game/statusEffects";
 import { DAMAGE_TYPES } from "../game/damageTypes";
 import { DamageTypeTag } from "./DamageTypeIcon";
-import { MAX_DOT_STACKS } from "../game/battle";
 import { CHANCE_CAP } from "../game/chances";
 import type { RarityTier, StatKey, WearTier } from "../game/types";
 import { Btn, RarityBadge, Rune, Tag } from "./ui";
@@ -601,7 +600,7 @@ export function Guide({
             Масла огня и льда дают фиксированный тик из описания предмета (с учётом сопротивления магии).
             У боссов периодика — процент от максимального ОЗ.
             Раскол складывает снятую броню, а чем выше уровень свойства или уровень монстра, тем больше
-            брони снимает каждое наложение. Предел наложений яда и крови — {MAX_DOT_STACKS}.
+            брони снимает каждое наложение. Яд и кровотечение складываются без предела наложений.
           </p>
         </div>
 

@@ -183,7 +183,9 @@ test("колдун: здоровье становится ровно 50% и ге
   b.p.concentration = 5;
   b.p.hp = b.p.maxHp;
   const next = battle.playerAct(b, { type: "archetype_skill" });
-  assert.equal(next.p.hp, Math.round(b.p.maxHp / 2));
+  /* Иссушение пакта сразу даёт первый тик (6% ОЗ врага, 500) и лечит героя на него: ровно 50% плюс этот тик. */
+  const firstDrainTick = Math.round(500 * 0.06);
+  assert.equal(next.p.hp, Math.round(b.p.maxHp / 2) + firstDrainTick);
   assert.equal(next.p.statuses.invulnerable, 1);
   assert.equal(next.p.concentration, 0);
 

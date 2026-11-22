@@ -1564,7 +1564,7 @@ function heroAttackStart(b: BattleState, eff: string | undefined) {
     b.p.statuses.throwPending = 0;
     const tick = 5 + Math.min(TECHNIQUE_STAT_CAP, b.p.stats.agi);
     applyEnemyStatus(b, "bleed", 3, tick);
-    push(b, `Бросок продолжен: ${b.enemy.def.name} истекает кровью — ${tick} за раунд на 3 раунда.`, "p");
+    push(b, `Бросок продолжен: ${b.enemy.def.name} истекает кровью — ${tick} за его ход, 3 хода.`, "p");
   }
   if ((b.p.statuses.wallRounds ?? 0) > 0 && !NO_ATTACK_EFFECTS.has(eff ?? "")) {
     b.p.statuses.wallRounds = 0;
@@ -1601,12 +1601,12 @@ function techniqueDirectEffect(b: BattleState, ws: WeaponSkillDef, executeNow: b
   if (eff === "hew" && !bossResists(b)) b.enemy.statuses.noGuard = 1;
   if (eff === "snake_bite") {
     applyEnemyStatus(b, "poison", 3, 2 + bonus);
-    push(b, `${b.enemy.def.name} отравлен укусом: 3 раунда, ${2 + bonus} за раунд.`, "p");
+    push(b, `${b.enemy.def.name} отравлен укусом: 3 хода, ${2 + bonus} за его ход.`, "p");
     return 0;
   }
   if (eff === "double_cut") {
     applyEnemyStatus(b, "bleed", 3, 3 + bonus);
-    push(b, `${b.enemy.def.name} истекает кровью от двойного пореза: 3 раунда, ${3 + bonus} за раунд.`, "p");
+    push(b, `${b.enemy.def.name} истекает кровью от двойного пореза: 3 хода, ${3 + bonus} за его ход.`, "p");
     return 0;
   }
   if (eff === "lunge") {
@@ -1673,7 +1673,11 @@ function techniqueDirectEffect(b: BattleState, ws: WeaponSkillDef, executeNow: b
       b.enemy.statuses.eruptTick = Math.max(1, m - 3) + 1 + 3;
       b.enemy.statuses.eruptDown = 0.2;
       b.enemy.statuses.eruptWither = 1;
-      push(b, `Выброс: горение ${m}, обморожение, проклятие и увядание на 3 раунда.`, "p");
+      push(b, `Выброс: горение ${m}, обморожение, проклятие и увядание на 3 хода.`, "p");
+      if (enemyEruptTick(b)) {
+        b.enemy.statuses.eruptRounds = Math.max(0, (b.enemy.statuses.eruptRounds ?? 0) - 1);
+        finishIfEnemyDead(b);
+      }
     }
     return dealt;
   }
@@ -1683,7 +1687,12 @@ function techniqueDirectEffect(b: BattleState, ws: WeaponSkillDef, executeNow: b
     if (b.enemy.hp > 0) {
       b.enemy.statuses.drainRounds = 3;
       b.enemy.statuses.drainTick = Math.max(1, Math.round(b.enemy.maxHp * 0.05));
-      push(b, `Иссушение: ${b.enemy.def.name} теряет ${b.enemy.statuses.drainTick} ОЗ за раунд на 3 раунда, ты получаешь столько же.`, "p");
+      push(b, `Иссушение: ${b.enemy.def.name} теряет ${b.enemy.statuses.drainTick} ОЗ в начале своего хода, ходов: 3; ты получаешь столько же.`, "p");
+      if (enemyDrainSteal(b)) {
+        b.enemy.statuses.drainRounds = Math.max(0, (b.enemy.statuses.drainRounds ?? 0) - 1);
+        if (b.enemy.statuses.drainRounds === 0) b.enemy.statuses.drainTick = 0;
+        finishIfEnemyDead(b);
+      }
     }
     return dealt;
   }
@@ -1694,7 +1703,7 @@ function techniqueDirectEffect(b: BattleState, ws: WeaponSkillDef, executeNow: b
   if (eff === "snake_lunge") b.p.statuses.nextPierce = 1;
   if (eff === "execute" && executeNow && b.enemy.hp > 0) {
     applyEnemyStatus(b, "bleed", 3, Math.max(1, Math.round(b.enemy.maxHp * 0.05)));
-    push(b, `Казнь: ${b.enemy.def.name} истекает кровью: 3 раунда, 5% макс. ОЗ за раунд.`, "p");
+    push(b, `Казнь: ${b.enemy.def.name} истекает кровью: 3 хода, 5% макс. ОЗ за его ход.`, "p");
     return 0;
   }
   if (eff === "ring" || eff === "meteor") {
@@ -1711,10 +1720,10 @@ function techniqueDirectEffect(b: BattleState, ws: WeaponSkillDef, executeNow: b
     const enemyBurn = magicDot(b, "burn", BURN_UNTIL_END, tick, false);
     /* Горение без срока: держится до конца боя. */
     setPlayerTick(b, "burn", BURN_UNTIL_END, tick);
-    push(b, `Искра жжёт тебя: ${tick} за раунд, до конца боя.`, "p");
+    push(b, `Искра жжёт тебя: ${tick} за твой ход, до конца боя.`, "p");
     if (b.enemy.hp > 0) {
       applyEnemyStatus(b, "burn", enemyBurn.rounds, enemyBurn.tick);
-      push(b, `${b.enemy.def.name} горит: ${enemyBurn.tick} за раунд, до конца боя.`, "p");
+      push(b, `${b.enemy.def.name} горит: ${enemyBurn.tick} за его ход, до конца боя.`, "p");
     }
     return dealt;
   }
@@ -1861,7 +1870,12 @@ function applyPactDrain(b: BattleState, rounds: number) {
   const total = rounds + (hasPassive(b, "arch_warlock_10") ? 2 : 0);
   b.enemy.statuses.drainRounds = Math.max(b.enemy.statuses.drainRounds ?? 0, total);
   b.enemy.statuses.drainTick = Math.max(1, Math.round(b.enemy.maxHp * PACT_DRAIN_SHARE));
-  push(b, `Иссушение: ${b.enemy.def.name} теряет ${b.enemy.statuses.drainTick} ОЗ за раунд на ${total} раунда, ты получаешь столько же.`, "p");
+  push(b, `Иссушение: ${b.enemy.def.name} теряет ${b.enemy.statuses.drainTick} ОЗ в начале своего хода, ходов: ${total}; ты получаешь столько же.`, "p");
+  if (enemyDrainSteal(b)) {
+    b.enemy.statuses.drainRounds = Math.max(0, (b.enemy.statuses.drainRounds ?? 0) - 1);
+    if (b.enemy.statuses.drainRounds === 0) b.enemy.statuses.drainTick = 0;
+    finishIfEnemyDead(b);
+  }
 }
 
 /** Иссушение: в конце раунда герой теряет долю макс. ОЗ (мимо брони), враг лечится на половину. */
@@ -1920,9 +1934,6 @@ function bossResists(b: BattleState): boolean {
   }
   return false;
 }
-/** Предел наложений периодических эффектов: урон за тик складывается. */
-export const MAX_DOT_STACKS = 5;
-
 /** Зелье иммунитета сейчас защищает героя от этого эффекта. */
 function playerImmune(b: BattleState, id: ImmunityEffect): boolean {
   return (b.p.statuses.immune[id] ?? 0) > 0;
@@ -1952,7 +1963,7 @@ function playerDotStacks(b: BattleState, kind: "poison" | "wound"): number {
 
 /**
  * Новое наложение яда или кровотечения на героя: срок обновляется до большего,
- * а урон за тик складывается. Больше MAX_DOT_STACKS наложений не держится.
+ * а урон за тик складывается без предела наложений.
  */
 function applyPlayerDot(b: BattleState, kind: "poison" | "wound", rounds: number, tick: number): number {
   if (immuneNote(b, kind === "poison" ? "poison" : "bleed")) return 0;
@@ -1960,11 +1971,12 @@ function applyPlayerDot(b: BattleState, kind: "poison" | "wound", rounds: number
   const tickKey = kind === "poison" ? "poisonTick" : "woundTick";
   const active = kind === "poison" ? b.p.statuses.poison > 0 : b.p.statuses.wound > 0;
   const prev = active ? (b.p.statuses[key] ?? 1) : 0;
-  const stacks = Math.min(MAX_DOT_STACKS, prev + 1);
+  const stacks = prev + 1;
   b.p.statuses[key] = stacks;
   b.p.statuses[tickKey] = refreshedTick(active, b.p.statuses[tickKey], tick);
   if (kind === "poison") b.p.statuses.poison = Math.max(b.p.statuses.poison, rounds);
   else b.p.statuses.wound = Math.max(b.p.statuses.wound, rounds);
+  heroFirstTick(b, kind === "poison" ? "poison" : "wound");
   return stacks;
 }
 
@@ -1974,6 +1986,7 @@ function setPlayerTick(b: BattleState, key: "burn" | "chill" | "curse", rounds: 
   const tickKey = key === "burn" ? "burnTick" : key === "chill" ? "chillTick" : "curseTick";
   b.p.statuses[tickKey] = refreshedTick(active, b.p.statuses[tickKey], tick);
   b.p.statuses[key] = Math.max(b.p.statuses[key], rounds);
+  heroFirstTick(b, key);
 }
 
 /** Сколько наложений яда или кровотечения висит на враге. */
@@ -2001,6 +2014,7 @@ function setEnemyTick(b: BattleState, key: "burn" | "chill" | "curse", rounds: n
   const t = b.isBoss ? bossDotTick(key, b.enemy.maxHp) : tick;
   b.enemy.statuses[tk] = refreshedTick(active, b.enemy.statuses[tk], t);
   b.enemy.statuses[key] = Math.max(b.enemy.statuses[key], rounds);
+  enemyFirstTick(b, key);
 }
 
 /** Тик периодического урона врага по ключу статуса; у остальных эффектов тика нет. */
@@ -2047,8 +2061,9 @@ function applyEnemyStatus(
   if (key === "poison" || key === "bleed") {
     const stackKey = key === "poison" ? "poisonStacks" : "bleedStacks";
     const prev = wasActive ? (b.enemy.statuses[stackKey] ?? 1) : 0;
-    b.enemy.statuses[stackKey] = Math.min(MAX_DOT_STACKS, prev + 1);
+    b.enemy.statuses[stackKey] = prev + 1;
   }
+  if (key in ENEMY_TICK_KEY) enemyFirstTick(b, key as keyof typeof ENEMY_TICK_KEY);
 }
 /** Свойства оружия, которые срабатывают прямо от удара: кровотечение, яд, раскол. */
 /** Масло данного вида сейчас действует на враге (срок не вышел). */
@@ -2080,6 +2095,10 @@ function applyOilTick(b: BattleState, kind: "fire" | "ice", power: number, cut: 
     "p",
     element,
   );
+  if (enemyOilTick(b)) {
+    b.enemy.statuses.oilRounds = Math.max(0, b.enemy.statuses.oilRounds - 1);
+    finishIfEnemyDead(b);
+  }
 }
 
 /**
@@ -3093,8 +3112,7 @@ function gainLoot(b: BattleState) {
 /** Environmental tick at the start of the active side's turn. Called once per queue step. */
 /**
  * Страх героя. Не обновляется, пока держится, и не возвращается сразу после окончания:
- * после него 1 раунд иммунитета. Если герой уже походил в этом раунде, страх
- * переходит на следующий раунд целиком (2 раунда счётчика), иначе — на текущий.
+ * после него 1 раунд иммунитета. Срок — один ход героя: счётчик уменьшается в конце его хода.
  */
 /** После страха герой ещё столько раундов не боится (иммунитет тает по одному в конце раунда). */
 export const FEAR_IMMUNE_ROUNDS = 3;
@@ -3105,9 +3123,218 @@ function applyHeroFear(b: BattleState, note: string) {
     push(b, "Страх не действует: ты держишься после прошлого приступа.", "sys");
     return;
   }
-  const heroTurnLeft = b.queue.slice(b.idx + 1).includes("p");
-  b.p.statuses.fear = heroTurnLeft ? 1 : 2;
+  b.p.statuses.fear = 1;
   push(b, note, "e");
+}
+
+/* ───── Периодический урон: тик в начале хода носителя, первый тик — сразу при наложении ───── */
+
+/** Тик героя по одному статусу. true — урон прошёл (для первого тика наложения). */
+function heroDotTick(b: BattleState, key: "wound" | "poison" | "burn" | "chill" | "curse"): boolean {
+  if (b.over || b.p.hp <= 0 || b.p.statuses.invulnerable > 0) return false;
+  const s = b.p.statuses;
+  let d = 0;
+  if (key === "wound") {
+    if (s.wound <= 0 || hasLeg(b, "titan_heart")) return false;
+    const stacks = playerDotStacks(b, "wound");
+    d = s.woundTick * stacks;
+    b.p.hp -= d;
+    push(b, `Кровотечение отнимает ${d} здоровья${stacks > 1 ? ` (${stacks} наложения)` : ""}.`, "sys");
+  } else if (key === "poison") {
+    if (s.poison <= 0) return false;
+    const stacks = playerDotStacks(b, "poison");
+    d = s.poisonTick * stacks;
+    b.p.hp -= d;
+    push(b, `Яд в твоей крови отнимает ${d} здоровья${stacks > 1 ? ` (${stacks} наложения)` : ""}.`, "e");
+  } else if (key === "burn") {
+    if (s.burn <= 0) return false;
+    d = absorbBarrier(b, s.burnTick);
+    b.p.hp -= d;
+    push(b, `Горение отнимает ${d} здоровья.`, "e");
+  } else if (key === "chill") {
+    if (s.chill <= 0) return false;
+    d = absorbBarrier(b, magicTickFrom(s.chillTick, heroChance(b, b.p.chanceLayers.magicResist)));
+    b.p.hp -= d;
+    push(b, `Обморожение отнимает ${d} здоровья и режет лечение вдвое.`, "e");
+  } else {
+    if (s.curse <= 0) return false;
+    d = absorbBarrier(b, magicTickFrom(s.curseTick, heroChance(b, b.p.chanceLayers.magicResist)));
+    b.p.hp -= d;
+    push(b, `Проклятие выжигает ${d} здоровья.`, "e");
+  }
+  if (b.p.hp <= 0) {
+    b.p.hp = 0;
+    b.over = "lose";
+  }
+  return true;
+}
+
+/** Первый тик героя при наложении: проходит сразу и засчитывается в срок. */
+function heroFirstTick(b: BattleState, key: "wound" | "poison" | "burn" | "chill" | "curse") {
+  if (heroDotTick(b, key)) b.p.statuses[key] = Math.max(0, b.p.statuses[key] - 1);
+}
+
+/** Тик врага по одному статусу. true — урон прошёл. Победу на этом не засчитывает (см. finishIfEnemyDead). */
+function enemyDotTick(b: BattleState, key: "bleed" | "poison" | "burn" | "chill" | "curse" | "blight"): boolean {
+  if (b.over || b.enemy.hp <= 0) return false;
+  const s = b.enemy.statuses;
+  const name = b.enemy.def.name;
+  if (key === "bleed") {
+    if (s.bleed <= 0) return false;
+    const stacks = enemyDotStacks(b, "bleed");
+    const d = s.bleedTick * stacks;
+    b.enemy.hp -= d;
+    push(b, `${name} истекает кровью: −${d} ОЗ${stacks > 1 ? ` (${stacks} наложения)` : ""}.`, "p");
+  } else if (key === "poison") {
+    if (s.poison <= 0) return false;
+    const stacks = enemyDotStacks(b, "poison");
+    const d = s.poisonTick * stacks;
+    b.enemy.hp -= d;
+    push(b, `Яд разъедает ${name}: −${d} ОЗ${stacks > 1 ? ` (${stacks} наложения)` : ""}.`, "p");
+  } else if (key === "burn") {
+    if (s.burn <= 0) return false;
+    const d = s.burnTick;
+    b.enemy.hp -= d;
+    push(b, `${name} горит: −${d} ОЗ.`, "p");
+  } else if (key === "chill") {
+    if (s.chill <= 0) return false;
+    const d = magicTickFrom(s.chillTick, enemyMagicResist(b));
+    b.enemy.hp -= d;
+    push(b, `Обморожение отнимает ${d} ОЗ у ${name}.`, "p");
+  } else if (key === "curse") {
+    if (s.curse <= 0) return false;
+    const d = magicTickFrom(s.curseTick, enemyMagicResist(b));
+    b.enemy.hp -= d;
+    push(b, `Проклятие выжигает ${d} ОЗ у ${name}.`, "p");
+  } else {
+    if (s.blight <= 0 || s.blightTick <= 0) return false;
+    const d = s.blightTick;
+    b.enemy.hp -= d;
+    push(b, `Порча разъедает ${name}: −${d} ОЗ.`, "p");
+  }
+  return true;
+}
+
+/** Первый тик врага при наложении: проходит сразу и засчитывается в срок. Победа — если урон добил врага. */
+function enemyFirstTick(b: BattleState, key: "bleed" | "poison" | "burn" | "chill" | "curse" | "blight") {
+  if (!enemyDotTick(b, key)) return;
+  b.enemy.statuses[key] = Math.max(0, b.enemy.statuses[key] - 1);
+  finishIfEnemyDead(b);
+}
+
+/** Масло огня или льда на враге: тик за ход врага. true — урон прошёл. */
+function enemyOilTick(b: BattleState): boolean {
+  const kind = b.enemy.statuses.oilType;
+  if (!kind || b.enemy.statuses.oilRounds <= 0 || b.enemy.hp <= 0 || kind === "drain") return false;
+  const element = kind === "fire" || kind === "ice" ? kind : undefined;
+  const mult = element ? enemyElementMult(b, element) : 1;
+  const raw = oilTickDamage(kind, b.enemy.statuses.oilTick, enemyMagicResist(b));
+  if (raw <= 0 || mult <= 0) return false;
+  const d = Math.max(1, Math.round(raw * mult));
+  b.enemy.hp -= d;
+  const weak = mult > 1 ? ` Уязвимость ×${mult}.` : "";
+  push(b, `${OIL_NAMES[kind]} масла отнимает ${d} ОЗ у ${b.enemy.def.name}.${weak}`, "p", element);
+  return true;
+}
+
+/** Выброс: тик врага за ход врага. true — урон прошёл. */
+function enemyEruptTick(b: BattleState): boolean {
+  const tick = b.enemy.statuses.eruptTick ?? 0;
+  if ((b.enemy.statuses.eruptRounds ?? 0) <= 0 || tick <= 0 || b.enemy.hp <= 0 || b.over) return false;
+  b.enemy.hp -= tick;
+  push(b, `Выброс жжёт ${b.enemy.def.name}: −${tick} ОЗ.`, "p");
+  return true;
+}
+
+/** Иссушение: кража ОЗ у врага за его ход; герой получает столько же. true — кража прошла. */
+function enemyDrainSteal(b: BattleState): boolean {
+  if ((b.enemy.statuses.drainRounds ?? 0) <= 0 || b.enemy.hp <= 0 || b.over) return false;
+  const stolen = b.enemy.statuses.drainTick ?? 0;
+  if (stolen <= 0) return false;
+  const taken = Math.min(stolen, b.enemy.hp);
+  b.enemy.hp -= taken;
+  const got = b.p.hp > 0 ? healPlayer(b, taken) : 0;
+  push(b, `Иссушение: ${b.enemy.def.name} −${taken} ОЗ, ты +${got} здоровья.`, "p");
+  return true;
+}
+
+/** Периодический урон героя в начале его хода. */
+function heroPeriodicTicks(b: BattleState) {
+  for (const key of ["wound", "poison", "burn", "chill", "curse"] as const) heroDotTick(b, key);
+}
+
+/** Периодический урон врага в начале его хода: кровотечение, яд, горение, обморожение, проклятие, порча, масло, выброс, иссушение. */
+function enemyPeriodicTicks(b: BattleState) {
+  for (const key of ["bleed", "poison", "burn", "chill", "curse", "blight"] as const) enemyDotTick(b, key);
+  enemyOilTick(b);
+  enemyEruptTick(b);
+  enemyDrainSteal(b);
+}
+
+/**
+ * Сроки по ходам. Тики, страх и раскол врага уменьшаются в конце хода того, на ком висят:
+ * герой — в конце своего хода, враг — в конце своего. Остальное (ярость, приёмы и т. п.) — по раундам.
+ */
+function endTurnDurations(b: BattleState) {
+  const side = b.queue[b.idx];
+  if (side === "p") {
+    const s = b.p.statuses;
+    const prevCurse = s.curse;
+    const prevWound = s.wound;
+    const prevPoison = s.poison;
+    if (s.fear > 0) {
+      s.fear -= 1;
+      if (s.fear === 0) {
+        s.fearImmune = FEAR_IMMUNE_ROUNDS;
+        push(b, `Страх отпустил. Ещё ${FEAR_IMMUNE_ROUNDS} раунда тебя не испугать.`, "sys");
+      }
+    }
+    s.wound = Math.max(0, s.wound - 1);
+    if (!isBattleCurse(s.curse)) s.curse = Math.max(0, s.curse - 1);
+    s.poison = Math.max(0, s.poison - 1);
+    s.burn = Math.max(0, s.burn - 1);
+    s.chill = Math.max(0, s.chill - 1);
+    if (prevCurse > 0 && s.curse === 0) push(b, "Проклятие рассеялось! Твой урон вернулся к норме.", "sys");
+    if (prevWound > 0 && s.wound === 0) push(b, "Раны затянулись — кровотечение остановилось.", "sys");
+    if (prevPoison > 0 && s.poison === 0) push(b, "Яд вышел из крови.", "sys");
+  } else if (side === "e") {
+    const es = b.enemy.statuses;
+    if (es.oilRounds > 0) {
+      es.oilRounds -= 1;
+      if (es.oilRounds === 0) {
+        const name = es.oilType ? OIL_NAMES[es.oilType] : "";
+        es.oilType = null;
+        if (name) push(b, `${name} масла на ${b.enemy.def.name} угасло.`, "sys");
+      }
+    }
+    es.chill = Math.max(0, es.chill - 1);
+    es.bleed = Math.max(0, es.bleed - 1);
+    es.poison = Math.max(0, es.poison - 1);
+    es.blight = Math.max(0, es.blight - 1);
+    es.burn = Math.max(0, es.burn - 1);
+    es.curse = Math.max(0, es.curse - 1);
+    if ((es.breakRounds ?? 0) > 0) {
+      es.breakRounds = (es.breakRounds ?? 0) - 1;
+      if (es.breakRounds === 0) {
+        es.breakFlat = 0;
+        es.breakPct = 0;
+        push(b, `Раскол брони ${b.enemy.def.name} спадает.`, "e");
+      }
+    }
+    if ((es.eruptRounds ?? 0) > 0) {
+      es.eruptRounds = (es.eruptRounds ?? 0) - 1;
+      if (es.eruptRounds === 0) {
+        es.eruptTick = 0;
+        es.eruptDown = 0;
+        es.eruptWither = 0;
+        push(b, `Выброс иссяк: ${b.enemy.def.name} снова в силе.`, "p");
+      }
+    }
+    if ((es.drainRounds ?? 0) > 0) {
+      es.drainRounds = (es.drainRounds ?? 0) - 1;
+      if (es.drainRounds === 0) es.drainTick = 0;
+    }
+  }
 }
 
 function beginTurn(b: BattleState) {
@@ -3119,6 +3346,10 @@ function beginTurn(b: BattleState) {
     b.p.guard = false;
     b.p.guardStrikeUsed = false;
   }
+
+  /* Периодический урон в начале хода носителя: герой — на своём ходу, враг — на своём. */
+  if (side === "p") heroPeriodicTicks(b);
+  else enemyPeriodicTicks(b);
 
   /* Страх: атаки и приёмы закрыты; защиту, сумку, побег или конец хода герой выбирает сам. */
   if (side === "p" && b.p.statuses.fear > 0) {
@@ -3254,6 +3485,7 @@ function endTurnTechniques(b: BattleState) {
 function advance(b: BattleState) {
   if (b.over) return;
   endTurnTechniques(b);
+  endTurnDurations(b);
   if (b.over) return;
   /* Счётчики хода героя начинаются заново, когда очередь уходит дальше. */
   b.p.turnConsumables = 0;
@@ -3267,78 +3499,6 @@ function advance(b: BattleState) {
   const idx = b.idx + 1;
   if (idx >= b.queue.length) {
     /* конец раунда */
-    const warded = b.p.statuses.invulnerable > 0;
-    if (!warded && b.p.statuses.wound > 0 && !hasLeg(b, "titan_heart")) {
-      const stacks = playerDotStacks(b, "wound");
-      const d = b.p.statuses.woundTick * stacks;
-      b.p.hp -= d;
-      push(b, `Кровотечение отнимает ${d} здоровья${stacks > 1 ? ` (${stacks} наложения)` : ""}.`, "sys");
-    }
-    if (!warded && b.p.statuses.poison > 0 && b.p.hp > 0) {
-      const stacks = playerDotStacks(b, "poison");
-      const d = b.p.statuses.poisonTick * stacks;
-      b.p.hp -= d;
-      push(b, `Яд в твоей крови отнимает ${d} здоровья${stacks > 1 ? ` (${stacks} наложения)` : ""}.`, "e");
-    }
-    if (!warded && b.p.statuses.burn > 0 && b.p.hp > 0) {
-      const d = absorbBarrier(b, b.p.statuses.burnTick);
-      b.p.hp -= d;
-      push(b, `Горение отнимает ${d} здоровья.`, "e");
-    }
-    if (!warded && b.p.statuses.chill > 0 && b.p.hp > 0) {
-      const d = absorbBarrier(b, magicTickFrom(b.p.statuses.chillTick, heroChance(b, b.p.chanceLayers.magicResist)));
-      b.p.hp -= d;
-      push(b, `Обморожение отнимает ${d} здоровья и режет лечение вдвое.`, "e");
-    }
-    if (!warded && b.p.statuses.curse > 0 && b.p.hp > 0) {
-      const d = absorbBarrier(b, magicTickFrom(b.p.statuses.curseTick, heroChance(b, b.p.chanceLayers.magicResist)));
-      b.p.hp -= d;
-      push(b, `Проклятие выжигает ${d} здоровья.`, "e");
-    }
-    if (b.enemy.statuses.bleed > 0 && b.enemy.hp > 0) {
-      const stacks = enemyDotStacks(b, "bleed");
-      const d = b.enemy.statuses.bleedTick * stacks;
-      b.enemy.hp -= d;
-      push(b, `${b.enemy.def.name} истекает кровью: −${d} ОЗ${stacks > 1 ? ` (${stacks} наложения)` : ""}.`, "p");
-    }
-    if (b.enemy.statuses.poison > 0 && b.enemy.hp > 0) {
-      const stacks = enemyDotStacks(b, "poison");
-      const d = b.enemy.statuses.poisonTick * stacks;
-      b.enemy.hp -= d;
-      push(b, `Яд разъедает ${b.enemy.def.name}: −${d} ОЗ${stacks > 1 ? ` (${stacks} наложения)` : ""}.`, "p");
-    }
-    if (b.enemy.statuses.burn > 0 && b.enemy.hp > 0) {
-      const d = b.enemy.statuses.burnTick;
-      b.enemy.hp -= d;
-      push(b, `${b.enemy.def.name} горит: −${d} ОЗ.`, "p");
-    }
-    if (b.enemy.statuses.chill > 0 && b.enemy.hp > 0) {
-      const d = magicTickFrom(b.enemy.statuses.chillTick, enemyMagicResist(b));
-      b.enemy.hp -= d;
-      push(b, `Обморожение отнимает ${d} ОЗ у ${b.enemy.def.name}.`, "p");
-    }
-    if (b.enemy.statuses.curse > 0 && b.enemy.hp > 0) {
-      const d = magicTickFrom(b.enemy.statuses.curseTick, enemyMagicResist(b));
-      b.enemy.hp -= d;
-      push(b, `Проклятие выжигает ${d} ОЗ у ${b.enemy.def.name}.`, "p");
-    }
-    if (b.enemy.statuses.blight > 0 && b.enemy.hp > 0 && b.enemy.statuses.blightTick > 0) {
-      const d = b.enemy.statuses.blightTick;
-      b.enemy.hp -= d;
-      push(b, `Порча разъедает ${b.enemy.def.name}: −${d} ОЗ.`, "p");
-    }
-    if (b.enemy.statuses.oilType && b.enemy.statuses.oilRounds > 0 && b.enemy.hp > 0 && b.enemy.statuses.oilType !== "drain") {
-      const kind = b.enemy.statuses.oilType;
-      const element = kind === "fire" || kind === "ice" ? kind : undefined;
-      const mult = element ? enemyElementMult(b, element) : 1;
-      const raw = oilTickDamage(kind, b.enemy.statuses.oilTick, enemyMagicResist(b));
-      if (raw > 0 && mult > 0) {
-        const d = Math.max(1, Math.round(raw * mult));
-        b.enemy.hp -= d;
-        const weak = mult > 1 ? ` Уязвимость ×${mult}.` : "";
-        push(b, `${OIL_NAMES[kind]} масла отнимает ${d} ОЗ у ${b.enemy.def.name}.${weak}`, "p", element);
-      }
-    }
     if (b.enemy.passive?.id === "regen" && !raceCannotHeal(b.enemy.def.race) && b.enemy.hp > 0 && b.enemy.hp < b.enemy.maxHp) {
       const heal = healEnemy(b, 4);
       push(b, `${b.enemy.def.name} затягивает раны (+${heal} ОЗ).`, "e");
@@ -3369,23 +3529,9 @@ function advance(b: BattleState) {
       if (healed > 0) push(b, `Регенерация: +${healed} здоровья.`, "p");
     }
 
-    const prevCurse = b.p.statuses.curse;
     const prevRage = b.p.statuses.rage;
-    const prevWound = b.p.statuses.wound;
-    const prevPoison = b.p.statuses.poison;
+    if (b.p.statuses.fearImmune > 0) b.p.statuses.fearImmune -= 1;
 
-    const fearWas = b.p.statuses.fear;
-    if (fearWas > 0) {
-      b.p.statuses.fear = fearWas - 1;
-      if (b.p.statuses.fear === 0) {
-        b.p.statuses.fearImmune = FEAR_IMMUNE_ROUNDS;
-        push(b, `Страх отпустил. Ещё ${FEAR_IMMUNE_ROUNDS} раунда тебя не испугать.`, "sys");
-      }
-    } else if (b.p.statuses.fearImmune > 0) {
-      b.p.statuses.fearImmune -= 1;
-    }
-
-    b.p.statuses.wound = Math.max(0, b.p.statuses.wound - 1);
     /* Гниение: слои держатся два раунда, потом броня возвращается. */
     if ((b.p.statuses.rotRounds ?? 0) > 0) {
       b.p.statuses.rotRounds = (b.p.statuses.rotRounds ?? 0) - 1;
@@ -3394,10 +3540,6 @@ function advance(b: BattleState) {
         push(b, "Гниение отступило: броня вернулась.", "sys");
       }
     }
-    if (!isBattleCurse(b.p.statuses.curse)) b.p.statuses.curse = Math.max(0, b.p.statuses.curse - 1);
-    b.p.statuses.poison = Math.max(0, b.p.statuses.poison - 1);
-    b.p.statuses.burn = Math.max(0, b.p.statuses.burn - 1);
-    b.p.statuses.chill = Math.max(0, b.p.statuses.chill - 1);
     b.p.statuses.wither = Math.max(0, b.p.statuses.wither - 1);
     b.p.statuses.rage = Math.max(0, b.p.statuses.rage - 1);
     b.p.statuses.ironTonic = Math.max(0, b.p.statuses.ironTonic - 1);
@@ -3436,15 +3578,9 @@ function advance(b: BattleState) {
       else b.p.statuses.buffs![k] = { ...bf, rounds: bf.rounds - 1 };
     }
 
-    if (prevCurse > 0 && b.p.statuses.curse === 0)
-      push(b, "Проклятие рассеялось! Твой урон вернулся к норме.", "sys");
     if (b.p.statuses.rage === 0) b.p.statuses.rageStep = undefined;
     if (prevRage > 0 && b.p.statuses.rage === 0)
       push(b, "Ярость угасла: урон вернулся к обычному.", "sys");
-    if (prevWound > 0 && b.p.statuses.wound === 0)
-      push(b, "Раны затянулись — кровотечение остановилось.", "sys");
-    if (prevPoison > 0 && b.p.statuses.poison === 0)
-      push(b, "Яд вышел из крови.", "sys");
 
     if (b.p.statuses.oilRounds > 0) {
       b.p.statuses.oilRounds -= 1;
@@ -3453,31 +3589,9 @@ function advance(b: BattleState) {
         push(b, "Масло на клинке высохло.", "sys");
       }
     }
-    if (b.enemy.statuses.oilRounds > 0) {
-      b.enemy.statuses.oilRounds -= 1;
-      if (b.enemy.statuses.oilRounds === 0) {
-        const name = b.enemy.statuses.oilType ? OIL_NAMES[b.enemy.statuses.oilType] : "";
-        b.enemy.statuses.oilType = null;
-        if (name) push(b, `${name} масла на ${b.enemy.def.name} угасло.`, "sys");
-      }
-    }
-    b.enemy.statuses.chill = Math.max(0, b.enemy.statuses.chill - 1);
-    b.enemy.statuses.bleed = Math.max(0, b.enemy.statuses.bleed - 1);
-    b.enemy.statuses.poison = Math.max(0, b.enemy.statuses.poison - 1);
-    b.enemy.statuses.blight = Math.max(0, b.enemy.statuses.blight - 1);
     b.enemy.statuses.wither = Math.max(0, b.enemy.statuses.wither - 1);
-    b.enemy.statuses.burn = Math.max(0, b.enemy.statuses.burn - 1);
     b.enemy.statuses.sealMoves = Math.max(0, b.enemy.statuses.sealMoves - 1);
-    b.enemy.statuses.curse = Math.max(0, b.enemy.statuses.curse - 1);
     b.enemy.statuses.breakExtra = 0;
-    if ((b.enemy.statuses.breakRounds ?? 0) > 0) {
-      b.enemy.statuses.breakRounds = (b.enemy.statuses.breakRounds ?? 0) - 1;
-      if (b.enemy.statuses.breakRounds === 0) {
-        b.enemy.statuses.breakFlat = 0;
-        b.enemy.statuses.breakPct = 0;
-        push(b, `Раскол брони ${b.enemy.def.name} спадает.`, "e");
-      }
-    }
     if ((b.enemy.statuses.beatRounds ?? 0) > 0) {
       b.enemy.statuses.beatRounds = (b.enemy.statuses.beatRounds ?? 0) - 1;
       if (b.enemy.statuses.beatRounds === 0) b.enemy.statuses.beatMult = 0;
@@ -3503,33 +3617,6 @@ function advance(b: BattleState) {
     if ((b.enemy.statuses.noEvade ?? 0) > 0) b.enemy.statuses.noEvade = (b.enemy.statuses.noEvade ?? 0) - 1;
     if ((b.enemy.statuses.shatterRounds ?? 0) > 0) b.enemy.statuses.shatterRounds = (b.enemy.statuses.shatterRounds ?? 0) - 1;
     if ((b.enemy.statuses.noGuard ?? 0) > 0) b.enemy.statuses.noGuard = (b.enemy.statuses.noGuard ?? 0) - 1;
-    /* Выброс: горение, обморожение, проклятие и увядание держатся 3 раунда; тики — в конце раунда. */
-    if ((b.enemy.statuses.eruptRounds ?? 0) > 0) {
-      const tick = b.enemy.statuses.eruptTick ?? 0;
-      if (tick > 0 && b.enemy.hp > 0) {
-        b.enemy.hp -= tick;
-        push(b, `Выброс жжёт ${b.enemy.def.name}: −${tick} ОЗ.`, "p");
-      }
-      b.enemy.statuses.eruptRounds = (b.enemy.statuses.eruptRounds ?? 0) - 1;
-      if (b.enemy.statuses.eruptRounds === 0) {
-        b.enemy.statuses.eruptTick = 0;
-        b.enemy.statuses.eruptDown = 0;
-        b.enemy.statuses.eruptWither = 0;
-        push(b, `Выброс иссяк: ${b.enemy.def.name} снова в силе.`, "p");
-      }
-    }
-    /* Вытягивание жизни: кража ОЗ у врага в конце раунда; герой получает столько же. */
-    if ((b.enemy.statuses.drainRounds ?? 0) > 0) {
-      const stolen = b.enemy.statuses.drainTick ?? 0;
-      if (stolen > 0 && b.enemy.hp > 0) {
-        const taken = Math.min(stolen, b.enemy.hp);
-        b.enemy.hp -= taken;
-        const got = b.p.hp > 0 ? healPlayer(b, taken) : 0;
-        push(b, `Иссушение: ${b.enemy.def.name} −${taken} ОЗ, ты +${got} здоровья.`, "p");
-      }
-      b.enemy.statuses.drainRounds = (b.enemy.statuses.drainRounds ?? 0) - 1;
-      if (b.enemy.statuses.drainRounds === 0) b.enemy.statuses.drainTick = 0;
-    }
     if (b.p.weaponCd > 0) {
       b.p.weaponCd -= 1;
       /* Тень за спиной: заряды возвращаются, когда кончается перезарядка. */
@@ -4285,6 +4372,8 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
       else if (leech > 0) applyVamp(b, dealtTotal, leech, "skill", "phys");
 
       /* Колдун: удачный приём накладывает иссушение на врага. Печать пакта лечит 12% урона таких приёмов. */
+      /* ОЗ до мгновенного лечения иссушением: «Обет крови» смотрит на то, что довёл приём. */
+      const hpBeforeDrain = b.p.hp;
       if (b.p.archetype === "warlock" && dealtTotal > 0 && b.enemy.hp > 0) {
         applyPactDrain(b, PACT_DRAIN_ROUNDS);
         if (hasGearPassive(b, "warlock_pact")) {
@@ -4299,7 +4388,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
         push(b, `Порча приёмом: ${b.enemy.def.name} проклят (урон −10%).`, "p");
       }
       /* Обет крови (ветка «Обет» A): приём, который довёл ОЗ героя ниже 30%, не тратит перезарядку. */
-      const vowFree = hasPassive(b, "skill_vow_a") && hpBeforePact >= b.p.maxHp * 0.3 && b.p.hp < b.p.maxHp * 0.3;
+      const vowFree = hasPassive(b, "skill_vow_a") && hpBeforePact >= b.p.maxHp * 0.3 && hpBeforeDrain < b.p.maxHp * 0.3;
       const noCd = vowFree || (hasPassive(b, "echo") && Math.random() < 0.35);
       if (noCd) {
         push(b, vowFree ? "Обет крови: ОЗ ниже 30%, перезарядки нет!" : "Приём не ушёл на перезарядку!", "p");
@@ -4655,7 +4744,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
           const dealt = hitEnemy(b, dmg, "magic", ` [${def.name}]`);
           applyVamp(b, dealt, 0, "consumable", "phys");
           applyEnemyStatus(b, "blight", u.rounds ?? 3, dotBaseTick("blight", b.p.level));
-          push(b, `Порча сковывает ${b.enemy.def.name}: урон −20% и потеря ОЗ за раунд.`, "p");
+          push(b, `Порча сковывает ${b.enemy.def.name}: урон −20% и потеря ОЗ за его ход.`, "p");
           break;
         }
         case "buff_break": {
@@ -4955,10 +5044,14 @@ export interface EnemyMoveBreakdown {
   /** Урон за один удар после защит: минимальный бросок без крита и максимальный с критом (если крит возможен). */
   dmgMin: number;
   dmgMax: number;
-  /** Тики в конце раунда от наложений, уже висящих на герое. Точные значения. */
+  /** Тики от наложений, уже висящих на герое, за один ход врага. Точные значения. */
   dotNow: number;
   /** Верхняя граница тиков от наложений этого приёма, если они лягут. */
   dotNewMax: number;
+  /** Наложения приёма, которые тикают: шанс и сумма тиков за весь срок. */
+  ticks: EnemyMoveTickEffect[];
+  /** Верхняя граница пассивных тиков врага (яд на попадании, горение беса), если они сработают. */
+  passiveMax: number;
   /** Урон за ход: удар плюс тики в конце раунда. Нижняя граница — при попадании. */
   roundMin: number;
   roundMax: number;
@@ -5051,18 +5144,20 @@ function enemyMoveHit(
 }
 
 /**
- * Тики героя в конце раунда от уже висящих наложений. Те же поля и формулы, что в конце раунда (advance).
- * Барьер не вычитается: подсказка показывает урон до него.
+ * Тики героя от уже висящих наложений за раунд. Тик идёт в начале каждого хода героя, срок
+ * уменьшается в конце его хода: за раунд тикает min(срок, число ходов героя). Барьер не вычитается.
  */
 function heroRoundDotNow(b: BattleState): number {
   if (b.p.statuses.invulnerable > 0) return 0;
+  const turns = Math.max(1, b.queue.filter((x) => x === "p").length);
+  const n = (rounds: number) => Math.min(rounds, turns);
   let d = 0;
-  if (b.p.statuses.wound > 0 && !hasLeg(b, "titan_heart")) d += b.p.statuses.woundTick * playerDotStacks(b, "wound");
-  if (b.p.statuses.poison > 0) d += b.p.statuses.poisonTick * playerDotStacks(b, "poison");
-  if (b.p.statuses.burn > 0) d += b.p.statuses.burnTick;
+  if (b.p.statuses.wound > 0 && !hasLeg(b, "titan_heart")) d += b.p.statuses.woundTick * playerDotStacks(b, "wound") * n(b.p.statuses.wound);
+  if (b.p.statuses.poison > 0) d += b.p.statuses.poisonTick * playerDotStacks(b, "poison") * n(b.p.statuses.poison);
+  if (b.p.statuses.burn > 0) d += b.p.statuses.burnTick * n(b.p.statuses.burn);
   const magic = heroChance(b, b.p.chanceLayers.magicResist);
-  if (b.p.statuses.chill > 0) d += magicTickFrom(b.p.statuses.chillTick, magic);
-  if (b.p.statuses.curse > 0) d += magicTickFrom(b.p.statuses.curseTick, magic);
+  if (b.p.statuses.chill > 0) d += magicTickFrom(b.p.statuses.chillTick, magic) * n(b.p.statuses.chill);
+  if (b.p.statuses.curse > 0) d += magicTickFrom(b.p.statuses.curseTick, magic) * n(b.p.statuses.curse);
   return d;
 }
 
@@ -5074,7 +5169,7 @@ export function enemyMoveBreakdown(b: BattleState, move: EnemyMove): EnemyMoveBr
   const shape = ENEMY_MOVE_SHAPE[move];
   if (!shape) {
     return {
-      hits: 0, hitChance: 0, dmgMin: 0, dmgMax: 0, dotNow: 0, dotNewMax: 0, roundMin: 0, roundMax: 0,
+      hits: 0, hitChance: 0, dmgMin: 0, dmgMax: 0, dotNow: 0, dotNewMax: 0, ticks: [], passiveMax: 0, roundMin: 0, roundMax: 0,
       hitMisses: [], blocked: null, lines: [], expected: 0,
     };
   }
@@ -5119,14 +5214,36 @@ export function enemyMoveBreakdown(b: BattleState, move: EnemyMove): EnemyMoveBr
   /* Тики: висящие на герое — всегда; новые от приёма — верхняя граница. Обычный и второй удар тикают один раз. */
   const dotNow = heroRoundDotNow(b);
   const newTicks = enemyMoveEffectDetails(b, move).filter((x) => x.tick && x.chance > 0);
+  /* Тики на ходах героя в этом же раунде: как в бою, первый тик наложения уже прошёл сразу, дальше — по одному на каждый ход героя, пока срок не вышел. */
+  const heroTurnsNow = b.queue.filter((x) => x === "p").length;
+  const laterTicks = (rounds: number) => Math.max(0, Math.min(rounds - 1, heroTurnsNow));
+  const later = (x: EnemyMoveEffectDetail) => (x.rounds ? laterTicks(x.rounds) : 0);
+  /* Первый тик нового наложения проходит сразу, в ход врага: входит в ожидаемый урон приёма по шансу наложения. */
+  for (const x of newTicks) {
+    if (!x.tick) continue;
+    const avgTick = (x.tick[0] + x.tick[1]) / 2;
+    expected += x.chance * avgTick * (1 + later(x));
+  }
   /* Пассивы врага в incoming: яд на каждом физическом попадании (стек за удар), горение беса на каждом попадании. */
+  const venomPassive = e.passive?.id === "venom" && shape.kind === "phys";
+  const imp = e.def.id === "imp";
   const passiveMax =
-    (e.passive?.id === "venom" && shape.kind === "phys" ? dotTickSpan("poison", e.level, false)[1] * hits : 0) +
-    (e.def.id === "imp" ? dotTickSpan("burn", e.level, false)[1] : 0);
+    (venomPassive ? dotTickSpan("poison", e.level, false)[1] * hits : 0) + (imp ? dotTickSpan("burn", e.level, false)[1] : 0);
+  /* Тики на ходах героя от пассивов: яд врага на 2 раунда, горение беса на 1 раунд. */
+  const passiveLaterMax =
+    (venomPassive ? dotTickSpan("poison", e.level, false)[1] * hits * laterTicks(2) : 0) +
+    (imp ? dotTickSpan("burn", e.level, false)[1] * laterTicks(statusRounds(b, 1)) : 0);
   const dotNewMax =
-    newTicks.filter((x) => !x.half).reduce((sum, x) => sum + (x.tick?.[1] ?? 0), 0) +
-    Math.max(0, ...newTicks.filter((x) => x.half).map((x) => x.tick?.[1] ?? 0)) +
-    passiveMax;
+    newTicks.filter((x) => !x.half).reduce((sum, x) => sum + (x.tick?.[1] ?? 0) * (1 + later(x)), 0) +
+    Math.max(0, ...newTicks.filter((x) => x.half).map((x) => (x.tick?.[1] ?? 0) * (1 + later(x)))) +
+    passiveMax +
+    passiveLaterMax;
+  /* Строка подсказки «+ сумма эффект шанс»: средний тик × срок, шанс — тот же, что у наложения. */
+  const ticks: EnemyMoveTickEffect[] = newTicks.flatMap((x) =>
+    x.tick && x.rounds
+      ? [{ id: x.id, half: x.half, chance: x.chance, tick: (x.tick[0] + x.tick[1]) / 2, rounds: x.rounds, total: Math.round(((x.tick[0] + x.tick[1]) / 2) * x.rounds) }]
+      : [],
+  );
   return {
     hits,
     hitChance: hit.chance,
@@ -5134,6 +5251,8 @@ export function enemyMoveBreakdown(b: BattleState, move: EnemyMove): EnemyMoveBr
     dmgMax,
     dotNow,
     dotNewMax,
+    ticks,
+    passiveMax,
     roundMin: dmgMin + dotNow,
     roundMax: dmgMax + dotNow + dotNewMax,
     hitMisses: hit.misses,
@@ -5187,6 +5306,31 @@ export interface EnemyMoveEffectDetail extends EnemyMoveEffect {
   lines: string[];
   /** Урон за один тик наложения (мин–макс), если наложение тикает: кровотечение, яд, горение, проклятие. */
   tick?: [number, number];
+  /** Срок наложения в ходах героя. Тиков столько же: первый идёт сразу. Только у тикающих наложений. */
+  rounds?: number;
+}
+
+/** Наложение приёма, которое тикает: шанс и сумма тиков за весь срок (среднее от тика × срок). */
+export interface EnemyMoveTickEffect {
+  id: EnemyMoveEffectId;
+  half: boolean;
+  chance: number;
+  /** Среднее значение одного тика. */
+  tick: number;
+  /** Срок в ходах героя. */
+  rounds: number;
+  /** Сумма за срок: среднее от тика × срок, целым числом. */
+  total: number;
+}
+
+/** Склонение слова «ход» для числа: срок наложений считается в ходах героя. */
+function turnsText(n: number): string {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  let word = "ходов";
+  if (m10 === 1 && m100 !== 11) word = "ход";
+  else if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) word = "хода";
+  return `${n} ${word}`;
 }
 
 /** Склонение слова «раунд» для числа. */
@@ -5214,17 +5358,18 @@ export function enemyMoveEffectDetails(b: BattleState, move: EnemyMove): EnemyMo
     lines: string[],
     immune?: ImmunityEffect,
     tick?: [number, number],
+    rounds?: number,
   ) => {
     if (immune && playerImmune(b, immune)) {
       out.push({ id, half, chance: 0, lines: [`Иммунитет: ${IMMUNITY_NAMES[immune]} не накладывается.`] });
       return;
     }
-    out.push({ id, half, chance, lines, tick });
+    out.push({ id, half, chance, lines, tick, rounds });
   };
   const dotLine = (name: string, rounds: number, [lo, hi]: [number, number]) =>
-    `${name}: ${roundsText(rounds)}; −${lo}–${hi} ОЗ в раунд за каждое наложение, до ${MAX_DOT_STACKS} наложений.`;
+    `${name}: ${turnsText(rounds)}; −${lo}–${hi} ОЗ в начале каждого твоего хода за каждое наложение, без предела наложений.`;
   const burnLine = (rounds: number, [lo, hi]: [number, number]) =>
-    `Горение: ${roundsText(rounds)}; −${lo}–${hi} ОЗ в раунд, наложения не складываются.`;
+    `Горение: ${turnsText(rounds)}; −${lo}–${hi} ОЗ в начале каждого твоего хода, наложения не складываются.`;
   const fearLine =
     `Страх: ${roundsText(1)} (${roundsText(2)}, если твой ход в этом раунде уже прошёл). В свой ход ты в защите: атаки и приёмы закрыты. После приступа ${roundsText(FEAR_IMMUNE_ROUNDS)} без страха.`;
 
@@ -5232,14 +5377,14 @@ export function enemyMoveEffectDetails(b: BattleState, move: EnemyMove): EnemyMo
   if (isStrike) {
     const race = e.def.race;
     if (race === "vampire") {
-      add("bleed", false, resisted, [dotLine("Кровотечение", 3, span("bleed", false))], "bleed", span("bleed", false));
+      add("bleed", false, resisted, [dotLine("Кровотечение", 3, span("bleed", false))], "bleed", span("bleed", false), 3);
     } else if (race === "ghost") {
       add("fear", false, resisted, [fearLine], "fear");
     } else if (race === "beast") {
-      add("bleed", true, resisted * 0.5, [dotLine("Кровотечение", 3, span("bleed", false))], "bleed", span("bleed", false));
-      add("poison", true, resisted * 0.5, [dotLine("Яд", 3, span("poison", false))], "poison", span("poison", false));
+      add("bleed", true, resisted * 0.5, [dotLine("Кровотечение", 3, span("bleed", false))], "bleed", span("bleed", false), 3);
+      add("poison", true, resisted * 0.5, [dotLine("Яд", 3, span("poison", false))], "poison", span("poison", false), 3);
     } else if (race === "demon") {
-      add("burn", true, resisted * 0.5, [burnLine(statusRounds(b, 3), span("burn", false))], "burn", span("burn", false));
+      add("burn", true, resisted * 0.5, [burnLine(statusRounds(b, 3), span("burn", false))], "burn", span("burn", false), statusRounds(b, 3));
       add("fear", true, resisted * 0.5, [fearLine], "fear");
     }
   }
@@ -5257,14 +5402,14 @@ export function enemyMoveEffectDetails(b: BattleState, move: EnemyMove): EnemyMo
       if (hasLeg(b, "titan_heart")) {
         out.push({ id: "bleed", half: false, chance: 0, lines: ["Не действует: «Сердце титана» не даёт кровотечению закрепиться."] });
       } else {
-        add("bleed", false, resisted, [dotLine("Кровотечение", 3, span("bleed", true))], "bleed", span("bleed", true));
+        add("bleed", false, resisted, [dotLine("Кровотечение", 3, span("bleed", true))], "bleed", span("bleed", true), 3);
       }
       break;
     case "poison":
       if (hasLeg(b, "titan_heart")) {
         out.push({ id: "poison", half: false, chance: 0, lines: ["Не действует: «Сердце титана» выжигает яд на лету."] });
       } else {
-        add("poison", false, resisted, [dotLine("Яд", 3, span("poison", true))], "poison", span("poison", true));
+        add("poison", false, resisted, [dotLine("Яд", 3, span("poison", true))], "poison", span("poison", true), 3);
       }
       break;
     case "sunder":
@@ -5275,8 +5420,8 @@ export function enemyMoveEffectDetails(b: BattleState, move: EnemyMove): EnemyMo
       const [lo, hi] = span("curse", true);
       const power = Math.max(b.p.statuses.cursePower ?? 0, 30);
       add("curse", false, resisted, [
-        `Проклятие: ${roundsText(3)}; твой урон снижен на ${power}%; −${magicTickFrom(lo, magic)}–${magicTickFrom(hi, magic)} ОЗ в раунд с учётом сопротивления магии.`,
-      ], "curse", [magicTickFrom(lo, magic), magicTickFrom(hi, magic)]);
+        `Проклятие: ${turnsText(3)}; твой урон снижен на ${power}%; −${magicTickFrom(lo, magic)}–${magicTickFrom(hi, magic)} ОЗ в начале каждого твоего хода с учётом сопротивления магии.`,
+      ], "curse", [magicTickFrom(lo, magic), magicTickFrom(hi, magic)], 3);
       break;
     }
     case "bell_stun":
@@ -5286,7 +5431,7 @@ export function enemyMoveEffectDetails(b: BattleState, move: EnemyMove): EnemyMo
       add("fear", false, resisted, [fearLine], "fear");
       break;
     case "hell_force":
-      add("burn", false, resisted, [burnLine(statusRounds(b, 4), span("burn", true))], "burn", span("burn", true));
+      add("burn", false, resisted, [burnLine(statusRounds(b, 4), span("burn", true))], "burn", span("burn", true), statusRounds(b, 4));
       break;
     case "cold_touch":
       add("noHeal", false, landP, [`Запрет лечения: ${roundsText(2)}; зелья и приёмы лечения не работают. Пробивает броню и сопротивление.`], "noHeal");
@@ -5961,7 +6106,7 @@ export function combatReadout(b: BattleState): CombatReadout {
       label: "Кровотечение",
       good: false,
       rounds: b.p.statuses.wound,
-      detail: `−${b.p.statuses.woundTick * Math.max(1, b.p.statuses.woundStacks ?? 1)} здоровья в конце каждого раунда${(b.p.statuses.woundStacks ?? 1) > 1 ? ` (${b.p.statuses.woundStacks} наложения)` : ""}.`,
+      detail: `−${b.p.statuses.woundTick * Math.max(1, b.p.statuses.woundStacks ?? 1)} здоровья в начале каждого твоего хода${(b.p.statuses.woundStacks ?? 1) > 1 ? ` (${b.p.statuses.woundStacks} наложения)` : ""}.`,
     });
   if (b.p.statuses.poison > 0)
     defMods.push({
@@ -5969,12 +6114,12 @@ export function combatReadout(b: BattleState): CombatReadout {
       label: "Отравление",
       good: false,
       rounds: b.p.statuses.poison,
-      detail: `−${b.p.statuses.poisonTick * Math.max(1, b.p.statuses.poisonStacks ?? 1)} здоровья в конце каждого раунда${(b.p.statuses.poisonStacks ?? 1) > 1 ? ` (${b.p.statuses.poisonStacks} наложения)` : ""}.`,
+      detail: `−${b.p.statuses.poisonTick * Math.max(1, b.p.statuses.poisonStacks ?? 1)} здоровья в начале каждого твоего хода${(b.p.statuses.poisonStacks ?? 1) > 1 ? ` (${b.p.statuses.poisonStacks} наложения)` : ""}.`,
     });
   if (b.p.statuses.burn > 0)
-    defMods.push({ id: "burn", label: "Горение", good: false, rounds: b.p.statuses.burn, detail: `−${b.p.statuses.burnTick} ОЗ в конце раунда.` });
+    defMods.push({ id: "burn", label: "Горение", good: false, rounds: b.p.statuses.burn, detail: `−${b.p.statuses.burnTick} ОЗ в начале твоего хода.` });
   if (b.p.statuses.chill > 0)
-    defMods.push({ id: "chill", label: "Обморожение", good: false, rounds: b.p.statuses.chill, detail: `Лечение −50% и −${b.p.statuses.chillTick} ОЗ в конце раунда (до сопротивления магии).` });
+    defMods.push({ id: "chill", label: "Обморожение", good: false, rounds: b.p.statuses.chill, detail: `Лечение −50% и −${b.p.statuses.chillTick} ОЗ в начале твоего хода (до сопротивления магии).` });
   if (b.p.statuses.wither > 0)
     defMods.push({ id: "wither", label: "Увядание", good: false, rounds: b.p.statuses.wither, detail: "Любое лечение переходит в магический урон." });
   if (b.p.statuses.fear > 0)
@@ -6020,13 +6165,13 @@ export function combatReadout(b: BattleState): CombatReadout {
   if (b.enemy.statuses.burning > 0)
     enemyMods.push({ id: "biome_burning_enemy", label: `Горение врага ×${b.enemy.statuses.burning}`, good: true, detail: `−${fireBurnDamage(b.enemy.statuses.burning)} ОЗ врагу в начале его хода; следующий слой −${fireBurnDamage(b.enemy.statuses.burning + 1)}.` });
   if (b.enemy.statuses.burn > 0)
-    enemyMods.push({ id: "eburn", label: "Горение врага", good: true, rounds: b.enemy.statuses.burn, detail: `−${b.enemy.statuses.burnTick} ОЗ врагу в конце раунда.` });
+    enemyMods.push({ id: "eburn", label: "Горение врага", good: true, rounds: b.enemy.statuses.burn, detail: `−${b.enemy.statuses.burnTick} ОЗ врагу в начале его хода.` });
   if (b.enemy.statuses.curse > 0)
     enemyMods.push({ id: "ecurse", label: "Проклятие врага", mult: 0.7, good: true, rounds: b.enemy.statuses.curse, detail: "Урон врага −30% и периодический магический урон." });
   if (b.enemy.statuses.sealMoves > 0)
     enemyMods.push({ id: "seal", label: "Печать тишины", mult: 1, good: true, rounds: b.enemy.statuses.sealMoves, detail: "Враг применяет только атаку и стойку." });
   if (b.enemy.statuses.blight > 0)
-    enemyMods.push({ id: "blight", label: "Порча", mult: 0.8, good: true, rounds: b.enemy.statuses.blight, detail: "Урон врага −20% и потеря ОЗ за раунд." });
+    enemyMods.push({ id: "blight", label: "Порча", mult: 0.8, good: true, rounds: b.enemy.statuses.blight, detail: "Урон врага −20% и потеря ОЗ за его ход." });
   if (b.enemy.statuses.wither > 0)
     enemyMods.push({ id: "wither", label: "Увядание", good: true, rounds: b.enemy.statuses.wither, detail: "Любое лечение врага переходит в магический урон." });
   const chill = b.enemy.statuses.chill > 0;
@@ -6036,7 +6181,7 @@ export function combatReadout(b: BattleState): CombatReadout {
       label: "Обморожение врага",
       good: true,
       rounds: b.enemy.statuses.chill,
-      detail: `Лечение врага −50% и −${b.enemy.statuses.chillTick} ОЗ в конце раунда (до сопротивления магии).`,
+      detail: `Лечение врага −50% и −${b.enemy.statuses.chillTick} ОЗ в начале его хода (до сопротивления магии).`,
     });
   if (b.enemy.statuses.fear > 0)
     enemyMods.push({
@@ -6060,7 +6205,7 @@ export function combatReadout(b: BattleState): CombatReadout {
       label: "Кровотечение врага",
       good: true,
       rounds: b.enemy.statuses.bleed,
-      detail: `−${b.enemy.statuses.bleedTick * Math.max(1, b.enemy.statuses.bleedStacks ?? 1)} ОЗ врагу в конце раунда${(b.enemy.statuses.bleedStacks ?? 1) > 1 ? ` (${b.enemy.statuses.bleedStacks} наложения)` : ""}.`,
+      detail: `−${b.enemy.statuses.bleedTick * Math.max(1, b.enemy.statuses.bleedStacks ?? 1)} ОЗ врагу в начале его хода${(b.enemy.statuses.bleedStacks ?? 1) > 1 ? ` (${b.enemy.statuses.bleedStacks} наложения)` : ""}.`,
     });
   if (b.enemy.statuses.poison > 0)
     enemyMods.push({
@@ -6068,7 +6213,7 @@ export function combatReadout(b: BattleState): CombatReadout {
       label: "Яд на враге",
       good: true,
       rounds: b.enemy.statuses.poison,
-      detail: `−${b.enemy.statuses.poisonTick * Math.max(1, b.enemy.statuses.poisonStacks ?? 1)} ОЗ врагу в конце раунда${(b.enemy.statuses.poisonStacks ?? 1) > 1 ? ` (${b.enemy.statuses.poisonStacks} наложения)` : ""}.`,
+      detail: `−${b.enemy.statuses.poisonTick * Math.max(1, b.enemy.statuses.poisonStacks ?? 1)} ОЗ врагу в начале его хода${(b.enemy.statuses.poisonStacks ?? 1) > 1 ? ` (${b.enemy.statuses.poisonStacks} наложения)` : ""}.`,
     });
   if (b.enemy.passive?.id === "stone_hide")
     enemyMods.push({ id: "estone", label: "Каменная шкура врага", mult: 1, good: false, detail: "Твой физический урон по нему −25%." });

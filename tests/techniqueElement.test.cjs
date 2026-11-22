@@ -30,6 +30,7 @@ function fixture(skillId, baseId = "wand_ash", stats = {}) {
   const g = content.createGearItem({ baseId, rarity: "rare", wear: "new", identified: true, level: 5, skillId, rng: fixedRng });
   g.skillId = skillId;
   const p = PlayerFactory.createInitial();
+  for (const k of Object.keys(p.equip)) p.equip[k] = null;
   p.armory = [g];
   p.equip = { ...p.equip, mainHand: g.uid };
   p.stats = { ...p.stats, str: 8, agi: 8, int: 8, ...stats };
@@ -50,6 +51,18 @@ function setRace(b, race, id = "fixture") {
   return b;
 }
 
+/* Урон самого удара: мгновенный первый тик наложенного на врага эффекта (v2) идёт отдельно и не входит. */
+function hitDealt(after, hp0) {
+  const s = after.enemy.statuses;
+  let tick = 0;
+  if (s.burn > 0) tick += s.burnTick;
+  if (s.chill > 0) tick += s.chillTick;
+  if (s.curse > 0) tick += s.curseTick;
+  if (s.bleed > 0) tick += s.bleedTick;
+  if (s.poison > 0) tick += s.poisonTick;
+  return hp0 - after.enemy.hp - tick;
+}
+
 test("данные: Искра и Выброс — огонь, Холодная искра — лёд, Дыхание склепа — без стихии", () => {
   const w = load("src/game/weaponTechniques.ts", "wt");
   const byId = Object.fromEntries(w.NEW_WEAPON_TECHNIQUES.map((t) => [t.id, t]));
@@ -64,8 +77,8 @@ test("данные: Искра и Выброс — огонь, Холодная 
 test("Искра: урон по роду с уязвимостью к огню ×1,5 относительно обычного", () => {
   const plain = withRandom(0.99, () => battle.playerAct(setRace(fixture("spark"), "none"), { type: "weapon_skill" }));
   const construct = withRandom(0.99, () => battle.playerAct(setRace(fixture("spark"), "construct"), { type: "weapon_skill" }));
-  const dPlain = 5000 - plain.enemy.hp;
-  const dConstruct = 5000 - construct.enemy.hp;
+  const dPlain = hitDealt(plain, 5000);
+  const dConstruct = hitDealt(construct, 5000);
   assert.ok(dPlain > 0);
   assert.ok(Math.abs(dConstruct / dPlain - 1.5) < 0.02, `ratio ${dConstruct / dPlain}`);
 });
@@ -73,7 +86,7 @@ test("Искра: урон по роду с уязвимостью к огню �
 test("Искра: голем получает огонь ×0,5 (правило голема сохранено)", () => {
   const plain = withRandom(0.99, () => battle.playerAct(setRace(fixture("spark"), "none"), { type: "weapon_skill" }));
   const golem = withRandom(0.99, () => battle.playerAct(setRace(fixture("spark"), "none", "golem"), { type: "weapon_skill" }));
-  const ratio = (5000 - golem.enemy.hp) / (5000 - plain.enemy.hp);
+  const ratio = (hitDealt(golem, 5000)) / (hitDealt(plain, 5000));
   assert.ok(Math.abs(ratio - 0.5) < 0.02, `ratio ${ratio}`);
 });
 
@@ -81,7 +94,7 @@ test("Искра: превью показывает тот же урон, что
   const b = setRace(fixture("spark"), "construct");
   const readout = battle.combatReadout(b);
   const after = withRandom(0.99, () => battle.playerAct(b, { type: "weapon_skill" }));
-  const dealt = b.enemy.hp - after.enemy.hp;
+  const dealt = hitDealt(after, b.enemy.hp);
   assert.equal(readout.techMin, dealt);
   assert.equal(readout.techMax, dealt);
 });
@@ -92,6 +105,7 @@ test("Приём брони «Холодная искра»: лёд по род�
   const item = { ...content.createGearItem({ baseId: base.id, rarity: "legendary", level: 3, identified: true, wear: "new", rng: fixedRng }), armorSkill: "light_spark" };
   const pl = (race) => {
     const p = PlayerFactory.createInitial();
+    for (const k of Object.keys(p.equip)) p.equip[k] = null;
     p.armory = [item];
     p.equip = { ...p.equip, body: item.uid };
     p.stats = { ...p.stats, str: 1, agi: 1, int: 8 };
@@ -102,8 +116,8 @@ test("Приём брони «Холодная искра»: лёд по род�
   };
   const plain = withRandom(0.99, () => battle.playerAct(pl("none"), { type: "armor_skill", id: "light_spark" }));
   const construct = withRandom(0.99, () => battle.playerAct(pl("construct"), { type: "armor_skill", id: "light_spark" }));
-  const dPlain = 5000 - plain.enemy.hp;
-  const dConstruct = 5000 - construct.enemy.hp;
+  const dPlain = hitDealt(plain, 5000);
+  const dConstruct = hitDealt(construct, 5000);
   assert.ok(dPlain > 0, "обычный враг получает урон");
   assert.ok(Math.abs(dConstruct / dPlain - 1.5) < 0.05, `ratio ${dConstruct / dPlain}`);
 });

@@ -73,6 +73,13 @@ test("breakdown: the last line is the damage after defence, expected is the sum 
       reach *= bd.hitChance;
       want += reach * d;
     }
+    /* Первый тик нового наложения идёт сразу, дальше — по тику на каждом ходе героя в раунде, пока срок не вышел. */
+    const heroTurns = b.queue.filter((q) => q === "p").length;
+    for (const x of battle.enemyMoveEffectDetails(b, m)) {
+      if (!x.tick || !(x.chance > 0)) continue;
+      const later = x.rounds ? Math.max(0, Math.min(x.rounds - 1, heroTurns)) : 0;
+      want += x.chance * ((x.tick[0] + x.tick[1]) / 2) * (1 + later);
+    }
     assert.ok(Math.abs(bd.expected - want) < 1e-9, `${m}: ${bd.expected} ≠ ${want}`);
     assert.equal(bd.expected, battle.enemyExpectedMoveDamage(b, m), `${m}: тот же расчёт, что у выбора приёма`);
   }
@@ -118,7 +125,7 @@ test("effects: a bleed from a wound shows rounds, tick range and chance below th
   const b = fixtureBattle();
   const wound = battle.enemyMoveEffectDetails(b, "wound").find((x) => x.id === "bleed");
   assert.ok(wound, "у удара кровотечение есть");
-  assert.ok(wound.lines[0].includes("Кровотечение: 3 раунда"), wound.lines[0]);
+  assert.ok(wound.lines[0].includes("Кровотечение: 3 хода"), wound.lines[0]);
   const [lo, hi] = statusEffects.dotTickSpan("bleed", b.enemy.level, true);
   assert.ok(wound.lines[0].includes(`−${lo}–${hi} ОЗ`), `диапазон тика ${lo}–${hi}: ${wound.lines[0]}`);
   const hit = battle.enemyMoveBreakdown(b, "wound").hitChance;
@@ -156,14 +163,14 @@ test("effects: seal moves are certain and each seal is named", () => {
 test("effects: curse shows 30% weaker damage and three rounds", () => {
   const b = fixtureBattle();
   const curse = battle.enemyMoveEffectDetails(b, "curse").find((x) => x.id === "curse");
-  assert.ok(curse.lines[0].includes("Проклятие: 3 раунда"), curse.lines[0]);
+  assert.ok(curse.lines[0].includes("Проклятие: 3 хода"), curse.lines[0]);
   assert.ok(curse.lines[0].includes("снижен на 30%"), curse.lines[0]);
 });
 
 test("effects: round counts use the right Russian form", () => {
   const b = fixtureBattle();
   const hell = battle.enemyMoveEffectDetails(b, "hell_force").find((x) => x.id === "burn");
-  assert.ok(hell.lines[0].includes("Горение: 4 раунда"), hell.lines[0]);
+  assert.ok(hell.lines[0].includes("Горение: 4 хода"), hell.lines[0]);
   const terror = battle.enemyMoveEffectDetails(b, "terror").find((x) => x.id === "fear");
   assert.ok(terror.lines[0].startsWith("Страх: 1 раунд (2 раунда"), terror.lines[0]);
   const dark = battle.enemyMoveEffectDetails(b, "darkness")[0];
@@ -209,8 +216,12 @@ test("tip: the hover card lists the damage steps, the chance and each effect wit
   assert.ok(html.includes("Шанс попасть"), "шанс попасть");
   assert.ok(html.includes("Ожидаемый урон приёма"), "итог");
   assert.ok(html.includes("Кровотечение"), "название эффекта");
-  assert.ok(html.includes("Кровотечение: 3 раунда"), "эффект с числами");
-  assert.ok(html.includes("шанс"), "шанс наложения");
+  const text = html.replace(/<!--.*?-->/g, "");
+  assert.ok(text.includes("за 3 хода"), "эффект с числами: срок в ходах");
+  const tick = battle.enemyMoveBreakdown(b, "wound").ticks.find((x) => x.id === "bleed");
+  assert.ok(tick && tick.total === Math.round(tick.tick * tick.rounds), "сумма за срок = средний тик × срок");
+  assert.ok(text.includes(`+ ${tick.total} Кровотечение`), "строка «+ сумма эффект»");
+  assert.ok(text.includes(`${Math.round(tick.chance * 100)}%`), "шанс наложения в той же строке");
 });
 
 test("tip: a move with no damage says so and lists no damage steps", () => {

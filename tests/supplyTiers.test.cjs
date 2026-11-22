@@ -139,11 +139,11 @@ test("Печать тишины: враг два раунда выбирает �
 test("Адский вар поджигает врага, Кристалл заморозки оглушает и обмораживает", () => {
   const pl = player({ hp: 500, bag: { hell_var: 1, frost_crystal: 1 } });
   const fire = battle.playerAct(dummyFight(pl, "hell_var"), { type: "item", id: "hell_var" });
-  assert.equal(fire.enemy.statuses.burn, 4);
+  assert.equal(fire.enemy.statuses.burn, 3, "4 хода: первый тик уже прошёл, осталось 3");
   assert.ok(fire.enemy.hp < 5000, "огонь должен наносить урон");
 
   const ice = battle.playerAct(dummyFight(pl, "frost_crystal"), { type: "item", id: "frost_crystal" });
-  assert.equal(ice.enemy.statuses.chill, 3);
+  assert.equal(ice.enemy.statuses.chill, 2, "3 хода: первый тик уже прошёл, осталось 2");
   assert.equal(ice.enemy.statuses.stunAp, 1);
   assert.ok(ice.enemy.hp < 5000, "лёд должен наносить урон");
 });

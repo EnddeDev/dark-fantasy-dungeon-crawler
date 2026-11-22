@@ -124,7 +124,8 @@ test("предпросмотр ядовитого дротика показыв�
   b.pouch = ["poison_dart"];
   const pv = preview.consumablePreview(b, "poison_dart");
   assert.ok(pv.damage > 0);
-  assert.ok(pv.effects.some((line) => line.startsWith("Враг:") && /3 раунда/.test(line)), pv.effects.join(" | "));
+  /* Срок 3 хода: первый тик уже прошёл при броске, в предпросмотре осталось 2. */
+  assert.ok(pv.effects.some((line) => line.startsWith("Враг:") && /2 раунда/.test(line)), pv.effects.join(" | "));
 });
 
 test("предпросмотр расходника, которого нет в сумке, объясняет причину", () => {

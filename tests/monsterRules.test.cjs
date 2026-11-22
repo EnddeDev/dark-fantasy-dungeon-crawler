@@ -36,6 +36,7 @@ function withRandom(value, fn) {
 /** Бой с заданным видом монстра. Герой крепкий, враг не получает случайных эффектов. */
 function fight(id, { hp = 200, atk, armor = 0, heroHp } = {}) {
   const pl = PlayerFactory.createInitial();
+  for (const k of Object.keys(pl.equip)) pl.equip[k] = null;
   const b = battle.newBattle(pl, 1, false, "classic", 0, 0);
   /* Регенерация снаряжения срабатывает в начале хода героя; случайный предмет не должен менять удар. */
   b.p.regenTurn = 0;
@@ -190,8 +191,10 @@ test("Угольный бес: каждое попадание поджигае�
   b.idx = 0;
   const next = withRandom(0.99, () => battle.enemyStep(b));
   assert.ok(next.p.hp < 1000, "удар прошёл");
-  assert.equal(next.p.statuses.burn, 1);
+  /* Горение на 1 ход: его единственный тик проходит сразу (v2), поэтому осталось 0. */
+  assert.equal(next.p.statuses.burn, 0, "единственный тик уже прошёл");
   assert.ok(next.p.statuses.burnTick > 0);
+  assert.ok(next.p.hp <= 1000 - 5 - next.p.statuses.burnTick, "удар и тик горения");
 });
 
 test("Страж из шлака: огонь наносит вдвое меньше, 10% физического урона возвращается", () => {
@@ -239,6 +242,8 @@ test("Пророк: объявляет ход в начале раунда и з
 
 test("Пророк: повтор приёма уклоняется с шансом 50%", () => {
   const b = fight("seer", { hp: 200 });
+  /* Приём задан явно: без оружейного приёма действие отказывает, а случайный нож его не даёт. */
+  b.p.weaponSkill = { ...content.WEAPON_TECHNIQUES.advance };
   b.queue = ["p", "e"];
   b.idx = 0;
   b.p.concentration = 5;
@@ -247,6 +252,7 @@ test("Пророк: повтор приёма уклоняется с шансо
   assert.equal(dodged.enemy.hp, 200, "при броске 0.1 < 0.5 уклоняется");
   assert.ok(dodged.log.some((l) => l.text.includes("предвидел повтор")));
   const again = fight("seer", { hp: 200 });
+  again.p.weaponSkill = { ...content.WEAPON_TECHNIQUES.advance };
   again.p.concentration = 5;
   again.lastSkill = "weapon_skill:";
   again.queue = ["p", "e"];

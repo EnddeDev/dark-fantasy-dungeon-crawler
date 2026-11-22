@@ -97,9 +97,9 @@ export const ENEMY_EFFECT_TITLE: Record<string, string> = {
 
 /** Что эффект делает с героем: подсказка у иконки приёма врага. Описание совпадает с подсказками статусов. */
 export const ENEMY_EFFECT_DESC: Record<string, string> = {
-  bleed: "Рана не затягивается: кровь идёт каждый раунд.",
-  poison: "Яд в крови разъедает изнутри каждый раунд.",
-  burn: "Огонь держится на тебе и жжёт каждый раунд.",
+  bleed: "Рана не затягивается: кровь идёт каждый твой ход.",
+  poison: "Яд в крови разъедает изнутри каждый твой ход.",
+  burn: "Огонь держится на тебе и жжёт каждый твой ход.",
   curse: "Твой урон снижен на силу проклятия.",
   fear: "В свой ход ты в защите: атаки и приёмы закрыты, сумка доступна.",
   stun: "Пропускаешь ходы: очередь короче на число ходов оглушения.",
@@ -114,6 +114,7 @@ export const ENEMY_EFFECT_DESC: Record<string, string> = {
 /** Процент для строк сводки. */
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 /** Склонение «раунд» для числа. */
+const turnWord = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? "ход" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? "хода" : "ходов");
 const roundWord = (n: number) => (n % 10 === 1 && n % 100 !== 11 ? "раунд" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? "раунда" : "раундов");
 /** Подсказка действия: изменение концентрации («Концентрация +1», «Концентрация 0»). */
 const concText = (delta: number) => (delta === 0 ? "Концентрация 0" : `Концентрация ${delta > 0 ? "+" : "−"}${Math.abs(delta)}`);
@@ -260,10 +261,19 @@ export function EnemyMoveTip({ mv, meta }: { mv: EnemyMoveView; meta?: { name: s
               <span className="font-mono tab">{fmt(bd.dotNow)}</span>
             </p>
           )}
-          {bd.dotNewMax > 0 && (
+          {bd.ticks.map((t, i) => (
+            <p key={`${t.id}${i}`} className="flex justify-between gap-3">
+              <span>
+                + {fmt(t.total)} {ENEMY_EFFECT_TITLE[t.id] ?? t.id}
+                <span className="ml-1 text-mute">за {t.rounds} {turnWord(t.rounds)}</span>
+              </span>
+              <span className="shrink-0 font-mono tab text-flamehi">{pct(t.chance)}</span>
+            </p>
+          ))}
+          {bd.passiveMax > 0 && (
             <p className="flex justify-between gap-3">
-              <span>Новые тики (приём и пассивы врага), до</span>
-              <span className="font-mono tab">{fmt(bd.dotNewMax)}</span>
+              <span>Пассивы врага, до</span>
+              <span className="font-mono tab">{fmt(bd.passiveMax)}</span>
             </p>
           )}
           <p className="flex justify-between gap-3">

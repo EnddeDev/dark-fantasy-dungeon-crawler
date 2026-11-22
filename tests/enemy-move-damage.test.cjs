@@ -60,6 +60,11 @@ function fixtureBattle(id = "fixture", race = "none") {
   b.p.statuses.smoke = 0;
   b.p.statuses.beat = 0;
   b.p.statuses.immune = {};
+  /* Очередь фиксирована: один ход врага и один ход героя. Случайный монстр с другой скоростью менял число тиков. */
+  b.p.ap = 1;
+  b.enemy.ap = 1;
+  b.queue = ["e", "p"];
+  b.idx = 0;
   return b;
 }
 
@@ -69,7 +74,8 @@ function fixtureBattle(id = "fixture", race = "none") {
  */
 function realHit(b0, move, which) {
   const b = JSON.parse(JSON.stringify(b0));
-  b.queue = ["e"];
+  /* Ход врага и начало хода героя: тик кровотечения и яда на ходе героя входит в урон за ход. */
+  b.queue = ["e", "p"];
   b.idx = 0;
   b.over = false;
   b.enemy.announced = move;

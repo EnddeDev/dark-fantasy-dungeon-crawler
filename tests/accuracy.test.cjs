@@ -51,6 +51,8 @@ function withRandom(fn, rng) {
 /** Бой без врага-помехи: монстр не бьёт, не сбивает броню и не уклоняется эффектами. */
 function fight(extra = {}) {
   const pl = PlayerFactory.createInitial();
+  /* Стартовое снаряжение с его случайными эффектами не нужно: тесты задают руки сами. */
+  for (const k of Object.keys(pl.equip)) pl.equip[k] = null;
   const b = withRandom(() => battle.newBattle(pl, 1, false, "classic", 0, 0), seeded(1));
   b.queue = ["p", "e", "p", "e"];
   b.idx = 0;
