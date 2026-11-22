@@ -194,6 +194,7 @@ import type {
 } from "./types";
 import { activeSkillEffects } from "./archetypeSkills";
 import { techniqueHitKind } from "./damageModel";
+import type { DamageNumberType } from "./damageNumbers";
 import { FLEE_BATTLE_LOSS_RATE } from "./runLoss";
 
 export interface LogLine {
@@ -203,6 +204,9 @@ export interface LogLine {
   /** Стихия удара: журнал показывает её иконку. */
   dmg?: DamageElement;
 }
+
+/** Число над персонажем: урон (с типом для цвета), промах, блок, лечение. */
+export type BattleFlash = { id: number; target: "p" | "e"; kind: "hit" | "guard" | "miss" | "heal"; amount: number; dmg?: DamageNumberType };
 
 export interface BattleState {
   floor: number;
@@ -514,7 +518,8 @@ export interface BattleState {
   over: null | "win" | "lose" | "flee";
   fleeRate: number;
   loot: { gold: number; items: string[]; gear: GearItem[]; xp: number };
-  flash: { id: number; target: "p" | "e"; kind: "hit" | "guard" | "miss" | "heal"; amount: number } | null;
+  /** Вспышки чисел за текущий шаг боя: все тики и удары, сбрасываются перед ходом героя. */
+  flashes: BattleFlash[];
 }
 
 /** Вид атаки: рискованная — максимум урона и меткость −15, обычная — как раньше, безопасная — минимум и меткость +15. */
@@ -1236,8 +1241,8 @@ function push(b: BattleState, text: string, kind: LogLine["kind"], dmg?: DamageE
   b.log = [...b.log.slice(-69), line];
 }
 
-function flash(b: BattleState, target: "p" | "e", kind: "hit" | "guard" | "miss" | "heal", amount: number) {
-  b.flash = { id: ++flashSeq, target, kind, amount };
+function flash(b: BattleState, target: "p" | "e", kind: "hit" | "guard" | "miss" | "heal", amount: number, dmg?: DamageNumberType) {
+  b.flashes = [...b.flashes, { id: ++flashSeq, target, kind, amount, ...(dmg ? { dmg } : {}) }];
 }
 
 export function newBattle(
@@ -1407,7 +1412,7 @@ export function newBattle(
     over: null,
     fleeRate: 0.7,
     loot: { gold: 0, items: [], gear: [], xp: s.xp },
-    flash: null,
+    flashes: [],
   };
 
   if (isBoss) {
@@ -1883,7 +1888,7 @@ function drainRoundTick(b: BattleState) {
   if (b.over || b.p.statuses.drain <= 0 || b.p.hp <= 0 || b.enemy.hp <= 0) return;
   const t = drainTick(b.p.maxHp, b.p.statuses.drain);
   b.p.hp = Math.max(0, b.p.hp - t.damage);
-  flash(b, "p", "hit", t.damage);
+  flash(b, "p", "hit", t.damage, "pure");
   const healed = Math.min(t.heal, Math.max(0, b.enemy.maxHp - b.enemy.hp));
   if (healed > 0) b.enemy.hp += healed;
   push(b, `Иссушение: −${t.damage} ОЗ; ${b.enemy.def.name} восстанавливает ${healed} ОЗ.`, "e");
@@ -2679,7 +2684,7 @@ export function hitEnemy(
   }
   const d = damageAfterEnemyDefense(b, raw, kind);
   b.enemy.hp -= d;
-  flash(b, "e", "hit", d);
+  flash(b, "e", "hit", d, element ?? kind);
   push(b, `${b.enemy.def.name} получает ${d} урона.${note}`, "p", element);
   /* Урон героя за его ход (для Эхо) и оглушение Обратного хвата (шанс 25%). */
   if (b.queue[b.idx] === "p") b.p.statuses.turnDealt = (b.p.statuses.turnDealt ?? 0) + d;
@@ -2997,7 +3002,7 @@ export function incoming(
     }
   }
   b.p.hp -= d;
-  flash(b, "p", "hit", d);
+  flash(b, "p", "hit", d, kind);
   push(b, `${src} — тебе ${d} урона.`, "e");
   /* Стена щитов (ранг 5): пока стоишь в защите, каждый удар врага получает ответ — броня ÷ 10. */
   if (b.p.guard && hasPassive(b, "skill_wall_b") && b.enemy.hp > 0 && b.p.hp > 0) {
@@ -3139,27 +3144,32 @@ function heroDotTick(b: BattleState, key: "wound" | "poison" | "burn" | "chill" 
     const stacks = playerDotStacks(b, "wound");
     d = s.woundTick * stacks;
     b.p.hp -= d;
+    if (d > 0) flash(b, "p", "hit", d, "bleed");
     push(b, `Кровотечение отнимает ${d} здоровья${stacks > 1 ? ` (${stacks} наложения)` : ""}.`, "sys");
   } else if (key === "poison") {
     if (s.poison <= 0) return false;
     const stacks = playerDotStacks(b, "poison");
     d = s.poisonTick * stacks;
     b.p.hp -= d;
+    if (d > 0) flash(b, "p", "hit", d, "poison");
     push(b, `Яд в твоей крови отнимает ${d} здоровья${stacks > 1 ? ` (${stacks} наложения)` : ""}.`, "e");
   } else if (key === "burn") {
     if (s.burn <= 0) return false;
     d = absorbBarrier(b, s.burnTick);
     b.p.hp -= d;
+    if (d > 0) flash(b, "p", "hit", d, "fire");
     push(b, `Горение отнимает ${d} здоровья.`, "e");
   } else if (key === "chill") {
     if (s.chill <= 0) return false;
     d = absorbBarrier(b, magicTickFrom(s.chillTick, heroChance(b, b.p.chanceLayers.magicResist)));
     b.p.hp -= d;
+    if (d > 0) flash(b, "p", "hit", d, "ice");
     push(b, `Обморожение отнимает ${d} здоровья и режет лечение вдвое.`, "e");
   } else {
     if (s.curse <= 0) return false;
     d = absorbBarrier(b, magicTickFrom(s.curseTick, heroChance(b, b.p.chanceLayers.magicResist)));
     b.p.hp -= d;
+    if (d > 0) flash(b, "p", "hit", d, "magic");
     push(b, `Проклятие выжигает ${d} здоровья.`, "e");
   }
   if (b.p.hp <= 0) {
@@ -3184,32 +3194,38 @@ function enemyDotTick(b: BattleState, key: "bleed" | "poison" | "burn" | "chill"
     const stacks = enemyDotStacks(b, "bleed");
     const d = s.bleedTick * stacks;
     b.enemy.hp -= d;
+    if (d > 0) flash(b, "e", "hit", d, "bleed");
     push(b, `${name} истекает кровью: −${d} ОЗ${stacks > 1 ? ` (${stacks} наложения)` : ""}.`, "p");
   } else if (key === "poison") {
     if (s.poison <= 0) return false;
     const stacks = enemyDotStacks(b, "poison");
     const d = s.poisonTick * stacks;
     b.enemy.hp -= d;
+    if (d > 0) flash(b, "e", "hit", d, "poison");
     push(b, `Яд разъедает ${name}: −${d} ОЗ${stacks > 1 ? ` (${stacks} наложения)` : ""}.`, "p");
   } else if (key === "burn") {
     if (s.burn <= 0) return false;
     const d = s.burnTick;
     b.enemy.hp -= d;
+    if (d > 0) flash(b, "e", "hit", d, "fire");
     push(b, `${name} горит: −${d} ОЗ.`, "p");
   } else if (key === "chill") {
     if (s.chill <= 0) return false;
     const d = magicTickFrom(s.chillTick, enemyMagicResist(b));
     b.enemy.hp -= d;
+    if (d > 0) flash(b, "e", "hit", d, "ice");
     push(b, `Обморожение отнимает ${d} ОЗ у ${name}.`, "p");
   } else if (key === "curse") {
     if (s.curse <= 0) return false;
     const d = magicTickFrom(s.curseTick, enemyMagicResist(b));
     b.enemy.hp -= d;
+    if (d > 0) flash(b, "e", "hit", d, "magic");
     push(b, `Проклятие выжигает ${d} ОЗ у ${name}.`, "p");
   } else {
     if (s.blight <= 0 || s.blightTick <= 0) return false;
     const d = s.blightTick;
     b.enemy.hp -= d;
+    if (d > 0) flash(b, "e", "hit", d, "poison");
     push(b, `Порча разъедает ${name}: −${d} ОЗ.`, "p");
   }
   return true;
@@ -3232,6 +3248,7 @@ function enemyOilTick(b: BattleState): boolean {
   if (raw <= 0 || mult <= 0) return false;
   const d = Math.max(1, Math.round(raw * mult));
   b.enemy.hp -= d;
+  flash(b, "e", "hit", d, element ?? (kind === "magic" ? "magic" : "phys"));
   const weak = mult > 1 ? ` Уязвимость ×${mult}.` : "";
   push(b, `${OIL_NAMES[kind]} масла отнимает ${d} ОЗ у ${b.enemy.def.name}.${weak}`, "p", element);
   return true;
@@ -3242,6 +3259,7 @@ function enemyEruptTick(b: BattleState): boolean {
   const tick = b.enemy.statuses.eruptTick ?? 0;
   if ((b.enemy.statuses.eruptRounds ?? 0) <= 0 || tick <= 0 || b.enemy.hp <= 0 || b.over) return false;
   b.enemy.hp -= tick;
+  flash(b, "e", "hit", tick, "fire");
   push(b, `Выброс жжёт ${b.enemy.def.name}: −${tick} ОЗ.`, "p");
   return true;
 }
@@ -3253,6 +3271,7 @@ function enemyDrainSteal(b: BattleState): boolean {
   if (stolen <= 0) return false;
   const taken = Math.min(stolen, b.enemy.hp);
   b.enemy.hp -= taken;
+  flash(b, "e", "hit", taken, "magic");
   const got = b.p.hp > 0 ? healPlayer(b, taken) : 0;
   push(b, `Иссушение: ${b.enemy.def.name} −${taken} ОЗ, ты +${got} здоровья.`, "p");
   return true;
@@ -3386,7 +3405,7 @@ function beginTurn(b: BattleState) {
   }
   if (b.biome === "ice" && side === "p") {
     b.p.hp = Math.max(0, b.p.hp - absorbBarrier(b, ICE_TURN_DAMAGE));
-    flash(b, "p", "hit", ICE_TURN_DAMAGE);
+    flash(b, "p", "hit", ICE_TURN_DAMAGE, "ice");
     push(b, `Ледяные просторы: холод отнимает ${ICE_TURN_DAMAGE} здоровья в начале твоего хода.`, "sys");
   }
 
@@ -3396,12 +3415,12 @@ function beginTurn(b: BattleState) {
     b.p.statuses.burning += 1;
     const dmg = fireBurnDamage(b.p.statuses.burning);
     b.p.hp = Math.max(0, b.p.hp - absorbBarrier(b, dmg));
-    flash(b, "p", "hit", dmg);
+    flash(b, "p", "hit", dmg, "fire");
     push(b, `Огненные недра: горение ×${b.p.statuses.burning} отнимает ${dmg} здоровья (каждый слой +${FIRE_BURN_STEP}).`, "sys");
     b.enemy.statuses.burning += 1;
     const eDmg = fireBurnDamage(b.enemy.statuses.burning);
     b.enemy.hp = Math.max(0, b.enemy.hp - eDmg);
-    flash(b, "e", "hit", eDmg);
+    flash(b, "e", "hit", eDmg, "fire");
     push(b, `Огненные недра: ${b.enemy.def.name} горит ×${b.enemy.statuses.burning} и теряет ${eDmg} здоровья.`, "sys");
   }
 
@@ -4061,8 +4080,9 @@ function canKeepActing(b: BattleState): boolean {
 
 export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
   if (b0.over || b0.queue[b0.idx] !== "p") return b0;
-  if (b0.p.statuses.stunAp > 0) return skipStunnedTurn(b0);
-  return actInternal(b0, a, true);
+  const b = { ...b0, flashes: [] };
+  if (b.p.statuses.stunAp > 0) return skipStunnedTurn(b);
+  return actInternal(b, a, true);
 }
 
 /** takeTurn=false — внутренний розыгрыш (бросок расходника приёмом дуэлянт): ход не тратится, концентрация не меняется. */
