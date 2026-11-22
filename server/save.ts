@@ -58,6 +58,7 @@ import { TRUST_MAX, type Cell, type Maze, type Run } from "../src/game/types";
 import { MAX_SIZE, MIN_SIZE } from "../src/game/maze";
 import { canPouch, POUCH_SLOTS } from "../src/game/pouch";
 import type { BiomeId } from "../src/game/biomes";
+import { TRAP_KINDS, type TrapKind } from "../src/game/traps";
 import type { ArmorSkillId } from "../src/game/types";
 import { HttpError } from "./http";
 
@@ -566,6 +567,21 @@ function sanitizeMaze(raw: unknown): Maze {
         mark.enemyId = o.enemyId as string;
       }
       return mark;
+    });
+  }
+  /* Виды монстров и ловушек на клетках: карта показывает их, бой и ловушка берут их же. */
+  if (m.monsterKinds !== undefined) {
+    maze.monsterKinds = listOf(m.monsterKinds, "виды монстров", 200, (k) => {
+      const o = asObject(k, "вид монстра");
+      if (typeof o.id !== "string" || !ENEMY_IDS.has(o.id)) bad("вид монстра");
+      return { cell: int(o.cell, 0, size * size - 1, "клетка монстра"), id: o.id as string };
+    });
+  }
+  if (m.trapKinds !== undefined) {
+    maze.trapKinds = listOf(m.trapKinds, "виды ловушек", 200, (k) => {
+      const o = asObject(k, "вид ловушки");
+      if (!TRAP_KINDS.includes(o.kind as TrapKind)) bad("вид ловушки");
+      return { cell: int(o.cell, 0, size * size - 1, "клетка ловушки"), kind: o.kind as TrapKind };
     });
   }
   if (m.eventSpawns !== undefined) {

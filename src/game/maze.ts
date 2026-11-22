@@ -1,6 +1,8 @@
 import type { Cell, EventSpawn, Maze } from "./types";
 import { biomeVision, mazeBiome, normalizeBiome, rollBiome, type BiomeId } from "./biomes";
 import { drawEventsForPlan, rollFloorEventPlan } from "./mapEvents";
+import { rollEnemy } from "./enemyPool";
+import { rollTrapKind, type TrapKind } from "./traps";
 
 export const MIN_SIZE = 8;
 export const MAX_SIZE = 16;
@@ -815,8 +817,21 @@ export function genMaze(size = MIN_SIZE, floor = Math.max(1, size - 7), biome?: 
   const farSpots = shuffledSpots.filter((i) => dist[Math.floor(i / size)][i % size] >= 3);
   const trapPool = farSpots.length >= trapCountFor(size) ? farSpots : shuffledSpots.slice();
   base.traps = spread(trapPool, trapCountFor(size));
+  /* Вид монстра и ловушки задаётся заранее: карта показывает то, что встретится. */
+  base.monsterKinds = base.monsters.map((cell) => ({ cell, id: rollEnemy(floor).id }));
+  base.trapKinds = base.traps.map((cell) => ({ cell, kind: rollTrapKind() }));
 
   return base;
+}
+
+/** Вид монстра на клетке из карты; у старых карт и клеток без записи — undefined. */
+export function monsterKindAt(m: Maze, cell: number): string | undefined {
+  return m.monsterKinds?.find((k) => k.cell === cell)?.id;
+}
+
+/** Вид ловушки на клетке из карты; у старых карт — undefined. */
+export function trapKindAt(m: Maze, cell: number): TrapKind | undefined {
+  return m.trapKinds?.find((k) => k.cell === cell)?.kind;
 }
 
 /**

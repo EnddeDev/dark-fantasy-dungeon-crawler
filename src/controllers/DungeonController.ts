@@ -3,7 +3,7 @@ import { biomeHealingAmount, mazeBiome } from "../game/biomes";
 import { playSfx } from "../audio/sfx";
 import { hpAfterGearChange } from "../game/progression";
 import { CHEST_RARITY_WEIGHTS, DUNGEON_GOLD_SHARE, GEAR_BASES, ITEMS, consumableIntReq, consumablePower, equipItem, grantXp, pick, reagentPoolForFloor, scaledGearStats, unequipSlot } from "../game/content";
-import { cellIdx, findPath, openDirs, trapsWithin, wallBetween } from "../game/maze";
+import { cellIdx, findPath, monsterKindAt, openDirs, trapKindAt, trapsWithin, wallBetween } from "../game/maze";
 import { pruneRunLoot } from "../game/runLoot";
 import { CHILL_HEAL_MULT, curseTickFrom, magicTickFrom, refreshedTick, trapTickFrom } from "../game/statusEffects";
 import { TRAP_AVOID_STAMINA, applyTrapOutcome, isBattleCurse, lockpickChance, makeTrap, resolveTrap, rollTrapKind, type TrapAction, type TrapOutcome, type TrapState } from "../game/traps";
@@ -701,7 +701,7 @@ export class DungeonController {
       const swiftBonus = d.rareAffixes.filter((x) => x === "swift").length * 0.12;
       const bypassBonus = (has("light_step") ? 0.3 : 0) + swiftBonus;
       const trap = makeTrap({
-        kind: rollTrapKind(), floor: r.floor, stats: player.stats, bypassBonus, stoneSkin: has("stone_skin"),
+        kind: trapKindAt(m, idx) ?? rollTrapKind(), floor: r.floor, stats: player.stats, bypassBonus, stoneSkin: has("stone_skin"),
         maxHp: d.maxHp, advantage: torchLit, revealed: (r.revealedTraps ?? []).includes(idx),
       });
       r = {
@@ -747,7 +747,7 @@ export class DungeonController {
       commitPlayer();
       this.model.setRun(r);
       this.model.setBattle(
-        newBattle({ ...player, hp, statuses, bag: stepBag }, r.floor, false, biome, 0, 0, undefined, questMark?.enemyId),
+        newBattle({ ...player, hp, statuses, bag: stepBag }, r.floor, false, biome, 0, 0, undefined, questMark?.enemyId ?? monsterKindAt(m, idx)),
       );
       this.model.setScreen("battle");
       return;
