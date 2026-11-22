@@ -46,6 +46,7 @@ import {
   battleItemAvailable,
   isFreePouchUse,
 } from "../game/battle";
+import type { BattleFlash } from "../game/battle";
 import { FoePortrait } from "./FoeArt";
 import { ItemArt } from "./ItemArt";
 import { SummaryRow, type SummaryRowData } from "./SummaryRow";
@@ -59,6 +60,7 @@ import { enemyEffects, learnedEffects, type TabEffect } from "../game/effectEntr
 import { EffectChips } from "./EffectChips";
 import { EffectGlyph } from "./EffectIcon";
 import { DamageTypeTag, ElementRow } from "./DamageTypeIcon";
+import { DAMAGE_NUMBER_COLORS } from "../game/damageNumbers";
 import { raceElementRows } from "../game/damageTypes";
 import { skillReadiness } from "../game/skillReadiness";
 import { consumablePreview } from "../game/consumablePreview";
@@ -411,6 +413,19 @@ export function InfoTag({
   );
 }
 
+/** Текст числа над персонажем: урон, промах, блок или лечение. */
+function flashText(f: BattleFlash): string {
+  if (f.kind === "heal") return `+${f.amount}`;
+  if (f.kind === "miss") return "мимо";
+  if (f.kind === "guard") return "−";
+  return `−${f.amount}`;
+}
+
+/** Цвет урона по типу; без типа — цвет по умолчанию из класса. */
+function flashColor(f: BattleFlash): { color: string } | undefined {
+  return f.kind === "hit" && f.dmg ? { color: DAMAGE_NUMBER_COLORS[f.dmg] } : undefined;
+}
+
 export function BattleView({
   battle,
   onAct,
@@ -444,6 +459,7 @@ export function BattleView({
   const activeQuests = player ? logOf(player).active.length : 0;
   const myTurn = !b.over && b.queue[b.idx] === "p";
   const e = b.enemy;
+  const enemyFlashes = b.flashes.filter((f) => f.target === "e");
   const earnedXp = b.loot.xp;
 
   useEffect(() => {
@@ -855,11 +871,15 @@ export function BattleView({
               )}
             </div>
 
-            {b.flash && b.flash.target === "p" && (
-              <span key={b.flash.id} className="hitflash pointer-events-none mt-1 block font-mono text-lg text-rubric">
-                {b.flash.kind === "heal" ? `+${b.flash.amount}` : b.flash.kind === "miss" ? "мимо" : `−${b.flash.amount}`}
+            {b.flashes.filter((f) => f.target === "p").map((f) => (
+              <span
+                key={f.id}
+                className="hitflash pointer-events-none mt-1 block font-mono text-lg text-rubric"
+                style={flashColor(f)}
+              >
+                {flashText(f)}
               </span>
-            )}
+            ))}
           </div>
 
         </div>
@@ -1126,16 +1146,24 @@ export function BattleView({
                 <FoePortrait id={e.def.id} art={e.def.art} name={e.def.name} />
                 <div className="absolute inset-0 bg-gradient-to-t from-soot via-soot/10 to-transparent" />
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,transparent_40%,rgba(0,0,0,0.65)_100%)]" />
-                {b.flash && b.flash.target === "e" && (
+                {enemyFlashes.length > 0 && (
                   <div
-                    key={b.flash.id}
+                    key={enemyFlashes[enemyFlashes.length - 1].id}
                     className={`hitflash pointer-events-none absolute inset-0 flex items-center justify-center ${
-                      b.flash.kind === "guard" ? "bg-verd/25" : "bg-rubric/30"
+                      enemyFlashes[enemyFlashes.length - 1].kind === "guard" ? "bg-verd/25" : "bg-rubric/30"
                     }`}
                   >
-                    <span className="font-mono text-4xl text-parch drop-shadow-[0_2px_6px_#000]">
-                      {b.flash.kind === "miss" ? "мимо" : b.flash.kind === "guard" ? "−" : `−${b.flash.amount}`}
-                    </span>
+                    <div className="flex flex-col items-center gap-1">
+                      {enemyFlashes.map((f) => (
+                        <span
+                          key={f.id}
+                          className={`font-mono text-parch drop-shadow-[0_2px_6px_#000] ${enemyFlashes.length > 2 ? "text-2xl" : "text-4xl"}`}
+                          style={flashColor(f)}
+                        >
+                          {flashText(f)}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
