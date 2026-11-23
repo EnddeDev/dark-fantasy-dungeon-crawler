@@ -92,7 +92,7 @@ export class GameController {
     const split = departureSplit(player, picked);
     /* Задания этажа ставят метки на карту; благословение священника вступает в силу. */
     const quests = questsForFloor(player, floor);
-    const maze = placeQuestMarks(genMaze(mazeSizeForFloor(floor), floor), quests);
+    const maze = placeQuestMarks(genMaze(mazeSizeForFloor(floor), floor), quests, Math.random, floor);
     const blessed = startRunBlessing(player);
     const nextPlayer: Player = {
       ...blessed,
@@ -195,7 +195,7 @@ export class GameController {
     const { run, player, best } = this.model.getSnapshot();
     if (!run || !run.maze.bossDefeated) return;
     const nf = run.floor + 1;
-    const maze = placeQuestMarks(genMaze(mazeSizeForFloor(nf), nf), questsForFloor(player, nf));
+    const maze = placeQuestMarks(genMaze(mazeSizeForFloor(nf), nf), questsForFloor(player, nf), Math.random, nf);
     const d = derived(player);
     const nextBest = Math.max(best, nf);
     if (nf > best) this.saves.writeBest(nf);

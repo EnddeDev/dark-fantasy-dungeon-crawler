@@ -19,6 +19,9 @@ const content = load("content");
 const traps = load("traps");
 const quests = load("quests");
 const art = load("artManifest");
+const raceArt = load("raceArt", "src/game/raceArt.ts");
+const battle = load("battle");
+const fs2 = require("node:fs");
 
 test("genMaze: каждый монстр и каждая ловушка получают вид на клетке", () => {
   for (let i = 0; i < 20; i++) {
@@ -44,10 +47,32 @@ test("вид ловушки на карте — один из типов лов�
   for (const k of m.trapKinds) assert.ok(traps.TRAP_KINDS.includes(k.kind), k.kind);
 });
 
-test("у каждого вида монстра есть портрет", () => {
+test("у каждой расы и каждой угрозы есть картина в public/images/races", () => {
   for (const e of content.ENEMIES) {
-    assert.ok(art.foeArtSrc(e.id), `нет картины для ${e.id}`);
+    for (const t of raceArt.RACE_ART_THREATS) {
+      const src = raceArt.monsterRaceArtSrc(e.id, t);
+      assert.ok(src, `нет расы для ${e.id}`);
+      assert.ok(fs2.existsSync(path.join("public", src)), `нет файла ${src}`);
+    }
   }
+});
+
+test("угроза с карты передаётся в бой: монстр выходит с тем же типом, что на клетке", () => {
+  const m = maze.genMaze(12, 9);
+  for (const c of m.monsters) {
+    const kind = maze.monsterKindAt(m, c);
+    const threat = maze.monsterThreatAt(m, c);
+    assert.ok(threat, `клетка ${c} без угрозы`);
+    const s = battle.spawnEnemy(9, false, Math.random, threat, kind);
+    assert.equal(s.threat, threat);
+    assert.equal(s.def.id, kind);
+  }
+});
+
+test("старая карта без угрозы: угроза не задана, бой выбирает её сам", () => {
+  const m = maze.genMaze(10, 6);
+  const old = { ...m, monsterKinds: m.monsterKinds.map(({ threat, ...k }) => k) };
+  assert.equal(maze.monsterThreatAt(old, m.monsters[0]), undefined);
 });
 
 test("старая карта без видов: поиск возвращает undefined, бой берёт случайный вид", () => {

@@ -34,6 +34,7 @@ const { heroItemEffects, learnedEffects, enemyEffects } = load("src/game/effectE
 const battle = load("src/game/battle.ts", "battle");
 const monsters = load("src/game/monsters.ts", "monsters");
 const artManifest = load("src/game/artManifest.ts", "art-manifest");
+const raceArt = load("src/game/raceArt.ts", "race-art");
 
 /** Бой с нейтральным врагом: род «никакой» и тип «сильный» не дают ни уклонения, ни иммунитетов. */
 function freshBattle(pl, floor, isBoss, biome, torchTurns, burning) {
@@ -196,7 +197,8 @@ test("dungeon draws the hero, the fixed monster picture and the trap picture on 
     onCancelPath: noop, onResumePath: noop,
   }));
   assert.ok(html.includes("images/map/hero.jpg"), "герой нарисован картинкой");
-  assert.ok(html.includes(artManifest.foeArtSrc(kind)), "монстр нарисован закреплённым портретом");
+  const threat = m.monsterKinds.find((k) => k.cell === cell).threat;
+  assert.ok(html.includes(raceArt.monsterRaceArtSrc(kind, threat)), "монстр нарисован картиной расы и угрозы");
   assert.ok(html.includes("images/map/trap-"), "ловушки нарисованы картинками");
 });
 
