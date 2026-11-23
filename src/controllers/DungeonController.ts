@@ -4,6 +4,9 @@ import { playSfx } from "../audio/sfx";
 import { hpAfterGearChange } from "../game/progression";
 import { CHEST_RARITY_WEIGHTS, DUNGEON_GOLD_SHARE, GEAR_BASES, ITEMS, consumableIntReq, consumablePower, equipItem, grantXp, pick, reagentPoolForFloor, scaledGearStats, unequipSlot } from "../game/content";
 import { cellIdx, findPath, monsterKindAt, monsterThreatAt, openDirs, trapKindAt, trapsWithin, wallBetween } from "../game/maze";
+import { moveMonsters } from "../game/monsterMove";
+import { rollEnemy } from "../game/enemyPool";
+import { rollThreat } from "../game/content";
 import { pruneRunLoot } from "../game/runLoot";
 import { CHILL_HEAL_MULT, curseTickFrom, magicTickFrom, refreshedTick, trapTickFrom } from "../game/statusEffects";
 import { TRAP_AVOID_STAMINA, applyTrapOutcome, isBattleCurse, lockpickChance, makeTrap, resolveTrap, rollTrapKind, type TrapAction, type TrapOutcome, type TrapState } from "../game/traps";
@@ -259,7 +262,15 @@ export class DungeonController {
       const spawned = this.packCells(next, ev.summon.pack);
       next = {
         ...next,
-        maze: { ...next.maze, monsters: [...next.maze.monsters, ...spawned] },
+        maze: {
+          ...next.maze,
+          monsters: [...next.maze.monsters, ...spawned],
+          /* Стая тоже ходит: у каждой твари свой вид и угроза на клетке. */
+          monsterKinds: [
+            ...(next.maze.monsterKinds ?? []),
+            ...spawned.map((cell) => ({ cell, id: rollEnemy(next.floor).id, threat: rollThreat(Math.random, next.floor) })),
+          ],
+        },
         clearedMonsters: (next.clearedMonsters ?? []).filter((c) => !spawned.includes(c)),
       };
       next.log = [...next.log, spawned.length ? `Рядом объявились твари: ${spawned.length}.` : "Твари рычат где-то рядом, но в комнату не входят."];
@@ -515,7 +526,37 @@ export class DungeonController {
     this.model.logRun(msg);
   }
 
+  /** Шаг героя, затем ход монстров (если шаг не открыл окно и не начал бой). */
   private stepInto(nx: number, ny: number, base?: Run): void {
+    this.stepIntoCore(nx, ny, base);
+    /* Ход монстров только если шаг состоялся: иначе (окно, бой, событие) состояние не трогаем. */
+    const after = this.state.run;
+    if (after && after.pos.x === nx && after.pos.y === ny) this.monstersTurn();
+  }
+
+  /** Монстры ходят после каждого шага героя: видят его, преследуют или бродят. Босс на месте. */
+  private monstersTurn(): void {
+    const { run, screen, modal, player } = this.state;
+    if (screen !== "dungeon" || modal || !run) return;
+    const turn = moveMonsters(run.maze, run.pos, run.clearedMonsters ?? []);
+    if (turn.contact) {
+      /* Тварь дошла до героя: бой начинается на клетке героя. */
+      const r: Run = {
+        ...run,
+        maze: turn.maze,
+        battleCell: turn.contact.cell,
+        log: [...run.log, "Тварь набрасывается на тебя из темноты."],
+      };
+      this.model.setRun(r);
+      this.model.setBattle(newBattle({ ...player }, r.floor, false, mazeBiome(r.maze), 0, 0, turn.contact.threat, turn.contact.id));
+      this.model.setScreen("battle");
+      return;
+    }
+    const log = turn.noticed > 0 ? [...run.log, "Тварь заметила тебя."] : run.log;
+    this.model.setRun({ ...run, maze: turn.maze, log });
+  }
+
+  private stepIntoCore(nx: number, ny: number, base?: Run): void {
     const { run, player } = this.state;
     const src = base ?? run;
     if (!src) return;
