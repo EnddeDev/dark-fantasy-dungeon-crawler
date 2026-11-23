@@ -713,3 +713,13 @@ test("карточка эффекта: короткое значение — п�
   assert.equal(effectShortValue("ap", 1), "1", "ходы — число");
   assert.equal(effectShortValue("consumable_scale", 2), "2×ЛОВ");
 });
+
+test("монстры рисуются поверх тумана: иначе на раскрытой карте они под непрозрачной тьмой и не видны", () => {
+  const src = fs.readFileSync("src/components/Dungeon.tsx", "utf8");
+  const fog = src.indexOf("{dark.map((c) => (");
+  const monsters = src.indexOf("Монстры этажа: видны в круге света");
+  const walls = src.indexOf("Стены лабиринта: поверх тумана");
+  assert.ok(fog > 0 && monsters > 0 && walls > 0, "слои найдены в Dungeon.tsx");
+  assert.ok(monsters > fog, "слой монстров идёт после тумана");
+  assert.ok(monsters < walls, "слой монстров под стенами, как и раньше");
+});

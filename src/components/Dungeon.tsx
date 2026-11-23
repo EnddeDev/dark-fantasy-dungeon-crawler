@@ -465,36 +465,6 @@ export function Dungeon({
                   );
                 })}
 
-              {/* Монстры этажа: видны в круге света; на раскрытой карте — приглушённо */}
-              {m.monsters
-                .filter((i) => !(run.clearedMonsters ?? []).includes(i))
-                .map((i) => {
-                  const x = i % S;
-                  const y = Math.floor(i / S);
-                  const lit = visAt(x, y) === 1;
-                  const marked = !!run.mapRevealed && visAt(x, y) === 0;
-                  if (!lit && !marked) return null;
-                  const art = monsterKindAt(m, i);
-                  const threat = monsterThreatAt(m, i);
-                  /* Картина по расе и угрозе; у старых карт без угрозы — прежний портрет вида. */
-                  const src = art ? (threat ? monsterRaceArtSrc(art, threat) : null) ?? foeArtSrc(art) : null;
-                  return (
-                    <g key={`mo${i}`} transform={`translate(${x * CS + CS / 2} ${y * CS + CS / 2})`} opacity={lit ? 1 : 0.5}>
-                      <circle r={11} fill={colors.fog} opacity="0.4" />
-                      {src ? (
-                        <MapToken id={`map-mo-${i}`} href={src} r={12} ring={colors.wallShadow} />
-                      ) : (
-                        <>
-                          <path d="M-8 2l-3-7 7 3h8l7-3-3 7z" fill="#1b1310" stroke={colors.wallShadow} strokeWidth="1.4" />
-                          <circle cx={-3} cy={-1} r={1.7} fill="#e04a2a" />
-                          <circle cx={3} cy={-1} r={1.7} fill="#e04a2a" />
-                          <path d="M-4 6h8" stroke="#f6d48a" strokeWidth="1.1" strokeLinecap="round" />
-                        </>
-                      )}
-                    </g>
-                  );
-                })}
-
               {/* Ловушки скрыты, пока карта или факел их не раскроют. Сработавшие не показываем. */}
               {(m.traps ?? [])
                 .filter((i) => (run.revealedTraps ?? []).includes(i) && !(run.sprungTraps ?? []).includes(i))
@@ -543,6 +513,36 @@ export function Dungeon({
               {dark.map((c) => (
                 <rect key={`z${c.x}-${c.y}`} x={c.x * CS} y={c.y * CS} width={CS} height={CS} fill="url(#fogHatch)" opacity={c.o} />
               ))}
+
+              {/* Монстры этажа: видны в круге света; на раскрытой карте — приглушённо */}
+              {m.monsters
+                .filter((i) => !(run.clearedMonsters ?? []).includes(i))
+                .map((i) => {
+                  const x = i % S;
+                  const y = Math.floor(i / S);
+                  const lit = visAt(x, y) === 1;
+                  const marked = !!run.mapRevealed && visAt(x, y) === 0;
+                  if (!lit && !marked) return null;
+                  const art = monsterKindAt(m, i);
+                  const threat = monsterThreatAt(m, i);
+                  /* Картина по расе и угрозе; у старых карт без угрозы — прежний портрет вида. */
+                  const src = art ? (threat ? monsterRaceArtSrc(art, threat) : null) ?? foeArtSrc(art) : null;
+                  return (
+                    <g key={`mo${i}`} transform={`translate(${x * CS + CS / 2} ${y * CS + CS / 2})`} opacity={lit ? 1 : 0.5}>
+                      <circle r={11} fill={colors.fog} opacity="0.4" />
+                      {src ? (
+                        <MapToken id={`map-mo-${i}`} href={src} r={12} ring={colors.wallShadow} />
+                      ) : (
+                        <>
+                          <path d="M-8 2l-3-7 7 3h8l7-3-3 7z" fill="#1b1310" stroke={colors.wallShadow} strokeWidth="1.4" />
+                          <circle cx={-3} cy={-1} r={1.7} fill="#e04a2a" />
+                          <circle cx={3} cy={-1} r={1.7} fill="#e04a2a" />
+                          <path d="M-4 6h8" stroke="#f6d48a" strokeWidth="1.1" strokeLinecap="round" />
+                        </>
+                      )}
+                    </g>
+                  );
+                })}
 
               {/* Стены лабиринта: поверх тумана, трёхслойная тёплая кладка с золотой факельной кромкой */}
               <path d={wallPath} stroke={colors.wallShadow} strokeWidth="7" strokeLinecap="square" fill="none" opacity="0.95" />
