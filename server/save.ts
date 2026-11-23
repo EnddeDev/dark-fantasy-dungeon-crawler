@@ -54,7 +54,9 @@ import {
   type Slot,
   type StatKey,
 } from "../src/game/types";
-import { TRUST_MAX, type Cell, type Maze, type Run } from "../src/game/types";
+import { TRUST_MAX, type Cell, type Maze, type Run, type Threat } from "../src/game/types";
+
+const THREATS: readonly Threat[] = ["normal", "horror", "catastrophe"];
 import { MAX_SIZE, MIN_SIZE } from "../src/game/maze";
 import { canPouch, POUCH_SLOTS } from "../src/game/pouch";
 import type { BiomeId } from "../src/game/biomes";
@@ -574,7 +576,8 @@ function sanitizeMaze(raw: unknown): Maze {
     maze.monsterKinds = listOf(m.monsterKinds, "виды монстров", 200, (k) => {
       const o = asObject(k, "вид монстра");
       if (typeof o.id !== "string" || !ENEMY_IDS.has(o.id)) bad("вид монстра");
-      return { cell: int(o.cell, 0, size * size - 1, "клетка монстра"), id: o.id as string };
+      const threat = THREATS.includes(o.threat as Threat) ? (o.threat as Threat) : undefined;
+      return { cell: int(o.cell, 0, size * size - 1, "клетка монстра"), id: o.id as string, ...(threat ? { threat } : {}) };
     });
   }
   if (m.trapKinds !== undefined) {

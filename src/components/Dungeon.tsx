@@ -3,8 +3,9 @@ import { Fragment, useMemo, useState } from "react";
 import { Footprints, X } from "lucide-react";
 import { ITEMS, canTwoHandGrip, canWear, consumableIntReq, consumablePower, slotsForItem, wearRequirementNote } from "../game/content";
 import { Btn } from "./ui";
-import { TORCH, computeVisibility, monsterKindAt, openDirs, trapKindAt } from "../game/maze";
+import { TORCH, computeVisibility, monsterKindAt, monsterThreatAt, openDirs, trapKindAt } from "../game/maze";
 import { foeArtSrc } from "../game/artManifest";
+import { monsterRaceArtSrc } from "../game/raceArt";
 import { logOf, markAlwaysVisible } from "../game/quests";
 import { BIOMES, BIOME_MAP_COLORS, biomeHealingAmount, biomeVision, mazeBiome } from "../game/biomes";
 import { BiomeRule, biomeStyle } from "./BiomeLabel";
@@ -474,7 +475,9 @@ export function Dungeon({
                   const marked = !!run.mapRevealed && visAt(x, y) === 0;
                   if (!lit && !marked) return null;
                   const art = monsterKindAt(m, i);
-                  const src = art ? foeArtSrc(art) : null;
+                  const threat = monsterThreatAt(m, i);
+                  /* Картина по расе и угрозе; у старых карт без угрозы — прежний портрет вида. */
+                  const src = art ? (threat ? monsterRaceArtSrc(art, threat) : null) ?? foeArtSrc(art) : null;
                   return (
                     <g key={`mo${i}`} transform={`translate(${x * CS + CS / 2} ${y * CS + CS / 2})`} opacity={lit ? 1 : 0.5}>
                       <circle r={11} fill={colors.fog} opacity="0.4" />

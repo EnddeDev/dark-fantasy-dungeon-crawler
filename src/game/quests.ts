@@ -19,6 +19,7 @@ import {
   randInt,
   reagentPoolForFloor,
   rollQuestGear,
+  rollThreat,
   GEAR_BASES,
   createGearItem,
   scaledGearStats,
@@ -718,7 +719,12 @@ export function questsForFloor(player: Player, floor: number): Quest[] {
  * Ставит метки заданий на карту этажа: убийство и трофей — на монстров (monsters),
  * остатки и товарищ — на свободные клетки. Метка не ставится на вход, лестницу и босса.
  */
-export function placeQuestMarks(maze: Maze, quests: Quest[], rng: () => number = Math.random): Maze {
+export function placeQuestMarks(
+  maze: Maze,
+  quests: Quest[],
+  rng: () => number = Math.random,
+  floor = Math.max(1, maze.size - 7),
+): Maze {
   if (!quests.length) return maze;
   const size = maze.size;
   const taken = new Set<number>([
@@ -753,7 +759,7 @@ export function placeQuestMarks(maze: Maze, quests: Quest[], rng: () => number =
       const cell = takeCell();
       if (cell === null) continue;
       monsters.push(cell);
-      monsterKinds.push({ cell, id: q.enemyId });
+      monsterKinds.push({ cell, id: q.enemyId, threat: rollThreat(rng, floor) });
       marks.push({ cell, questId: q.id, kind: "kill", enemyId: q.enemyId, label: `Охота: ${q.enemyName ?? q.enemyId}` });
     } else if (q.kind === "fetch") {
       const cell = takeCell();
@@ -761,7 +767,7 @@ export function placeQuestMarks(maze: Maze, quests: Quest[], rng: () => number =
       const label = q.itemName ?? q.title;
       if (q.source === "drop" && q.enemyId) {
         monsters.push(cell);
-        monsterKinds.push({ cell, id: q.enemyId });
+        monsterKinds.push({ cell, id: q.enemyId, threat: rollThreat(rng, floor) });
         marks.push({ cell, questId: q.id, kind: "drop", enemyId: q.enemyId, label });
       } else {
         marks.push({ cell, questId: q.id, kind: q.source === "captive" ? "captive" : "remains", label });
