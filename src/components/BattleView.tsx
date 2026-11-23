@@ -1108,7 +1108,7 @@ export function BattleView({
             )}
             <div className="relative aspect-[5/4] w-full border-b border-line bg-soot">
               <div className="absolute inset-0 overflow-hidden">
-                <FoePortrait id={e.def.id} art={e.def.art} name={e.def.name} threat={e.threat} />
+                <FoePortrait id={e.def.id} art={e.def.art} name={e.def.name} />
                 <div className="absolute inset-0 bg-gradient-to-t from-soot via-soot/10 to-transparent" />
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,transparent_40%,rgba(0,0,0,0.65)_100%)]" />
                 {enemyFlashes.length > 0 && (
