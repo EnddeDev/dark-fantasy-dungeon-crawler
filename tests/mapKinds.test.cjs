@@ -109,3 +109,18 @@ test("сервер: виды монстров и ловушек сохраняю
   bad.maze.monsterKinds[0].id = "no-such-monster";
   assert.throws(() => save.sanitizeRun(bad), "неизвестный вид монстра отклоняется");
 });
+
+test("сервер: погоня монстра (hunt) сохраняется, плохие координаты отклоняются", () => {
+  const save = load("server-save-hunt", "server/save.ts");
+  const m = maze.genMaze(10, 6);
+  const withHunt = { ...m, monsterKinds: m.monsterKinds.map((k, i) => (i === 0 ? { ...k, hunt: { x: 2, y: 3, left: 2 } } : k)) };
+  const raw = JSON.parse(JSON.stringify({ floor: 6, maze: withHunt, pos: m.start, prevPos: m.start, seen: {}, steps: 0, gold: 0, loot: [], gearLoot: [], keys: 0, log: [], torchTurns: 0, mapRevealed: false, revealedTraps: [] }));
+  const clean = save.sanitizeRun(raw);
+  assert.deepEqual(clean.maze.monsterKinds[0].hunt, { x: 2, y: 3, left: 2 }, "погоня не теряется");
+  assert.equal(clean.maze.monsterKinds[1].hunt, undefined, "без погони поля нет");
+  const bad = JSON.parse(JSON.stringify(raw));
+  bad.maze.monsterKinds[0].hunt.left = 9;
+  assert.equal(save.sanitizeRun(bad).maze.monsterKinds[0].hunt.left, 2, "больше двух шагов обрезается до двух");
+  bad.maze.monsterKinds[0].hunt.left = "много";
+  assert.throws(() => save.sanitizeRun(bad), "нечисловой остаток отклоняется");
+});

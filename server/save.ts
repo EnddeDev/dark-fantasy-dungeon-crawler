@@ -577,7 +577,20 @@ function sanitizeMaze(raw: unknown): Maze {
       const o = asObject(k, "вид монстра");
       if (typeof o.id !== "string" || !ENEMY_IDS.has(o.id)) bad("вид монстра");
       const threat = THREATS.includes(o.threat as Threat) ? (o.threat as Threat) : undefined;
-      return { cell: int(o.cell, 0, size * size - 1, "клетка монстра"), id: o.id as string, ...(threat ? { threat } : {}) };
+      /* Погоня: куда монстр пойдёт, если потерял героя из виду (до двух шагов). */
+      const hunt =
+        o.hunt === undefined
+          ? undefined
+          : (() => {
+              const h = asObject(o.hunt, "погоня монстра");
+              return { x: int(h.x, 0, size - 1, "погоня монстра"), y: int(h.y, 0, size - 1, "погоня монстра"), left: int(h.left, 0, 2, "погоня монстра") };
+            })();
+      return {
+        cell: int(o.cell, 0, size * size - 1, "клетка монстра"),
+        id: o.id as string,
+        ...(threat ? { threat } : {}),
+        ...(hunt ? { hunt } : {}),
+      };
     });
   }
   if (m.trapKinds !== undefined) {
