@@ -1,7 +1,5 @@
 import type { CSSProperties } from "react";
 import { foeArtSrc } from "../game/artManifest";
-import { monsterRaceArtSrc } from "../game/raceArt";
-import type { Threat } from "../game/types";
 
 /**
  * Художественные портреты всех существ подземелья.
@@ -87,16 +85,13 @@ export function FoePortrait({
   id,
   art,
   name,
-  threat,
   className = "",
   style,
 }: {
-  /** Игровой id существа: по нему ищется картина расы (или портрет босса). */
+  /** Игровой id существа: по нему ищется индивидуальный портрет. */
   id?: string;
   art: string;
   name?: string;
-  /** Угроза существа: выбирает картину расы (обычный, ужас, катастрофа). По умолчанию — обычный. */
-  threat?: Threat;
   className?: string;
   style?: CSSProperties;
 }) {
@@ -106,7 +101,7 @@ export function FoePortrait({
     base: art.startsWith("images/") ? art : "images/foe-vermin.jpg",
     filter: "none",
   };
-  const individual = id ? monsterRaceArtSrc(id, threat ?? "normal") ?? foeArtSrc(id) : null;
+  const individual = id ? foeArtSrc(id) : null;
   const base = individual ?? conf.base;
   const filter = individual ? "none" : conf.filter;
   const overlay = individual ? undefined : conf.overlay;
