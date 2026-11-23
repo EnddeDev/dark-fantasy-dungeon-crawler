@@ -93,40 +93,44 @@ test("видит героя — идёт к нему и запоминает, г
 });
 
 test("потерял из виду — два шага к последней точке, потом ходит случайно", () => {
+  /* Герой должен быть невидим и с обеих клеток маршрута, иначе монстр снова возьмёт его в погоню. */
   let found = null;
-  for (let i = 0; i < 80 && !found; i++) {
-    const { m, c, kind } = oneMonsterMaze(i);
+  for (let i = 0; i < 300 && !found; i++) {
+    const { m: raw, c, kind } = oneMonsterMaze(i);
+    /* Та же карта, что и в ходе: один монстр, без меток задания. */
+    const m = solo(raw, c, raw.monsterKinds.find((k) => k.cell === c));
     const from = cellOf(m, c);
-    const target = [];
-    for (let y = 0; y < m.size; y++)
-      for (let x = 0; x < m.size; x++) {
-        const p = { x, y };
-        const d = dist(m, from, p);
-        if (d >= 4 && d <= 6 && !mm.monsterSees(m, from, p) && reachable(m, from, p)) target.push(p);
+    const blocked = mm.blockedCells(m);
+    for (let y = 0; y < m.size && !found; y++)
+      for (let x = 0; x < m.size && !found; x++) {
+        const target = { x, y };
+        const d = dist(m, from, target);
+        if (!(d >= 4 && d <= 6) || !reachable(m, from, target)) continue;
+        const step1 = mm.nextStepToward(m, from, target, blocked);
+        const step2 = step1 && mm.nextStepToward(m, step1, target, blocked);
+        if (!step1 || !step2) continue;
+        for (let py = 0; py < m.size && !found; py++)
+          for (let px = 0; px < m.size && !found; px++) {
+            const p = { x: px, y: py };
+            const same = (q) => q && q.x === p.x && q.y === p.y;
+            if (same(from) || same(step1) || same(step2) || same(target)) continue;
+            if (mm.monsterSees(m, from, p) || mm.monsterSees(m, step1, p) || mm.monsterSees(m, step2, p)) continue;
+            found = { m, c, kind, target, from, player: p, step1, step2 };
+          }
       }
-    if (target.length) found = { m, c, kind, target: target[0], from };
   }
   assert.ok(found, "нет подходящей карты");
-  const { c, kind, target, from } = found;
-  const m0 = solo(found.m, c, found.m.monsterKinds.find((k) => k.cell === c));
-  const m = m0;
-  const withHunt = { ...m0, monsterKinds: [{ ...m0.monsterKinds[0], hunt: { x: target.x, y: target.y, left: 2 } }] };
-  /* Герой вне обзора монстра: монстр идёт по последней точке. */
-  let player = null;
-  for (let y = 0; y < m.size && !player; y++)
-    for (let x = 0; x < m.size && !player; x++)
-      if (!mm.monsterSees(m, from, { x, y }) && !(x === from.x && y === from.y)) player = { x, y };
-  const blocked = mm.blockedCells(m);
-  const step1 = mm.nextStepToward(m, from, target, blocked);
+  const { m, c, kind, target, from, player, step1, step2 } = found;
+  const withHunt = { ...m, monsterKinds: [{ ...m.monsterKinds[0], hunt: { x: target.x, y: target.y, left: 2 } }] };
   const t1 = mm.moveMonsters(withHunt, player, [], () => 0.5);
   const p1 = cellOf(t1.maze, t1.maze.monsters[0]);
   assert.deepEqual(p1, step1, "первый шаг по пути к последней точке");
   assert.equal(t1.maze.monsterKinds[0].hunt?.left, 1, "после первого шага остался один шаг");
-  const step2 = mm.nextStepToward(t1.maze, p1, target, mm.blockedCells(t1.maze));
   const t2 = mm.moveMonsters(t1.maze, player, [], () => 0.5);
   const p2 = cellOf(t2.maze, t2.maze.monsters[0]);
   assert.deepEqual(p2, step2, "второй шаг по пути к последней точке");
   assert.equal(t2.maze.monsterKinds[0].hunt, undefined, "после двух шагов погоня окончена, дальше случайно");
+  assert.ok(kind, "вид монстра есть");
 });
 
 test("дошёл до героя — контакт: клетка монстра становится клеткой героя", () => {
@@ -184,4 +188,41 @@ test("старая карта без видов: монстры стоят на 
   const old = { ...m0, monsterKinds: undefined };
   const t = mm.moveMonsters(old, { x: 0, y: 0 }, [], () => 0.5);
   assert.deepEqual(t.maze.monsters, old.monsters);
+});
+
+test("каждый монстр видит сам: не видящий героя не бежит, даже если рядом другой монстр его увидел", () => {
+  let found = null;
+  for (let i = 0; i < 300 && !found; i++) {
+    const m = maze.genMaze(14, 10);
+    const open = [];
+    for (let c = 0; c < m.size * m.size; c++) {
+      const p = cellOf(m, c);
+      if (maze.openDirs(m, p.x, p.y).length) open.push(c);
+    }
+    const p = cellOf(m, open[Math.floor(Math.random() * open.length)]);
+    const seers = open.filter((c) => {
+      const q = cellOf(m, c);
+      return q.x !== p.x || q.y !== p.y ? mm.monsterSees(m, q, p) : false;
+    });
+    const blind = open.filter((c) => {
+      const q = cellOf(m, c);
+      return (q.x !== p.x || q.y !== p.y) && !mm.monsterSees(m, q, p);
+    });
+    if (seers.length && blind.length) found = { m, p, a: seers[0], b: blind[0] };
+  }
+  assert.ok(found, "нет карты с видящим и невидящим монстром");
+  const m = {
+    ...found.m,
+    monsters: [found.a, found.b],
+    monsterKinds: [
+      { cell: found.a, id: "vermin" },
+      { cell: found.b, id: "vermin" },
+    ],
+    questMarks: undefined,
+  };
+  const t = mm.moveMonsters(m, found.p, [], () => 0.5);
+  const sawKind = t.maze.monsterKinds[0];
+  const blindKind = t.maze.monsterKinds[1];
+  assert.ok(sawKind.hunt, "видящий монстр взял героя в погоню");
+  assert.equal(blindKind.hunt, undefined, "невидящий монстр не получил погоню от соседа");
 });
