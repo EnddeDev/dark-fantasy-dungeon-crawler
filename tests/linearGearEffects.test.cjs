@@ -138,3 +138,29 @@ test("жар и обморожение выпадают на магическо�
   assert.ok(gearEffects.ARMOR_EFFECT_POOLS.light.int.includes("frost_bite"));
   assert.ok(gearEffects.ARMOR_EFFECT_POOLS.medium.int.includes("scorch"));
 });
+
+test("пассивки растут линейно: прирост между уровнями постоянный (без ×1.17)", () => {
+  for (const [id, keys] of Object.entries(scaling.GEAR_PASSIVE_BASE)) {
+    for (const [key, def] of Object.entries(keys)) {
+      const values = [];
+      for (let l = 1; l <= 10; l++) values.push(scaling.passiveMagnitude(id, key, l));
+      const step = values[1] - values[0];
+      for (let l = 2; l < 10; l++) {
+        const d = values[l] - values[l - 1];
+        /* Целые пассивки округляются, поэтому разница между шагами не больше единицы. */
+        assert.ok(Math.abs(d - step) <= 1, `${id}.${key}: уровень ${l + 1}`);
+      }
+      assert.equal(values[0], def.value, `${id}.${key}: база на 1 уровне`);
+    }
+  }
+});
+
+test("точность и тень убийцы: 10% +2/ур., тень 5% +1/ур. и крит. урон 10% +4/ур.", () => {
+  assert.equal(scaling.passiveMagnitude("precision", "crit", 1), 10);
+  assert.equal(scaling.passiveMagnitude("precision", "crit", 10), 28);
+  assert.equal(scaling.passiveMagnitude("assassin_shadow", "crit", 1), 5);
+  assert.equal(scaling.passiveMagnitude("assassin_shadow", "crit", 10), 14);
+  assert.equal(scaling.passiveMagnitude("assassin_shadow", "critMult", 10), 46);
+  assert.equal(scaling.passiveMagnitude("heavy_blow", "stun", 10), 28);
+  assert.equal(scaling.passiveMagnitude("fortress", "resist", 10), 23);
+});
