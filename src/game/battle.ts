@@ -3576,6 +3576,12 @@ function prepareRoundRules(b: BattleState) {
   if (e.def.id === "seer" && e.hp > 0 && !b.over) {
     e.announced = chooseEnemyMove(b);
     push(b, `${e.def.name} объявляет: ${MOVE_LABELS[e.announced] ?? e.announced}.`, "e");
+  } else if (e.def.id !== "seer" && e.hp > 0 && !b.over && !e.announced && (e.moves.length ? e.moves : e.def.moves).includes("heavy")) {
+    /* Обычный монстр готовит сокрушительный удар заранее: игрок видит его и успевает ответить. */
+    if (chooseEnemyMove(b) === "heavy") {
+      e.announced = "heavy";
+      push(b, `${e.def.name} готовит сокрушительный удар.`, "e");
+    }
   }
 }
 
@@ -5405,23 +5411,83 @@ export function enemyExpectedMoveDamage(b: BattleState, move: EnemyMove): number
  * Выбор приёма: монстр берёт тот приём, который даст наибольший ожидаемый урон по герою сейчас.
  * Приёмы без урона (стойка, печати, мрак, запугивание) выбираются только если урона не даёт ни один приём.
  */
+/** Доля ОЗ, ниже которой монстр начинает защищаться, а не нападать. */
+const ENEMY_LOW_HP_SHARE = 0.35;
+/** Приём, который в среднем добивает героя (урон ≥ его ОЗ), весит сильнее. */
+const ENEMY_FINISH_BONUS = 1.5;
+/** Ломающий броню приём против героя в броне. */
+const ENEMY_SUNDER_BONUS = 1.25;
+/** Чистый дебафф, который герой ещё не несёт: вес относительно обычной атаки. */
+const ENEMY_DEBUFF_SHARE = 0.8;
+/** Приём, который накладывает статус, уже висящий на герое: его вес снижается. */
+const ENEMY_REPEAT_SHARE = 0.4;
+/** Какой статус героя накладывает чистый дебафф врага. */
+const ENEMY_DEBUFF_STATUS: Partial<Record<EnemyMove, string>> = {
+  curse: "curse",
+  terror: "fear",
+  poison: "poison",
+  wound: "wound",
+  cold_touch: "chill",
+  hell_force: "burn",
+};
+
+/**
+ * Оценка приёма с учётом ситуации: ожидаемый урон, а для приёмов без урона — польза.
+ * Добивание, ломка брони, защита у низкого ОЗ и дебаффы, которых на герое ещё нет.
+ */
+function enemyMoveScore(b: BattleState, move: EnemyMove, ref: number): number {
+  const e = b.enemy;
+  const v = enemyExpectedMoveDamage(b, move);
+  if (move === "guard") return e.hp <= e.maxHp * ENEMY_LOW_HP_SHARE ? ref : ref * 0.2;
+  /* Статус, который приём накладывает, уже висит на герое: повтор стоит меньше. */
+  const key = ENEMY_DEBUFF_STATUS[move];
+  const already = key ? Number((b.p.statuses as unknown as Record<string, unknown>)[key] ?? 0) > 0 : false;
+  if (v > 0) {
+    let score = v;
+    if (STRIKE_MOVES.includes(move) && v >= b.p.hp) score *= ENEMY_FINISH_BONUS;
+    if (move === "sunder" && playerArmorNow(b) > 0) score *= ENEMY_SUNDER_BONUS;
+    if (already) score *= ENEMY_REPEAT_SHARE;
+    return score;
+  }
+  /* Полная защита героя не пускает наложение: дебафф без попадания ничего не даёт. */
+  if (b.p.statuses.fullGuard > 0) return 0;
+  return ref * (already ? ENEMY_REPEAT_SHARE : ENEMY_DEBUFF_SHARE);
+}
+
+/** Объявленный ход ещё доступен: есть в наборе монстра, не в перезарядке и не запечатан. */
+function enemyAnnouncedUsable(b: BattleState, move: EnemyMove): boolean {
+  const e = b.enemy;
+  const list = e.moves.length ? e.moves : e.def.moves;
+  if (!list.includes(move) || !enemyMoveReady(b, move)) return false;
+  if (e.statuses.sealMoves > 0 && move !== "attack" && move !== "guard") return false;
+  return true;
+}
+
+/**
+ * Выбор приёма: монстр смотрит на ситуацию — добивает, ломает броню, защищается,
+ * когда ранен, и накладывает дебаффы, которых на герое ещё нет. Ничья — случайно.
+ */
 export function chooseEnemyMove(b: BattleState): EnemyMove {
   const e = b.enemy;
   let moves = (e.moves.length ? e.moves : e.def.moves).filter((m) => enemyMoveReady(b, m));
   /* Печать тишины: только базовые атака и стойка, без приёмов. */
   if (e.statuses.sealMoves > 0) moves = moves.filter((m) => m === "attack" || m === "guard");
-  let best = 0;
+  if (!moves.length) return "attack";
+  /* Опорная величина: обычная атака сейчас. От неё масштабируются приёмы без урона. */
+  const ref = Math.max(1, enemyExpectedMoveDamage(b, "attack"));
+  let best = -1;
   let top: EnemyMove[] = [];
   for (const m of moves) {
-    const v = enemyExpectedMoveDamage(b, m);
-    if (v > best + 1e-9) {
-      best = v;
+    const score = enemyMoveScore(b, m, ref);
+    if (score > best + 1e-9) {
+      best = score;
       top = [m];
-    } else if (best > 0 && v >= best - 1e-9) {
+    } else if (score >= best - 1e-9) {
       top.push(m);
     }
   }
-  if (!top.length) return moves.includes("attack") ? "attack" : (moves[0] ?? "attack");
+  /* Ни один приём не даёт ни пользы, ни урона: обычный удар, как и раньше. */
+  if (best <= 1e-9) return moves.includes("attack") ? "attack" : moves[0];
   return pick(top);
 }
 
@@ -5647,6 +5713,8 @@ export interface EnemyReadout {
   armorBase: number;
   armor: number;
   guard: boolean;
+  /** Ход, который монстр уже объявил на этот раунд; null — ход выберет в своём действии. */
+  announced: EnemyMove | null;
   evade: number;
   /** Стойкость к негативным эффектам: род, босс, эффекты снаряжения. */
   resist: number;
@@ -5675,6 +5743,7 @@ export function enemyReadout(b: BattleState): EnemyReadout {
     fortify,
     magicResist,
     ap: e.ap,
+    announced: e.announced ?? null,
     moves: list.map((move) => {
       const breakdown = enemyMoveBreakdown(b, move);
       const details = enemyMoveEffectDetails(b, move);
@@ -5762,7 +5831,8 @@ export function enemyStep(b0: BattleState): BattleState {
   }
   const chill = enemyChill(b);
   /* Пророк уже объявил ход в начале раунда; остальные выбирают ход сейчас. */
-  const move0 = e.announced ?? chooseEnemyMove(b);
+  /* Объявленный ход выполняется, только если он всё ещё доступен; иначе ход выбирается заново. */
+  const move0 = (e.announced && enemyAnnouncedUsable(b, e.announced) ? e.announced : null) ?? chooseEnemyMove(b);
   /* Крушение и Бросок: защиты нет — вместо неё обычный удар. */
   const move = move0 === "guard" && ((e.statuses.noGuard ?? 0) > 0 || (e.statuses.throwDown ?? 0) > 0) ? "attack" : move0;
   e.announced = null;

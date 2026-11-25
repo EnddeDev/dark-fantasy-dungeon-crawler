@@ -293,7 +293,16 @@ export function EnemyMoveTip({ mv, meta }: { mv: EnemyMoveView; meta?: { name: s
 }
 
 /** Строка приёма врага. При наводке или фокусе показывает подсказку: расчёт урона и наложения с числами. */
-export function EnemyMoveRow({ mv, meta }: { mv: EnemyMoveView; meta?: { name: string; desc: string } }) {
+export function EnemyMoveRow({
+  mv,
+  meta,
+  announced = false,
+}: {
+  mv: EnemyMoveView;
+  meta?: { name: string; desc: string };
+  /** Монстр объявил этот ход: он выполнится в его действии. */
+  announced?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const tipRef = useRef<HTMLDivElement>(null);
   useFitInViewport(tipRef, open);
@@ -313,6 +322,11 @@ export function EnemyMoveRow({ mv, meta }: { mv: EnemyMoveView; meta?: { name: s
       >
         {meta?.name ?? mv.move}
       </span>
+      {announced && (
+        <span className="shrink-0 font-mono text-[0.7rem] uppercase tracking-[0.08em] text-flamehi" title="Монстр уже объявил этот ход">
+          объявлено
+        </span>
+      )}
       {/* Перезарядка видна всегда: у приёмов с дебаффом — сколько ждать, у остальных — прочерк. */}
       <span
         className={`w-[5.5rem] shrink-0 text-right font-mono text-[0.76rem] ${mv.cooldown > 0 ? "text-rubric" : "text-mute"}`}
@@ -1211,7 +1225,7 @@ export function BattleView({
                   </div>
                   <ul className="divide-y divide-line/40">
                     {er.moves.map((mv) => (
-                      <EnemyMoveRow key={mv.move} mv={mv} meta={ENEMY_MOVE_META[mv.move]} />
+                      <EnemyMoveRow key={mv.move} mv={mv} meta={ENEMY_MOVE_META[mv.move]} announced={er.announced === mv.move} />
                     ))}
                   </ul>
                 </div>

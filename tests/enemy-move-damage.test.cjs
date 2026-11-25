@@ -78,6 +78,9 @@ function realHit(b0, move, which) {
   b.queue = ["e", "p"];
   b.idx = 0;
   b.over = false;
+  /* Ход объявлен и входит в набор монстра: иначе объявление не выполнится (см. enemyAnnouncedUsable). */
+  b.enemy.moves = [move];
+  b.enemy.def = { ...b.enemy.def, moves: [move] };
   b.enemy.announced = move;
   const critPossible = battle.enemyMoveBreakdown(b0, move).lines.some((l) => l.label.startsWith("Критический"));
   const roll = which === "min" ? 0 : 0.999;
