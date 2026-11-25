@@ -299,6 +299,8 @@ export interface BattleState {
     forceGuard: number;
     /** Прошлый ход врага закончился промахом: следующий ход — приём. */
     lastMiss: boolean;
+    /** Ход, который враг выполнил в прошлый раз. Тот же приём подряд не повторяется, кроме обычной атаки. */
+    lastMove?: EnemyMove | null;
     /** Крыса: зов стаи уже был за этот бой. */
     ruleUsed?: boolean;
     /** Костяной воин: щит поднят в этом раунде. */
@@ -1287,6 +1289,7 @@ export function newBattle(
       guard: false,
       forceGuard: 0,
       lastMiss: false,
+      lastMove: null,
       specialCooldown: 0,
     },
     p: {
@@ -5460,6 +5463,7 @@ function enemyAnnouncedUsable(b: BattleState, move: EnemyMove): boolean {
   const list = e.moves.length ? e.moves : e.def.moves;
   if (!list.includes(move) || !enemyMoveReady(b, move)) return false;
   if (e.statuses.sealMoves > 0 && move !== "attack" && move !== "guard") return false;
+  if (enemyRepeatBanned(b, move)) return false;
   return true;
 }
 
@@ -5467,11 +5471,19 @@ function enemyAnnouncedUsable(b: BattleState, move: EnemyMove): boolean {
  * Выбор приёма: монстр смотрит на ситуацию — добивает, ломает броню, защищается,
  * когда ранен, и накладывает дебаффы, которых на герое ещё нет. Ничья — случайно.
  */
+/** Приём нельзя взять снова: он был ходом врага в прошлый раз. Обычная атака повторяется всегда. */
+export function enemyRepeatBanned(b: BattleState, move: EnemyMove): boolean {
+  return move !== "attack" && move === b.enemy.lastMove;
+}
+
 export function chooseEnemyMove(b: BattleState): EnemyMove {
   const e = b.enemy;
   let moves = (e.moves.length ? e.moves : e.def.moves).filter((m) => enemyMoveReady(b, m));
   /* Печать тишины: только базовые атака и стойка, без приёмов. */
   if (e.statuses.sealMoves > 0) moves = moves.filter((m) => m === "attack" || m === "guard");
+  /* Запрет повтора: если есть другой вариант, прошлый приём не берём. Если выбора нет — остаётся он. */
+  const fresh = moves.filter((m) => !enemyRepeatBanned(b, m));
+  if (fresh.length) moves = fresh;
   if (!moves.length) return "attack";
   /* Опорная величина: обычная атака сейчас. От неё масштабируются приёмы без урона. */
   const ref = Math.max(1, enemyExpectedMoveDamage(b, "attack"));
@@ -5836,6 +5848,7 @@ export function enemyStep(b0: BattleState): BattleState {
   /* Крушение и Бросок: защиты нет — вместо неё обычный удар. */
   const move = move0 === "guard" && ((e.statuses.noGuard ?? 0) > 0 || (e.statuses.throwDown ?? 0) > 0) ? "attack" : move0;
   e.announced = null;
+  e.lastMove = move;
   armEnemyCooldown(b, move);
   const isStrikeMove = STRIKE_MOVES.includes(move);
   /* Промах запоминается только на один ход: после решения флаг снимаем. */
