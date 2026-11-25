@@ -4,12 +4,13 @@ import type { Threat } from "./types";
 /**
  * Картины по расам для карты: одна картина на расу и на тип угрозы (обычный, ужас, катастрофа).
  * Все обычные монстры расы и типа на карте показываются одной картиной. В бою и бестиарии — индивидуальные портреты.
- * Файлы: public/images/races/<раса>-<угроза>.jpg.
+ * Файлы: public/images/races/<раса>-<угроза>.png — значки с прозрачным фоном: белый с чёрной обводкой,
+ * для ужаса белый становится оранжевым, для катастрофы — красным.
  */
 export const RACE_ART_THREATS: readonly Threat[] = ["normal", "horror", "catastrophe"];
 
 export function raceArtSrc(race: string, threat: Threat): string {
-  return `images/races/${race}-${threat}.jpg`;
+  return `images/races/${race}-${threat}.png`;
 }
 
 /** Картина монстра по его виду и угрозе; для боссов и неизвестных видов — null. */
