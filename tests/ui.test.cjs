@@ -196,7 +196,7 @@ test("dungeon draws the hero, the fixed monster picture and the trap picture on 
     onMove: noop, onCellClick: noop, onUseItem: noop, onEquip: noop, onUnequip: noop,
     onCancelPath: noop, onResumePath: noop,
   }));
-  assert.ok(html.includes("images/map/hero.jpg"), "герой нарисован картинкой");
+  assert.ok(html.includes("images/map/hero.png"), "герой нарисован картинкой");
   const threat = m.monsterKinds.find((k) => k.cell === cell).threat;
   assert.ok(html.includes(raceArt.monsterRaceArtSrc(kind, threat)), "монстр нарисован картиной расы и угрозы");
   assert.ok(html.includes("images/map/trap-"), "ловушки нарисованы картинками");
