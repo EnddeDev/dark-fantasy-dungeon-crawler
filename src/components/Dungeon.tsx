@@ -20,22 +20,6 @@ import { GearNote } from "./GearNote";
 
 const CS = 34;
 
-/**
- * Фишка на клетке: картинка, обрезанная кругом, и тонкое кольцо. Размер клетки мал,
- * поэтому деталей нет — узнаётся силуэт и цвет.
- */
-function MapToken({ id, href, r, ring }: { id: string; href: string; r: number; ring: string }) {
-  return (
-    <>
-      <clipPath id={id}>
-        <circle r={r} />
-      </clipPath>
-      <image href={href} x={-r} y={-r} width={r * 2} height={r * 2} clipPath={`url(#${id})`} preserveAspectRatio="xMidYMid slice" />
-      <circle r={r} fill="none" stroke={ring} strokeWidth="1.6" />
-    </>
-  );
-}
-
 export function Dungeon({
   run,
   player,
@@ -406,35 +390,23 @@ export function Dungeon({
                 })}
 
               {/* события карты: у каждого вида свой значок, виден до подхода.
-                  Положительное — зелёная капля, нейтральное — янтарная руна,
-                  негативное — багровый треугольник. */}
+                  Положительное — звезда, нейтральное — руна в ромбе, негативное — треугольник с молнией. */}
               {m.events
                 .filter((i) => !m.usedEvents.includes(i) && visAt(i % S, Math.floor(i / S)) > 0)
                 .map((i) => {
                   const { cx, cy } = center(i);
                   const spawn = m.eventSpawns?.find((sp) => sp.cell === i);
                   const kind = shownEventKind(run, spawn?.kind, i);
-                  if (kind === "positive") {
-                    return (
-                      <g key={`e${i}`} transform={`translate(${cx} ${cy})`} className="breathe">
-                        <circle r={12} fill="#123a2c" fillOpacity="0.85" stroke="#7fd0a8" strokeWidth="2.2" />
-                        <path d="M0 -6c4 5 6 7 6 10a6 6 0 0 1-12 0c0-3 2-5 6-10z" fill="#9fe0c0" stroke="#123a2c" strokeWidth="1.2" />
-                        <path d="M-7 9h14" stroke="#7fd0a8" strokeWidth="1.8" strokeLinecap="round" />
-                      </g>
-                    );
-                  }
-                  if (kind === "negative") {
-                    return (
-                      <g key={`e${i}`} transform={`translate(${cx} ${cy})`} className="breathe">
-                        <path d="M0 -12L11 8H-11z" fill="#3a100c" stroke="#e0695a" strokeWidth="2.2" />
-                        <path d="M-5 1c2-3 8-3 10 0M-3 4h6" stroke="#e0695a" strokeWidth="1.8" strokeLinecap="round" fill="none" />
-                      </g>
-                    );
-                  }
+                  /* Значки событий: белая фигура с чёрной обводкой, прозрачный фон. */
+                  const src =
+                    kind === "positive"
+                      ? "images/map/event-positive.png"
+                      : kind === "negative"
+                      ? "images/map/event-negative.png"
+                      : "images/map/event-neutral.png";
                   return (
-                    <g key={`e${i}`} transform={`translate(${cx} ${cy}) rotate(45)`} className="breathe">
-                      <rect x={-9} y={-9} width={18} height={18} fill={colors.wash} stroke={colors.accent} strokeWidth="2.4" />
-                      <path d="M-4 0h8M0 -4v8" stroke="#a52a2a" strokeWidth="2.4" strokeLinecap="round" />
+                    <g key={`e${i}`} transform={`translate(${cx} ${cy})`} className="breathe">
+                      <image href={src} x={-12} y={-12} width={24} height={24} preserveAspectRatio="xMidYMid meet" />
                     </g>
                   );
                 })}
@@ -476,7 +448,8 @@ export function Dungeon({
                   return (
                     <g key={`tr${i}`} transform={`translate(${x * CS + CS / 2} ${y * CS + CS / 2})`} opacity={lit ? 1 : 0.75}>
                       {kind ? (
-                        <MapToken id={`map-tr-${i}`} href={`images/map/trap-${kind}.jpg`} r={12} ring="#8a2a22" />
+                        /* Значок ловушки: прозрачный фон, без круглой обрезки и кольца. */
+                        <image href={`images/map/trap-${kind}.png`} x={-12} y={-12} width={24} height={24} preserveAspectRatio="xMidYMid meet" />
                       ) : (
                         <>
                           <circle r={10} fill="none" stroke="#8a2a22" strokeWidth="1" strokeDasharray="3 3" opacity="0.7" />
@@ -629,7 +602,7 @@ export function Dungeon({
               {/* персонаж */}
               <g style={{ transform: `translate(${px}px, ${py}px)`, transition: "transform 280ms cubic-bezier(.2,.8,.2,1)" }} className="flicker">
                 <circle r={CS * 1.4} fill="url(#torch)" />
-                <MapToken id="map-hero" href="images/map/hero.jpg" r={12} ring={colors.accentHi} />
+                <image href="images/map/hero.png" x={-12} y={-12} width={24} height={24} preserveAspectRatio="xMidYMid meet" />
               </g>
             </svg>
             <div className="vignette pointer-events-none absolute inset-2" />
