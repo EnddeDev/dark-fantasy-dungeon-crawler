@@ -2,8 +2,8 @@
  * Рост снаряжения.
  *
  *   основные параметры (урон, броня, ОЗ, уклонение): линейно, ×(1 + 0.5 × уровень);
- *   эффекты и свойства, приёмы, пассивки:            сложным процентом, ×1.17 за уровень;
- *   линейные свойства (GEAR_EFFECT_LINEAR):          база + шаг × (уровень − 1), без ×1.17;
+ *   свойства и пассивки предметов:                   линейно: база + шаг × (уровень − 1);
+ *   приёмы, редкие аффиксы, легендарные и эпические:  сложным процентом, ×1.17 за уровень;
  *   цены:                                            линейно, ×(1 + 0.17 × уровень).
  *
  * Сложный процент считается по шагам: значение каждого уровня — ceil(предыдущее × ставка).
@@ -266,25 +266,43 @@ export function effectMagnitude(id: GearEffectId, level: number, rolledBase?: nu
   return scaleCompoundByLevel(base, level, GEAR_EFFECT_GROWTH_MAIN, def.precision ?? 1);
 }
 
-export const GEAR_PASSIVE_BASE: Record<GearPassiveId, Record<string, NumericDef>> = {
-  heavy_blow: { stun: { value: 20 } },
-  fortress: { resist: { value: 20 } },
-  dance: { counter: { value: 25 } },
-  precision: { crit: { value: 25 } },
-  spell_echo: { echo: { value: 20 } },
-  time_warp: { duration: { value: 2 } },
-  bulwark_wall: { regen: { value: 4 }, thorns: { value: 6 }, guard: { value: 20 } },
-  barbarian_rage: { vamp: { value: 12 }, damage: { value: 20 }, stun: { value: 15 } },
-  assassin_shadow: { ap: { value: 1 }, crit: { value: 25 }, critMult: { value: 50 } },
-  duelist_phantom: { counter: { value: 12 }, stack: { value: 25 }, shatter: { value: 1 } },
-  warlock_pact: { skillDamage: { value: 25 }, cd: { value: 1 }, vamp: { value: 12 } },
-  archmage_library: { magic: { value: 12 }, round: { value: 1 }, reapply: { value: 15 } },
+/** Пассивка: значение на 1 уровне и прирост за каждый следующий (линейно). `round` — целое значение. */
+export interface PassiveNumericDef {
+  value: number;
+  step: number;
+  round?: boolean;
+}
+
+/** Пассивки снаряжения: линейно, как и свойства. Шаг — примерно четверть базы за уровень. */
+export const GEAR_PASSIVE_BASE: Record<GearPassiveId, Record<string, PassiveNumericDef>> = {
+  heavy_blow: { stun: { value: 10, step: 2 } },
+  fortress: { resist: { value: 5, step: 2 } },
+  dance: { counter: { value: 25, step: 6 } },
+  precision: { crit: { value: 10, step: 2 } },
+  spell_echo: { echo: { value: 20, step: 5 } },
+  time_warp: { duration: { value: 2, step: 0.5, round: true } },
+  bulwark_wall: { regen: { value: 4, step: 1 }, thorns: { value: 6, step: 1.5, round: true }, guard: { value: 20, step: 5 } },
+  barbarian_rage: { vamp: { value: 12, step: 3 }, damage: { value: 20, step: 5 }, stun: { value: 15, step: 4 } },
+  assassin_shadow: {
+    ap: { value: 1, step: 0.25, round: true },
+    crit: { value: 5, step: 1 },
+    critMult: { value: 10, step: 4 },
+  },
+  duelist_phantom: {
+    counter: { value: 12, step: 3 },
+    stack: { value: 25, step: 6 },
+    shatter: { value: 1, step: 0.25, round: true },
+  },
+  warlock_pact: { skillDamage: { value: 25, step: 6 }, cd: { value: 1, step: 0.25, round: true }, vamp: { value: 12, step: 3 } },
+  archmage_library: { magic: { value: 12, step: 3 }, round: { value: 1, step: 0.25, round: true }, reapply: { value: 15, step: 4 } },
 };
 
+/** Значение пассивки на уровне предмета: база + прирост × (уровень − 1). */
 export function passiveMagnitude(id: GearPassiveId, key: string, level: number): number {
   const def = GEAR_PASSIVE_BASE[id]?.[key];
   if (!def) return 0;
-  return scaleByLevel(def.value, level, def.precision ?? 1);
+  const value = def.value + def.step * (clampGearLevel(level) - 1);
+  return def.round ? Math.round(value) : value;
 }
 
 export const RARE_AFFIX_BASE: Record<RareAffixId, Record<string, NumericDef>> = {

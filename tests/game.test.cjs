@@ -2298,7 +2298,7 @@ test("уровень предмета: параметры линейно +50%, �
   assert.ok(high.armor > low.armor);
   assert.ok(high.hp > low.hp);
   assert.equal(scaling.effectMagnitude("damage_resist", 3), 4);
-  assert.equal(scaling.passiveMagnitude("fortress", "resist", 3), 29);
+  assert.equal(scaling.passiveMagnitude("fortress", "resist", 3), 9);
   assert.equal(scaling.legendaryMagnitude("executioner", "damage", 2), 41);
 
   const weapon = content.createGearItem({ baseId: "sword", level: 1, wear: "worn", rarity: "common", identified: true });
