@@ -2759,6 +2759,7 @@ test("expected enemy damage matches the average of real enemy turns", () => {
       const fixed = freshBattle(mkP({ level: 5, stats: { str: 4, agi: 4, int: 4 }, hp: 1e9 }), 5, false, "classic");
       fixed.enemy.moves = [m];
       fixed.enemy.def = { ...fixed.enemy.def, moves: [m] };
+      fixed.enemy.announced = null;
       fixed.enemy.specialCooldown = 0;
       /* Окно — только ход врага: после него не начинается ход героя (там тикают новые наложения). */
       fixed.queue = ["e", "e"];
@@ -3219,6 +3220,8 @@ function monsterBattle(race, type, moves, extra = {}) {
   b.idx = 0;
   b.enemy.def = { ...b.enemy.def, id: "fixture", race, type, moves };
   b.enemy.moves = moves;
+  /* Объявление, сделанное при создании боя по исходному набору монстра, не относится к подменённым ходам. */
+  b.enemy.announced = null;
   b.enemy.mtype = monsters.coerceMonsterType(race, type);
   b.enemy.hp = 400;
   b.enemy.maxHp = 400;
