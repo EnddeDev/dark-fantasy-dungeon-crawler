@@ -97,3 +97,41 @@ test("объявленный ход не выполняется, если вра
   const fresh = after.log.slice(before).map((l) => l.text);
   assert.ok(!fresh.some((t) => t.includes("обрушивает сокрушительный")), "запечатанный монстр не бьёт объявленным ударом");
 });
+
+test("тот же приём два хода подряд не выбирается, если есть другой", () => {
+  const b = fixture(["heavy", "wound"], 1);
+  assert.equal(battle.chooseEnemyMove(b), "heavy", "без истории берётся самый сильный приём");
+  b.enemy.lastMove = "heavy";
+  for (let i = 0; i < 20; i++) {
+    assert.equal(battle.chooseEnemyMove(b), "wound", "после тяжёлого удара — другой приём");
+  }
+});
+
+test("обычная атака повторяется подряд", () => {
+  const b = fixture(["attack"], 1);
+  b.enemy.lastMove = "attack";
+  assert.equal(battle.chooseEnemyMove(b), "attack");
+});
+
+test("если других приёмов нет, повтор остаётся, чтобы монстр не стоял", () => {
+  const b = fixture(["heavy"], 1);
+  b.enemy.lastMove = "heavy";
+  assert.equal(battle.chooseEnemyMove(b), "heavy");
+});
+
+test("ход врага запоминается и объявленный повтор не выполняется", () => {
+  const b = fixture(["heavy", "attack"], 1);
+  b.enemy.lastMove = "heavy";
+  b.enemy.announced = "heavy";
+  const before = b.log.length;
+  const after = battle.enemyStep(b);
+  const fresh = after.log.slice(before).map((l) => l.text);
+  assert.ok(!fresh.some((t) => t.includes("обрушивает сокрушительный")), "объявленный повтор отменяется");
+  assert.notEqual(after.enemy.lastMove, "heavy", "ход записан и он не тяжёлый");
+  assert.equal(after.enemy.lastMove, "attack", "вместо повтора выбрана обычная атака");
+});
+
+test("новый бой начинается без истории хода", () => {
+  const b = battle.newBattle(hero({ hp: 300 }), 3, false, "classic", 0, 0, "normal", "husk");
+  assert.equal(b.enemy.lastMove, null);
+});
