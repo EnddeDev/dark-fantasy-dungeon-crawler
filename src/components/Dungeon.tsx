@@ -531,7 +531,8 @@ export function Dungeon({
                     <g key={`mo${i}`} transform={`translate(${x * CS + CS / 2} ${y * CS + CS / 2})`} opacity={lit ? 1 : 0.5}>
                       <circle r={11} fill={colors.fog} opacity="0.4" />
                       {src ? (
-                        <MapToken id={`map-mo-${i}`} href={src} r={12} ring={colors.wallShadow} />
+                        /* Значок с прозрачным фоном и своей обводкой: без круглой обрезки и кольца. */
+                        <image href={src} x={-12} y={-12} width={24} height={24} preserveAspectRatio="xMidYMid meet" />
                       ) : (
                         <>
                           <path d="M-8 2l-3-7 7 3h8l7-3-3 7z" fill="#1b1310" stroke={colors.wallShadow} strokeWidth="1.4" />
