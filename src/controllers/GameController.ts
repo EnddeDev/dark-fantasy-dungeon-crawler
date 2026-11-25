@@ -90,6 +90,7 @@ export class GameController {
     const { unlockedFloor, best, player } = this.model.getSnapshot();
     if (!Number.isInteger(floor) || floor < 1 || floor > unlockedFloor) return;
     const split = departureSplit(player, picked);
+    const introSeen = player.dungeonIntroSeen === true;
     /* Задания этажа ставят метки на карту; благословение священника вступает в силу. */
     const quests = questsForFloor(player, floor);
     const maze = placeQuestMarks(genMaze(mazeSizeForFloor(floor), floor), quests, Math.random, floor);
@@ -100,6 +101,7 @@ export class GameController {
       hp: derived(blessed).maxHp,
       stamina: derived(blessed).staminaMax,
       statuses: { wound: 0, curse: 0, poison: 0, chill: 0, fear: 0, wither: 0, burn: 0 },
+      dungeonIntroSeen: true,
     };
     const nextBest = Math.max(best, floor);
     if (floor > best) this.saves.writeBest(floor);
@@ -139,7 +141,7 @@ export class GameController {
       pathPaused: false,
       screen: "dungeon",
       lobbyEntry: "train",
-      modal: { kind: "intro" },
+      modal: introSeen ? null : { kind: "intro" },
     });
   }
 
@@ -227,8 +229,10 @@ export class GameController {
 
   /** «Начать заново»: стирает сохранения и возвращает к титульному экрану. */
   restart(): void {
+    /* Правила входа в лабиринт видны один раз на аккаунт: новый герой их не покажет снова. */
+    const introSeen = this.model.getSnapshot().player.dungeonIntroSeen === true;
     this.saves.clear();
-    const player = PlayerFactory.createInitial();
+    const player: Player = { ...PlayerFactory.createInitial(), ...(introSeen ? { dungeonIntroSeen: true } : {}) };
     this.model.update({
       screen: "title",
       lobbyEntry: "train",

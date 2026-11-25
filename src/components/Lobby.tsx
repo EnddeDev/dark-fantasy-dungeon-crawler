@@ -366,6 +366,7 @@ const TABS: {
   /** Точка без числа: подпись для подсказки, или null, если точки нет. */
   dot?: (p: Player) => string | null;
 }[] = [
+  { id: "dungeon", label: "Подземелья" },
   {
     id: "train",
     label: "Развитие",
@@ -377,7 +378,6 @@ const TABS: {
     label: "Арсенал",
     badge: (p) => p.armory.filter((g) => !g.identified).length,
   },
-  { id: "dungeon", label: "Подземелья" },
   { id: "shop", label: "Магазин" },
   { id: "quests", label: "Жители", badge: (p) => readyQuestCount(p), alert: (p) => availableQuestCount(p) },
   { id: "about", label: "О игре" },

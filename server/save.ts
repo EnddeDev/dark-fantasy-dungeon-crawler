@@ -446,6 +446,7 @@ export function sanitizePlayer(raw: unknown, floors = 1): Player {
 
   const player: Player = {
     name,
+    ...(input.dungeonIntroSeen === true ? { dungeonIntroSeen: true } : {}),
     level,
     xp,
     statPoints,

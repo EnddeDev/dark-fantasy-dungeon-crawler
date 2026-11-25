@@ -274,6 +274,8 @@ export type EnemySeal = "items" | "skills" | "attack";
 
 export interface Player {
   name: string;
+  /** Правила входа в лабиринт уже показаны: окно появляется только при первом входе. */
+  dungeonIntroSeen?: boolean;
   level: number;
   xp: number;
   statPoints: number;
