@@ -46,6 +46,8 @@ function freshBattle(pl, floor, isBoss, biome, torchTurns, burning) {
   b.enemy.mtype = "strong";
   /* Механика боя проверяется без характеристик врага; сами характеристики — в tests/monster-stats.test.cjs. */
   b.enemy.stats = { str: 0, agi: 0, int: 0 };
+  /* Маг. барьер Архиерея и Владыки Урны не мешает проверке механики героя. */
+  b.enemy.barrier = 0;
   /* Тесты ждут, что герой ходит первым: враг с большим числом ходов иначе может начать бой. */
   if (b.queue[b.idx] !== "p") b.queue = ["p", ...b.queue];
   return b;

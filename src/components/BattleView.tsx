@@ -640,6 +640,17 @@ export function BattleView({
       now: pct(er.magicResist),
       hint: "срез магического урона по нему",
     },
+    ...(er.barrierMax > 0
+      ? [
+          {
+            metric: "barrier" as const,
+            label: "Маг. барьер",
+            base: `${er.barrier}/${er.barrierMax}`,
+            now: `${er.barrier}/${er.barrierMax}`,
+            hint: "поглощает магический урон первым, пока не снят",
+          },
+        ]
+      : []),
     {
       metric: "ap",
       label: "Ходов в раунде",

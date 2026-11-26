@@ -341,7 +341,7 @@ const MID_TIER: EnemyDef[] = [
     type: "agile",
     hp: 38, ap: 4, atk: [7, 13], armor: 1, gold: [30, 56], xp: 16, minFloor: 3,
     flavor: "Тетива протянута на пальцах — точно, неудобно, смертельно.",
-    moves: ["attack", "terror", "attack", "guard"] }),
+    moves: ["attack", "fire_arrow", "mark", "terror"] }),
   C({ id: "harpy", name: "Гарпия", race: "beast", art: "foe:harpy", tier: 2,
     type: "agile",
     hp: 46, ap: 4, atk: [8, 13], armor: 1, gold: [34, 60], xp: 18, minFloor: 3,
