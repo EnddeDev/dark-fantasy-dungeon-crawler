@@ -68,6 +68,9 @@ export const MOVE_LABELS: Record<string, string> = {
   hell_force: "сила ада",
   web: "опутывание",
   spit: "харчок",
+  prepare: "подготовка",
+  trick: "тупая хитрость",
+  trick_strike: "тупая хитрость",
 };
 
 /** Крыса зовёт стаю при половине ОЗ, один раз за бой. */

@@ -298,6 +298,8 @@ export interface BattleState {
       drainRounds?: number; drainTick?: number;
       /** Накал шлака: раунды; горгулья в окаменении: 1 до её следующего хода. */
       heat?: number; petrified?: number; regenBlock?: number;
+      /** Орк: подготовка — следующий удар не промахивается, пока герой не в защите. Огр: замах тупой хитрости. Разведчик: уклонение после отступа. */
+      prepRounds?: number; trickWindup?: number; retreatEvade?: number;
     };
     guard: boolean;
     /** Раунды, в которые враг вынужден держать защиту (свиток ужаса, бомба). */
@@ -331,6 +333,16 @@ export interface BattleState {
      * с которого приёмы снова доступны. 0 — приёмы не на перезарядке.
      */
     specialCooldown?: number;
+    /** Раунд, до которого приём врага на личной перезарядке (тупая хитрость огра, атака воина). */
+    moveUntil?: Partial<Record<EnemyMove, number>>;
+    /** Следующий удар врага критический: гоблин-разведчик после промаха героя. */
+    critNext?: boolean;
+    /** Гоблин-разведчик уже отступал за бой. */
+    retreatUsed?: boolean;
+    /** Кобольд: сколько действий героя накопилось в злость на шум. */
+    noise?: number;
+    /** Сколько действий уже сделал враг: для приёмов, расписанных по ходам (орк, огр). */
+    actsTaken?: number;
     /** Мимик-малыш спит, пока не получит первый урон. */
     dormant?: boolean;
     /** Засада (мимики-сундуки): первая атака врага не уклоняется. */
@@ -1939,7 +1951,11 @@ function drainRoundTick(b: BattleState) {
 /** Уклонение твари: тип плюс род, всегда от текущего определения. */
 function enemyEvade(b: BattleState): number {
   if ((b.p.statuses.noEvade ?? 0) > 0 || (b.enemy.statuses.noEvade ?? 0) > 0) return 0;
-  return combineChances([monsterEvade(b.enemy.def.race, b.enemy.mtype), monsterEvasionBonus(enemyStats(b).agi)]);
+  return combineChances([
+    monsterEvade(b.enemy.def.race, b.enemy.mtype),
+    monsterEvasionBonus(enemyStats(b).agi),
+    (b.enemy.statuses.retreatEvade ?? 0) > 0 ? 0.25 : 0,
+  ]);
 }
 
 /* Характеристики врага. Старый бой без раскладки считается нулевым. */
@@ -2846,6 +2862,7 @@ function enemyStartState(
 function enemyBarrierStart(id: string, level: number): { barrier?: number; barrierMax?: number } {
   if (id === "boss_prelate" || id === "boss_lich") return { barrier: 50, barrierMax: 50 };
   if (id === "lich_tender") return { barrier: 10 * level, barrierMax: 10 * level };
+  if (id === "dark_priest") return { barrier: 5 * level, barrierMax: 5 * level };
   return {};
 }
 
@@ -3003,6 +3020,7 @@ export function hitEnemy(
   if (strike && darkMiss > 0 && !b.skillNoMiss && Math.random() < darkMiss) {
     flash(b, "e", "miss", 0);
     push(b, `Мрак скрывает цель: удар проходит мимо.${note}`, "sys");
+    if (b.enemy.def.id === "goblin_scout") b.enemy.critNext = true;
     harpyCounter(b);
     return 0;
   }
@@ -3039,6 +3057,7 @@ export function hitEnemy(
       if (!b.p.statuses.buffs?.sure_hit && !rollHeroHit(acc, heroEvasion(b))) {
         flash(b, "e", "miss", 0);
         push(b, `Удар мимо: ${b.enemy.def.name} уклоняется.${note}`, "e");
+        if (b.enemy.def.id === "goblin_scout") b.enemy.critNext = true;
         harpyCounter(b);
         return 0;
       }
@@ -3061,10 +3080,15 @@ export function hitEnemy(
       return 0;
     }
   }
-  const d = absorbEnemyBarrier(b, damageAfterEnemyDefense(b, raw, kind));
+  const mitigated = damageAfterEnemyDefense(b, raw, kind);
+  const d = absorbEnemyBarrier(b, mitigated);
   b.enemy.hp -= d;
   flash(b, "e", "hit", d, element ?? kind);
   push(b, `${b.enemy.def.name} получает ${d} урона.${note}`, "p", element);
+  /* Тёмный жрец: 20% урона, полученного им, возвращается герою. */
+  if (mitigated > 0 && b.enemy.def.id === "dark_priest" && b.p.hp > 0) {
+    incoming(b, Math.round(mitigated * 0.2), "magic", `${b.enemy.def.name} возвращает часть урона`);
+  }
   /* Тролль: огонь и кислота останавливают регенерацию на 2 хода. */
   if (d > 0 && b.enemy.def.id === "troll" && b.enemy.hp > 0 && (element === "fire" || element === "acid")) {
     b.enemy.statuses.regenBlock = 2;
@@ -3355,7 +3379,7 @@ export function incoming(
   /* Лич-хранитель: все его удары — магические. */
   if (kind === "phys" && b.queue[b.idx] === "e" && b.enemy.def.id === "lich_tender") kind = "magic";
   /* Метка врага: его удары на свои ходы не промахиваются, уклонение и тьма не работают. */
-  const sureHit = b.queue[b.idx] === "e" && (b.enemy.statuses.markRounds ?? 0) > 0;
+  const sureHit = b.queue[b.idx] === "e" && ((b.enemy.statuses.markRounds ?? 0) > 0 || ((b.enemy.statuses.prepRounds ?? 0) > 0 && !b.p.guard));
   /* Засада мимика: его первая атака не уклоняется. */
   const unevadable = b.queue[b.idx] === "e" && b.enemy.ambushLive === true;
   const noEvade = sureHit || unevadable;
@@ -3733,6 +3757,8 @@ function endTurnDurations(b: BattleState) {
   if (side === "p") tickWarlordArmor(b);
   if (side === "p" && (b.p.statuses.spit ?? 0) > 0) b.p.statuses.spit = (b.p.statuses.spit ?? 0) - 1;
   if (side === "e" && (b.enemy.statuses.regenBlock ?? 0) > 0) b.enemy.statuses.regenBlock = (b.enemy.statuses.regenBlock ?? 0) - 1;
+  if (side === "e" && (b.enemy.statuses.prepRounds ?? 0) > 0) b.enemy.statuses.prepRounds = (b.enemy.statuses.prepRounds ?? 0) - 1;
+  if (side === "p" && (b.enemy.statuses.retreatEvade ?? 0) > 0) b.enemy.statuses.retreatEvade = (b.enemy.statuses.retreatEvade ?? 0) - 1;
   if (side === "e" && (b.enemy.statuses.markRounds ?? 0) > 0) b.enemy.statuses.markRounds = (b.enemy.statuses.markRounds ?? 0) - 1;
   if (side === "e" && (b.enemy.statuses.heat ?? 0) > 0) b.enemy.statuses.heat = (b.enemy.statuses.heat ?? 0) - 1;
   if (side === "p") {
@@ -3923,7 +3949,7 @@ function prepareRoundRules(b: BattleState) {
   if (e.def.id === "seer" && e.hp > 0 && !b.over) {
     e.announced = chooseEnemyMove(b);
     push(b, `${e.def.name} объявляет: ${MOVE_LABELS[e.announced] ?? e.announced}.`, "e");
-  } else if (e.def.id !== "seer" && e.hp > 0 && !b.over && !e.announced && (e.moves.length ? e.moves : e.def.moves).includes("heavy")) {
+  } else if (e.def.id !== "seer" && e.hp > 0 && !b.over && !e.announced && !(e.def.id === "orc_raider" && !e.actsTaken) && (e.moves.length ? e.moves : e.def.moves).includes("heavy")) {
     /* Обычный монстр готовит сокрушительный удар заранее: игрок видит его и успевает ответить. */
     if (chooseEnemyMove(b) === "heavy") {
       e.announced = "heavy";
@@ -4588,7 +4614,11 @@ export function playerAct(b0: BattleState, a: PlayerAction): BattleState {
   if (b0.over || b0.queue[b0.idx] !== "p") return b0;
   const b = { ...b0, flashes: [] };
   if (b.p.statuses.stunAp > 0) return skipStunnedTurn(b);
-  return actInternal(b, a, true);
+  /* Кобольд-рудокоп: любое действие героя — шум, он злится и бьёт сильнее на свой уровень. */
+  const noisy = b.enemy.def.id === "kobold" && b.enemy.hp > 0
+    ? { ...b, enemy: { ...b.enemy, noise: (b.enemy.noise ?? 0) + 1 } }
+    : b;
+  return actInternal(noisy, a, true);
 }
 
 /** takeTurn=false — внутренний розыгрыш (бросок расходника приёмом дуэлянт): ход не тратится, концентрация не меняется. */
@@ -5417,8 +5447,10 @@ export function enemySpecialCooldownLeft(b: BattleState): number {
 
 /** Сколько раундов ещё ждать до конкретного приёма: 0 — можно применять сейчас. */
 export function enemyMoveCooldownLeft(b: BattleState, move: EnemyMove): number {
-  if (!ENEMY_COOLDOWN_MOVES.includes(move)) return 0;
-  return enemySpecialCooldownLeft(b);
+  /* Личная перезарядка приёма (огр, воин): раунды до его следующего применения. */
+  const own = Math.max(0, (b.enemy.moveUntil?.[move] ?? 0) - b.round);
+  if (!ENEMY_COOLDOWN_MOVES.includes(move)) return own;
+  return Math.max(own, enemySpecialCooldownLeft(b));
 }
 
 /** Доступен ли приём в текущем раунде. */
@@ -5899,6 +5931,7 @@ function enemyAnnouncedUsable(b: BattleState, move: EnemyMove): boolean {
   const e = b.enemy;
   const list = e.moves.length ? e.moves : e.def.moves;
   if (!list.includes(move) || !enemyMoveReady(b, move)) return false;
+  if (move === "trick" && (e.actsTaken ?? 0) < 1) return false;
   if (e.statuses.sealMoves > 0 && move !== "attack" && move !== "guard") return false;
   if (enemyRepeatBanned(b, move)) return false;
   return true;
@@ -5913,9 +5946,22 @@ export function enemyRepeatBanned(b: BattleState, move: EnemyMove): boolean {
   return move !== "attack" && move === b.enemy.lastMove;
 }
 
+/**
+ * Расписанные приёмы: орк подготавливается в свой первый ход; огр замахивается тупой хитростью
+ * со второго своего хода и дальше — когда кончилась перезарядка.
+ */
+function scriptedEnemyMove(b: BattleState): EnemyMove | null {
+  const e = b.enemy;
+  if (e.statuses.sealMoves > 0) return null;
+  const turn = e.actsTaken ?? 0;
+  if (e.def.id === "orc_raider" && turn === 0) return "prepare";
+  if (e.def.id === "ogre_oaf" && turn >= 1 && enemyMoveReady(b, "trick")) return "trick";
+  return null;
+}
+
 export function chooseEnemyMove(b: BattleState): EnemyMove {
   const e = b.enemy;
-  let moves = (e.moves.length ? e.moves : e.def.moves).filter((m) => enemyMoveReady(b, m));
+  let moves = (e.moves.length ? e.moves : e.def.moves).filter((m) => enemyMoveReady(b, m) && !(m === "trick" && (e.actsTaken ?? 0) < 1));
   /* Печать тишины: только базовые атака и стойка, без приёмов. */
   if (e.statuses.sealMoves > 0) moves = moves.filter((m) => m === "attack" || m === "guard");
   /* Запрет повтора: если есть другой вариант, прошлый приём не берём. Если выбора нет — остаётся он. */
@@ -6302,23 +6348,36 @@ export function enemyStep(b0: BattleState): BattleState {
     advance(b);
     return b;
   }
+  /* Гоблин-разведчик ниже 30% ОЗ отступает: ход пропущен, уклонение +25% на 2 хода. Раз за бой. */
+  if (e.def.id === "goblin_scout" && !e.retreatUsed && e.hp > 0 && e.hp < e.maxHp * 0.3) {
+    e.retreatUsed = true;
+    e.statuses.retreatEvade = 2;
+    push(b, `${e.def.name} отступает в тень: ход пропущен, уклонение +25% на 2 хода.`, "e");
+    advance(b);
+    return b;
+  }
   const chill = enemyChill(b);
   /* Пророк уже объявил ход в начале раунда; остальные выбирают ход сейчас. */
   /* Объявленный ход выполняется, только если он всё ещё доступен; иначе ход выбирается заново. */
-  const move0 = (e.announced && enemyAnnouncedUsable(b, e.announced) ? e.announced : null) ?? chooseEnemyMove(b);
+  /* Тупая хитрость: в ход после замаха огр бьёт или кидает камень, без выбора. */
+  const move0 = (e.statuses.trickWindup ?? 0) > 0
+    ? "trick_strike"
+    : scriptedEnemyMove(b) ?? (e.announced && enemyAnnouncedUsable(b, e.announced) ? e.announced : null) ?? chooseEnemyMove(b);
   /* Крушение и Бросок: защиты нет — вместо неё обычный удар. */
   const move = move0 === "guard" && ((e.statuses.noGuard ?? 0) > 0 || (e.statuses.throwDown ?? 0) > 0) ? "attack" : move0;
   e.announced = null;
   e.lastMove = move;
+  e.actsTaken = (e.actsTaken ?? 0) + 1;
   armEnemyCooldown(b, move);
   const isStrikeMove = STRIKE_MOVES.includes(move);
   /* Промах запоминается только на один ход: после решения флаг снимаем. */
   e.lastMiss = false;
   /* Базовый удар — обычный параметр; усиления от эффектов при истощении не работают. */
   /* Бросок и крит — случайные; дальше тот же путь, что у подсказки (enemyMoveRaw). */
-  const roll = randInt(e.atk[0], e.atk[1]);
+  const roll = randInt(e.atk[0], e.atk[1]) + (e.def.id === "kobold" ? (e.noise ?? 0) * e.level : 0);
   const eCritChance = enemyCritChance(b);
-  const eCrit = eCritChance > 0 && Math.random() < eCritChance;
+  const eCrit = (eCritChance > 0 && Math.random() < eCritChance) || !!e.critNext;
+  e.critNext = false;
   if (eCrit) push(b, `${e.def.name} наносит критический удар!`, "e");
   const critNow: EnemyCrit | null = eCrit ? { factor: enemyCritMult(b), label: "Критический удар", note: "" } : null;
   let base = enemyMoveRaw(b, move, roll, critNow).value;
@@ -6353,6 +6412,36 @@ export function enemyStep(b0: BattleState): BattleState {
         b.p.statuses.rot = stacks;
         b.p.statuses.rotRounds = ROT_ROUNDS;
         push(b, `Гниение: броня −${stacks} на ${ROT_ROUNDS} раунда.`, "e");
+      }
+      break;
+    }
+    case "prepare": {
+      e.statuses.prepRounds = 2;
+      push(b, `${e.def.name} готовится: если ты не ушёл в защиту, его следующий удар не промахнётся.`, "e");
+      break;
+    }
+    case "trick": {
+      e.statuses.trickWindup = 1;
+      e.moveUntil = { ...(e.moveUntil ?? {}), trick: b.round + 3 };
+      push(b, `${e.def.name} замахивается тупой хитростью: в следующий ход ударит или кинет камень.`, "e");
+      break;
+    }
+    case "trick_strike": {
+      e.statuses.trickWindup = 0;
+      const heroGuard = !!b.p.guard;
+      if (Math.random() < 0.5) {
+        const mult = heroGuard ? 2 : 3;
+        push(b, `${e.def.name} бьёт тупой хитростью: урон ×${mult}!`, "e");
+        incoming(b, Math.round(base * mult * chill), "phys", `${e.def.name} бьёт тупой хитростью`);
+      } else {
+        const dmg = heroGuard ? base : Math.round(base / 2);
+        const stunRounds = heroGuard ? 2 : 1;
+        push(b, `${e.def.name} кидает камень${heroGuard ? "" : " (урон пополам)"}.`, "e");
+        const landed = incoming(b, Math.round(dmg * chill), "phys", `${e.def.name} кидает камень`, false);
+        if (landed && b.p.hp > 0) {
+          b.p.statuses.stunAp = Math.min(4, b.p.statuses.stunAp + stunRounds);
+          push(b, `Камень оглушает тебя на ${stunRounds} хода.`, "e");
+        }
       }
       break;
     }
@@ -6580,7 +6669,16 @@ export function enemyStep(b0: BattleState): BattleState {
       break;
     }
     default: {
-      if (!incoming(b, Math.round(base * chill), "phys", `${e.def.name} атакует`)) e.lastMiss = true;
+      const landed = incoming(b, Math.round(base * chill), "phys", `${e.def.name} атакует`);
+      if (!landed) e.lastMiss = true;
+      /* Гоблин-воин: попал — ещё два удара в этот ход, а обычная атака недоступна два хода. */
+      if (landed && e.def.id === "goblin_warrior" && move === "attack" && b.p.hp > 0) {
+        push(b, `${e.def.name} разгоняется: ещё два удара в этот ход!`, "e");
+        for (let i = 0; i < 2 && b.p.hp > 0 && b.enemy.hp > 0; i++) {
+          incoming(b, Math.round(base * chill), "phys", `${e.def.name} бьёт снова`);
+        }
+        e.moveUntil = { ...(e.moveUntil ?? {}), attack: b.round + 3 };
+      }
     }
   }
 
