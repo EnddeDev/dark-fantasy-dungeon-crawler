@@ -32,7 +32,9 @@ test("минимума удара нет: удар = (10 × T × R + СИЛ) × 
         const [lo, hi] = monsters.RACE_ATK_RANGE[s.def.race];
         const str = monsterStats.monsterDamageBonus(s.stats.str);
         assert.ok(s.baseAtk >= 10 * T * lo + str - 1e-9 && s.baseAtk <= 10 * T * hi + str + 1e-9, `${def.id}: основа ${s.baseAtk}`);
-        const center = s.baseAtk * scaling.enemyLevelMult(s.level) * content.THREAT_META[threat].atkMult;
+        /* Ярость Костяного воина: постоянный бонус урона 2% + 1% за уровень. */
+        const rage = def.id === "bone" ? 1 + 0.02 + 0.01 * s.level : 1;
+        const center = s.baseAtk * scaling.enemyLevelMult(s.level) * content.THREAT_META[threat].atkMult * rage;
         assert.equal(s.atk[0], Math.max(1, Math.round(center * 0.9)), `${def.id} этаж ${floor} ${threat}: нижняя ${s.atk[0]}`);
         assert.equal(s.atk[1], Math.max(1, Math.round(center * 1.1)), `${def.id} этаж ${floor} ${threat}: верхняя ${s.atk[1]}`);
       }

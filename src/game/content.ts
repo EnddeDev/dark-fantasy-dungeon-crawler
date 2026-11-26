@@ -2399,7 +2399,9 @@ export type EnemyMove =
   | "intimidate"
   | "darkness"
   | "cold_touch"
-  | "hell_force";
+  | "hell_force"
+  | "fire_arrow"
+  | "mark";
 
 export interface EnemyDef {
   id: string;
@@ -2657,6 +2659,8 @@ export const ENEMY_MOVE_META: Record<EnemyMove, { name: string; desc: string }> 
   darkness: { name: "Мрак", desc: "Сгущает тьму вокруг: до конца раунда меткость твоих атак −50%." },
   cold_touch: { name: "Холодное касание", desc: "Бьёт сквозь броню и любое сопротивление, попадает всегда. Два хода нельзя восстанавливать здоровье." },
   hell_force: { name: "Сила ада", desc: "Двойной урон и четыре слоя горения." },
+  fire_arrow: { name: "Огненная стрела", desc: "Атака и 10 × уровень урона огнём; горение на 3 хода." },
+  mark: { name: "Метка", desc: "Два следующих хода монстр не может промахнуться." },
 };
 
 export const STAT_ORDER: StatKey[] = ["str", "agi", "int"];

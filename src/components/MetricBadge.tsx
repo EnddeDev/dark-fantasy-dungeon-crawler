@@ -14,6 +14,7 @@ import {
   Sparkles,
   Sword,
   Target,
+  Hexagon,
   WandSparkles,
   type LucideIcon,
 } from "lucide-react";
@@ -33,6 +34,7 @@ export type MetricKey =
   | "stamina"
   | "resist"
   | "magicResist"
+  | "barrier"
   | "fortify"
   | "enemyDamage"
   | "incomingDamage"
@@ -91,6 +93,11 @@ export const METRIC_INFO: Record<MetricKey, MetricInfo> = {
     label: "Маг. сопротивление",
     icon: WandSparkles,
     what: "Снижает магический урон по вам.",
+  },
+  barrier: {
+    label: "Маг. барьер",
+    icon: Hexagon,
+    what: "Поглощает магический урон первым, пока не снят.",
   },
   fortify: {
     label: "Укрепление",
