@@ -440,7 +440,7 @@ const HIGH_TIER: EnemyDef[] = [
     type: "strong",
     hp: 132, ap: 4, atk: [17, 24], armor: 7, gold: [140, 240], xp: 72, minFloor: 9,
     flavor: "Ответ не открывает дверь — он и есть дверь.",
-    moves: ["curse", "heavy", "guard", "drain"] }),
+    moves: ["riddle", "heavy", "guard", "drain"] }),
 ];
 
 export const EXTRA_ENEMIES: EnemyDef[] = [...LOW_TIER, ...MID_TIER, ...HIGH_TIER];

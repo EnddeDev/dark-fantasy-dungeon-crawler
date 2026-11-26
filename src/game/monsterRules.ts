@@ -47,6 +47,8 @@ export const MONSTER_RULES: Record<string, MonsterRule> = {
 /** Подписи ходов врага в логе и бестиарии. */
 export const MOVE_LABELS: Record<string, string> = {
   attack: "атака",
+  heat: "накал шлака",
+  riddle: "загадка",
   heavy: "сокрушение",
   guard: "защита",
   wound: "рана",

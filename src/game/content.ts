@@ -2401,7 +2401,9 @@ export type EnemyMove =
   | "cold_touch"
   | "hell_force"
   | "fire_arrow"
-  | "mark";
+  | "mark"
+  | "heat"
+  | "riddle";
 
 export interface EnemyDef {
   id: string;
@@ -2540,7 +2542,7 @@ export const ENEMIES: EnemyDef[] = [
     xp: 16,
     minFloor: 3,
     flavor: "Огонь в трещинах не согревает камень.",
-    moves: ["heavy", "guard", "sunder", "attack"],
+    moves: ["heavy", "guard", "sunder", "attack", "heat"],
   },
   {
     id: "imp",
@@ -2661,6 +2663,8 @@ export const ENEMY_MOVE_META: Record<EnemyMove, { name: string; desc: string }> 
   hell_force: { name: "Сила ада", desc: "Двойной урон и четыре слоя горения." },
   fire_arrow: { name: "Огненная стрела", desc: "Атака и 10 × уровень урона огнём; горение на 3 хода." },
   mark: { name: "Метка", desc: "Два следующих хода монстр не может промахнуться." },
+  heat: { name: "Накал шлака", desc: "Три хода: каждая атака добавляет огонь 5 × уровень, броня врага вдвое ниже." },
+  riddle: { name: "Загадка", desc: "Накладывает проклятие на героя и даёт барьер 10 × уровень. Снятый барьер снимает проклятие." },
 };
 
 export const STAT_ORDER: StatKey[] = ["str", "agi", "int"];
