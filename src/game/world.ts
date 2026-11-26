@@ -322,7 +322,7 @@ const LOW_TIER: EnemyDef[] = [
     type: "smart",
     hp: 20, ap: 3, atk: [4, 9], armor: 0, gold: [14, 30], xp: 11, minFloor: 1,
     flavor: "Ведёт туда, где нет дна. Вежливо и без единого слова.",
-    moves: ["attack", "curse", "drain", "attack"] }),
+    moves: ["attack", "drain", "attack", "guard"] }),
 ];
 
 /** Средние этажи (3+): воинья, хищники и улучшенная нежить. */
