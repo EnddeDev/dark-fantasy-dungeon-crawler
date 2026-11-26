@@ -157,7 +157,6 @@ export const MONSTER_RACE_META: Record<MonsterRace, MonsterRaceMeta> = {
     bonusMoves: [],
     vulnerable: ["fire", "ice", "acid"],
     fortify: 0.2,
-    noHealing: true,
     armorMult: 2,
   },
   vampire: {
@@ -278,7 +277,7 @@ export function raceEvade(race: MonsterRace): number {
   return raceMeta(race).evade ?? 0;
 }
 
-/** Род нельзя вылечить (конструкт). */
+/** Род нельзя вылечить. Сейчас таких родов нет: конструкты лечатся. */
 export function raceCannotHeal(race: MonsterRace): boolean {
   return raceMeta(race).noHealing === true;
 }

@@ -121,11 +121,11 @@ test("эффекты: монстр с иммунитетом показывае�
     assert.equal(chip.rounds, null, "иммунитет не имеет срока");
   }
 
-  /* Конструкт вдобавок не лечится. */
+  /* Конструкт лечится: иммунитета к лечению у него нет. */
   const construct = plainBattle();
   construct.enemy.def = { ...construct.enemy.def, race: "construct" };
   const cIds = effects.enemyEffectChips(construct).filter((c) => c.immune).map((c) => c.id);
-  assert.ok(cIds.includes("noHeal"), "конструкт не лечится");
+  assert.ok(!cIds.includes("noHeal"), "конструкт лечится");
 });
 
 test("эффекты: у героя с сердцем колосса иммунитет к кровотечению", () => {

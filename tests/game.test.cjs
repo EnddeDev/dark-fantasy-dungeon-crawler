@@ -3189,7 +3189,7 @@ test("monster races keep their immunities, weaknesses and elements", () => {
   assert.equal(monsters.coerceMonsterType("vampire", "strong"), "agile");
   assert.equal(monsters.coerceMonsterType("beast", "smart"), "agile");
   assert.equal(monsters.coerceMonsterType("demon", "smart"), "smart");
-  assert.equal(monsters.raceCannotHeal("construct"), true);
+  assert.equal(monsters.raceCannotHeal("construct"), false, "конструкты лечатся");
 });
 
 test("spawn applies type profile and race moves", () => {
@@ -3345,12 +3345,12 @@ test("dragon builds fury after three player hits and resists effects", () => {
   assert.equal(dart.enemy.statuses.poison, 0);
 });
 
-test("constructs cannot be healed or poisoned and burn badly", () => {
+test("constructs cannot be poisoned and burn badly, but can be healed", () => {
   const b = monsterBattle("construct", "strong", ["drain"], { player: { bag: { scroll_fire: 1 } } });
   b.idx = 1;
   b.enemy.hp = 200;
   const drained = battle.enemyStep(b);
-  assert.equal(drained.enemy.hp, 200, "конструкт не лечится похищением жизни");
+  assert.ok(drained.enemy.hp > 200, "конструкт лечится похищением жизни");
 
   const poisoned = monsterBattle("construct", "strong", ["attack"], { player: { bag: { poison_dart: 1 } } });
   poisoned.enemy.hp = 300;

@@ -293,6 +293,8 @@ export interface BattleState {
       noGuard?: number; throwDown?: number; shatterRounds?: number; skipTurn?: number; feint?: number; noEvade?: number; markRounds?: number;
       swingDmg?: number; echoDue?: number; eruptRounds?: number; eruptTick?: number; eruptDown?: number; eruptWither?: number;
       drainRounds?: number; drainTick?: number;
+      /** Накал шлака: раунды; горгулья в окаменении: 1 до её следующего хода. */
+      heat?: number; petrified?: number;
     };
     guard: boolean;
     /** Раунды, в которые враг вынужден держать защиту (свиток ужаса, бомба). */
@@ -316,7 +318,7 @@ export interface BattleState {
     warlordArmor?: number;
     warlordArmorTurns?: number;
     /** Маршал: тип действия героя, который он загадал в этом раунде. */
-    guessAction?: "attack" | "guard" | "skill" | null;
+    guessAction?: "attack" | "guard" | "skill" | "item" | null;
     /** Ход героя должен закончиться после текущего действия (перерождение Лича, контрудар Маршала). */
     endHeroTurn?: boolean;
     /** Скелет-страж: постоянная броня за заблокированные удары. */
@@ -326,6 +328,20 @@ export interface BattleState {
      * с которого приёмы снова доступны. 0 — приёмы не на перезарядке.
      */
     specialCooldown?: number;
+    /** Мимик-малыш спит, пока не получит первый урон. */
+    dormant?: boolean;
+    /** Засада (мимики-сундуки): первая атака врага не уклоняется. */
+    ambushFirst?: boolean;
+    /** Текущий ход врага — та самая засадная атака. */
+    ambushLive?: boolean;
+    /** Горгулья: окаменение уже применено за бой. */
+    petrifyUsed?: boolean;
+    /** Железный голем: боевой или защитный режим, переключается в начале хода врага. */
+    ironMode?: "combat" | "defense";
+    /** Голем-колосс: бонусная броня, которую герой снимает атаками. */
+    colossusArmor?: number;
+    /** Хранитель Загадок: сколько раз герой угадал его действие (каждый раз −25% к сопротивлению и укреплению). */
+    sphinxDown?: number;
   };
   p: {
     hp: number;
@@ -393,6 +409,8 @@ export interface BattleState {
     regenTurn?: number;
     statuses: {
       wound: number;
+      /** Проклятие от загадки Сфинкса: снимается вместе с барьером. */
+      riddleCurse?: number;
       /** Наложения кровотечения: урон за тик складывается. */
       woundStacks?: number;
       curse: number;
@@ -1277,6 +1295,7 @@ export function newBattle(
       def,
       level: s.level,
       ...enemyBarrierStart(def.id, s.level),
+      ...enemyStartState(def.id, s.level),
       threat: s.threat,
       mtype: s.mtype,
       hitsTaken: 0,
@@ -1413,7 +1432,7 @@ export function newBattle(
     bag: { ...pl.bag },
     pouch: pouchIds(pl),
     conjured: {},
-    queue: buildQueue(firstRoundAp, s.ap),
+    queue: startQueue(def.id, buildQueue(firstRoundAp, s.ap)),
     idx: 0,
     round: 1,
     log: [],
@@ -1927,8 +1946,22 @@ function enemyCritMult(b: BattleState): number {
   return 2 + effectPct / 100 + monsterCritDamageBonus(enemyStats(b).agi);
 }
 
+/** Хранитель Загадок держит 75% сопротивления и укрепления; каждая разгаданная загадка снимает 25%. */
+function sphinxShare(b: BattleState): number {
+  return Math.max(0, 0.75 - 0.25 * (b.enemy.sphinxDown ?? 0));
+}
+
+/** Укрепление врага от рода; у Хранителя Загадок — своё. */
+function enemyFortifyBase(b: BattleState): number {
+  return b.enemy.def.id === "boss_sphinx" ? sphinxShare(b) : raceFortify(b.enemy.def.race);
+}
+
 /* Магическое сопротивление врага: ИНТ плюс эффекты. gated — эффекты при истощении не работают. */
 function enemyMagicResist(b: BattleState, gated = false): number {
+  if (b.enemy.def.id === "boss_sphinx") {
+    const share = sphinxShare(b);
+    return (b.enemy.statuses.shatterRounds ?? 0) > 0 ? share * 0.5 : share;
+  }
   const effect = gated && effectsDepleted(b) ? 0 : eChance(b, "magic_resist");
   const r = combineChances([monsterMagicResist(enemyStats(b).int), effect]);
   return (b.enemy.statuses.shatterRounds ?? 0) > 0 ? r * 0.5 : r;
@@ -2659,14 +2692,24 @@ export function applyVamp(b: BattleState, dealt: number, extraRatio = 0, source:
 /** Броня врага сейчас: воскресшая нежить теряет половину; в стойке (как у героя) — ×1.25 до его следующего хода. */
 export function enemyArmorNow(e: {
   armor: number;
+  def?: { id: string };
   revived?: boolean;
   guard?: boolean;
   warlordArmor?: number;
   blockArmor?: number;
-  statuses?: { breakFlat?: number; breakPct?: number; breakRounds?: number; shatterRounds?: number; burn?: number; emberShred?: number; breakExtra?: number };
+  ironMode?: "combat" | "defense";
+  colossusArmor?: number;
+  statuses?: { heat?: number; breakFlat?: number; breakPct?: number; breakRounds?: number; shatterRounds?: number; burn?: number; emberShred?: number; breakExtra?: number };
 }): number {
-  let base = (e.revived ? Math.round(e.armor * (1 - REVIVE_DEBUFF)) : e.armor) + (e.warlordArmor ?? 0) + (e.blockArmor ?? 0);
+  /* Особенности вида действуют, пока вид совпадает: иначе они остались бы от исходного монстра. */
+  const colossus = e.def?.id === "golem_colossus" ? e.colossusArmor ?? 0 : 0;
+  const iron = e.def?.id === "iron_guardian" ? e.ironMode : undefined;
+  let base = (e.revived ? Math.round(e.armor * (1 - REVIVE_DEBUFF)) : e.armor) + (e.warlordArmor ?? 0) + (e.blockArmor ?? 0) + colossus;
   const brk = e.statuses;
+  /* Железный голем: боевой режим −25% брони, защитный +25%. Накал шлака: броня вдвое ниже. */
+  if (iron === "combat") base = Math.round(base * 0.75);
+  if (iron === "defense") base = Math.round(base * 1.25);
+  if ((brk?.heat ?? 0) > 0) base = Math.round(base * 0.5);
   if (brk && (brk.breakRounds ?? 0) > 0) {
     base = Math.round(Math.max(0, base - (brk.breakFlat ?? 0)) * (1 - (brk.breakPct ?? 0)));
   }
@@ -2703,7 +2746,9 @@ export function damageAfterEnemyDefense(b: BattleState, raw: number, kind: HitKi
     /* Каменная шкура и укрепление рода — врождённые свойства породы,
        а не эффекты: истощение их не снимает. */
     if (b.enemy.passive?.id === "stone_hide") d = Math.round(d * 0.75);
-    const fortify = raceFortify(b.enemy.def.race) * ((b.enemy.statuses.shatterRounds ?? 0) > 0 ? 0.5 : 1);
+    /* Слизь: сопротивление физическому урону 2% + 1% за уровень. */
+    if (b.enemy.def.id === "slime") d = Math.round(d * (1 - (0.02 + 0.01 * b.enemy.level)));
+    const fortify = enemyFortifyBase(b) * ((b.enemy.statuses.shatterRounds ?? 0) > 0 ? 0.5 : 1);
     if (fortify > 0) d = Math.round(d * (1 - fortify));
     if (!effectsDepleted(b)) d = Math.round(d * (1 - eChance(b, "fortify") * ((b.enemy.statuses.shatterRounds ?? 0) > 0 ? 0.5 : 1)));
   } else {
@@ -2762,6 +2807,30 @@ function enemyCurseHero(b: BattleState, text: string) {
   push(b, text, "e");
 }
 
+/** Засада: мимик-сундук и старший мимик ходят первыми; очередь начинается с врага. */
+function startQueue(id: string, q: ("p" | "e")[]): ("p" | "e")[] {
+  if (id !== "mimic_chest" && id !== "mimic_elder") return q;
+  const k = q.indexOf("e");
+  if (k > 0) {
+    q.splice(k, 1);
+    q.unshift("e");
+  }
+  return q;
+}
+
+/** Особенности вида, которые задаются при старте боя. */
+function enemyStartState(
+  id: string,
+  level: number,
+): { dormant?: boolean; ambushFirst?: boolean; colossusArmor?: number; ironMode?: "combat" | "defense" } {
+  return {
+    ...(id === "mimic_larva" ? { dormant: true } : {}),
+    ...(id === "mimic_chest" || id === "mimic_elder" ? { ambushFirst: true } : {}),
+    ...(id === "golem_colossus" ? { colossusArmor: 10 * level } : {}),
+    ...(id === "iron_guardian" ? { ironMode: "combat" as const } : {}),
+  };
+}
+
 /** Маг. барьер стартует у Архиерея и Владыки Урны. */
 function enemyBarrierStart(id: string, level: number): { barrier?: number; barrierMax?: number } {
   if (id === "boss_prelate" || id === "boss_lich") return { barrier: 50, barrierMax: 50 };
@@ -2777,6 +2846,13 @@ function absorbEnemyBarrier(b: BattleState, dmg: number): number {
   e.barrier -= used;
   push(b, `Маг. барьер ${e.def.name} поглощает ${used} урона${e.barrier <= 0 ? ", барьер снят" : ""}.`, "p");
   if (e.barrier <= 0 && e.def.id === "boss_prelate") enemyCurseHero(b, "Снятый барьер Архиерея: проклятие на 3 хода.");
+  /* Барьер Сфинкса снят: проклятие его загадки уходит вместе с ним. */
+  if (e.barrier <= 0 && e.def.id === "sphinx" && b.p.statuses.riddleCurse) {
+    b.p.statuses.riddleCurse = 0;
+    b.p.statuses.curse = 0;
+    b.p.statuses.cursePower = 0;
+    push(b, "Барьер Сфинкса снят: проклятие загадки уходит.", "p");
+  }
   return dmg - used;
 }
 
@@ -2787,6 +2863,26 @@ function refreshLichBarrier(b: BattleState) {
   push(b, `${b.enemy.def.name} восстанавливает маг. барьер до ${b.enemy.barrier}.`, "e");
 }
 
+/** Слизь регенерирует в начале своего хода: 1% + 1% за уровень от макс. ОЗ. Своя регенерация обходит запрет лечения конструктов. */
+function slimeRegen(b: BattleState) {
+  const e = b.enemy;
+  if (e.def.id !== "slime" || e.hp <= 0 || e.hp >= e.maxHp || b.over) return;
+  const heal = healEnemy(b, Math.max(1, Math.round(e.maxHp * (0.01 + 0.01 * e.level))));
+  if (heal > 0) push(b, `${e.def.name} регенерирует ${heal} ОЗ.`, "e");
+}
+
+/** Железный голем в начале своего хода выбирает режим: защитный ниже половины ОЗ, иначе боевой. */
+function ironModeCheck(b: BattleState) {
+  const e = b.enemy;
+  if (e.def.id !== "iron_guardian" || e.hp <= 0 || b.over) return;
+  const mode = e.hp < e.maxHp * 0.5 ? "defense" : "combat";
+  if (mode === e.ironMode) return;
+  e.ironMode = mode;
+  push(b, mode === "defense"
+    ? `${e.def.name} переходит в защитный режим: броня +25%, урон −25%, шипы ${5 * e.level}.`
+    : `${e.def.name} переходит в боевой режим: урон +25%, броня −25%.`, "e");
+}
+
 /** Гнилой ходок в начале своего хода теряет 2 × уровень ОЗ и столько же магического урона наносит герою. */
 function huskBlood(b: BattleState) {
   const e = b.enemy;
@@ -2795,12 +2891,7 @@ function huskBlood(b: BattleState) {
   e.hp -= cost;
   push(b, `${e.def.name} теряет ${cost} здоровья и выплёскивает гниль.`, "e");
   incoming(b, cost, "magic", `${e.def.name} выплёскивает гниль`);
-  if (e.hp <= 0 && !b.over && !tryRevive(b)) {
-    e.hp = 0;
-    b.over = "win";
-    gainLoot(b);
-    push(b, `${e.def.name} повержен! (+${enemyXpFor(b)} опыта)`, "sys");
-  }
+  if (e.hp <= 0 && !b.over && !tryRevive(b)) defeatEnemy(b);
 }
 
 /** Броня полководца тает на ходах героя. */
@@ -2838,6 +2929,11 @@ export function hitEnemy(
 ): number {
   /* Любая попытка удара героя отмечает раунд: без ударов комбо Дуэлянта сгорает в конце раунда. */
   b.p.statuses.comboRound = b.round;
+  /* Голем-колосс: каждая атака героя снимает 5 из его бонусной брони. */
+  if (strike && kind === "phys" && b.enemy.def.id === "golem_colossus" && (b.enemy.colossusArmor ?? 0) > 0) {
+    b.enemy.colossusArmor = Math.max(0, (b.enemy.colossusArmor ?? 0) - 5);
+    push(b, `Удар сбивает броню колосса: −5 (осталось ${b.enemy.colossusArmor}).`, "p");
+  }
   /* Магическое усиление: любой магический удар героя, включая свитки и расходники. */
   if (kind === "magic") raw = Math.round(raw * magicMultNow(b));
   /* Комбо Дуэлянта: +5% за стак; при полном комбо и рубеже 10 удар ×1,5, стаки тратятся. */
@@ -2887,6 +2983,12 @@ export function hitEnemy(
     push(b, `Мрак вампира съедает удар: промах.${note}`, "e");
     return 0;
   }
+  /* Горгулья в окаменении: физический урон не проходит до её следующего хода. */
+  if (kind === "phys" && (b.enemy.statuses.petrified ?? 0) > 0) {
+    flash(b, "e", "guard", 0);
+    push(b, `${b.enemy.def.name} в окаменении: физический удар не проходит.${note}`, "e");
+    return 0;
+  }
   /* Костяной воин: поднятый щит принимает первую физическую атаку раунда. */
   if (b.enemy.shield && kind === "phys") {
     b.enemy.shield = false;
@@ -2932,6 +3034,12 @@ export function hitEnemy(
   b.enemy.hp -= d;
   flash(b, "e", "hit", d, element ?? kind);
   push(b, `${b.enemy.def.name} получает ${d} урона.${note}`, "p", element);
+  /* Мимик-малыш просыпается от первого урона и контратакует; ход героя на этом заканчивается. */
+  if (b.enemy.dormant && b.enemy.def.id === "mimic_larva" && d > 0) {
+    b.enemy.dormant = false;
+    push(b, `${b.enemy.def.name} раскрывается и контратакует!`, "e");
+    if (b.queue[b.idx] === "p" && b.enemy.hp > 0) b.enemy.endHeroTurn = true;
+  }
   /* Урон героя за его ход (для Эхо) и оглушение Обратного хвата (шанс 25%). */
   if (b.queue[b.idx] === "p") b.p.statuses.turnDealt = (b.p.statuses.turnDealt ?? 0) + d;
   if ((b.p.statuses.gripTurn ?? 0) > 0 && strike && kind === "phys" && d > 0 && b.enemy.hp > 0 && !bossResists(b) && Math.random() < 0.25) {
@@ -2954,6 +3062,14 @@ export function hitEnemy(
     const thornsRest = absorbBarrier(b, thorns);
     b.p.hp -= thornsRest;
     push(b, `Шипы противника ранят тебя: −${thornsRest} ОЗ.`, "e");
+  }
+  /* Железный голем в защитном режиме: каждый физический удар получает ответ шипами 5 × уровень. */
+  if (b.enemy.def.id === "iron_guardian" && b.enemy.ironMode === "defense" && kind === "phys" && d > 0 && b.p.hp > 0) {
+    const spikes = absorbBarrier(b, 5 * b.enemy.level);
+    if (spikes > 0) {
+      b.p.hp -= spikes;
+      push(b, `Шипы голема ранят тебя: −${spikes} ОЗ.`, "e");
+    }
   }
   /* Шлаковая шкура: 10% физического урона по стражу возвращается герою. */
   if (b.enemy.def.id === "golem" && kind === "phys" && d > 0 && b.p.hp > 0) {
@@ -3167,6 +3283,21 @@ function firstStrikeStun(b: BattleState) {
   push(b, `Первый удар в бою оглушает ${b.enemy.def.name}.`, "p");
 }
 
+/** Железный голем и Голем-колосс: при промахе всё равно наносят половину урона. */
+const HALF_ON_MISS = ["iron_guardian", "golem_colossus"];
+
+function glancingBlow(b: BattleState, raw: number, kind: HitKind, src: string) {
+  if (!HALF_ON_MISS.includes(b.enemy.def.id) || b.enemy.hp <= 0 || b.p.hp <= 0) return;
+  const half = Math.round(raw * 0.5);
+  if (half <= 0) return;
+  const d = absorbBarrier(b, damageAfterPlayerDefense(b, half, kind, false, false));
+  if (d <= 0) return;
+  b.p.hp -= d;
+  flash(b, "p", "hit", d, kind);
+  push(b, `${src} — промах, но задевает: тебе ${d} урона.`, "e");
+  heroDeathCheck(b);
+}
+
 export function incoming(
   b: BattleState,
   raw: number,
@@ -3184,10 +3315,14 @@ export function incoming(
   if (kind === "phys" && b.queue[b.idx] === "e" && b.enemy.def.id === "lich_tender") kind = "magic";
   /* Метка врага: его удары на свои ходы не промахиваются, уклонение и тьма не работают. */
   const sureHit = b.queue[b.idx] === "e" && (b.enemy.statuses.markRounds ?? 0) > 0;
+  /* Засада мимика: его первая атака не уклоняется. */
+  const unevadable = b.queue[b.idx] === "e" && b.enemy.ambushLive === true;
+  const noEvade = sureHit || unevadable;
   const darkMiss = (b.torchTurns ?? 0) > 0 ? 0 : biomeMissChance(b.biome);
   if (!sureHit && !ignoreDefense && strike && darkMiss > 0 && Math.random() < darkMiss) {
     flash(b, "p", "miss", 0);
     push(b, `Мрак скрывает тебя: ${src} — промах.`, "sys");
+    glancingBlow(b, raw, kind, src);
     return false;
   }
   /* Чистый урон не знает ни неуязвимости, ни полной защиты, ни уклонения, ни дыма. */
@@ -3202,30 +3337,34 @@ export function incoming(
     push(b, `Полная защита поглощает удар (${src}).`, "p");
     return false;
   }
-  if (!sureHit && !pure && b.p.statuses.dodgeNext > 0) {
+  if (!noEvade && !pure && b.p.statuses.dodgeNext > 0) {
     b.p.statuses.dodgeNext--;
     flash(b, "p", "miss", 0);
     push(b, `Пустой шаг: атака (${src}) полностью ускользает.`, "p");
     grantDodgeAction(b);
+    glancingBlow(b, raw, kind, src);
     return false;
   }
-  if (!sureHit && !pure && b.p.statuses.smoke > 0) {
+  if (!noEvade && !pure && b.p.statuses.smoke > 0) {
     b.p.statuses.smoke--;
     flash(b, "p", "miss", 0);
     push(b, `Дымовая завеса скрыла тебя от атаки. Осталось укрытий: ${b.p.statuses.smoke}.`, "p");
     grantDodgeAction(b);
+    glancingBlow(b, raw, kind, src);
     return false;
   }
-  if (!sureHit && !ignoreDefense && kind === "phys" && b.p.statuses.evadeTurn > 0) {
+  if (!noEvade && !ignoreDefense && kind === "phys" && b.p.statuses.evadeTurn > 0) {
     flash(b, "p", "miss", 0);
     push(b, `Неуловимость: ${src} проходит мимо.`, "e");
+    glancingBlow(b, raw, kind, src);
     return false;
   }
-  if (!sureHit && !ignoreDefense && kind === "phys" && Math.random() < combatChance(b.p.chanceLayers.evade)) {
+  if (!noEvade && !ignoreDefense && kind === "phys" && Math.random() < combatChance(b.p.chanceLayers.evade)) {
     flash(b, "p", "miss", 0);
     push(b, `Ты уходишь с линии удара — промах!`, "e");
     grantDodgeAction(b);
     b.p.statuses.dodgedRound = b.round;
+    glancingBlow(b, raw, kind, src);
     /* Тень (ранг 5): раз за раунд, уклонившись, отвечаешь ударом из укрытия. */
     if (hasPassive(b, "skill_shadow_b") && (b.p.statuses.shadowCounterRound ?? 0) !== b.round && b.enemy.hp > 0) {
       b.p.statuses.shadowCounterRound = b.round;
@@ -3548,6 +3687,7 @@ function endTurnDurations(b: BattleState) {
   const side = b.queue[b.idx];
   if (side === "p") tickWarlordArmor(b);
   if (side === "e" && (b.enemy.statuses.markRounds ?? 0) > 0) b.enemy.statuses.markRounds = (b.enemy.statuses.markRounds ?? 0) - 1;
+  if (side === "e" && (b.enemy.statuses.heat ?? 0) > 0) b.enemy.statuses.heat = (b.enemy.statuses.heat ?? 0) - 1;
   if (side === "p") {
     const s = b.p.statuses;
     const prevCurse = s.curse;
@@ -3624,6 +3764,10 @@ function beginTurn(b: BattleState) {
   if (side === "e") {
     refreshLichBarrier(b);
     huskBlood(b);
+    /* Окаменение горгульи кончается с её следующим ходом. */
+    b.enemy.statuses.petrified = 0;
+    slimeRegen(b);
+    ironModeCheck(b);
   }
 
   /* Страх: атаки и приёмы закрыты; защиту, сумку, побег или конец хода герой выбирает сам. */
@@ -3681,10 +3825,7 @@ function beginTurn(b: BattleState) {
   }
 
   if (b.enemy.hp <= 0 && !tryRevive(b)) {
-    b.enemy.hp = 0;
-    b.over = "win";
-    gainLoot(b);
-    push(b, `${b.enemy.def.name} повержен! (+${enemyXpFor(b)} опыта)`, "sys");
+    defeatEnemy(b);
     return;
   }
   if (b.p.hp <= 0) {
@@ -3704,6 +3845,12 @@ function prepareRoundRules(b: BattleState) {
     const kinds = ["attack", "guard", "skill"] as const;
     e.guessAction = kinds[Math.floor(Math.random() * kinds.length)];
     push(b, `${e.def.name} загадывает действие. Выполнишь его — контрудар, и твой ход окончен.`, "e");
+  }
+  if (e.def.id === "boss_sphinx" && e.hp > 0 && !b.over) {
+    /* Четыре действия героя, кроме побега; одно из них — правильное, какое — игрок не знает. */
+    const kinds = GUESS_KINDS;
+    e.guessAction = kinds[Math.floor(Math.random() * kinds.length)];
+    push(b, `${e.def.name} загадывает одно из четырёх действий: ${GUESS_KINDS.map((k) => GUESS_LABEL[k]).join(", ")}. Сделай загаданное в свой ход — магическое сопротивление и укрепление −25%.`, "e");
   }
   if (e.def.id === "seer" && e.hp > 0 && !b.over) {
     e.announced = chooseEnemyMove(b);
@@ -3730,11 +3877,27 @@ function endBubble(b: BattleState) {
 function finishIfEnemyDead(b: BattleState): boolean {
   if (b.over || b.enemy.hp > 0) return false;
   if (tryRevive(b)) return false;
+  defeatEnemy(b);
+  return true;
+}
+
+/** Старший мимик-лабиринт: при смерти бьёт героя магией 10 × уровень. */
+function mimicDeathTrap(b: BattleState) {
+  const e = b.enemy;
+  if (e.def.id !== "mimic_elder" || b.p.hp <= 0) return;
+  const dmg = 10 * e.level;
+  push(b, `${e.def.name} взрывается ловушкой: магический урон ${dmg}.`, "e");
+  incoming(b, dmg, "magic", `${e.def.name} в ловушке`);
+}
+
+/** Враг повержен. Ловушка мимика срабатывает до победы: если герой пал от неё, победы нет. */
+function defeatEnemy(b: BattleState) {
   b.enemy.hp = 0;
+  mimicDeathTrap(b);
+  if (b.over) return;
   b.over = "win";
   gainLoot(b);
   push(b, `${b.enemy.def.name} повержен! (+${enemyXpFor(b)} опыта)`, "sys");
-  return true;
 }
 
 /** Приёмы: что кончается вместе с ходом героя и ходом врага. */
@@ -5108,10 +5271,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
   if (takeTurn && !b.over && b.enemy.hp > 0 && (a.type === "weapon_skill" || a.type === "epic_skill" || a.type === "armor_skill" || a.type === "archetype_skill" || (a.type === "item" && ITEMS[a.id]?.kind === "scroll"))) archmageProc(b);
   if (takeTurn && !b.over && a.type !== "end_turn") adjustConcentration(b, a.type, a.type === "attack" ? a.kind ?? "normal" : undefined);
   if (!b.over && b.enemy.hp <= 0 && !tryRevive(b)) {
-    b.enemy.hp = 0;
-    b.over = "win";
-    gainLoot(b);
-    push(b, `${b.enemy.def.name} повержен! (+${enemyXpFor(b)} опыта)`, "sys");
+    defeatEnemy(b);
     return b;
   }
   /* Герой мог пасть от собственного действия (шипы врага): смерть не ждёт конца хода и выносливости. */
@@ -5119,12 +5279,18 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
   if (b.over) return b;
   /* Ход заканчивается кнопкой «Пропуск хода» либо когда выносливость иссякла. Защита ход не заканчивает. */
   /* Мёртвый Маршал угадал тип действия: контрудар (его обычная атака) и конец хода героя. */
-  if (takeTurn && !b.over && b.enemy.guessAction && guessCategory(a) === b.enemy.guessAction) {
+  if (takeTurn && !b.over && b.enemy.def.id !== "boss_sphinx" && b.enemy.guessAction && guessCategory(a) === b.enemy.guessAction) {
     b.enemy.guessAction = null;
     b.enemy.announced = "attack";
     b.queue.splice(b.idx + 1, 0, "e");
     b.enemy.endHeroTurn = true;
     push(b, `${b.enemy.def.name} угадал твой ход: контрудар, и твой ход окончен.`, "e");
+  }
+  /* Хранитель Загадок: угаданное действие героя снижает его магическое сопротивление и укрепление на 25%. */
+  if (takeTurn && !b.over && b.enemy.def.id === "boss_sphinx" && b.enemy.guessAction && guessCategory(a) === b.enemy.guessAction) {
+    b.enemy.guessAction = null;
+    b.enemy.sphinxDown = Math.min(3, (b.enemy.sphinxDown ?? 0) + 1);
+    push(b, `${b.enemy.def.name} разгадан: магическое сопротивление и укрепление −25%.`, "p");
   }
   const endsTurn = a.type === "end_turn" || (a.type === "weapon_skill" && ENDING_TECH_EFFECTS.has(b.p.weaponSkill?.effect ?? "")) || b.enemy.endHeroTurn === true;
   b.enemy.endHeroTurn = false;
@@ -5135,7 +5301,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
 /* ═══════════  ИНТЕЛЛЕКТ МОНСТРОВ  ═══════════ */
 
 /** Приёмы с негативными эффектами: порча, яд, кровотечение, печати, страх. */
-const DEBUFF_MOVES: EnemyMove[] = ["wound", "poison", "curse", "sunder", "bell_stun", "terror", "seal_items", "seal_skills", "seal_attack", "intimidate", "darkness"];
+const DEBUFF_MOVES: EnemyMove[] = ["wound", "poison", "curse", "sunder", "bell_stun", "terror", "seal_items", "seal_skills", "seal_attack", "intimidate", "darkness", "riddle"];
 
 /**
  * Перезарядка приёмов, которые вешают на героя негативный эффект: страх,
@@ -5146,9 +5312,10 @@ const DEBUFF_MOVES: EnemyMove[] = ["wound", "poison", "curse", "sunder", "bell_s
  */
 export const ENEMY_MOVE_COOLDOWN = 3;
 /** Категория действия героя для загадывания Маршала: атака, защита, приём. */
-function guessCategory(a: PlayerAction): "attack" | "guard" | "skill" | null {
+function guessCategory(a: PlayerAction): "attack" | "guard" | "skill" | "item" | null {
   if (a.type === "attack") return "attack";
   if (a.type === "guard") return "guard";
+  if (a.type === "item") return "item";
   if (a.type === "weapon_skill" || a.type === "epic_skill" || a.type === "armor_skill" || a.type === "archetype_skill") return "skill";
   return null;
 }
@@ -5176,8 +5343,11 @@ function armEnemyCooldown(b: BattleState, move: EnemyMove): void {
   if (!ENEMY_COOLDOWN_MOVES.includes(move)) return;
   b.enemy.specialCooldown = b.round + ENEMY_MOVE_COOLDOWN;
 }
+/** Подписи загаданного действия героя для загадки Хранителя. */
+const GUESS_KINDS = ["attack", "guard", "skill", "item"] as const;
+const GUESS_LABEL: Record<(typeof GUESS_KINDS)[number], string> = { attack: "атака", guard: "защита", skill: "умение", item: "предмет" };
 /** Прямые удары оружием и когтями. */
-const STRIKE_MOVES: EnemyMove[] = ["attack", "heavy", "multi"];
+const STRIKE_MOVES: EnemyMove[] = ["attack", "heavy", "multi", "heat"];
 /** Физические приёмы врага: на них действует лёд и броня героя. */
 const PHYS_ENEMY_MOVES: EnemyMove[] = ["attack", "heavy", "wound", "sunder", "poison", "multi"];
 
@@ -5255,6 +5425,8 @@ const ENEMY_MOVE_SHAPE: Partial<Record<EnemyMove, { mult: number; kind: HitKind;
   hell_force: { mult: 2, kind: "magic" },
   fire_arrow: { mult: 1, kind: "phys" },
   cold_touch: { mult: 1.1, kind: "magic", ignoreDefense: true },
+  heat: { mult: 1, kind: "phys" },
+  riddle: { mult: 0.7, kind: "magic" },
 };
 
 /** Ослабление/усиление удара от состояния врага (ледяное проклятие, порча). */
@@ -5404,6 +5576,12 @@ function enemyMoveRaw(
   if ((e.statuses.throwDown ?? 0) > 0 && isStrikeMove) {
     base = Math.round(base / 2);
     lines.push({ label: "Бросок: удар слабее", value: base, note: "×0.5" });
+  }
+  /* Железный голем: боевой режим бьёт на 25% сильнее, защитный — на 25% слабее. */
+  if (e.def.id === "iron_guardian" && e.ironMode && ENEMY_MOVE_SHAPE[move]) {
+    const mult = e.ironMode === "combat" ? 1.25 : 0.75;
+    base = Math.round(base * mult);
+    lines.push({ label: e.ironMode === "combat" ? "Боевой режим" : "Защитный режим", value: base, note: `×${mult}` });
   }
   /* Огр-мясник звереет, когда герой ранен. */
   if (e.def.id === "brute") {
@@ -5585,6 +5763,7 @@ const ENEMY_DEBUFF_STATUS: Partial<Record<EnemyMove, string>> = {
   cold_touch: "chill",
   hell_force: "burn",
   fire_arrow: "burn",
+  riddle: "curse",
 };
 
 /**
@@ -5781,7 +5960,8 @@ export function enemyMoveEffectDetails(b: BattleState, move: EnemyMove): EnemyMo
     case "sunder":
       add("sunder", false, landP, [`Раскол брони: броня −${enemySunderBreak(e.level)} до конца боя; всего не больше −8.`], "sunder");
       break;
-    case "curse": {
+    case "curse":
+    case "riddle": {
       const magic = heroChance(b, b.p.chanceLayers.magicResist);
       const [lo, hi] = span("curse", true);
       const power = Math.max(b.p.statuses.cursePower ?? 0, 30);
@@ -5901,7 +6081,7 @@ export function enemyReadout(b: BattleState): EnemyReadout {
   const effectResist = combineChances([monsterTenacity(enemyStats(b).str), depleted ? 0 : eChance(b, "resist")]);
   const resist = 1 - (1 - raceEffectResist(e.def.race)) * (1 - (b.isBoss ? BOSS_EFFECT_RESIST : 0)) * (1 - effectResist);
   const effectFortify = depleted ? 0 : eChance(b, "fortify");
-  const fortify = 1 - (1 - raceFortify(e.def.race)) * (1 - effectFortify);
+  const fortify = 1 - (1 - enemyFortifyBase(b)) * (1 - effectFortify);
   const magicResist = enemyMagicResist(b, true);
   const list = [...new Set(e.moves.length ? e.moves : e.def.moves)];
   return {
@@ -5939,6 +6119,12 @@ export function enemyStep(b0: BattleState): BattleState {
   const b = clone(b0);
   b.enemy.guard = false;
   const e = b.enemy;
+  /* Мимик-малыш спит, пока его не ранили: ход проходит без действий. */
+  if (e.dormant && e.def.id === "mimic_larva") {
+    push(b, `${e.def.name} спит и не двигается.`, "e");
+    advance(b);
+    return b;
+  }
   if (e.statuses.stunAp > 0) {
     e.statuses.stunAp--;
     push(b, `${e.def.name} оглушён и пропускает ход.`, "p");
@@ -6002,6 +6188,15 @@ export function enemyStep(b0: BattleState): BattleState {
     push(b, `${e.def.name} зовёт стаю: +${heal} ОЗ и лишний ход.`, "e");
     b.queue.splice(b.idx + 1, 0, "e");
   }
+  /* Горгулья при 30% ОЗ застывает: лечит 20% макс. ОЗ, а до её следующего хода физический урон не проходит. Раз за бой. */
+  if (e.def.id === "gargoyle" && !e.petrifyUsed && e.hp > 0 && e.hp <= e.maxHp * 0.3) {
+    e.petrifyUsed = true;
+    e.statuses.petrified = 1;
+    const heal = healEnemy(b, Math.round(e.maxHp * 0.2));
+    push(b, `${e.def.name} окаменевает: +${heal} ОЗ, физический урон не проходит до её следующего хода.`, "e");
+    advance(b);
+    return b;
+  }
   const chill = enemyChill(b);
   /* Пророк уже объявил ход в начале раунда; остальные выбирают ход сейчас. */
   /* Объявленный ход выполняется, только если он всё ещё доступен; иначе ход выбирается заново. */
@@ -6024,6 +6219,9 @@ export function enemyStep(b0: BattleState): BattleState {
   let base = enemyMoveRaw(b, move, roll, critNow).value;
   const resistChance = playerResistChance(b);
   const hpBeforeMove = b.p.hp;
+  /* Засада: первая атака мимика не уклоняется; у сундука она же накладывает кровотечение. */
+  const ambushStrike = (e.def.id === "mimic_chest" || e.def.id === "mimic_elder") && !!e.ambushFirst && STRIKE_MOVES.includes(move);
+  e.ambushLive = ambushStrike;
   /* Плачущая тень: броня не держит больше половины её удара. */
   b.piercing = e.def.id === "wraith";
 
@@ -6063,14 +6261,24 @@ export function enemyStep(b0: BattleState): BattleState {
       }
       break;
     }
+    case "riddle":
     case "curse": {
-      const landed = incoming(b, Math.round(base * 0.7 * chill), "magic", `${e.def.name} шепчет анафему`);
+      /* Загадка: сначала барьер 10 × уровень, затем то же проклятие, что у порчи. */
+      if (move === "riddle") {
+        e.barrierMax = 10 * e.level;
+        e.barrier = e.barrierMax;
+        push(b, `${e.def.name} задаёт загадку: маг. барьер ${e.barrier}.`, "e");
+      }
+      const landed = incoming(b, Math.round(base * 0.7 * chill), "magic", move === "riddle" ? `${e.def.name} шепчет загадку` : `${e.def.name} шепчет анафему`);
       if (!landed) e.lastMiss = true;
       if (landed && b.p.hp > 0 && Math.random() > resistChance) {
         if (!immuneNote(b, "curse")) {
           setPlayerTick(b, "curse", 3, dotSkillTick("curse", e.level));
           b.p.statuses.cursePower = Math.max(b.p.statuses.cursePower ?? 0, 30);
-          push(b, "Проклятие висит 3 раунда: твой урон снижен на 30%.", "e");
+          if (move === "riddle") b.p.statuses.riddleCurse = 1;
+          push(b, move === "riddle"
+            ? "Проклятие загадки висит 3 раунда: твой урон снижен на 30%. Снятый барьер снимает его."
+            : "Проклятие висит 3 раунда: твой урон снижен на 30%.", "e");
         }
       } else if (landed && b.p.hp > 0) {
         push(b, "Стойкость отбрасывает проклятие.", "p");
@@ -6142,6 +6350,13 @@ export function enemyStep(b0: BattleState): BattleState {
           if (b.p.hp > 0) push(b, "Стужа в костях: два хода лечение не действует.", "e");
         }
       }
+      break;
+    }
+    case "heat": {
+      e.statuses.heat = 3;
+      push(b, `${e.def.name} накаляет шлак: три хода атаки жгут огнём, броня вдвое ниже.`, "e");
+      const landed = incoming(b, Math.round(base * chill), "phys", `${e.def.name} бьёт раскалённым шлаком`);
+      if (!landed) e.lastMiss = true;
       break;
     }
     case "mark": {
@@ -6228,6 +6443,19 @@ export function enemyStep(b0: BattleState): BattleState {
     }
   }
 
+  /* Накал шлака: пока он держится, каждая атака добавляет огонь 5 × уровень. */
+  if ((e.statuses.heat ?? 0) > 0 && STRIKE_MOVES.includes(move) && !e.lastMiss && b.p.hp > 0 && b.enemy.hp > 0) {
+    incoming(b, 5 * e.level, "magic", `${e.def.name} жжёт огнём раскалённого шлака`);
+  }
+  /* Засада кончилась первой атакой; у сундука она же накладывает кровотечение 5 × уровень. */
+  if (ambushStrike) {
+    e.ambushFirst = false;
+    e.ambushLive = false;
+    if (e.def.id === "mimic_chest" && !e.lastMiss && b.p.hp > 0 && Math.random() > resistChance) {
+      const stacks = applyPlayerDot(b, "wound", 3, 5 * e.level);
+      if (stacks > 0) push(b, `Засада: кровотечение 3 раунда, ${5 * e.level} за тик.`, "e");
+    }
+  }
   /* Родовые последствия удара: вампиризм, кровь, страх, яд, огонь. */
   if (!e.lastMiss && b.p.hp < hpBeforeMove) {
     applyRaceStrike(b, isStrikeMove, Math.round(base * chill), resistChance);
