@@ -21,6 +21,8 @@ export const SECOND_WIND_COST = 5;
 export const STAMINA_GUARD = 10;
 /** Предмет из рюкзака. Предмет из сумки (слоты зелий, свитков и расходников) бесплатен. */
 export const STAMINA_BACKPACK = 5;
+/** Выбраться из паутины: тратит ход и выносливость. */
+export const STAMINA_STRUGGLE = 25;
 
 /** Восстановление в начале раунда: доля максимума (половина), не выше максимума. */
 export const STAMINA_ROUND_RECOVERY = 0.5;
