@@ -66,6 +66,8 @@ export const MOVE_LABELS: Record<string, string> = {
   darkness: "мрак",
   cold_touch: "холодное касание",
   hell_force: "сила ада",
+  web: "опутывание",
+  spit: "харчок",
 };
 
 /** Крыса зовёт стаю при половине ОЗ, один раз за бой. */

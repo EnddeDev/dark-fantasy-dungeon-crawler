@@ -157,6 +157,7 @@ import type { GearEffectId, GearPassiveId } from "./gearEffects";
 import { pouchIds, usableFromPouchInBattle } from "./pouch";
 import {
   STAMINA_GUARD,
+  STAMINA_STRUGGLE,
   STAMINA_MIN_PAID,
   STAMINA_TURN_RECOVERY,
   STAMINA_ROUND_RECOVERY,
@@ -214,6 +215,8 @@ export interface BattleState {
   floor: number;
   /** Активный факел с карты: снимает штраф мрака на время действия. */
   torchTurns?: number;
+  /** Удар врага в этом ходу уклонён (героем): нужен преследованию паука-охотника. */
+  strikeEvaded?: boolean;
 
   /** Правило среды текущего этажа. */
   biome: BiomeId;
@@ -294,7 +297,7 @@ export interface BattleState {
       swingDmg?: number; echoDue?: number; eruptRounds?: number; eruptTick?: number; eruptDown?: number; eruptWither?: number;
       drainRounds?: number; drainTick?: number;
       /** Накал шлака: раунды; горгулья в окаменении: 1 до её следующего хода. */
-      heat?: number; petrified?: number;
+      heat?: number; petrified?: number; regenBlock?: number;
     };
     guard: boolean;
     /** Раунды, в которые враг вынужден держать защиту (свиток ужаса, бомба). */
@@ -342,6 +345,9 @@ export interface BattleState {
     colossusArmor?: number;
     /** Хранитель Загадок: сколько раз герой угадал его действие (каждый раз −25% к сопротивлению и укреплению). */
     sphinxDown?: number;
+    /** Волколак: сколько ходов прожил; в каждый третий — перевоплощение. */
+    turnsTaken?: number;
+    rageTurn?: boolean;
   };
   p: {
     hp: number;
@@ -431,6 +437,10 @@ export interface BattleState {
       /** Тень 5: раунд, в котором уже был контрудар. Уклонение в раунде: dodgedRound. */
       shadowCounterRound?: number;
       dodgedRound?: number;
+      /** Опутан паутиной: кроме «выбраться» ничего нельзя. */
+      webbed?: number;
+      /** Харчок тролля: яд держится, и действия героя стоят +5 выносливости. */
+      spit?: number;
       /** Непреклонность 5: использован ли «Последний рубеж». */
       lastStandUsed?: number;
       /** Чтение вслух (Списки B): первый созданный свиток в бою уже применён дважды. */
@@ -582,6 +592,7 @@ export type PlayerAction =
   | { type: "guard" }
   | { type: "archetype_skill" }
   | { type: "flee"; rate?: number }
+  | { type: "struggle" }
   | { type: "end_turn" };
 
 let flashSeq = 0;
@@ -2864,6 +2875,18 @@ function refreshLichBarrier(b: BattleState) {
 }
 
 /** Слизь регенерирует в начале своего хода: 1% + 1% за уровень от макс. ОЗ. Своя регенерация обходит запрет лечения конструктов. */
+/** Тролль-пещерник в начале своего хода регенерирует 5% макс. ОЗ; огонь и кислота останавливают её на 2 хода. */
+function trollRegen(b: BattleState) {
+  const e = b.enemy;
+  if (e.def.id !== "troll" || e.hp <= 0 || e.hp >= e.maxHp || b.over) return;
+  if ((e.statuses.regenBlock ?? 0) > 0) {
+    push(b, `${e.def.name} не регенерирует: рана от огня или кислоты ещё открыта.`, "e");
+    return;
+  }
+  const heal = healEnemy(b, Math.max(1, Math.round(e.maxHp * 0.05)));
+  if (heal > 0) push(b, `${e.def.name} регенерирует ${heal} ОЗ.`, "e");
+}
+
 function slimeRegen(b: BattleState) {
   const e = b.enemy;
   if (e.def.id !== "slime" || e.hp <= 0 || e.hp >= e.maxHp || b.over) return;
@@ -2955,6 +2978,11 @@ export function hitEnemy(
   if (kind === "phys" && b.p.statuses.oilType === "edge" && b.p.statuses.oilRounds > 0) {
     raw = Math.round(raw * (1 + (b.p.statuses.oilPower ?? 0) / 100));
   }
+  /* Крысиный рой: ниже половины ОЗ рой разлетается — физический удар героя режется вдвое. */
+  if (kind === "phys" && b.enemy.def.id === "rat_swarm" && b.enemy.hp < b.enemy.maxHp * 0.5) {
+    raw = Math.round(raw / 2);
+    push(b, `Рой разлетается: удар режется вдвое.${note}`, "p");
+  }
   /* Обратный хват: в этом ходу весь урон героя ÷2. */
   if ((b.p.statuses.halfDmg ?? 0) > 0) raw = Math.round(raw / 2);
   /* Ловкий «без рода»: часть физических ударов он уводит и сам контратакует без урона для себя.
@@ -2975,6 +3003,7 @@ export function hitEnemy(
   if (strike && darkMiss > 0 && !b.skillNoMiss && Math.random() < darkMiss) {
     flash(b, "e", "miss", 0);
     push(b, `Мрак скрывает цель: удар проходит мимо.${note}`, "sys");
+    harpyCounter(b);
     return 0;
   }
   /* «Мрак» вампира: до конца раунда половина ударов героя уходит в пустоту. */
@@ -3010,6 +3039,7 @@ export function hitEnemy(
       if (!b.p.statuses.buffs?.sure_hit && !rollHeroHit(acc, heroEvasion(b))) {
         flash(b, "e", "miss", 0);
         push(b, `Удар мимо: ${b.enemy.def.name} уклоняется.${note}`, "e");
+        harpyCounter(b);
         return 0;
       }
     }
@@ -3019,6 +3049,7 @@ export function hitEnemy(
     if (evade > 0 && Math.random() < evade) {
       flash(b, "e", "miss", 0);
       push(b, `${b.enemy.def.name} уклоняется от удара.${note}`, "e");
+      harpyCounter(b);
       return 0;
     }
   }
@@ -3034,6 +3065,16 @@ export function hitEnemy(
   b.enemy.hp -= d;
   flash(b, "e", "hit", d, element ?? kind);
   push(b, `${b.enemy.def.name} получает ${d} урона.${note}`, "p", element);
+  /* Тролль: огонь и кислота останавливают регенерацию на 2 хода. */
+  if (d > 0 && b.enemy.def.id === "troll" && b.enemy.hp > 0 && (element === "fire" || element === "acid")) {
+    b.enemy.statuses.regenBlock = 2;
+    push(b, `${b.enemy.def.name}: рана от огня или кислоты — регенерация остановлена на 2 хода.`, "p");
+  }
+  /* Матка глубины: каждый физический удар героя отравляет и самого героя. */
+  if (strike && kind === "phys" && d > 0 && b.enemy.def.id === "boss_queen" && b.p.hp > 0 && !hasLeg(b, "titan_heart") && Math.random() > playerResistChance(b)) {
+    const stacks = applyPlayerDot(b, "poison", 3, dotSkillTick("poison", b.enemy.level));
+    if (stacks > 0) push(b, `Яд Матки достаёт тебя через твой же удар: отравление на 3 раунда, наложений ${stacks}.`, "e");
+  }
   /* Мимик-малыш просыпается от первого урона и контратакует; ход героя на этом заканчивается. */
   if (b.enemy.dormant && b.enemy.def.id === "mimic_larva" && d > 0) {
     b.enemy.dormant = false;
@@ -3339,6 +3380,7 @@ export function incoming(
   }
   if (!noEvade && !pure && b.p.statuses.dodgeNext > 0) {
     b.p.statuses.dodgeNext--;
+    b.strikeEvaded = true;
     flash(b, "p", "miss", 0);
     push(b, `Пустой шаг: атака (${src}) полностью ускользает.`, "p");
     grantDodgeAction(b);
@@ -3347,6 +3389,7 @@ export function incoming(
   }
   if (!noEvade && !pure && b.p.statuses.smoke > 0) {
     b.p.statuses.smoke--;
+    b.strikeEvaded = true;
     flash(b, "p", "miss", 0);
     push(b, `Дымовая завеса скрыла тебя от атаки. Осталось укрытий: ${b.p.statuses.smoke}.`, "p");
     grantDodgeAction(b);
@@ -3356,12 +3399,14 @@ export function incoming(
   if (!noEvade && !ignoreDefense && kind === "phys" && b.p.statuses.evadeTurn > 0) {
     flash(b, "p", "miss", 0);
     push(b, `Неуловимость: ${src} проходит мимо.`, "e");
+    b.strikeEvaded = true;
     glancingBlow(b, raw, kind, src);
     return false;
   }
   if (!noEvade && !ignoreDefense && kind === "phys" && Math.random() < combatChance(b.p.chanceLayers.evade)) {
     flash(b, "p", "miss", 0);
     push(b, `Ты уходишь с линии удара — промах!`, "e");
+    b.strikeEvaded = true;
     grantDodgeAction(b);
     b.p.statuses.dodgedRound = b.round;
     glancingBlow(b, raw, kind, src);
@@ -3686,6 +3731,8 @@ function enemyPeriodicTicks(b: BattleState) {
 function endTurnDurations(b: BattleState) {
   const side = b.queue[b.idx];
   if (side === "p") tickWarlordArmor(b);
+  if (side === "p" && (b.p.statuses.spit ?? 0) > 0) b.p.statuses.spit = (b.p.statuses.spit ?? 0) - 1;
+  if (side === "e" && (b.enemy.statuses.regenBlock ?? 0) > 0) b.enemy.statuses.regenBlock = (b.enemy.statuses.regenBlock ?? 0) - 1;
   if (side === "e" && (b.enemy.statuses.markRounds ?? 0) > 0) b.enemy.statuses.markRounds = (b.enemy.statuses.markRounds ?? 0) - 1;
   if (side === "e" && (b.enemy.statuses.heat ?? 0) > 0) b.enemy.statuses.heat = (b.enemy.statuses.heat ?? 0) - 1;
   if (side === "p") {
@@ -3748,6 +3795,25 @@ function endTurnDurations(b: BattleState) {
   }
 }
 
+/** Волколак: каждый третий ход — перевоплощение: +30% урона в этом ходу и лечение 5% макс. ОЗ. */
+function werewolfTurn(b: BattleState) {
+  const e = b.enemy;
+  if (e.def.id !== "werewolf" || e.hp <= 0) return;
+  e.turnsTaken = (e.turnsTaken ?? 0) + 1;
+  e.rageTurn = e.turnsTaken % 3 === 0;
+  if (!e.rageTurn) return;
+  const heal = healEnemy(b, Math.round(e.maxHp * 0.05));
+  push(b, `${e.def.name} перевоплощается: +${heal} ОЗ, урон +30% в этом ходу.`, "e");
+}
+
+/** Гарпия: когда герой промахнулся, с шансом 25% она бросается в ответ. */
+function harpyCounter(b: BattleState) {
+  if (b.enemy.def.id !== "harpy" || b.enemy.hp <= 0 || b.p.hp <= 0 || Math.random() >= 0.25) return;
+  push(b, `${b.enemy.def.name} срывается с места и бьёт в ответ!`, "e");
+  const base = enemyEffectDamage(b, randInt(b.enemy.atk[0], b.enemy.atk[1]));
+  incoming(b, Math.round(base * enemyChill(b)), "phys", `${b.enemy.def.name} бьёт в ответ`);
+}
+
 function beginTurn(b: BattleState) {
   if (b.over) return;
   const side = b.queue[b.idx];
@@ -3768,6 +3834,8 @@ function beginTurn(b: BattleState) {
     b.enemy.statuses.petrified = 0;
     slimeRegen(b);
     ironModeCheck(b);
+    werewolfTurn(b);
+    trollRegen(b);
   }
 
   /* Страх: атаки и приёмы закрыты; защиту, сумку, побег или конец хода герой выбирает сам. */
@@ -4446,19 +4514,25 @@ export function skipStunnedTurn(b0: BattleState): BattleState {
 }
 
 /** Выносливость за обычную атаку: сумма ударов по рукам; без оружия — как лёгкое. */
+/** Харчок тролля: пока яд держится, каждое действие героя с выносливостью стоит на 5 больше. */
+export const SPIT_STAMINA_EXTRA = 5;
+export function spitSurcharge(b: BattleState, cost: number): number {
+  return cost > 0 && (b.p.statuses.spit ?? 0) > 0 ? cost + SPIT_STAMINA_EXTRA : cost;
+}
+
 export function attackStaminaCost(b: BattleState): number {
   const hands = b.p.hands ?? [];
-  if (!hands.length) return STAMINA_UNARMED;
-  return hands.reduce((sum, h) => sum + h.cost, 0);
+  if (!hands.length) return spitSurcharge(b, STAMINA_UNARMED);
+  return spitSurcharge(b, hands.reduce((sum, h) => sum + h.cost, 0));
 }
 
 /** Приём: вес сильнейшего оружия (по среднему урону) + добавка. */
 export function techniqueStaminaCost(b: BattleState): number {
   /* Второе дыхание стоит фиксированно, остальные приёмы — по весу оружия. */
-  if (b.p.weaponSkill?.effect === "second_wind") return SECOND_WIND_COST;
+  if (b.p.weaponSkill?.effect === "second_wind") return spitSurcharge(b, SECOND_WIND_COST);
   const hands = b.p.hands ?? [];
   const base = hands.length ? hands.reduce((best, h) => (h.power > best.power ? h : best)).cost : STAMINA_UNARMED;
-  return base + STAMINA_TECHNIQUE_EXTRA;
+  return spitSurcharge(b, base + STAMINA_TECHNIQUE_EXTRA);
 }
 
 /** Выносливость, которую тратит действие. Спец-приём архетипа, побег и конец хода — бесплатны. */
@@ -4471,12 +4545,14 @@ export function actionStaminaCost(b: BattleState, a: PlayerAction): number {
       return techniqueStaminaCost(b);
     case "armor_skill": {
       const sk = b.p.armorSkills.find((x) => x.id === a.id);
-      return sk ? STAMINA_BY_WEIGHT[sk.gearClass] + STAMINA_TECHNIQUE_EXTRA : 0;
+      return sk ? spitSurcharge(b, STAMINA_BY_WEIGHT[sk.gearClass] + STAMINA_TECHNIQUE_EXTRA) : 0;
     }
     case "guard":
-      return STAMINA_GUARD;
+      return spitSurcharge(b, STAMINA_GUARD);
+    case "struggle":
+      return spitSurcharge(b, STAMINA_STRUGGLE);
     case "item":
-      return isFreePouchUse(b, a.id) ? 0 : STAMINA_BACKPACK;
+      return isFreePouchUse(b, a.id) ? 0 : spitSurcharge(b, STAMINA_BACKPACK);
     default:
       return 0;
   }
@@ -4533,6 +4609,10 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
   }
 
   /* Выносливость: действие тратит её только в свой ход; списывается после успешного действия. */
+  /* Опутан: кроме «выбраться» ничего нельзя. Пропуск хода — только когда выносливости на выход не хватает. */
+  if (takeTurn && b.p.statuses.webbed && a.type !== "struggle" && !(a.type === "end_turn" && b.p.stamina < actionStaminaCost(b, { type: "struggle" }))) {
+    return err("Паутина держит: можно только выбраться.");
+  }
   const cost = takeTurn ? actionStaminaCost(b, a) : 0;
   if (cost > b.p.stamina) return err(`Не хватает выносливости: нужно ${cost}, осталось ${b.p.stamina}.`);
   let spent = cost;
@@ -5253,6 +5333,14 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
       break;
     }
 
+    case "struggle": {
+      /* Выбраться: ход тратится, паутина снята. */
+      b.p.statuses.webbed = 0;
+      flash(b, "p", "guard", 0);
+      push(b, "Ты рвёшь паутину и выбираешься.", "p");
+      break;
+    }
+
     case "end_turn":
       break;
 
@@ -5292,7 +5380,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
     b.enemy.sphinxDown = Math.min(3, (b.enemy.sphinxDown ?? 0) + 1);
     push(b, `${b.enemy.def.name} разгадан: магическое сопротивление и укрепление −25%.`, "p");
   }
-  const endsTurn = a.type === "end_turn" || (a.type === "weapon_skill" && ENDING_TECH_EFFECTS.has(b.p.weaponSkill?.effect ?? "")) || b.enemy.endHeroTurn === true;
+  const endsTurn = a.type === "end_turn" || a.type === "struggle" || (a.type === "weapon_skill" && ENDING_TECH_EFFECTS.has(b.p.weaponSkill?.effect ?? "")) || b.enemy.endHeroTurn === true;
   b.enemy.endHeroTurn = false;
   if (takeTurn && (endsTurn || !canKeepActing(b))) advance(b);
   return b;
@@ -5301,7 +5389,7 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
 /* ═══════════  ИНТЕЛЛЕКТ МОНСТРОВ  ═══════════ */
 
 /** Приёмы с негативными эффектами: порча, яд, кровотечение, печати, страх. */
-const DEBUFF_MOVES: EnemyMove[] = ["wound", "poison", "curse", "sunder", "bell_stun", "terror", "seal_items", "seal_skills", "seal_attack", "intimidate", "darkness", "riddle"];
+const DEBUFF_MOVES: EnemyMove[] = ["wound", "poison", "curse", "sunder", "bell_stun", "terror", "seal_items", "seal_skills", "seal_attack", "intimidate", "darkness", "riddle", "web", "spit"];
 
 /**
  * Перезарядка приёмов, которые вешают на героя негативный эффект: страх,
@@ -5411,6 +5499,11 @@ function playerThorns(b: BattleState): number {
 }
 
 /** Коэффициенты приёмов врага по урону: множитель к базовому удару, тип удара и число ударов. Приёмы без урона здесь не перечислены. */
+/** Число ударов приёма: у крысиного роя двойной выпад — тройной укус. */
+function shapeHits(e: BattleState["enemy"], shape: { hits?: number }): number {
+  return (shape.hits ?? 1) + (e.def.id === "rat_swarm" && shape.hits === 2 ? 1 : 0);
+}
+
 const ENEMY_MOVE_SHAPE: Partial<Record<EnemyMove, { mult: number; kind: HitKind; hits?: number; ignoreDefense?: boolean }>> = {
   attack: { mult: 1, kind: "phys" },
   heavy: { mult: 1.7, kind: "phys" },
@@ -5418,6 +5511,8 @@ const ENEMY_MOVE_SHAPE: Partial<Record<EnemyMove, { mult: number; kind: HitKind;
   poison: { mult: 0.85, kind: "phys" },
   sunder: { mult: 1.15, kind: "phys" },
   multi: { mult: 0.65, kind: "phys", hits: 2 },
+  web: { mult: 0.6, kind: "phys" },
+  spit: { mult: 0.6, kind: "phys" },
   curse: { mult: 0.7, kind: "magic" },
   drain: { mult: 0.95, kind: "magic" },
   bell_stun: { mult: 1.1, kind: "magic" },
@@ -5564,6 +5659,16 @@ function enemyMoveRaw(
     base = Math.round(base * crit.factor);
     lines.push({ label: crit.label, value: base, note: crit.note });
   }
+  /* Гигантская крыса: пока у героя кровотечение, её удары и приёмы бьют на 25% сильнее. */
+  if (e.def.id === "rat_giant" && (b.p.statuses.wound ?? 0) > 0 && base > 0) {
+    base = Math.round(base * 1.25);
+    lines.push({ label: "Рваная пасть", value: base, note: "+25% против кровотечения" });
+  }
+  /* Волколак в перевоплощении: +30% урона в этом ходу. */
+  if (e.def.id === "werewolf" && e.rageTurn && base > 0) {
+    base = Math.round(base * 1.3);
+    lines.push({ label: "Перевоплощение", value: base, note: "+30%" });
+  }
   const steps = enemyMoveSteps(b, move, isStrikeMove, base);
   lines.push(...steps.lines);
   base = steps.value;
@@ -5652,7 +5757,7 @@ export function enemyMoveBreakdown(b: BattleState, move: EnemyMove): EnemyMoveBr
   const ignore = !!shape.ignoreDefense;
   /* Плачущая тень пробивает броню: то же, что включает бой перед своим ударом. */
   const piercing = e.def.id === "wraith";
-  const hits = shape.hits ?? 1;
+  const hits = shapeHits(e, shape);
   const [atkMin, atkMax] = e.atk;
   const avg = Math.round((atkMin + atkMax) / 2);
   const critChance = enemyCritChance(b);
@@ -6011,7 +6116,7 @@ export function enemyMoveEffectDetails(b: BattleState, move: EnemyMove): EnemyMo
 function enemyMoveLandChance(b: BattleState, move: EnemyMove): number {
   const shape = ENEMY_MOVE_SHAPE[move];
   if (!shape) return 1;
-  return playerHitParts(b, shape.kind, shape.kind === "phys", !!shape.ignoreDefense).chance ** (shape.hits ?? 1);
+  return playerHitParts(b, shape.kind, shape.kind === "phys", !!shape.ignoreDefense).chance ** shapeHits(b.enemy, shape);
 }
 
 /** Наложения приёма врага без подробностей: id и половина шанса для значка. */
@@ -6225,6 +6330,7 @@ export function enemyStep(b0: BattleState): BattleState {
   /* Плачущая тень: броня не держит больше половины её удара. */
   b.piercing = e.def.id === "wraith";
 
+  b.strikeEvaded = false;
   switch (move) {
     case "guard": {
       /* Истощение гасит эффекты, но стойка — обычное действие. */
@@ -6398,12 +6504,47 @@ export function enemyStep(b0: BattleState): BattleState {
       break;
     }
     case "multi": {
-      const first = incoming(b, Math.round(base * 0.65 * chill), "phys", `${e.def.name} бьёт первым выпадом`);
-      if (first && b.p.hp > 0) {
-        const second = incoming(b, Math.round(base * 0.65 * chill), "phys", `${e.def.name} добивает вторым`);
-        e.lastMiss = !second;
-      } else {
-        e.lastMiss = true;
+      /* Крысиный рой кусает на одну укусу больше — третьей. */
+      const bites = e.def.id === "rat_swarm" ? 3 : 2;
+      const labels = ["бьёт первым выпадом", "добивает вторым", "кусает третьим"];
+      let landedAll = true;
+      for (let i = 0; i < bites; i++) {
+        if (i > 0 && b.p.hp <= 0) {
+          landedAll = false;
+          break;
+        }
+        if (!incoming(b, Math.round(base * 0.65 * chill), "phys", `${e.def.name} ${labels[i]}`)) {
+          landedAll = false;
+          break;
+        }
+      }
+      e.lastMiss = !landedAll;
+      break;
+    }
+    case "web": {
+      /* Опутывание: удар и паутина; пока герой опутан, он может только выбраться. */
+      const landed = incoming(b, Math.round(base * 0.6 * chill), "phys", `${e.def.name} опутывает тебя`);
+      if (!landed) e.lastMiss = true;
+      if (landed && b.p.hp > 0 && Math.random() > resistChance) {
+        b.p.statuses.webbed = 1;
+        push(b, `Ты опутан паутиной: можно только выбраться (${STAMINA_STRUGGLE} выносливости).`, "e");
+      } else if (landed && b.p.hp > 0) {
+        push(b, "Стойкость рвёт паутину на лету.", "p");
+      }
+      break;
+    }
+    case "spit": {
+      /* Харчок: удар и яд на 3 раунда; пока яд держится, действия героя стоят +5 выносливости. */
+      const landed = incoming(b, Math.round(base * 0.6 * chill), "phys", `${e.def.name} харкает в тебя`);
+      if (!landed) e.lastMiss = true;
+      if (landed && b.p.hp > 0 && !hasLeg(b, "titan_heart") && Math.random() > resistChance) {
+        const stacks = applyPlayerDot(b, "poison", 3, dotSkillTick("poison", e.level));
+        if (stacks > 0) {
+          b.p.statuses.spit = 3;
+          push(b, `Харчок: яд на 3 раунда, наложений ${stacks}. Твои действия стоят +5 выносливости.`, "e");
+        }
+      } else if (landed && b.p.hp > 0) {
+        push(b, "Стойкость отбрасывает яд.", "p");
       }
       break;
     }
@@ -6443,6 +6584,16 @@ export function enemyStep(b0: BattleState): BattleState {
     }
   }
 
+  /* Паук-охотник: если герой уклонился от её удара, она сразу бьёт ещё раз. */
+  if (e.def.id === "spider_hunter" && isStrikeMove && b.strikeEvaded && b.p.hp > 0 && b.enemy.hp > 0) {
+    push(b, `${e.def.name} преследует уклонившегося героя и бьёт снова!`, "e");
+    incoming(b, Math.round(base * chill), "phys", `${e.def.name} преследует`);
+  }
+  /* Гарпия: при атаке с шансом 25% ещё один удар. */
+  if (e.def.id === "harpy" && move === "attack" && b.p.hp > 0 && b.enemy.hp > 0 && Math.random() < 0.25) {
+    push(b, `${e.def.name} срывается в повторную атаку!`, "e");
+    incoming(b, Math.round(base * chill), "phys", `${e.def.name} бьёт второй раз`);
+  }
   /* Накал шлака: пока он держится, каждая атака добавляет огонь 5 × уровень. */
   if ((e.statuses.heat ?? 0) > 0 && STRIKE_MOVES.includes(move) && !e.lastMiss && b.p.hp > 0 && b.enemy.hp > 0) {
     incoming(b, 5 * e.level, "magic", `${e.def.name} жжёт огнём раскалённого шлака`);
@@ -6751,6 +6902,8 @@ export function combatReadout(b: BattleState): CombatReadout {
     defMods.push({ id: "sealAttack", label: "Печать оков", good: false, rounds: b.p.statuses.sealAttack, detail: "Обычная атака запрещена в этот ход." });
   if (b.p.statuses.sealSkills > 0)
     defMods.push({ id: "sealSkills", label: "Печать забвения", good: false, rounds: b.p.statuses.sealSkills, detail: "Приёмы запрещены в этот ход." });
+  if ((b.p.statuses.webbed ?? 0) > 0)
+    defMods.push({ id: "webbed", label: "Опутан", good: false, detail: `Паутина: кроме «выбраться» (${STAMINA_STRUGGLE} выносливости) ничего нельзя.` });
   if (b.p.statuses.sealItems > 0)
     defMods.push({ id: "sealItems", label: "Немота", good: false, rounds: b.p.statuses.sealItems, detail: "Расходники запрещены в этот ход." });
   if (b.p.statuses.stunAp > 0)

@@ -18,7 +18,6 @@ import {
 import { GEAR_EFFECTS, effectDetail } from "../game/gearEffects";
 import { MONSTER_RACE_META, MONSTER_TYPE_META, WEAKNESS_STEP, raceTraits } from "../game/monsters";
 import { STAT_META, armorSkillDesc, epicSkillDesc } from "../game/content";
-import { STAMINA_BACKPACK, STAMINA_GUARD } from "../game/stamina";
 import { ARCHETYPES } from "../game/archetypes";
 import {
   ENEMY_COOLDOWN_MOVES,
@@ -469,6 +468,12 @@ export function BattleView({
   const wsIntOk = ws ? b.p.stats.int >= wsReq : false;
   /* Страх: герой уже в защите, атаки и приёмы закрыты, сумка и бегство открыты. */
   const feared = b.p.statuses.fear > 0;
+  /* Опутан: кроме «выбраться» ничего нельзя, меню не показываем. */
+  const webbed = (b.p.statuses.webbed ?? 0) > 0;
+  const menuNow = webbed ? "" : menu;
+  /* Цены берём из движка: харчок тролля добавляет к ним +5. */
+  const guardCost = actionStaminaCost(b, { type: "guard" });
+  const struggleCost = actionStaminaCost(b, { type: "struggle" });
   /* Подсветка приёмов: светится только то, что можно применить прямо сейчас. */
   const ready = skillReadiness(b, myTurn, feared);
 
@@ -716,7 +721,7 @@ export function BattleView({
                     ? "не твой ход"
                     : free
                       ? "без выносливости"
-                      : `тратит ${STAMINA_BACKPACK} выносливости`}
+                      : `тратит ${actionStaminaCost(b, { type: "item", id })} выносливости`}
         </span>
       </button>
     );
@@ -885,15 +890,26 @@ export function BattleView({
               </div>
             )}
 
-            {(feared || b.p.statuses.sealAttack > 0 || b.p.statuses.sealSkills > 0 || b.p.statuses.sealItems > 0) && (
+            {(feared || webbed || b.p.statuses.sealAttack > 0 || b.p.statuses.sealSkills > 0 || b.p.statuses.sealItems > 0) && (
               <div className="mb-2 flex flex-wrap gap-1.5">
                 {feared && <Tag tone="rubric">Страх: сумка, защита, побег, конец хода</Tag>}
+                {webbed && <Tag tone="rubric">Опутан: только выбраться</Tag>}
                 {b.p.statuses.sealAttack > 0 && <Tag tone="rubric">Печать оков: удар запрещён</Tag>}
                 {b.p.statuses.sealSkills > 0 && <Tag tone="rubric">Печать забвения: приёмы запрещены</Tag>}
                 {b.p.statuses.sealItems > 0 && <Tag tone="rubric">Немота: свитки, магия и спец-приём закрыты</Tag>}
               </div>
             )}
-            {menu === "main" && (
+            {webbed && (
+              <div className="grid grid-cols-2 gap-2">
+                <Btn tone="verd" title={`Выносливость: ${struggleCost}. Ход заканчивается.`} disabled={!myTurn || b.p.stamina < struggleCost} onClick={() => act({ type: "struggle" })}>
+                  Выбраться · {struggleCost}
+                </Btn>
+                <Btn className="w-full" disabled={!myTurn || b.p.stamina >= struggleCost} onClick={() => act({ type: "end_turn" })}>
+                  Пропуск хода
+                </Btn>
+              </div>
+            )}
+            {menuNow === "main" && (
               <div className="grid grid-cols-3 gap-2">
                 {ATTACK_KINDS.map((kind) => {
                   const preview = heroAttackPreview(b, kind);
@@ -917,7 +933,7 @@ export function BattleView({
                 })}
               </div>
             )}
-            {menu === "main" && (
+            {menuNow === "main" && (
               <div className={b.p.archetype ? "grid grid-cols-2 gap-2" : "grid grid-cols-1 gap-2"}>
                 <Btn tone={ready.skills ? "flame" : "ghost"} title={`Выносливость: ${techniqueStaminaCost(b)}. ${concText(concentrationDelta("weapon_skill"))}.`} disabled={!myTurn || feared || b.p.statuses.sealSkills > 0 || b.p.stamina < techniqueStaminaCost(b)} onClick={() => setMenu("skill")}>
                   Приёмы · {techniqueStaminaCost(b)}
@@ -934,20 +950,20 @@ export function BattleView({
                 )}
               </div>
             )}
-            {menu === "main" && b.p.archetype && (
+            {menuNow === "main" && b.p.archetype && (
               <p className="mb-2 mt-1 text-[0.85rem] leading-snug text-mute">{ARCHETYPES[b.p.archetype].special.desc}</p>
             )}
-            {menu === "main" && (
+            {menuNow === "main" && (
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <Btn tone="verd" title={`Выносливость: ${STAMINA_GUARD}. ${concText(concentrationDelta("guard"))}. Ход заканчивается.`} disabled={!myTurn || b.p.stamina < STAMINA_GUARD} onClick={() => act({ type: "guard" })}>
-                  Защита · {STAMINA_GUARD}
+                <Btn tone="verd" title={`Выносливость: ${guardCost}. ${concText(concentrationDelta("guard"))}. Ход заканчивается.`} disabled={!myTurn || b.p.stamina < guardCost} onClick={() => act({ type: "guard" })}>
+                  Защита · {guardCost}
                 </Btn>
                 <Btn className="w-full" disabled={!myTurn} onClick={() => act({ type: "end_turn" })}>
                   Пропуск хода
                 </Btn>
               </div>
             )}
-            {menu === "main" && (
+            {menuNow === "main" && (
               <div className="mt-2">
                 <Btn className="w-full" tone="danger" disabled={!myTurn} onClick={() => setFleeAsk(true)}>
                   Сбежать
@@ -976,7 +992,7 @@ export function BattleView({
             )}
 
             {/* СУМКА: пять слотов зелий, свитков и расходников прямо в действиях. Предмет из сумки не тратит выносливость. */}
-            {menu === "main" && (
+            {menuNow === "main" && (
               <div className="mt-3 border-t border-line/70 pt-3">
                 <div className="mb-2 flex items-baseline justify-between gap-2">
                   <span className="sc text-flamedim">Сумка</span>
@@ -1005,7 +1021,7 @@ export function BattleView({
               </div>
             )}
 
-            {menu === "skill" && (
+            {menuNow === "skill" && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="sc">Приёмы оружия и способности снаряжения</span>

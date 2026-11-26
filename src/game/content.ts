@@ -2403,7 +2403,9 @@ export type EnemyMove =
   | "fire_arrow"
   | "mark"
   | "heat"
-  | "riddle";
+  | "riddle"
+  | "web"
+  | "spit";
 
 export interface EnemyDef {
   id: string;
@@ -2665,6 +2667,8 @@ export const ENEMY_MOVE_META: Record<EnemyMove, { name: string; desc: string }> 
   mark: { name: "Метка", desc: "Два следующих хода монстр не может промахнуться." },
   heat: { name: "Накал шлака", desc: "Три хода: каждая атака добавляет огонь 5 × уровень, броня врага вдвое ниже." },
   riddle: { name: "Загадка", desc: "Накладывает проклятие на героя и даёт барьер 10 × уровень. Снятый барьер снимает проклятие." },
+  web: { name: "Опутывание", desc: "0.6× урона и паутина: герой может только выбраться, на это тратится 25 выносливости." },
+  spit: { name: "Харчок", desc: "0.6× урона и яд на 3 раунда. Пока яд держится, действия героя стоят +5 выносливости." },
 };
 
 export const STAT_ORDER: StatKey[] = ["str", "agi", "int"];
