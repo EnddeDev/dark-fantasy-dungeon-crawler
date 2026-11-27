@@ -2929,6 +2929,17 @@ function ghostShimmer(b: BattleState) {
   }
 }
 
+/* Вампир-лорд «Кровяной барьер»: каждый удар, нанёсший герою урон, даёт ему барьер 10% макс. ОЗ; накопление до 30%. */
+function lordBloodBarrier(b: BattleState) {
+  const e = b.enemy;
+  const cap = Math.round(e.maxHp * 0.3);
+  const gain = Math.round(e.maxHp * 0.1);
+  const before = e.barrier ?? 0;
+  e.barrierMax = cap;
+  e.barrier = Math.min(cap, before + gain);
+  if (e.barrier > before) push(b, `${e.def.name} питается кровью: барьер +${e.barrier - before} (${e.barrier}/${cap}).`, "e");
+}
+
 /* Неосязаемый огонёк: удар героя проходит сквозь него, и на героя обрушивается его атака. */
 function ghostPassThrough(b: BattleState) {
   const e = b.enemy;
@@ -3409,6 +3420,7 @@ export function incoming(
 ): boolean {
   /* Раунд последней атаки врага по герою: нужен приёму «Встречный выпад». */
   b.p.statuses.incomingRound = b.round;
+  const heroHpBefore = b.p.hp;
   /* Побои: урон по герою +20%, пока эффект держится. */
   raw = beatenDamage(raw, b.p.statuses.beat);
   /* Лич-хранитель: все его удары — магические. */
@@ -3555,6 +3567,7 @@ export function incoming(
 
   /* Плачущая тень: каждое её попадание по герою тоже снимает выносливость. */
   if (b.queue[b.idx] === "e" && b.enemy.def.id === "wraith") wraithCry(b);
+  if (b.queue[b.idx] === "e" && b.enemy.def.id === "vampire_lord" && b.p.hp < heroHpBefore) lordBloodBarrier(b);
   heroDeathCheck(b);
   return true;
 }
@@ -6714,6 +6727,18 @@ export function enemyStep(b0: BattleState): BattleState {
       break;
     }
     default: {
+      /* Летучая мышь-вампир: два укуса по половине урона. Если первый ушёл, второй проходит без уклонения. */
+      if (e.def.id === "bat_vampire" && move === "attack") {
+        const bite = Math.round(base * 0.5 * chill);
+        const first = incoming(b, bite, "phys", `${e.def.name} кусает`);
+        if (!first) e.lastMiss = true;
+        if (b.p.hp > 0 && b.enemy.hp > 0) {
+          e.ambushLive = !first;
+          incoming(b, bite, "phys", `${e.def.name} кусает второй раз`);
+          e.ambushLive = false;
+        }
+        break;
+      }
       const landed = incoming(b, Math.round(base * chill), "phys", `${e.def.name} атакует`);
       if (!landed) e.lastMiss = true;
       /* Гоблин-воин: попал — ещё два удара в этот ход, а обычная атака недоступна два хода. */
