@@ -161,7 +161,7 @@ test("Пожиратель Сводов: каждые 20% потерянного
     return b;
   }, 0.99);
   assert.equal(after.enemy.quakesDone, 1, "первый порог пройден");
-  assert.ok(logHas(after, "бьёт по земле"));
+  assert.ok(logHas(after, "теряет 20% ОЗ и бьёт по земле!"));
   assert.equal(after.p.statuses.stunAp, 1, "герой оглушён на ход");
   assert.equal(after.enemy.endHeroTurn, true, "ход героя заканчивается");
 });
@@ -176,5 +176,5 @@ test("Пожиратель Сводов: без нового порога уда
     return b;
   }, 0.99);
   assert.equal(after.enemy.quakesDone, 1);
-  assert.equal(logHas(after, "бьёт по земле"), false);
+  assert.equal(logHas(after, "теряет 20% ОЗ и бьёт по земле!"), false);
 });
