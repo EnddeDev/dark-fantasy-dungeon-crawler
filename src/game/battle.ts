@@ -6102,6 +6102,52 @@ function scriptedEnemyMove(b: BattleState): EnemyMove | null {
   return null;
 }
 
+/**
+ * Ход, который монстр выполнит в своём действии при текущем состоянии боя: сценарный,
+ * объявленный или лучший по оценке. Тот же выбор, что и в бою, поэтому показ в интерфейсе
+ * совпадает с действием, пока состояние не меняется. После действия героя пересчитывается.
+ */
+export function planEnemyMove(b: BattleState): EnemyMove {
+  const e = b.enemy;
+  const move0 = (e.statuses.trickWindup ?? 0) > 0
+    ? "trick_strike"
+    : scriptedEnemyMove(b) ?? (e.announced && enemyAnnouncedUsable(b, e.announced) ? e.announced : null) ?? chooseEnemyMove(b);
+  /* Крушение и Бросок: защиты нет — вместо неё обычный удар. */
+  return move0 === "guard" && ((e.statuses.noGuard ?? 0) > 0 || (e.statuses.throwDown ?? 0) > 0) ? "attack" : move0;
+}
+
+/**
+ * Что монстр сделает в своё следующее действие, если герой завершит ход сейчас.
+ * Копия боя: герой заканчивает ход, начинается раунд (объявления, перезарядки), затем
+ * выполняется enemyStep — все ветки (сон, оглушение, страх, отступление, объявленный ход)
+ * учитываются так же, как в бою. Жребий на время прогноза фиксирован: случайные исходы
+ * (промах, крит, обманка) на сам выбор хода не влияют. Если герой ещё что-то сделает до
+ * конца хода, прогноз пересчитывается после каждого его действия.
+ */
+export function predictEnemyTurn(b: BattleState): { move: EnemyMove | null; skipNote: string | null } {
+  if (b.over || b.enemy.hp <= 0) return { move: null, skipNote: null };
+  const realRandom = Math.random;
+  Math.random = () => 0.99;
+  let after: BattleState;
+  try {
+    let base = playerAct(b, { type: "end_turn" });
+    if (base.queue[base.idx] !== "e" && !base.over) {
+      /* Конец хода недоступен (например, герой опутан): прогнозируем ход врага прямо сейчас. */
+      base = { ...b, queue: b.queue.map((q, i) => (i === b.idx ? "e" : q)) };
+    }
+    const before = base.enemy.actsTaken ?? 0;
+    const logLen = base.log.length;
+    after = enemyStep(base);
+    if ((after.enemy.actsTaken ?? 0) > before && after.enemy.lastMove) {
+      return { move: after.enemy.lastMove, skipNote: null };
+    }
+    const note = after.log.slice(logLen).find((l) => l.kind === "e" || l.kind === "p")?.text ?? null;
+    return { move: null, skipNote: note };
+  } finally {
+    Math.random = realRandom;
+  }
+}
+
 export function chooseEnemyMove(b: BattleState): EnemyMove {
   const e = b.enemy;
   let moves = (e.moves.length ? e.moves : e.def.moves).filter((m) => enemyMoveReady(b, m) && !(m === "trick" && (e.actsTaken ?? 0) < 1));
@@ -6357,6 +6403,10 @@ export interface EnemyReadout {
   guard: boolean;
   /** Ход, который монстр уже объявил на этот раунд; null — ход выберет в своём действии. */
   announced: EnemyMove | null;
+  /** Ход, который монстр выполнит в своём следующем действии при текущем состоянии; null — монстр мёртв, бой окончен или ход пропущен. */
+  next: EnemyMove | null;
+  /** Почему монстр пропустит ход (сон, оглушение и т.п.): текст из лога прогноза. */
+  nextSkipNote: string | null;
   evade: number;
   /** Стойкость к негативным эффектам: род, босс, эффекты снаряжения. */
   resist: number;
@@ -6391,6 +6441,10 @@ export function enemyReadout(b: BattleState): EnemyReadout {
     barrierMax: e.barrierMax ?? 0,
     ap: e.ap,
     announced: e.announced ?? null,
+    ...(() => {
+      const p = predictEnemyTurn(b);
+      return { next: p.move, nextSkipNote: p.skipNote };
+    })(),
     moves: list.map((move) => {
       const breakdown = enemyMoveBreakdown(b, move);
       const details = enemyMoveEffectDetails(b, move);
@@ -6503,11 +6557,7 @@ export function enemyStep(b0: BattleState): BattleState {
   /* Пророк уже объявил ход в начале раунда; остальные выбирают ход сейчас. */
   /* Объявленный ход выполняется, только если он всё ещё доступен; иначе ход выбирается заново. */
   /* Тупая хитрость: в ход после замаха огр бьёт или кидает камень, без выбора. */
-  const move0 = (e.statuses.trickWindup ?? 0) > 0
-    ? "trick_strike"
-    : scriptedEnemyMove(b) ?? (e.announced && enemyAnnouncedUsable(b, e.announced) ? e.announced : null) ?? chooseEnemyMove(b);
-  /* Крушение и Бросок: защиты нет — вместо неё обычный удар. */
-  const move = move0 === "guard" && ((e.statuses.noGuard ?? 0) > 0 || (e.statuses.throwDown ?? 0) > 0) ? "attack" : move0;
+  const move = planEnemyMove(b);
   e.announced = null;
   /* Стойка защиты — предыдущий ход врага. */
   const fromGuard = e.lastMove === "guard";
