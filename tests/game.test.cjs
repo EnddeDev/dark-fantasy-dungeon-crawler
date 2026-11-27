@@ -3765,7 +3765,8 @@ test("масло остроты: урон атак героя выше, пока
   plainB.enemy.hp = 9999;
   plainB.enemy.maxHp = 9999;
   const plain = withRandom(() => battle.playerAct({ ...plainB, queue: ["p", "e"], idx: 0 }, { type: "attack" }), 0.45);
-  const oiled = battle.playerAct({ ...plainB, queue: ["p", "e"], idx: 0 }, { type: "item", id: "oil_edge_bad" });
+  /* Шаг предмета фиксирует генератор: ход врага (призрачный огонёк может замерцать) не должен менять проверку. */
+  const oiled = withRandom(() => battle.playerAct({ ...plainB, queue: ["p", "e"], idx: 0 }, { type: "item", id: "oil_edge_bad" }), 0.45);
   const hit = withRandom(() => battle.playerAct({ ...oiled, queue: ["p", "e"], idx: 0 }, { type: "attack" }), 0.45);
   const plainDmg = plainB.enemy.hp - plain.enemy.hp;
   const oiledDmg = oiled.enemy.hp - hit.enemy.hp;

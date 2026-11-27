@@ -300,6 +300,8 @@ export interface BattleState {
       heat?: number; petrified?: number; regenBlock?: number;
       /** Орк: подготовка — следующий удар не промахивается, пока герой не в защите. Огр: замах тупой хитрости. Разведчик: уклонение после отступа. */
       prepRounds?: number; trickWindup?: number; retreatEvade?: number;
+      /** Призрачный огонёк: неосязаем до конца хода героя; удар героя проходит сквозь него, а бьёт его атака. */
+      intangible?: number;
     };
     guard: boolean;
     /** Раунды, в которые враг вынужден держать защиту (свиток ужаса, бомба). */
@@ -2904,6 +2906,48 @@ function trollRegen(b: BattleState) {
   if (heal > 0) push(b, `${e.def.name} регенерирует ${heal} ОЗ.`, "e");
 }
 
+/** Призрачный огонёк: шанс мерцания (неосязаемости) в начале своего хода. */
+const GHOST_SHIMMER_CHANCE = 0.25;
+/** Плачущая тень «Плач»: каждый полученный ею урон снимает у героя столько выносливости. */
+const WRAITH_CRY_STAMINA = 10;
+
+/** Плач тени: снимает у героя выносливость (не ниже 0). Срабатывает и на полученный тенью урон, и на её попадание. */
+function wraithCry(b: BattleState) {
+  if (b.p.stamina <= 0) return;
+  const cut = Math.min(WRAITH_CRY_STAMINA, b.p.stamina);
+  b.p.stamina -= cut;
+  push(b, `${b.enemy.def.name} плачет: −${cut} выносливости.`, "e");
+}
+
+/* Призрачный огонёк «Мерцание»: в начале своего хода с шансом 25% становится неосязаемым до конца хода героя. */
+function ghostShimmer(b: BattleState) {
+  const e = b.enemy;
+  if (e.def.id !== "ghost_light" || e.hp <= 0 || b.over) return;
+  if (Math.random() < GHOST_SHIMMER_CHANCE) {
+    e.statuses.intangible = 1;
+    push(b, `${e.def.name} мерцает и становится неосязаемым до конца твоего хода.`, "e");
+  }
+}
+
+/* Вампир-лорд «Кровяной барьер»: каждый удар, нанёсший герою урон, даёт ему барьер 10% макс. ОЗ; накопление до 30%. */
+function lordBloodBarrier(b: BattleState) {
+  const e = b.enemy;
+  const cap = Math.round(e.maxHp * 0.3);
+  const gain = Math.round(e.maxHp * 0.1);
+  const before = e.barrier ?? 0;
+  e.barrierMax = cap;
+  e.barrier = Math.min(cap, before + gain);
+  if (e.barrier > before) push(b, `${e.def.name} питается кровью: барьер +${e.barrier - before} (${e.barrier}/${cap}).`, "e");
+}
+
+/* Неосязаемый огонёк: удар героя проходит сквозь него, и на героя обрушивается его атака. */
+function ghostPassThrough(b: BattleState) {
+  const e = b.enemy;
+  push(b, `Твой удар проходит сквозь ${e.def.name}: он неосязаем, и его атака бьёт тебя.`, "e");
+  const base = enemyMoveRaw(b, "attack", randInt(e.atk[0], e.atk[1]), null).value;
+  incoming(b, Math.round(base * enemyChill(b)), "phys", `${e.def.name} бьёт сквозь твой удар`);
+}
+
 function slimeRegen(b: BattleState) {
   const e = b.enemy;
   if (e.def.id !== "slime" || e.hp <= 0 || e.hp >= e.maxHp || b.over) return;
@@ -3085,6 +3129,8 @@ export function hitEnemy(
   b.enemy.hp -= d;
   flash(b, "e", "hit", d, element ?? kind);
   push(b, `${b.enemy.def.name} получает ${d} урона.${note}`, "p", element);
+  /* Плачущая тень: каждый полученный урон снимает у героя выносливость. */
+  if (d > 0 && b.enemy.def.id === "wraith") wraithCry(b);
   /* Тёмный жрец: 20% урона, полученного им, возвращается герою. */
   if (mitigated > 0 && b.enemy.def.id === "dark_priest" && b.p.hp > 0) {
     incoming(b, Math.round(mitigated * 0.2), "magic", `${b.enemy.def.name} возвращает часть урона`);
@@ -3374,6 +3420,7 @@ export function incoming(
 ): boolean {
   /* Раунд последней атаки врага по герою: нужен приёму «Встречный выпад». */
   b.p.statuses.incomingRound = b.round;
+  const heroHpBefore = b.p.hp;
   /* Побои: урон по герою +20%, пока эффект держится. */
   raw = beatenDamage(raw, b.p.statuses.beat);
   /* Лич-хранитель: все его удары — магические. */
@@ -3518,6 +3565,9 @@ export function incoming(
     applyVamp(b, dealt, 0, "weapon");
   }
 
+  /* Плачущая тень: каждое её попадание по герою тоже снимает выносливость. */
+  if (b.queue[b.idx] === "e" && b.enemy.def.id === "wraith") wraithCry(b);
+  if (b.queue[b.idx] === "e" && b.enemy.def.id === "vampire_lord" && b.p.hp < heroHpBefore) lordBloodBarrier(b);
   heroDeathCheck(b);
   return true;
 }
@@ -3755,6 +3805,8 @@ function enemyPeriodicTicks(b: BattleState) {
 function endTurnDurations(b: BattleState) {
   const side = b.queue[b.idx];
   if (side === "p") tickWarlordArmor(b);
+  /* Мерцание призрачного огонька кончается с ходом героя. */
+  if (side === "p") b.enemy.statuses.intangible = 0;
   if (side === "p" && (b.p.statuses.spit ?? 0) > 0) b.p.statuses.spit = (b.p.statuses.spit ?? 0) - 1;
   if (side === "e" && (b.enemy.statuses.regenBlock ?? 0) > 0) b.enemy.statuses.regenBlock = (b.enemy.statuses.regenBlock ?? 0) - 1;
   if (side === "e" && (b.enemy.statuses.prepRounds ?? 0) > 0) b.enemy.statuses.prepRounds = (b.enemy.statuses.prepRounds ?? 0) - 1;
@@ -3862,6 +3914,7 @@ function beginTurn(b: BattleState) {
     ironModeCheck(b);
     werewolfTurn(b);
     trollRegen(b);
+    ghostShimmer(b);
   }
 
   /* Страх: атаки и приёмы закрыты; защиту, сумку, побег или конец хода герой выбирает сам. */
@@ -4669,6 +4722,11 @@ function actInternal(b0: BattleState, a: PlayerAction, takeTurn: boolean): Battl
 
   switch (a.type) {
     case "attack": {
+      /* Призрачный огонёк неосязаем: обычная атака проходит сквозь него, и бьёт его атака. Приёмы не проходят. */
+      if (b.enemy.statuses.intangible) {
+        ghostPassThrough(b);
+        break;
+      }
       heroAttackStart(b, undefined);
       const firstStrike = !b.p.firstAttackDone && hasPassive(b, "arch_assassin_10");
       /* Каждое оружие в руках — отдельный удар: свой бросок, свой крит, свои эффекты. Кулаки — один удар. */
@@ -6669,6 +6727,18 @@ export function enemyStep(b0: BattleState): BattleState {
       break;
     }
     default: {
+      /* Летучая мышь-вампир: два укуса по половине урона. Если первый ушёл, второй проходит без уклонения. */
+      if (e.def.id === "bat_vampire" && move === "attack") {
+        const bite = Math.round(base * 0.5 * chill);
+        const first = incoming(b, bite, "phys", `${e.def.name} кусает`);
+        if (!first) e.lastMiss = true;
+        if (b.p.hp > 0 && b.enemy.hp > 0) {
+          e.ambushLive = !first;
+          incoming(b, bite, "phys", `${e.def.name} кусает второй раз`);
+          e.ambushLive = false;
+        }
+        break;
+      }
       const landed = incoming(b, Math.round(base * chill), "phys", `${e.def.name} атакует`);
       if (!landed) e.lastMiss = true;
       /* Гоблин-воин: попал — ещё два удара в этот ход, а обычная атака недоступна два хода. */
