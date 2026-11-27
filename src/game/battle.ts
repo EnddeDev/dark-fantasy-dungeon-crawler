@@ -302,6 +302,8 @@ export interface BattleState {
       prepRounds?: number; trickWindup?: number; retreatEvade?: number;
       /** Призрачный огонёк: неосязаем до конца хода героя; удар героя проходит сквозь него, а бьёт его атака. */
       intangible?: number;
+      /** Огненное дыхание: выдох в начале следующего хода дракона. */
+      breathWindup?: number;
     };
     guard: boolean;
     /** Раунды, в которые враг вынужден держать защиту (свиток ужаса, бомба). */
@@ -468,7 +470,7 @@ export interface BattleState {
       /** Раунд, в котором враг последний раз атаковал героя (приём «Встречный выпад»). */
       incomingRound?: number;
       wallRounds?: number; prepRounds?: number; prepared?: number; bubbleTurns?: number; bubbleAbsorbed?: number;
-      rainRounds?: number; halfDmg?: number; noEvade?: number; nextPierce?: number; gripTurn?: number;
+      rainRounds?: number; halfDmg?: number; roarRounds?: number; noEvade?: number; nextPierce?: number; gripTurn?: number;
       throwPending?: number; turnActs?: number; turnDealt?: number; ignoreArmorNow?: number;
       /** Раунды каменной кожи: входящий урон −30%. */
       stone: number;
@@ -2919,6 +2921,19 @@ function wraithCry(b: BattleState) {
   push(b, `${b.enemy.def.name} плачет: −${cut} выносливости.`, "e");
 }
 
+/* Огненное дыхание: выдох приходит в начале следующего хода дракона — 20 × уровень и горение 5 × уровень на 3 раунда. */
+function dragonBreath(b: BattleState) {
+  const e = b.enemy;
+  if ((e.statuses.breathWindup ?? 0) <= 0 || e.hp <= 0 || b.over) return;
+  e.statuses.breathWindup = 0;
+  push(b, `${e.def.name} выдыхает пламя!`, "e");
+  const landed = incoming(b, Math.round(20 * e.level * enemyChill(b)), "magic", `${e.def.name} выдыхает пламя`, false);
+  if (landed && b.p.hp > 0 && !immuneNote(b, "burn")) {
+    setPlayerTick(b, "burn", statusRounds(b, 3), 5 * e.level);
+    push(b, `Горение на ${statusRounds(b, 3)} раунда: ${5 * e.level} за тик.`, "e");
+  }
+}
+
 /* Призрачный огонёк «Мерцание»: в начале своего хода с шансом 25% становится неосязаемым до конца хода героя. */
 function ghostShimmer(b: BattleState) {
   const e = b.enemy;
@@ -3046,6 +3061,8 @@ export function hitEnemy(
   }
   /* Обратный хват: в этом ходу весь урон героя ÷2. */
   if ((b.p.statuses.halfDmg ?? 0) > 0) raw = Math.round(raw / 2);
+  /* Рёв дракона: физические удары героя режутся вдвое. */
+  if (kind === "phys" && (b.p.statuses.roarRounds ?? 0) > 0) raw = Math.round(raw / 2);
   /* Ловкий «без рода»: часть физических ударов он уводит и сам контратакует без урона для себя.
      Контратака героя сюда не попадает — иначе цепочка ударов не кончится. */
   if (
@@ -3915,6 +3932,7 @@ function beginTurn(b: BattleState) {
     werewolfTurn(b);
     trollRegen(b);
     ghostShimmer(b);
+    dragonBreath(b);
   }
 
   /* Страх: атаки и приёмы закрыты; защиту, сумку, побег или конец хода герой выбирает сам. */
@@ -4145,6 +4163,7 @@ function advance(b: BattleState) {
     b.p.statuses.noHeal = Math.max(0, b.p.statuses.noHeal - 1);
     b.p.statuses.darkness = Math.max(0, b.p.statuses.darkness - 1);
     b.p.statuses.sealItems = Math.max(0, b.p.statuses.sealItems - 1);
+    b.p.statuses.roarRounds = Math.max(0, (b.p.statuses.roarRounds ?? 0) - 1);
     b.p.statuses.beat = Math.max(0, b.p.statuses.beat - 1);
     b.p.statuses.weaken = Math.max(0, b.p.statuses.weaken - 1);
     b.p.statuses.shatter = Math.max(0, b.p.statuses.shatter - 1);
@@ -6560,6 +6579,19 @@ export function enemyStep(b0: BattleState): BattleState {
           push(b, `Твоя броня промята (−${breakAmount} к защите, всего −${b.p.statuses.sundered} до конца боя).`, "e");
         }
       }
+      break;
+    }
+    case "roar": {
+      if (!immuneNote(b, "sealItems")) {
+        b.p.statuses.sealItems = Math.max(b.p.statuses.sealItems, MUTE_ROUNDS);
+        b.p.statuses.roarRounds = MUTE_ROUNDS;
+        push(b, `${e.def.name} ревёт: немота на ${MUTE_ROUNDS} раунда, твой физический урон −50%.`, "e");
+      }
+      break;
+    }
+    case "fire_breath": {
+      e.statuses.breathWindup = 1;
+      push(b, `${e.def.name} набирает воздух: в начале своего следующего хода выдохнет пламя.`, "e");
       break;
     }
     case "bell_stun": {
