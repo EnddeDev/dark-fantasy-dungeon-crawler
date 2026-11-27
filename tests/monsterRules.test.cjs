@@ -62,16 +62,20 @@ function fight(id, { hp = 200, atk, armor = 0, heroHp } = {}) {
   return b;
 }
 
-test("правила: у всех восьми обычных видов есть название и текст, боссов нет", () => {
-  const ids = ["vermin", "husk", "bone", "wraith", "brute", "seer", "golem", "imp"];
+test("правила: у всех 49 монстров (обычные виды и боссы) есть название и текст", () => {
+  const ids = [
+    "vermin", "husk", "bone", "wraith", "brute", "seer", "golem", "imp", "rat_swarm", "rat_giant", "bat_vampire",
+    "slime", "goblin_scout", "skeleton_guard", "spider_weaver", "sporeling", "mimic_larva", "kobold", "ghost_light",
+    "goblin_warrior", "orc_raider", "skeleton_archer", "harpy", "ogre_oaf", "spider_hunter", "mimic_chest", "gargoyle",
+    "dark_priest", "werewolf", "iron_guardian", "witch_spider", "troll", "vampire_lord", "lich_tender", "wyrmling_ember",
+    "devourer", "golem_colossus", "mimic_elder", "spider_queen", "bone_warlord", "sphinx", "boss_warden", "boss_prelate",
+    "boss_inquisitor", "boss_queen", "boss_lich", "boss_warlord", "boss_devourer", "boss_sphinx",
+  ];
   for (const id of ids) {
     assert.ok(MONSTER_RULES[id].title, id);
     assert.ok(MONSTER_RULES[id].text.length > 10, id);
   }
-  assert.equal(Object.keys(MONSTER_RULES).length, 8);
-  for (const boss of ["boss_warden", "boss_prelate", "boss_inquisitor"]) {
-    assert.equal(MONSTER_RULES[boss], undefined, boss);
-  }
+  assert.equal(Object.keys(MONSTER_RULES).length, 49);
 });
 
 test("Крыса: при половине ОЗ лечится на 15% и делает лишний ход, один раз", () => {
@@ -259,4 +263,11 @@ test("Пророк: повтор приёма уклоняется с шансо
   again.idx = 0;
   const landed = withRandom(0.6, () => battle.playerAct(again, { type: "weapon_skill" }));
   assert.ok(landed.enemy.hp < 200, "при броске 0.6 удар проходит");
+});
+
+test("бой: способность монстра вне прежних восьми пишется в лог при старте", () => {
+  const pl = PlayerFactory.createInitial();
+  const b = battle.newBattle(pl, 3, false, "classic", 0, 0, "normal", "harpy");
+  assert.equal(b.enemy.def.id, "harpy");
+  assert.ok(b.log.some((l) => l.text.includes("Правило: Налёт")), "правило гарпии в логе");
 });

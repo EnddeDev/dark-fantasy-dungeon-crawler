@@ -17,6 +17,7 @@ import {
 } from "../game/content";
 import { GEAR_EFFECTS, effectDetail } from "../game/gearEffects";
 import { MONSTER_RACE_META, MONSTER_TYPE_META, WEAKNESS_STEP, raceTraits } from "../game/monsters";
+import { MONSTER_RULES } from "../game/monsterRules";
 import { STAT_META, armorSkillDesc, epicSkillDesc } from "../game/content";
 import { ARCHETYPES } from "../game/archetypes";
 import {
@@ -1204,6 +1205,9 @@ export function BattleView({
                   {e.passive && (
                     <InfoTag tone="rubric" label={e.passive.name} title="Пассивная способность" lines={[e.passive.desc]} />
                   )}
+                  {MONSTER_RULES[e.def.id] && (
+                    <InfoTag tone="flame" label={MONSTER_RULES[e.def.id].title} title="Способность" lines={[MONSTER_RULES[e.def.id].text]} />
+                  )}
                 </div>
                 <div className="mb-1 flex items-baseline justify-between gap-2">
                   <h3 className="font-display text-xl uppercase tracking-[0.12em] text-flamehi">
@@ -1285,6 +1289,15 @@ export function BattleView({
             </header>
 
             <div className="space-y-4 px-4 py-4 text-[0.98rem] leading-snug">
+              {MONSTER_RULES[e.def.id] && (
+                <section>
+                  <h4 className="sc mb-2 text-flame">Способность</h4>
+                  <div className="border-l-2 border-flamedim pl-3">
+                    <span className="font-display uppercase tracking-[0.08em] text-flamehi">{MONSTER_RULES[e.def.id].title}</span>
+                    <div className="text-mute">{MONSTER_RULES[e.def.id].text}</div>
+                  </div>
+                </section>
+              )}
               <section>
                 <h4 className="sc mb-2 text-flame">Что он делает</h4>
                 <ul className="space-y-2">

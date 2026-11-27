@@ -122,7 +122,7 @@ test("Гоблин-воин: попал — ещё два удара в этот
 test("Гоблин-воин: промах героя — дополнительных ударов нет", () => {
   const b = fight("goblin_warrior");
   const after = enemyMove(b, "attack", 0.01);
-  assert.ok(!logHas(after, "ещё два удара"), "без попадания лишних ударов нет");
+  assert.ok(!logHas(after, "разгоняется"), "без попадания лишних ударов нет");
   assert.equal(after.enemy.moveUntil?.attack ?? 0, 0, "перезарядки нет");
 });
 
