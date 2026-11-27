@@ -330,6 +330,8 @@ export interface BattleState {
     guessAction?: "attack" | "guard" | "skill" | "item" | null;
     /** Ход героя должен закончиться после текущего действия (перерождение Лича, контрудар Маршала). */
     endHeroTurn?: boolean;
+    /** Пожиратель Сводов: сколько порогов по 20% ОЗ уже сыграли. */
+    quakesDone?: number;
     /** Скелет-страж: постоянная броня за заблокированные удары. */
     blockArmor?: number;
     /**
@@ -1882,8 +1884,13 @@ function tryResist(b: BattleState, label: string) {
 function eEffect(b: BattleState, id: GearEffectId): number {
   return b.enemy.effectPower?.[id] ?? 0;
 }
+/** Ведьма-паучиха: постоянные +5% стойкости, магического сопротивления и укрепления. */
+const SPIDER_WARD: Partial<Record<GearEffectId, number>> = { resist: 0.05, magic_resist: 0.05, fortify: 0.05 };
+
 function eChance(b: BattleState, id: GearEffectId): number {
-  return enemyChance(b.enemy.effects, b.enemy.level, id);
+  const base = enemyChance(b.enemy.effects, b.enemy.level, id);
+  const ward = b.enemy.def.id === "witch_spider" ? SPIDER_WARD[id] ?? 0 : 0;
+  return combineChances([base, ward]);
 }
 /**
  * Истощение: пока счётчик больше нуля, положительные эффекты врага не работают.
@@ -2734,8 +2741,10 @@ export function enemyArmorNow(e: {
 }): number {
   /* Особенности вида действуют, пока вид совпадает: иначе они остались бы от исходного монстра. */
   const colossus = e.def?.id === "golem_colossus" ? e.colossusArmor ?? 0 : 0;
+  /* Ведьма-паучиха: +5 брони. */
+  const spiderArmor = e.def?.id === "witch_spider" ? 5 : 0;
   const iron = e.def?.id === "iron_guardian" ? e.ironMode : undefined;
-  let base = (e.revived ? Math.round(e.armor * (1 - REVIVE_DEBUFF)) : e.armor) + (e.warlordArmor ?? 0) + (e.blockArmor ?? 0) + colossus;
+  let base = (e.revived ? Math.round(e.armor * (1 - REVIVE_DEBUFF)) : e.armor) + (e.warlordArmor ?? 0) + (e.blockArmor ?? 0) + colossus + spiderArmor;
   const brk = e.statuses;
   /* Железный голем: боевой режим −25% брони, защитный +25%. Накал шлака: броня вдвое ниже. */
   if (iron === "combat") base = Math.round(base * 0.75);
@@ -2963,6 +2972,48 @@ function ghostPassThrough(b: BattleState) {
   incoming(b, Math.round(base * enemyChill(b)), "phys", `${e.def.name} бьёт сквозь твой удар`);
 }
 
+/* Ведьма-паучиха в начале своего хода вытягивает 2% макс. ОЗ героя и лечится на столько же. */
+function spiderDrain(b: BattleState) {
+  const e = b.enemy;
+  if (e.def.id !== "witch_spider" || e.hp <= 0 || b.over || b.p.hp <= 0) return;
+  const amt = Math.max(1, Math.round(b.p.maxHp * 0.02));
+  push(b, `${e.def.name} вытягивает ${amt} ОЗ у героя.`, "e");
+  incoming(b, amt, "pure", `${e.def.name} вытягивает жизнь`);
+  if (b.over) return;
+  const heal = healEnemy(b, amt);
+  if (heal > 0) push(b, `${e.def.name} лечится на ${heal} ОЗ.`, "e");
+}
+
+/* Демон-пожиратель: атака из стойки защиты — 10% макс. ОЗ героя чистым уроном и лечение 5% своего макс. ОЗ. */
+function devourerStanceStrike(b: BattleState) {
+  const e = b.enemy;
+  const dmg = Math.max(1, Math.round(b.p.maxHp * 0.1));
+  push(b, `${e.def.name} бьёт из стойки защиты: ${dmg} чистого урона.`, "e");
+  incoming(b, dmg, "pure", `${e.def.name} бьёт из стойки`);
+  if (b.over) return;
+  const heal = healEnemy(b, Math.max(1, Math.round(e.maxHp * 0.05)));
+  if (heal > 0) push(b, `${e.def.name} восстанавливает ${heal} ОЗ.`, "e");
+}
+
+/* Пожиратель Сводов: каждые 20% ОЗ, которые он потерял, — заканчивает ход героя, бьёт по земле и оглушает героя на ход. */
+function bossQuakeCheck(b: BattleState) {
+  const e = b.enemy;
+  const lostShare = (e.maxHp - e.hp) / e.maxHp;
+  const due = Math.min(4, Math.floor(lostShare / 0.2 + 1e-9));
+  if (due <= (e.quakesDone ?? 0)) return;
+  e.quakesDone = due;
+  push(b, `${e.def.name} теряет ${due * 20}% ОЗ и бьёт по земле!`, "e");
+  if (b.queue[b.idx] === "p") e.endHeroTurn = true;
+  if (b.p.hp > 0) {
+    const base = enemyMoveRaw(b, "attack", randInt(e.atk[0], e.atk[1]), null).value;
+    incoming(b, Math.round(base * enemyChill(b)), "phys", `${e.def.name} бьёт по земле`);
+  }
+  if (b.p.hp > 0 && !b.over && !immuneNote(b, "stun")) {
+    b.p.statuses.stunAp = Math.max(b.p.statuses.stunAp, 1);
+    push(b, "Удар по земле оглушает тебя: −1 ход.", "e");
+  }
+}
+
 function slimeRegen(b: BattleState) {
   const e = b.enemy;
   if (e.def.id !== "slime" || e.hp <= 0 || e.hp >= e.maxHp || b.over) return;
@@ -3059,6 +3110,8 @@ export function hitEnemy(
     raw = Math.round(raw / 2);
     push(b, `Рой разлетается: удар режется вдвое.${note}`, "p");
   }
+  /* Ведьма-паучиха: весь урон по ней вдвое меньше. */
+  if (b.enemy.def.id === "witch_spider") raw = Math.round(raw * 0.5);
   /* Обратный хват: в этом ходу весь урон героя ÷2. */
   if ((b.p.statuses.halfDmg ?? 0) > 0) raw = Math.round(raw / 2);
   /* Рёв дракона: физические удары героя режутся вдвое. */
@@ -3146,6 +3199,8 @@ export function hitEnemy(
   b.enemy.hp -= d;
   flash(b, "e", "hit", d, element ?? kind);
   push(b, `${b.enemy.def.name} получает ${d} урона.${note}`, "p", element);
+  /* Пожиратель Сводов: каждые 20% ОЗ, которые он теряет, — удар по земле и оглушение героя. */
+  if (d > 0 && b.enemy.def.id === "boss_devourer" && b.enemy.hp > 0) bossQuakeCheck(b);
   /* Плачущая тень: каждый полученный урон снимает у героя выносливость. */
   if (d > 0 && b.enemy.def.id === "wraith") wraithCry(b);
   /* Тёмный жрец: 20% урона, полученного им, возвращается герою. */
@@ -3933,6 +3988,7 @@ function beginTurn(b: BattleState) {
     trollRegen(b);
     ghostShimmer(b);
     dragonBreath(b);
+    spiderDrain(b);
   }
 
   /* Страх: атаки и приёмы закрыты; защиту, сумку, побег или конец хода герой выбирает сам. */
@@ -4046,6 +4102,15 @@ function finishIfEnemyDead(b: BattleState): boolean {
   return true;
 }
 
+/* Угольный бес при смерти вспыхивает огнём: магический урон 20 × уровень. */
+function imbuedDeathBurn(b: BattleState) {
+  const e = b.enemy;
+  if (e.def.id !== "imp" || b.p.hp <= 0) return;
+  const dmg = 20 * e.level;
+  push(b, `${e.def.name} вспыхивает при смерти: огонь ${dmg} урона.`, "e");
+  incoming(b, dmg, "magic", `${e.def.name} вспыхивает огнём`);
+}
+
 /** Старший мимик-лабиринт: при смерти бьёт героя магией 10 × уровень. */
 function mimicDeathTrap(b: BattleState) {
   const e = b.enemy;
@@ -4059,6 +4124,7 @@ function mimicDeathTrap(b: BattleState) {
 function defeatEnemy(b: BattleState) {
   b.enemy.hp = 0;
   mimicDeathTrap(b);
+  imbuedDeathBurn(b);
   if (b.over) return;
   b.over = "win";
   gainLoot(b);
@@ -6443,7 +6509,13 @@ export function enemyStep(b0: BattleState): BattleState {
   /* Крушение и Бросок: защиты нет — вместо неё обычный удар. */
   const move = move0 === "guard" && ((e.statuses.noGuard ?? 0) > 0 || (e.statuses.throwDown ?? 0) > 0) ? "attack" : move0;
   e.announced = null;
+  /* Стойка защиты — предыдущий ход врага. */
+  const fromGuard = e.lastMove === "guard";
   e.lastMove = move;
+  if (e.def.id === "devourer" && fromGuard && move === "attack" && e.hp > 0) {
+    devourerStanceStrike(b);
+    if (b.over) return b;
+  }
   e.actsTaken = (e.actsTaken ?? 0) + 1;
   armEnemyCooldown(b, move);
   const isStrikeMove = STRIKE_MOVES.includes(move);
