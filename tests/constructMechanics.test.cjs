@@ -24,7 +24,8 @@ function hero() {
 
 /** Бой с врагом нужного вида; герой ходит первым. */
 function fight(id, floor = 3) {
-  const b = battle.newBattle(hero(), floor, false, "classic", 0, 0, "normal", id);
+  /* Создание боя тасует очередь и задаёт ОЗ монстра случайно: фиксируем, чтобы тест не зависел от запуска. */
+  const b = seeded(() => battle.newBattle(hero(), floor, false, "classic", 0, 0, "normal", id));
   b.torchTurns = 99;
   b.queue = ["p", "e"];
   b.idx = 0;

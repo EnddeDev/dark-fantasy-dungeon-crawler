@@ -297,11 +297,14 @@ export function EnemyMoveRow({
   mv,
   meta,
   announced = false,
+  next = false,
 }: {
   mv: EnemyMoveView;
   meta?: { name: string; desc: string };
   /** Монстр объявил этот ход: он выполнится в его действии. */
   announced?: boolean;
+  /** Это следующий ход монстра: он выполнится, если герой сейчас завершит ход. */
+  next?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const tipRef = useRef<HTMLDivElement>(null);
@@ -309,7 +312,10 @@ export function EnemyMoveRow({
   return (
     <li
       tabIndex={0}
-      className="relative flex items-center gap-2 py-1.5 outline-none focus-visible:ring-1 focus-visible:ring-flame"
+      data-next={next ? "true" : undefined}
+      className={`relative flex items-center gap-2 py-1.5 outline-none focus-visible:ring-1 focus-visible:ring-flame ${
+        next ? "-mx-2 rounded-sm border border-flame/70 bg-flame/10 px-2" : ""
+      }`}
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
       onFocus={() => setOpen(true)}
@@ -322,6 +328,14 @@ export function EnemyMoveRow({
       >
         {meta?.name ?? mv.move}
       </span>
+      {next && (
+        <span
+          className="shrink-0 font-mono text-[0.7rem] uppercase tracking-[0.08em] text-flamehi"
+          title="Следующий ход монстра: он выполнится, если ты сейчас завершишь ход"
+        >
+          следующий ход
+        </span>
+      )}
       {announced && (
         <span className="shrink-0 font-mono text-[0.7rem] uppercase tracking-[0.08em] text-flamehi" title="Монстр уже объявил этот ход">
           объявлено
@@ -646,17 +660,6 @@ export function BattleView({
       now: pct(er.magicResist),
       hint: "срез магического урона по нему",
     },
-    ...(er.barrierMax > 0
-      ? [
-          {
-            metric: "barrier" as const,
-            label: "Маг. барьер",
-            base: `${er.barrier}/${er.barrierMax}`,
-            now: `${er.barrier}/${er.barrierMax}`,
-            hint: "поглощает магический урон первым, пока не снят",
-          },
-        ]
-      : []),
     {
       metric: "ap",
       label: "Ходов в раунде",
@@ -1224,6 +1227,16 @@ export function BattleView({
                   <span className="font-mono text-sm tab text-parch">{e.hp}/{e.maxHp}</span>
                 </div>
                 <Meter value={e.hp} max={e.maxHp} tone="rubric" />
+                {er.barrierMax > 0 && (
+                  <div
+                    className="mt-2 grid grid-cols-[auto_1fr_auto] items-center gap-x-3"
+                    title="Магический барьер: поглощает магический урон первым, пока не снят"
+                  >
+                    <span className="sc text-flamehi">Барьер</span>
+                    <Meter value={er.barrier} max={er.barrierMax} tone="flame" />
+                    <span className="font-mono text-sm tab text-parch">{er.barrier}/{er.barrierMax}</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1254,9 +1267,18 @@ export function BattleView({
                   <div className="mb-1.5 flex items-baseline justify-end">
                     <span className="font-mono text-[0.76rem] text-mute" title="Ожидаемый урон по тебе после твоей брони и защит">≈ урон по тебе</span>
                   </div>
+                  {myTurn && er.next === null && er.nextSkipNote && (
+                    <p className="mb-1.5 font-mono text-[0.8rem] text-mute" title="Монстр пропустит следующий ход">{er.nextSkipNote}</p>
+                  )}
                   <ul className="divide-y divide-line/40">
                     {er.moves.map((mv) => (
-                      <EnemyMoveRow key={mv.move} mv={mv} meta={ENEMY_MOVE_META[mv.move]} announced={er.announced === mv.move} />
+                      <EnemyMoveRow
+                        key={mv.move}
+                        mv={mv}
+                        meta={ENEMY_MOVE_META[mv.move]}
+                        announced={er.announced === mv.move}
+                        next={myTurn && er.next === mv.move}
+                      />
                     ))}
                   </ul>
                 </div>
