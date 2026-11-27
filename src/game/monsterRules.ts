@@ -56,6 +56,8 @@ export const MOVE_LABELS: Record<string, string> = {
   drain: "похищение",
   sunder: "раскол брони",
   bell_stun: "оглушение",
+  roar: "рёв",
+  fire_breath: "огненное дыхание",
   poison: "яд",
   multi: "двойной выпад",
   terror: "насмешка",

@@ -52,7 +52,8 @@ export const FOE_ART: Readonly<Record<string, string>> = {
   "vampire_lord": "images/monsters/vampire_lord.jpg",
   "werewolf": "images/monsters/werewolf.jpg",
   "witch_spider": "images/monsters/witch_spider.jpg",
-  "wyrmling": "images/monsters/wyrmling.jpg"
+  "wyrmling": "images/monsters/wyrmling.jpg",
+  "wyrmling_ember": "images/monsters/wyrmling.jpg"
 };
 
 export const ITEM_ART: Readonly<Record<string, string>> = {

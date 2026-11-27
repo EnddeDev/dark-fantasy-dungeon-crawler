@@ -48,6 +48,7 @@ const CREATURE_STYLES: Record<string, CreatureStyle> = {
   vampire_lord: { base: "images/foe-boss.jpg", filter: "contrast(1.4) saturate(1.6) hue-rotate(-25deg)", overlay: "blood" },
   lich_tender: { base: "images/foe-bone.jpg", filter: "hue-rotate(240deg) saturate(2) contrast(1.35)", overlay: "shadow" },
   wyrmling: { base: "images/foe-brute.jpg", filter: "hue-rotate(-45deg) saturate(2.8) brightness(1.15)", overlay: "fire" },
+  wyrmling_ember: { base: "images/foe-brute.jpg", filter: "hue-rotate(-45deg) saturate(2.8) brightness(1.15)", overlay: "fire" },
   devourer: { base: "images/foe-boss.jpg", filter: "hue-rotate(-35deg) saturate(2.5) contrast(1.4)", overlay: "fire" },
   golem_colossus: { base: "images/foe-boss.jpg", filter: "grayscale(0.9) sepia(0.3) contrast(1.4) brightness(0.9)" },
   mimic_elder: { base: "images/foe-husk.jpg", filter: "contrast(1.45) sepia(0.6) brightness(0.85)" },
