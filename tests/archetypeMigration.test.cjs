@@ -91,32 +91,39 @@ test("migrateGearItem: переименованный baseId переводит�
   assert.equal(content.GEAR_BASES[renamed.baseId].name, "Кусаригама тени");
 });
 
-test("ранги навыков: удалённые ветки отбрасываются, очки возвращаются; текущие ветки остаются", () => {
+test("ранги навыков: старые ветки и узлы чужого архетипа отбрасываются, ранги обрезаются до 3", () => {
+  assert.deepEqual(migration.migrateSkillRanks({ wall: 3, rage: 2 }, "bulwark"), {}, "старые ветки не переходят");
   assert.deepEqual(
-    migration.migrateSkillRanks({ rewrite: 3, sealknow: 2, library: 1, smokeveil: 2, riposte: 3, combo: 1 }, "archmage"),
-    {},
-    "ветки архимага и чужие ветки не переходят",
+    migration.migrateSkillRanks({ quill_passive: 3, quill_tech: 1, rage_passive: 2 }, "archmage"),
+    { quill_passive: 3, quill_tech: 1 },
+    "узлы чужого архетипа не переходят",
   );
-  assert.deepEqual(
-    migration.migrateSkillRanks({ smokeveil: 2, poisoner: 1, riposte: 3, combo: 1, stealth: 2 }, "duelist"),
-    { riposte: 3, combo: 1 },
-  );
-  assert.deepEqual(
-    migration.migrateSkillRanks({ price: 2, cooldown: 1, curse: 2, vow: 1 }, "warlock"),
-    { curse: 2, vow: 1 },
-  );
-  assert.deepEqual(migration.migrateSkillRanks({ riposte: 3 }, null), {}, "без архетипа ранги не переносятся");
+  assert.deepEqual(migration.migrateSkillRanks({ rage_passive: 5 }, "barbarian"), { rage_passive: 3 });
+  assert.deepEqual(migration.migrateSkillRanks({ rage_passive: -1 }, "barbarian"), {}, "ранг ниже 1 не переносится");
+  assert.deepEqual(migration.migrateSkillRanks({ rage_passive: 3 }, null), {}, "без архетипа ранги не переносятся");
 });
 
-test("клиент: восстановление сохранения не занимает очки удалёнными ветками", () => {
+test("ранги навыков: узел без открытого предка отбрасывается (приём без пассива)", () => {
+  assert.deepEqual(
+    migration.migrateSkillRanks({ shade_passive: 2, venom_tech: 1, venom_up: 2 }, "duelist"),
+    { shade_passive: 2 },
+    "приём венома без пассива и усиление без приёма не остаются",
+  );
+  assert.deepEqual(
+    migration.migrateSkillRanks({ venom_passive: 1, venom_tech: 1, venom_up: 2 }, "duelist"),
+    { venom_passive: 1, venom_tech: 1, venom_up: 2 },
+  );
+});
+
+test("клиент: восстановление сохранения переводит архетип, пассивы и ранги", () => {
   const restored = PlayerFactory.restore(
     hero({
       level: 10,
       archetype: "ninja",
       passives: [],
-      skillRanks: { smokeveil: 3, poisoner: 2, stealth: 1, riposte: 2 },
+      skillRanks: { smokeveil: 3, poisoner: 2, shade_passive: 2, venom_tech: 1 },
     }),
   );
   assert.equal(restored.archetype, "duelist");
-  assert.deepEqual(restored.skillRanks, { riposte: 2 });
+  assert.deepEqual(restored.skillRanks, { shade_passive: 2 });
 });

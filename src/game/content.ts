@@ -1319,7 +1319,7 @@ const ARCHETYPE_GEAR: GearBaseDef[] = [
     dmg: [6, 9], level: 4, minFloor: 4, idIntReq: 5, idGoldCost: 100,
     desc: "Не для удара — для печати. Каждый приём возвращает часть крови владельца.",
     preferredEpic: "fireball",
-    weaponSkill: { id: "pact_drain", name: "Отток пакта", intReq: 4, cooldown: 2, scaleStat: "int", scaleMult: 3.0, effect: "skill_leech", desc: "Урон оружия + 3.0×ИНТ сквозь броню; лечит на 25% нанесённого урона и сокращает откат этого приёма на 1." },
+    weaponSkill: { id: "pact_drain", name: "Отток пакта", intReq: 4, cooldown: 2, scaleStat: "int", scaleMult: 3.0, effect: "skill_leech", desc: "Урон оружия + 3.0×ИНТ сквозь броню; лечит на 25% нанесённого урона; запас крови (пассив) добавляется к лечению." },
   },
   {
     id: "archmage_censer", name: "Кадило живого слова", slot: "mainHand", gearClass: "light", stat: "int", archetype: "archmage",

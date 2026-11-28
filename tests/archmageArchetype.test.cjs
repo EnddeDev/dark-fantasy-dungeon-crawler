@@ -63,9 +63,9 @@ function mageFight(passives = [], extra = {}) {
   return b;
 }
 
-test("ветки Архимага: «Угли», «Стужа», «Списки» вместо «Переписывание», «Печать знания», «Библиотека»", () => {
+test("ветки Архимага: «Перо», «Барьерный слой», «Лишний свиток» (узлы дерева по ветке)", () => {
   const ids = skills.skillBranchesOf("archmage").map((x) => x.id);
-  assert.deepEqual(ids, ["ember", "frost", "scribe"]);
+  assert.deepEqual(ids, ["quill", "barrier", "extra"]);
 });
 
 test("спец-приём «Слово созидания»: 2 свитка, огонь или холод на 3 раунда, тратит 5 концентрации", () => {
@@ -106,13 +106,6 @@ test("Единение стихий: магический урон +15%; Абс�
   assert.ok(Math.abs(dTen - dFive) < dFive * 0.06, `рубеж 10 магию не усиливает: ${dFive.toFixed(1)} → ${dTen.toFixed(1)}`);
 });
 
-test("Тлеющие угли (ветка A): горящий враг теряет 2 брони", () => {
-  const plain = { armor: 10, statuses: { burn: 2, breakRounds: 0 } };
-  assert.equal(battle.enemyArmorNow({ armor: 10, statuses: { burn: 0 } }), 10, "без горения броня целая");
-  assert.equal(battle.enemyArmorNow({ armor: 10, statuses: { burn: 2, emberShred: 2 } }), 8, "горение −2 брони");
-  assert.equal(battle.enemyArmorNow(plain), 10, "горение без ветки не режет броню");
-});
-
 test("Встречный клинок: раскол снимает ещё 1 броню до конца раунда", () => {
   const b = mageFight([], { archetype: "duelist" });
   b.p.gearPassives = ["duelist_phantom"];
@@ -133,25 +126,25 @@ test("Запретный канон: 15% шанс повторно примен�
   assert.ok(next.log.some((l) => l.text.includes("Запретный канон")), "повторное применение без траты записано в лог");
 });
 
-test("ветка «Списки» A «Вторая строка»: созданный свиток может появиться дважды", () => {
-  const b = mageFight(["skill_scribe_a"]);
-  const next = withRandom(0.1, () => battle.playerAct(b, { type: "archetype_skill" }));
-  assert.equal(next.scrollsMade, 4, "при 20% шансе каждый из двух свитков дублируется");
-});
-
-test("ветка «Списки» B «Чтение вслух»: первый созданный свиток в бою применяется дважды", () => {
-  const b = mageFight(["skill_scribe_b"]);
+test("ветка «Лишний свиток» (пассив, ранг 3): каждый второй созданный свиток создаётся дважды", () => {
+  const b = mageFight([], { skillRanks: { extra_passive: 3 } });
   const next = withRandom(0.45, () => battle.playerAct(b, { type: "archetype_skill" }));
-  assert.ok(next.log.some((l) => l.text.includes("Чтение вслух")));
+  assert.equal(next.scrollsMade, 3, "два свитка: второй задублирован, всего 3");
 });
 
-test("ветка «Стужа» B «Ледяная клеть»: обморожение 3+ раунда иногда пропускает ход врага", () => {
-  const b = mageFight(["skill_frost_b"]);
-  b.enemy.statuses.chill = 3;
-  b.queue = ["e", "p"];
+test("ветка «Перо» (эффект «Горящая строка», ранг 1): применённый свиток поджигает врага", () => {
+  const b = mageFight([], { skillRanks: { quill_passive: 1, quill_tech: 1, quill_fx: 1 } });
+  const next = withRandom(0.45, () => battle.playerAct(b, { type: "archetype_skill" }));
+  assert.ok(next.enemy.statuses.burn > 0, "горение на 1 раунд");
+});
+
+test("ветка «Барьерный слой» (эффект «Угасающий щит», ранг 1): когда полная защита кончается, враг горит", () => {
+  const b = mageFight([], { skillRanks: { barrier_passive: 1, barrier_tech: 1, barrier_fx: 1 } });
+  b.p.statuses.fullGuard = 1;
+  b.queue = ["e"];
   b.idx = 0;
-  const next = withRandom(0.1, () => battle.enemyStep(b));
-  assert.ok(next.log.some((l) => l.text.includes("ледяной клетью")));
+  const next = withRandom(0.45, () => battle.enemyStep(b));
+  assert.ok(next.enemy.statuses.burn > 0, "враг горит после окончания защиты");
 });
 
 test("Абсолютное знание: барьер +200 в начале боя; без рубежа — без барьера", () => {

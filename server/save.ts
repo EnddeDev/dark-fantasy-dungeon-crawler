@@ -29,9 +29,9 @@ import {
 import { xpForNextLevel } from "../src/game/content";
 import { GEAR_EFFECTS, GEAR_PASSIVES, type GearEffectId, type GearPassiveId } from "../src/game/gearEffects";
 import { statMilestoneById } from "../src/game/statMilestones";
-import { SKILL_RANK_MAX, skillBranchById, skillPointsEarned, skillPointsSpent } from "../src/game/archetypeSkills";
+import { skillPointsEarned, skillPointsSpent } from "../src/game/archetypeSkills";
 import { ARCHETYPE_ORDER, type ArchetypeId } from "../src/game/archetypes";
-import { migrateLegacyId, migrateLegacyPassives } from "../src/game/archetypeMigration";
+import { migrateLegacyId, migrateLegacyPassives, migrateSkillRanks } from "../src/game/archetypeMigration";
 import { totalStatPoints } from "../src/game/progression";
 import { derived } from "../src/game/battle";
 import { CHARACTER_NAME_MAX, DEFAULT_CHARACTER_NAME } from "../src/game/characterName";
@@ -423,17 +423,9 @@ export function sanitizePlayer(raw: unknown, floors = 1): Player {
   const archetypeId = typeof input.archetype === "string" ? migrateLegacyId(input.archetype) : "";
   const archetype = ARCHETYPE_ORDER.includes(archetypeId as ArchetypeId) ? (archetypeId as ArchetypeId) : null;
 
-  /* Ранги веток навыков: только ветки основного архетипа, сумма не больше очков уровня. */
+  /* Ранги узлов дерева навыков: только узлы основного архетипа, сумма не больше очков уровня. */
   const skillsRaw = input.skillRanks === undefined || input.skillRanks === null ? null : asObject(input.skillRanks, "навыки");
-  const skillRanks: Record<string, number> = {};
-  if (skillsRaw) {
-    for (const [id, value] of Object.entries(skillsRaw)) {
-      const def = skillBranchById(id);
-      if (!def || def.archetype !== archetype) continue;
-      const rank = int(value ?? 0, 0, SKILL_RANK_MAX, `ранг ветки «${id}»`);
-      if (rank > 0) skillRanks[id] = rank;
-    }
-  }
+  const skillRanks: Record<string, number> = migrateSkillRanks(skillsRaw, archetype);
   if (skillPointsSpent(skillRanks) > skillPointsEarned(level)) bad("очки навыков превышают уровень");
 
   const knownRecipes = Array.isArray(input.knownRecipes)

@@ -82,7 +82,6 @@ const ENEMY_CASES = [
   { field: "throwDown", value: 1, chip: "weaken" },
   { field: "feint", value: 1, chip: "blind" },
   { field: "echoDue", value: 4, chip: "echo" },
-  { field: "emberShred", value: 2, extra: { burn: 2 }, chip: "burn" },
 ];
 
 test("каждый негативный статус героя показан фишкой с иконкой", () => {

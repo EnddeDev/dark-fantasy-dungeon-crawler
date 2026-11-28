@@ -84,18 +84,16 @@ test("комбо: стаки остаются, если герой ударил 
   assert.equal(next.p.statuses.comboStacks, 3);
 });
 
-test("ветка «Серия» A: стаки держатся 2 раунда без удара, на третьем сгорают", () => {
-  const b = duelFight(["skill_combo_a"]);
+test("ветка «Тень на ране» (пассив, ранг 2): стаки комбо держатся до конца раунда; потолок тени растёт с рангом", () => {
+  assert.equal(skills.skillNum({ shade_passive: 2 }, "shade_passive", "max"), 4, "пассив: до 4 стаков на ранге 2");
+  assert.equal(skills.skillNum({ shade_up: 1 }, "shade_up", "cap"), 50, "усиление: потолок 50%");
+  assert.equal(skills.skillNum({ shade_up: 3 }, "shade_up", "cap"), 70, "на ранге 3 — 70%");
+  const b = duelFight([], { skillRanks: { shade_passive: 2 } });
   b.p.statuses.comboStacks = 3;
   b.p.statuses.comboRound = b.round;
   const first = endRound(b);
   assert.equal(first.p.statuses.comboStacks, 3, "1 раунд без удара — стаки на месте");
-  const second = endRound(first);
-  assert.equal(second.p.statuses.comboStacks, 3, "2 раунда без удара — ещё на месте");
-  const third = endRound(second);
-  assert.equal(third.p.statuses.comboStacks ?? 0, 0, "3 раунда без удара — сгорели");
 });
-
 test("спец-приём Дуэлянта: контратака и раскол дают стаки комбо", () => {
   const b = duelFight();
   b.p.concentration = 5;
@@ -104,60 +102,26 @@ test("спец-приём Дуэлянта: контратака и раскол
   assert.ok((next.p.statuses.comboStacks ?? 0) <= 5, "не больше 5");
 });
 
-test("ветка «Раскол» A «Трещина»: раскол снимает ещё 1 броню", () => {
-  const b = duelFight(["skill_split_a"]);
-  b.p.concentration = 5;
-  const next = withRandom(0.45, () => battle.playerAct(b, { type: "archetype_skill" }));
-  assert.equal(next.enemy.statuses.breakFlat, 4, "3 от спец-приёма + 1 от ветки");
-});
-
-test("ветка «Раскол» A вместе с рубежом 10: +2 и +1 к раколу", () => {
-  const b = duelFight(["skill_split_a", "arch_duelist_10"]);
-  b.p.concentration = 5;
-  const next = withRandom(0.45, () => battle.playerAct(b, { type: "archetype_skill" }));
-  assert.equal(next.enemy.statuses.breakFlat, 6, "3 + 1 + 2");
-  assert.equal(next.enemy.statuses.breakRounds, 2);
-});
-
-test("ветка «Ответ» A «Точный ответ»: контратака пробивает больше брони врага", () => {
-  /* Удар без оружия небольшой (6): при броне 5 разница видна — 1 и 2 урона. */
+test("ветка «Выжидание» (пассив, ранг 1): если в прошлом раунде не атаковал, первый удар +10%", () => {
   const plain = duelFight();
-  plain.enemy.armor = 5;
-  plain.p.concentration = 5;
-  const riposte = duelFight(["skill_riposte_a"]);
-  riposte.enemy.armor = 5;
-  riposte.p.concentration = 5;
-  const hpPlain = withRandom(0.45, () => battle.playerAct(plain, { type: "archetype_skill" })).enemy.hp;
-  const hpRiposte = withRandom(0.45, () => battle.playerAct(riposte, { type: "archetype_skill" })).enemy.hp;
-  assert.ok(99999 - hpRiposte > 99999 - hpPlain, "с «Точным ответом» контратака сильнее");
+  plain.enemy.armor = 0;
+  const waiting = duelFight([], { skillRanks: { wait_passive: 1 } });
+  waiting.enemy.armor = 0;
+  const hpPlain = withRandom(0.45, () => battle.playerAct(plain, { type: "attack" })).enemy.hp;
+  const hpWait = withRandom(0.45, () => battle.playerAct(waiting, { type: "attack" })).enemy.hp;
+  assert.ok(99999 - hpWait > 99999 - hpPlain, "с «Выжиданием» первый удар сильнее");
 });
-
-test("ветка «Ответ» B «Ответ без промаха»: контратака попадает даже при плохом броске", () => {
-  const plain = duelFight();
-  plain.p.concentration = 5;
-  const sure = duelFight(["skill_riposte_b"]);
-  sure.p.concentration = 5;
-  const hpPlain = withRandom(0.99, () => battle.playerAct(plain, { type: "archetype_skill" })).enemy.hp;
-  const hpSure = withRandom(0.99, () => battle.playerAct(sure, { type: "archetype_skill" })).enemy.hp;
-  assert.equal(hpPlain, 99999, "без ветки бросок 0.99 промахивается");
-  assert.ok(hpSure < 99999, "с веткой удар проходит");
-});
-
 test("«Встречный выпад» — приём с эффектом counter_thrust, его id и название на месте", () => {
   const def = content.WEAPON_TECHNIQUES.empty_step;
   assert.equal(def.name, "Встречный выпад");
   assert.equal(def.effect, "counter_thrust");
 });
 
-test("ветки Дуэлянта: новые id принадлежат архетипу, старые удалены", () => {
-  for (const id of ["riposte", "combo", "split"]) {
-    assert.equal(skills.skillBranchById(id).archetype, "duelist", id);
-  }
-  for (const id of ["poisoner", "stealth", "smokeveil"]) {
-    assert.equal(skills.skillBranchById(id), null, id);
-  }
+test("ветки Дуэлянта: «Тень на ране», «Яд на клинке», «Выжидание»; старые ветки удалены", () => {
+  assert.deepEqual(skills.skillBranchesOf("duelist").map((b) => b.id), ["shade", "venom", "wait"]);
+  assert.equal(skills.skillBranchById("combo"), null, "старая ветка «Серия» удалена");
+  assert.equal(skills.skillBranchById("split"), null, "старая ветка «Раскол» удалена");
 });
-
 test("рубежи Дуэлянта: новые названия и спец-приём «Ответный залп»", () => {
   const d = archetypes.ARCHETYPES.duelist;
   assert.equal(d.milestone5.name, "Ответный шаг");
