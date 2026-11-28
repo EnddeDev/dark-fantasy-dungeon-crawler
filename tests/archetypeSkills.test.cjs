@@ -58,49 +58,74 @@ test("очки характеристик не растут после 10 уро
   assert.equal(at11.player.statPoints, 0, "после 10 уровня очки характеристик не начисляются");
 });
 
-test("ветки: три на архетип, ID уникальны, у каждой эффекты на рангах 3 и 5", () => {
-  const ids = skills.SKILL_BRANCHES.map((b) => b.id);
-  assert.equal(new Set(ids).size, ids.length);
+test("дерево: шесть архетипов, три ветки по четыре узла: пассив → приём → усиление и эффект", () => {
+  assert.equal(skills.SKILL_NODES.length, 72);
+  assert.equal(new Set(skills.SKILL_NODES.map((n) => n.id)).size, 72, "id узлов уникальны");
   for (const arch of archetypes.ARCHETYPE_ORDER) {
-    assert.equal(skills.skillBranchesOf(arch).length, 3, `архетип ${arch}`);
-  }
-  for (const b of skills.SKILL_BRANCHES) {
-    assert.ok(b.a.name && b.a.desc && b.b.name && b.b.desc, `ветка ${b.id} описана`);
+    const branches = skills.skillBranchesOf(arch);
+    assert.equal(branches.length, 3, `архетип ${arch}: три ветки`);
+    for (const br of branches) {
+      assert.deepEqual(br.nodes.map((n) => n.kind), ["passive", "technique", "upgrade", "effect"], br.id);
+      const [passive, tech, up, fx] = br.nodes;
+      assert.equal(passive.requires, null);
+      assert.equal(tech.requires, passive.id, "приём требует пассив");
+      assert.equal(up.requires, tech.id, "усиление требует приём");
+      assert.equal(fx.requires, tech.id, "эффект требует приём");
+      assert.ok(br.nodes.every((n) => n.name && n.desc && n.archetype === arch), `ветка ${br.id} описана`);
+    }
   }
 });
 
-test("setSkillRank: очки списываются и возвращаются, чужие ветки и выход за 0–5 не меняют героя", () => {
+test("каждый приём дерева — существующая техника оружия", () => {
+  const techniques = skills.SKILL_NODES.filter((n) => n.technique).map((n) => n.technique);
+  assert.equal(techniques.length, 18, "по одному приёму на ветку");
+  for (const id of techniques) assert.ok(content.WEAPON_TECHNIQUES[id], `техника ${id} есть`);
+});
+
+test("setSkillRank: узел требует открытого предыдущего; очки списываются и возвращаются", () => {
   const base = hero({ level: 7, archetype: "bulwark", skillRanks: {} }); // 2 очка
-  const up1 = skills.setSkillRank(base, "wall", 1);
-  assert.equal(skills.skillRankOf(up1, "wall"), 1);
-  assert.equal(skills.skillPointsAvailable(up1), 1);
-  const up2 = skills.setSkillRank(up1, "ram", 1);
-  assert.equal(skills.skillPointsAvailable(up2), 0);
-  assert.equal(skills.setSkillRank(up2, "fortitude", 1), up2, "очков нет — ранг не растёт");
-  const down = skills.setSkillRank(up2, "wall", 0);
-  assert.equal(skills.skillPointsAvailable(down), 1, "снижение возвращает очко");
-  assert.equal(skills.setSkillRank(base, "rage", 1), base, "ветка чужого архетипа");
-  assert.equal(skills.setSkillRank(base, "wall", 6), base, "ранг выше 5");
-  assert.equal(skills.setSkillRank(base, "wall", -1), base, "ранг ниже 0");
+  assert.equal(skills.setSkillRank(base, "wall_tech", 1), base, "приём без пассива закрыт");
+  const p1 = skills.setSkillRank(base, "wall_passive", 1);
+  assert.equal(skills.skillRankOf(p1, "wall_passive"), 1);
+  assert.equal(skills.skillPointsAvailable(p1), 1);
+  const p2 = skills.setSkillRank(p1, "wall_tech", 1);
+  assert.equal(skills.skillPointsAvailable(p2), 0);
+  assert.equal(skills.setSkillRank(p2, "wall_up", 1), p2, "очков нет — ранг не растёт");
+  const down = skills.setSkillRank(p2, "wall_passive", 0);
+  assert.equal(skills.skillRankOf(down, "wall_tech"), 0, "снижение пассива сбрасывает приём");
+  assert.equal(skills.skillPointsAvailable(down), 2, "оба очка вернулись");
+  assert.equal(skills.setSkillRank(base, "rage_passive", 1), base, "узел чужого архетипа");
+  assert.equal(skills.setSkillRank(p1, "wall_passive", 4), p1, "ранг выше 3");
+  assert.equal(skills.setSkillRank(p1, "wall_passive", -1), p1, "ранг ниже 0");
 });
 
-test("активные эффекты: только ветки своего архетипа; ранг 3 — A, ранг 5 — A и B", () => {
-  const p = hero({ level: 15, archetype: "barbarian", skillRanks: { rage: 3, thirst: 5, wall: 5 } });
-  const active = skills.activeSkillEffects(p);
-  assert.ok(active.includes("rage_a") && !active.includes("rage_b"));
-  assert.ok(active.includes("thirst_a") && active.includes("thirst_b"));
-  assert.ok(!active.some((k) => k.startsWith("wall")), "ветка другого архетипа не действует");
+test("skillNum: число узла по рангу; ранг 0 — нет эффекта", () => {
+  assert.equal(skills.skillNum({ rage_passive: 0 }, "rage_passive", "max"), 0);
+  assert.equal(skills.skillNum({ rage_passive: 1 }, "rage_passive", "max"), 2);
+  assert.equal(skills.skillNum({ rage_passive: 3 }, "rage_passive", "max"), 4);
+  assert.equal(skills.skillNodeText(skills.skillNodeById("rage_passive"), 2).includes("Максимум стаков: 3"), true);
 });
 
-test("сервер: ранги веток проверяются — чужие ветки отбрасываются, лишние очки отклоняются", () => {
+test("активные ранги: только узлы своего архетипа и открытые", () => {
+  const p = hero({
+    level: 15,
+    archetype: "barbarian",
+    skillRanks: { rage_passive: 3, thirst_passive: 2, wall_passive: 3, rage_tech: 0 },
+  });
+  assert.deepEqual(skills.activeSkillRanks(p), { rage_passive: 3, thirst_passive: 2 });
+});
+
+test("сервер: узлы чужого архетипа отбрасываются, лишние очки отклоняются, ранг обрезается", () => {
   const ok = save.sanitizePlayer(
-    hero({ level: 15, archetype: "bulwark", skillRanks: { wall: 3, ram: 2, rage: 4 } }),
+    hero({ level: 15, archetype: "barbarian", skillRanks: { rage_passive: 3, rage_tech: 2, wall_passive: 3 } }),
   );
-  assert.deepEqual(ok.skillRanks, { wall: 3, ram: 2 }, "ветка «ярость» чужая — отброшена");
-  assert.throws(() => save.sanitizePlayer(hero({ level: 6, archetype: "bulwark", skillRanks: { wall: 3 } })), /очки навыков/);
-  /* Числа сервер обрезает в допустимые границы, как и остальные поля сохранения. */
-  assert.equal(save.sanitizePlayer(hero({ level: 15, archetype: "bulwark", skillRanks: { wall: 6 } })).skillRanks.wall, 5);
-  assert.equal(save.sanitizePlayer(hero({ level: 15, archetype: "bulwark", skillRanks: { wall: -1 } })).skillRanks.wall, undefined);
+  assert.deepEqual(ok.skillRanks, { rage_passive: 3, rage_tech: 2 });
+  assert.throws(
+    () => save.sanitizePlayer(hero({ level: 6, archetype: "barbarian", skillRanks: { rage_passive: 3, rage_tech: 2 } })),
+    /очки навыков/,
+  );
+  assert.equal(save.sanitizePlayer(hero({ level: 15, archetype: "barbarian", skillRanks: { rage_passive: 6 } })).skillRanks.rage_passive, 3);
+  assert.equal(save.sanitizePlayer(hero({ level: 15, archetype: "barbarian", skillRanks: { rage_passive: -1 } })).skillRanks.rage_passive, undefined);
   assert.equal(save.sanitizePlayer(hero({ level: 16 })).level, 15);
 });
 
@@ -141,52 +166,29 @@ function withFixedRandom(fn) {
   }
 }
 
-test("в бою действуют только пассивы выбранных веток (skill_<ветка>_<ранг>)", () => {
-  const p = hero({ level: 15, archetype: "bulwark", skillRanks: { wall: 5, ram: 3 } });
+test("в бою у героя ранги узлов своего архетипа", () => {
+  const p = hero({ level: 15, archetype: "bulwark", skillRanks: { wall_passive: 3, answer_passive: 2, rage_passive: 3 } });
   const b = battle.newBattle(p, 2, false, "classic", 0, 0);
-  assert.ok(b.p.passives.includes("skill_wall_a"));
-  assert.ok(b.p.passives.includes("skill_wall_b"));
-  assert.ok(b.p.passives.includes("skill_ram_a"));
-  assert.ok(!b.p.passives.includes("skill_ram_b"));
-  assert.ok(!b.p.passives.some((id) => id.startsWith("skill_rage")));
+  assert.deepEqual(b.p.skillRanks, { wall_passive: 3, answer_passive: 2 });
 });
 
-test("Стена щитов (ранг 3): в защите щит 15% макс. ОЗ поглощает удар", () => {
-  const plain = withFixedRandom(() => {
-    const b = fixedFight(hero({ level: 15, archetype: "bulwark", skillRanks: {} }), { guard: true });
-    return battle.enemyStep(b).p.hp;
-  });
-  const shielded = withFixedRandom(() => {
-    const b = fixedFight(hero({ level: 15, archetype: "bulwark", skillRanks: { wall: 3 } }), { guard: true });
-    return battle.enemyStep(b).p.hp;
-  });
-  const lossPlain = 300 - plain;
-  const lossShielded = 300 - shielded;
-  assert.ok(lossPlain > 0, "без щита удар проходит");
-  assert.equal(lossPlain - lossShielded, Math.min(45, lossPlain), "щит 45 (15% от 300) режет урон");
-});
-
-test("Стена щитов (ранг 5): ответ на удар врага — броня ÷ 10", () => {
+test("Озлобление: каждый удар врага даёт стак, не больше пассива (ранг 1 → 2)", () => {
   withFixedRandom(() => {
-    const plainFight = fixedFight(hero({ level: 15, archetype: "bulwark", skillRanks: { wall: 3 } }), {
-      guard: true,
-      playerArmor: 60,
-    });
-    const replyFight = fixedFight(hero({ level: 15, archetype: "bulwark", skillRanks: { wall: 5 } }), {
-      guard: true,
-      playerArmor: 60,
-    });
-    const reply = Math.floor(battle.playerArmorNow(replyFight) / 10);
-    assert.ok(reply > 0);
-    const plainAfter = battle.enemyStep(plainFight);
-    const replyAfter = battle.enemyStep(replyFight);
-    assert.equal(plainAfter.enemy.hp - replyAfter.enemy.hp, reply, "ответ добавляет броню ÷ 10");
+    const b = fixedFight(hero({ level: 15, archetype: "barbarian", skillRanks: { rage_passive: 1 } }));
+    let s = b;
+    for (let i = 0; i < 3; i++) {
+      s.queue = ["e", "p"];
+      s.idx = 0;
+      s.enemy.announced = "attack";
+      s = battle.enemyStep(s);
+    }
+    assert.equal(s.p.skillState.fury, 2);
   });
 });
 
-test("Жажда крови (ранг 3): 10% нанесённого урона возвращается здоровьем", () => {
+test("Кровавый след (ранг 2): 8% нанесённого урона возвращается здоровьем", () => {
   const withSkill = withFixedRandom(() => {
-    const b = fixedFight(hero({ level: 15, archetype: "barbarian", skillRanks: { thirst: 3 } }));
+    const b = fixedFight(hero({ level: 15, archetype: "barbarian", skillRanks: { thirst_passive: 2 } }));
     b.queue = ["p"];
     b.idx = 0;
     b.p.hp = 100;
@@ -201,5 +203,42 @@ test("Жажда крови (ранг 3): 10% нанесённого урона 
   const dealt = 500 - withSkill.enemy.hp;
   assert.ok(dealt > 0, "удар прошёл");
   assert.ok(withSkill.p.hp > 100, "урон вернулся здоровьем");
-  assert.ok(withSkill.p.hp - 100 <= Math.max(1, Math.round(dealt * 0.1)) + 1, "не больше 10% урона");
+  assert.ok(withSkill.p.hp - 100 <= Math.max(1, Math.round(dealt * 0.08)) + 1, "не больше 8% урона");
+});
+
+test("Упор: каждый ход в защите подряд добавляет броню до максимума (ранг 2: +3, макс. +9)", () => {
+  withFixedRandom(() => {
+    const b = fixedFight(hero({ level: 15, archetype: "bulwark", skillRanks: { wall_passive: 2 } }));
+    b.p.guard = true;
+    b.queue = ["e", "p"];
+    b.idx = 0;
+    b.enemy.announced = "attack";
+    const first = battle.enemyStep(b);
+    assert.equal(first.p.skillState.upright, 3, "первый ход в защите: +3");
+    first.p.guard = true;
+    first.queue = ["e", "p"];
+    first.idx = 0;
+    first.enemy.announced = "attack";
+    const second = battle.enemyStep(first);
+    assert.equal(second.p.skillState.upright, 6, "второй ход подряд: +6");
+  });
+});
+
+test("Тихий шаг (ранг 3, шанс 20%): в первые 2 раунда промах врага — без урона", () => {
+  const b = fixedFight(hero({ level: 15, archetype: "assassin", skillRanks: { quiet_passive: 3 } }));
+  b.round = 1;
+  b.queue = ["e", "p"];
+  b.idx = 0;
+  b.enemy.announced = "attack";
+  /* Бросок 0.1 < шанс 20%: промах. */
+  const orig = Math.random;
+  Math.random = () => 0.1;
+  let next;
+  try {
+    next = battle.enemyStep(b);
+  } finally {
+    Math.random = orig;
+  }
+  assert.equal(next.p.hp, 300, "промах не наносит урона");
+  assert.equal(next.p.skillState.quietMissed, 1, "промах открывает Удар открытия");
 });

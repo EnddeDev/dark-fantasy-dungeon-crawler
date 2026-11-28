@@ -27,7 +27,7 @@ import { ritualReplace, ritualStrip, type RitualReplaceKind } from "../game/ritu
 import type { GearEffectId } from "../game/gearEffects";
 import { hpAfterGearChange, resetStats } from "../game/progression";
 import { chooseStatMilestone, type StatMilestoneTier } from "../game/statMilestones";
-import { setSkillRank, type SkillBranchId } from "../game/archetypeSkills";
+import { setSkillRank } from "../game/archetypeSkills";
 import type { ArchetypeId } from "../game/archetypes";
 import type { GearItem, Player, Slot, StatKey } from "../game/types";
 import { SLOT_META } from "../game/types";
@@ -90,12 +90,12 @@ export class LobbyController {
   }
 
   /** Ранг ветки навыков: +1 или −1. Возвращает null, если изменить нельзя. */
-  changeSkillRank(branch: SkillBranchId, rank: number): string | null {
+  changeSkillRank(nodeId: string, rank: number): string | null {
     const before = this.player;
-    const next = setSkillRank(before, branch, rank);
+    const next = setSkillRank(before, nodeId, rank);
     if (next === before) return null;
     this.model.setPlayer(next);
-    return rank > (before.skillRanks?.[branch] ?? 0) ? "Ранг ветки повышен" : "Ранг ветки понижен";
+    return rank > (before.skillRanks?.[nodeId] ?? 0) ? "Навык улучшен" : "Навык понижен";
   }
 
   pickStatMilestone(stat: StatKey, tier: StatMilestoneTier, id: string): string | null {

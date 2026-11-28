@@ -159,73 +159,69 @@ test("Жертвенный пакт: иссушение на 3 раунда, к�
   assert.equal(next.p.concentration, 0);
 });
 
-test("ветка «Обряд» A «Ритуал»: Жертвенный пакт возвращает 2 концентрации", () => {
-  const b = warlockFight(["skill_rite_a"]);
-  b.p.concentration = 5;
-  const next = withRandom(0.45, () => battle.playerAct(b, { type: "archetype_skill" }));
-  assert.equal(next.p.concentration, 2);
+test("Запас крови (пассив, ранг 3): 20% платы за приём копится в запас", () => {
+  const b = warlockFight([], { skillRanks: { reserve_passive: 3 } });
+  b.p.hp = b.p.maxHp;
+  const next = withRandom(0.45, () => battle.playerAct(b, { type: "weapon_skill" }));
+  const cost = Math.max(1, Math.round(b.p.maxHp * 0.03));
+  assert.equal(next.p.skillState.reserve, Math.round(cost * 0.2), "20% от платы в запасе");
 });
 
-test("ветка «Обряд» B «Кровь пакта»: Жертвенный пакт снимает негативные эффекты", () => {
-  const b = warlockFight(["skill_rite_b"]);
-  b.p.concentration = 5;
+test("Очищение пакта (эффект, ранг 1, шанс 20%): Отток снимает негативный эффект", () => {
+  const b = warlockFight([], { skillRanks: { reserve_passive: 1, reserve_tech: 1, reserve_fx: 1 } });
+  b.p.weaponSkill = { ...content.WEAPON_TECHNIQUES.pact_drain };
   b.p.statuses.wound = 3;
-  b.p.statuses.poison = 2;
-  const next = withRandom(0.45, () => battle.playerAct(b, { type: "archetype_skill" }));
-  assert.equal(next.p.statuses.wound, 0);
-  assert.equal(next.p.statuses.poison, 0);
-  assert.ok(next.log.some((l) => l.text.includes("Кровь пакта")));
+  const next = withRandom(0.1, () => battle.playerAct(b, { type: "weapon_skill" }));
+  assert.equal(next.p.statuses.wound, 0, "негативный эффект снят");
+  assert.ok(next.log.some((l) => l.text.includes("Очищение пакта")));
+
 });
 
-test("ветка «Порча» A: приём накладывает проклятие с −10% урона врага", () => {
-  const b = warlockFight(["skill_curse_a"]);
+test("Печать проклятия (приём): проклятие и холод на 3 раунда", () => {
+  const b = warlockFight([], { skillRanks: { brand_passive: 1, brand_tech: 1 } });
+  b.p.weaponSkill = { ...content.WEAPON_TECHNIQUES.curse_brand };
   const next = withRandom(0.45, () => battle.playerAct(b, { type: "weapon_skill" }));
-  assert.equal(next.enemy.statuses.curse, 1, "2 хода: первый тик сразу, осталось 1");
-  assert.equal(next.enemy.statuses.cursePower, 10);
+  assert.equal(next.enemy.statuses.curse, 2, "3 раунда: первый тик сразу, осталось 2");
+  assert.ok(next.enemy.statuses.chill > 0, "холод наложен");
+
 });
 
-test("ветка «Порча» B «Долгая порча»: проклятие от приёма держится на 2 раунда дольше", () => {
-  const b = warlockFight(["skill_curse_a", "skill_curse_b"]);
+test("Глубокая печать (усиление, ранг 1): проклятие на 4 раунда", () => {
+  const b = warlockFight([], { skillRanks: { brand_passive: 1, brand_tech: 1, brand_up: 1 } });
+  b.p.weaponSkill = { ...content.WEAPON_TECHNIQUES.curse_brand };
   const next = withRandom(0.45, () => battle.playerAct(b, { type: "weapon_skill" }));
-  assert.equal(next.enemy.statuses.curse, 3, "4 хода: первый тик сразу, осталось 3");
+  assert.equal(next.enemy.statuses.curse, 3, "4 раунда: первый тик сразу, осталось 3");
+
 });
 
-test("ветка «Обет» A «Обет крови»: приём, который довёл ОЗ ниже 30%, не тратит перезарядку", () => {
-  const b = warlockFight(["skill_vow_a"]);
-  b.p.hp = Math.round(b.p.maxHp * 0.31);
-  const next = withRandom(0.45, () => battle.playerAct(b, { type: "weapon_skill" }));
-  /* ОЗ ниже 30% после приёма (до мгновенного лечения иссушением): перезарядки нет. */
-  assert.equal(next.p.weaponCd, 0, "перезарядки нет");
+test("Пакт без платы (эффект): после приёма с платой следующий приём ОЗ не тратит", () => {
+  const b = warlockFight([], { skillRanks: { vitality_passive: 1, vitality_tech: 1, vitality_fx: 1 } });
+  b.p.weaponSkill = { ...content.WEAPON_TECHNIQUES.pact_drain };
+  const first = withRandom(0.45, () => battle.playerAct(b, { type: "weapon_skill" }));
+  assert.equal(first.p.skillState.pactFree, 1, "первый приём платит и открывает пакт без платы");
+  const again = { ...first, queue: ["p", "e"], idx: 0, p: { ...first.p, weaponCd: 0 } };
+  const next = withRandom(0.45, () => battle.playerAct(again, { type: "weapon_skill" }));
+  assert.ok(next.log.some((l) => l.text.includes("Пакт без платы")), "второй приём без платы");
+
 });
 
-test("ветка «Обет» A: если ОЗ уже была ниже 30%, перезарядка идёт как обычно", () => {
-  const b = warlockFight(["skill_vow_a"]);
-  b.p.hp = Math.round(b.p.maxHp * 0.2);
-  const next = withRandom(0.45, () => battle.playerAct(b, { type: "weapon_skill" }));
-  assert.ok(next.p.weaponCd > 0, "перезарядка тратится");
+test("Живучесть (пассив, ранг 1): при ОЗ ниже 50% урон приёмов +5%", () => {
+  const avg = (ranks) => {
+    /* Бой создаётся под фиксированным броском: иначе враг выбирается случайно и сравнение шумит. */
+    const low = withRandom(0.45, () => warlockFight([], { skillRanks: ranks }));
+    low.p.weaponSkill = { ...content.WEAPON_TECHNIQUES.curse_brand };
+    low.p.hp = Math.round(low.p.maxHp * 0.4);
+    low.enemy.armor = 0;
+    const after = withRandom(0.45, () => battle.playerAct(low, { type: "weapon_skill" }));
+    return 99999 - after.enemy.hp;
+  };
+  assert.ok(avg({ vitality_passive: 1 }) > avg({}), "при низком ОЗ приём сильнее");
+
 });
 
-test("ветка «Обет» B «Жизнь пакта»: ниже 30% ОЗ лечит 2% в начале хода", () => {
-  const b = warlockFight(["skill_vow_b"]);
-  /* Макс. ОЗ 300: лечение 2% (6) больше удара врага (минимум 1), прирост виден. */
-  b.p.maxHp = 300;
-  b.p.hp = 60;
-  const before = b.p.hp;
-  const next = endRound(b);
-  assert.ok(next.log.some((l) => l.text.includes("Жизнь пакта: +")), "лечение в начале хода");
-  assert.ok(next.p.hp > before, "ОЗ выросли");
-});
-
-test("старая ветка «Ржавчина» не действует: проклятие не снимает броню врага", () => {
-  const b = warlockFight(["skill_curse_b"]);
-  b.enemy.armor = 10;
-  b.enemy.statuses.curse = 3;
-  const next = endRound(b);
-  assert.equal(next.enemy.armor, 10);
-});
-
-test("ветки Колдуна: «Порча», «Обет», «Обряд» вместо «Плата» и «Откат»", () => {
+test("ветки Колдуна: «Запас крови», «Тёмный отпечаток», «Живучесть»", () => {
   const skills = load("archetypeSkills");
   const ids = skills.skillBranchesOf("warlock").map((x) => x.id);
-  assert.deepEqual(ids, ["curse", "vow", "rite"]);
+  assert.deepEqual(ids, ["reserve", "brand", "vitality"]);
+
 });

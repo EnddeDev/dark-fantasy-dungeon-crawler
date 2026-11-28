@@ -775,13 +775,6 @@ export function enemyEffectChips(b: BattleState): EffectChip[] {
       details: [`В конце её хода придёт ${s.echoDue} урона.`], boosts: [], color: EFFECT_COLORS.echo,
     });
   }
-  if ((s.emberShred ?? 0) > 0 && (s.burn ?? 0) > 0) {
-    chips.push({
-      id: "burn", name: "Тлеющие угли", polarity: "bad", rounds: null, unit: "пока горит",
-      details: ["Горящая тварь теряет броню, пока горит."],
-      boosts: [{ stat: "Броня", value: `−${s.emberShred}` }], color: EFFECT_COLORS.burn,
-    });
-  }
   if (e.forceGuard > 0) {
     chips.push({
       id: "guard", name: "Вынужденная оборона", polarity: "bad", rounds: e.forceGuard, unit: "ход",

@@ -1,4 +1,4 @@
-import { skillBranchById } from "./archetypeSkills";
+import { SKILL_NODES, SKILL_RANK_MAX, skillNodeById } from "./archetypeSkills";
 
 /**
  * Переименованные id архетипов, рубежей, спец-приёмов и предметов.
@@ -20,16 +20,10 @@ const RENAMED_IDS: Record<string, string> = {
 };
 
 /**
- * Ветки навыков, которых больше нет. Ранги в сохранении отбрасываются, и очки возвращаются игроку.
- * Ветки с тем же id (`curse`, `vow`, …) сохраняют ранг, даже если их эффект изменился.
+ * Ранги навыков из сохранения. Ранги хранятся по узлам дерева (`<ветка>_<узел>`).
+ * Старые ветки (без узлов) и узлы чужого архетипа отбрасываются; ранги обрезаются до 0–3.
+ * Узел без открытого предка (приём без пассива, усиление без приёма) тоже отбрасывается.
  */
-const RETIRED_SKILL_IDS = new Set([
-  "poisoner", "stealth", "smokeveil",
-  "rewrite", "sealknow", "library",
-  "price", "cooldown",
-]);
-
-/** Ранги навыков из сохранения: удалённые ветки убираются, остальные — только текущих веток этого архетипа. */
 export function migrateSkillRanks(
   ranks: unknown,
   archetype: string | null,
@@ -37,11 +31,15 @@ export function migrateSkillRanks(
   const out: Record<string, number> = {};
   if (!ranks || typeof ranks !== "object" || !archetype) return out;
   for (const [id, value] of Object.entries(ranks as Record<string, unknown>)) {
-    if (RETIRED_SKILL_IDS.has(id)) continue;
-    const def = skillBranchById(id);
-    if (!def || def.archetype !== archetype) continue;
-    const rank = Math.floor(Number(value));
+    const node = skillNodeById(id);
+    if (!node || node.archetype !== archetype) continue;
+    const rank = Math.min(SKILL_RANK_MAX, Math.floor(Number(value)));
     if (rank > 0) out[id] = rank;
+  }
+  /* SKILL_NODES идёт по порядку ветки: предок всегда раньше потомка. */
+  for (const node of SKILL_NODES) {
+    if (node.archetype !== archetype || !out[node.id]) continue;
+    if (node.requires && !out[node.requires]) delete out[node.id];
   }
   return out;
 }

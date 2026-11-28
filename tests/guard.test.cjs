@@ -100,21 +100,3 @@ test("защита не применяется, если выносливост�
   assert.equal(after.p.guard, false, "без выносливости защита не включается");
 });
 
-test("Таран 3: пробивает 20% брони только первой атакой после защиты, а не каждой в ходе", () => {
-  /* Один и тот же бой для всех сценариев: playerAct копирует состояние и не меняет исходное. */
-  const base = fightFor({ passives: ["skill_ram_a"] });
-  base.enemy.armor = 5;
-  base.enemy.hp = base.enemy.maxHp = 5000;
-  const drop = (b, action) => {
-    const after = withRandom(0.45, () => battle.playerAct(b, action));
-    return { after, dealt: b.enemy.hp - after.enemy.hp };
-  };
-  const plainBase = { ...base, p: { ...base.p, passives: [] } };
-  const plain = drop(plainBase, { type: "attack", kind: "normal" }).dealt;
-  const guarded = drop(base, { type: "guard" }).after;
-  const first = drop(guarded, { type: "attack", kind: "normal" });
-  assert.ok(first.dealt > plain, `первая атака после защиты: ${first.dealt} > ${plain}`);
-  assert.equal(first.after.p.guardStrikeUsed, true, "защита потрачена на первую атаку");
-  const second = drop(first.after, { type: "attack", kind: "normal" });
-  assert.equal(second.dealt, plain, `вторая атака в том же ходе — без пробоя (${second.dealt} = ${plain})`);
-});

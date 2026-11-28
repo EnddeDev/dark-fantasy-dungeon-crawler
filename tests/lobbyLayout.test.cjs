@@ -131,5 +131,5 @@ test("навыки: каждая ветка — отдельная строка"
   assert.ok(!html.includes("overflow-x-auto"), "нет горизонтальной прокрутки с карточками");
   assert.ok(!html.includes("min-w-[16rem]"), "ветки не карточками в ряд");
   assert.ok(!html.includes("md:grid-cols-3"), "не столбцами по сетке");
-  assert.ok((html.match(/lg:grid-cols-\[/g) || []).length === 3, "каждая ветка — строка из пяти колонок на широком экране");
+  assert.ok((html.match(/md:grid-cols-2/g) || []).length === 3, "каждая ветка — строка с сеткой узлов 2×2");
 });

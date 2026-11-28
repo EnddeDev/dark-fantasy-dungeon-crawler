@@ -1500,7 +1500,7 @@ export function Lobby({
                   </Panel>
                     </div>
                     {player.archetype && (
-                      <SkillsPanel player={player} onRank={(branch, rank) => say(controller.changeSkillRank(branch, rank))} />
+                      <SkillsPanel player={player} onRank={(nodeId, rank) => say(controller.changeSkillRank(nodeId, rank))} />
                     )}
                   </div>
                 )}
